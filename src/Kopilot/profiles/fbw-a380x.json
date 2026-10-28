@@ -42,7 +42,7 @@
       "name": "L:A32NX_AUTOBRAKES_ARMED_MODE", "type": "enum", "verified": false,
       "values": { "0": "DISARM", "1": "BTV", "2": "LOW", "3": "L2", "4": "L3", "5": "HIGH", "6": "RTO" }
     },
-    "speedTarget": { "name": "L:A32NX_SPEEDS_MANAGED_PFD", "type": "number", "verified": false },
+    "speedTarget": { "name": "L:A32NX_SPEEDS_MANAGED_PFD", "unit": "knots", "type": "number", "verified": false, "description": "intern m/s, gelesen in kt" },
     "speedManaged": { "name": "L:A32NX_FCU_AFS_DISPLAY_SPD_MACH_MANAGED", "type": "bool", "verified": false },
     "selectedSpeed": { "name": "L:A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE", "type": "number", "verified": false },
     "machMode": { "name": "L:A32NX_FCU_AFS_DISPLAY_MACH_MODE", "type": "bool", "verified": false },

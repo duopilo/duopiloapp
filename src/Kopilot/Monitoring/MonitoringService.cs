@@ -10,14 +10,16 @@ public sealed class MonitoringService : BackgroundService
     private readonly SnapshotFactory _factory;
     private readonly AlertBus _bus;
     private readonly SimBriefService _simBrief;
+    private readonly FmaLog _fmaLog;
     private readonly ILogger<MonitoringService> _log;
     private readonly MonitorEngine _engine;
 
     private DateTimeOffset _lastErrorLogUtc;
     private DateTimeOffset _lastSimBriefAttemptUtc;
 
-    public MonitoringService(IOptions<KopilotOptions> options, SnapshotFactory factory, AlertBus bus, SimBriefService simBrief, ILogger<MonitoringService> log)
+    public MonitoringService(IOptions<KopilotOptions> options, SnapshotFactory factory, AlertBus bus, SimBriefService simBrief, FmaLog fmaLog, ILogger<MonitoringService> log)
     {
+        _fmaLog = fmaLog;
         _options = options.Value.Monitoring;
         _factory = factory;
         _bus = bus;
@@ -88,6 +90,11 @@ public sealed class MonitoringService : BackgroundService
                         _log.LogDebug("Monitoring #{Id} {Rule} {Kind}: {Message}", e.Id, e.Rule, e.Kind, e.Message);
                     }
                 }
+            }
+
+            if (_fmaLog.Update(snapshot) is { } fma)
+            {
+                _log.LogInformation("FMA #{Id}: {Changes} (IAS {Ias:0} kt, RA {Ra:0} ft)", fma.Id, string.Join("; ", fma.Changes), fma.IasKt, fma.RadioAltFt);
             }
 
             LastSnapshot = snapshot;

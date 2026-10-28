@@ -29,6 +29,18 @@ public static class RouteMath
         return (Deg(Math.Atan2(y, x)) + 360) % 360;
     }
 
+    /// <summary>Zielpunkt bei Start, rechtweisendem Kurs und Entfernung.</summary>
+    public static (double Lat, double Lon) Destination(double lat, double lon, double bearingDeg, double distanceNm)
+    {
+        var δ = distanceNm / EarthRadiusNm;
+        var θ = Rad(bearingDeg);
+        var φ1 = Rad(lat);
+        var λ1 = Rad(lon);
+        var φ2 = Math.Asin(Math.Clamp(Math.Sin(φ1) * Math.Cos(δ) + Math.Cos(φ1) * Math.Sin(δ) * Math.Cos(θ), -1, 1));
+        var λ2 = λ1 + Math.Atan2(Math.Sin(θ) * Math.Sin(δ) * Math.Cos(φ1), Math.Cos(δ) - Math.Sin(φ1) * Math.Sin(φ2));
+        return (Deg(φ2), ((Deg(λ2) + 540) % 360) - 180);
+    }
+
     /// <summary>
     /// Lage von P relativ zur Strecke A→B: Querablage (rechts positiv) und Strecke entlang A→B ab A (vor A negativ).
     /// </summary>

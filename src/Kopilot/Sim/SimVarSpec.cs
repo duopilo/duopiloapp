@@ -42,6 +42,32 @@ public sealed record SimVarSpec(string Key, string Name, string Unit, SimVarKind
         return trimmed;
     }
 
+    // Text-SimVars, die SimConnect nur als String liefert (bei "number" käme 0 bzw. nichts zurück)
+    private static readonly HashSet<string> TextVariables = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "TITLE", "ATC ID", "ATC AIRLINE", "ATC FLIGHT NUMBER", "ATC TYPE", "ATC MODEL", "ATC RUNWAY AIRPORT NAME",
+        "GPS WP NEXT ID", "GPS WP PREV ID", "GPS APPROACH AIRPORT ID", "GPS APPROACH APPROACH ID", "GPS APPROACH TRANSITION ID",
+        "LIVERY NAME", "LIVERY FOLDER", "CATEGORY", "ATC PARKING NAME",
+    };
+
+    /// <summary>Bekannte Text-SimVar (z. B. "ATC RUNWAY AIRPORT NAME", "NAV IDENT:1")? L:-Variablen sind nie Text.</summary>
+    public static bool IsTextVariable(string name)
+    {
+        var n = NormalizeName(name);
+        if (n.StartsWith("L:", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var colon = n.IndexOf(':');
+        if (colon > 1 && n[..colon].All(c => char.IsLetterOrDigit(c) || c == ' '))
+        {
+            n = n[..colon].Trim();
+        }
+
+        return TextVariables.Contains(n) || n.EndsWith(" IDENT", StringComparison.OrdinalIgnoreCase) || n.EndsWith(" NAME", StringComparison.OrdinalIgnoreCase);
+    }
+
     public static SimVarKind KindFromUnit(string? unit) =>
         unit?.Trim().ToLowerInvariant() switch
         {

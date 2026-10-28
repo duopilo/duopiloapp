@@ -83,7 +83,7 @@ public static class KopilotTools
     [Description(
         "Current flight state of the pilot's aircraft in MSFS 2024: altitude (indicated, flight level, AGL, radio), speeds in knots (IAS, TAS, GS, vertical speed), " +
         "attitude and heading, position, configuration (flaps handle, gear, spoilers, parking brake), autopilot/autothrust status with FMA modes and speed/altitude targets, " +
-        "and sim warnings. With an aircraft profile (FlyByWire A32NX/A380X) the autopilot block comes from the aircraft's own variables ('source': 'profile'); " +
+        "takeoff data (V1/VR/V2 in knots, FLEX temperature) and sim warnings. Speed targets are always in knots – a Mach target is converted. With an aircraft profile (FlyByWire A32NX/A380X) the autopilot block comes from the aircraft's own variables ('source': 'profile'); " +
         "otherwise from generic SimVars ('source': 'generic'), which study-level airliners may not update. 'paused' is true while the sim is paused.")]
     public static string GetFlightState(SimConnectClient sim, AlertBus alerts)
     {
@@ -137,14 +137,16 @@ public static class KopilotTools
             },
             configuration = new
             {
+                flaps = signals.FlapsDisplay,
                 flapsHandleIndex = Fmt.Int(sim.Num("flapsIndex")),
                 gearHandle = sim.Bool("gearHandle") switch { true => "DOWN", false => "UP", null => null },
                 gearExtendedPct = Fmt.Int(sim.Num("gearCenterPct")),
-                spoilersArmed = sim.Bool("spoilersArmed"),
+                spoilersArmed = signals.SpoilersArmed,
                 speedbrakeHandlePct = Fmt.Int(sim.Num("spoilersHandlePct")),
-                parkingBrakeSet = sim.Bool("parkingBrake"),
+                parkingBrakeSet = signals.ParkingBrake,
                 autobrake = signals.Autobrake,
             },
+            takeoff = Takeoff(signals),
             autopilot = Autopilot(sim, signals),
             warnings = new
             {
@@ -160,8 +162,9 @@ public static class KopilotTools
     [McpServerTool(Name = "get_systems", ReadOnly = true)]
     [Description(
         "Aircraft systems in MSFS 2024: engines (running, N1, N2, EGT, fuel flow in kg/h), APU, fuel on board and gross weight, " +
-        "exterior lights, seatbelt sign, transponder code/mode and COM radio frequencies. Fuel flow comes from the aircraft profile when available " +
-        "('fuelFlowSource'). 'plausibility' lists values that look implausible (e.g. extreme weather, air start).")]
+        "exterior lights, seatbelt sign, transponder code/mode, COM radio frequencies and – with an aircraft profile – electrical values " +
+        "(generator voltage/frequency, battery voltage, buses powered). Fuel flow and EGT come from the aircraft profile when available " +
+        "('fuelFlowSource', 'egtSource'). 'plausibility' lists values that look implausible (e.g. extreme weather, air start).")]
     public static string GetSystems(SimConnectClient sim, AlertBus alerts)
     {
         if (!sim.Connection.IsConnected)
@@ -176,7 +179,7 @@ public static class KopilotTools
         {
             var running = sim.Bool($"eng{i}Running");
             var n2 = sim.Num($"eng{i}N2");
-            var egt = sim.Num($"eng{i}Egt");
+            var egt = signals.EgtC(i);
             var ff = signals.FuelFlowKgh(i);
             if (running == true && egt is < -40)
             {
@@ -204,6 +207,7 @@ public static class KopilotTools
             connected = true,
             engines,
             fuelFlowSource = signals.FuelFlowSource,
+            egtSource = signals.EgtSource,
             totalFuelFlowKgPerHour = Fmt.Int(engines.Sum(e => (double?)e.fuelFlowKgPerHour ?? 0)),
             apu = new { rpmPct = Fmt.Round(sim.Num("apuRpmPct"), 1) },
             fuel = new
@@ -233,6 +237,7 @@ public static class KopilotTools
                 com1StandbyMhz = Fmt.Round(sim.Num("com1Standby"), 3),
                 com2ActiveMhz = Fmt.Round(sim.Num("com2Active"), 3),
             },
+            electrical = signals.Electrical().Select(e => new { key = e.Key, label = e.Description, value = Fmt.Round(e.Value, 1), text = e.Text }),
             plausibility = notes,
             activeAlerts = AlertView.Active(alerts),
         });
@@ -394,7 +399,7 @@ public static class KopilotTools
     [Description(
         "Reads any single simulation variable once, for exploring values not covered by the other tools. " +
         "Accepts standard SimVars (e.g. 'AIRSPEED INDICATED', with index like 'TURB ENG N1:1') and local L: variables (e.g. 'L:SOME_VAR'). " +
-        "For text variables (e.g. 'ATC RUNWAY AIRPORT NAME', 'TITLE', 'ATC ID') pass unit 'string'. " +
+        "Text variables (e.g. 'ATC RUNWAY AIRPORT NAME', 'TITLE', 'ATC ID', any '... IDENT' or '... NAME') are read as text automatically; for other text variables pass unit 'string'. " +
         "Note: an unknown L: variable reads as 0 instead of failing, so a 0 does not prove the variable exists.")]
     public static async Task<string> ReadSimVar(
         SimConnectClient sim,
@@ -406,7 +411,7 @@ public static class KopilotTools
         return Json.Serialize(new
         {
             name,
-            unit,
+            unit = result.Value is string && !unit.Equals("string", StringComparison.OrdinalIgnoreCase) ? "string (automatisch)" : unit,
             ok = result.Ok,
             value = result.Value is double d ? Math.Round(d, 4) : result.Value,
             error = result.Error,
@@ -439,8 +444,9 @@ public static class KopilotTools
                 navHold = sim.Bool("apNav"),
                 approachHold = sim.Bool("apAppr"),
                 selectedAltitudeFt = Fmt.Int(s.SelectedAltitudeFt),
-                selectedHeadingDeg = Fmt.Heading(sim.Num("apHdg")),
+                selectedHeadingDeg = Fmt.Heading(s.SelectedHeadingDeg),
                 selectedSpeedKt = Fmt.Int(s.SelectedSpeedKt),
+                selectedSpeedFromMach = s.SelectedSpeedIsMach ? true : (bool?)null,
                 selectedVerticalSpeedFpm = Fmt.Int(sim.Num("apVs")),
             };
         }
@@ -467,7 +473,25 @@ public static class KopilotTools
             vlsKt = Fmt.Int(s.VlsKt),
             selectedAltitudeFt = Fmt.Int(s.SelectedAltitudeFt),
             selectedAltitudeSource = s.SelectedAltitudeSource,
-            selectedHeadingDeg = Fmt.Heading(sim.Num("apHdg")),
+            selectedHeadingDeg = Fmt.Heading(s.SelectedHeadingDeg),
+            selectedSpeedFromMach = s.SelectedSpeedIsMach ? true : (bool?)null,
+        };
+    }
+
+    /// <summary>Startdaten aus der MCDU (V-Speeds in kt, FLEX), nur wenn das Profil sie kennt.</summary>
+    private static object? Takeoff(AircraftSignals s)
+    {
+        if (!s.Has(BindingKeys.V1) && !s.Has(BindingKeys.FlexTemp))
+        {
+            return null;
+        }
+
+        return new
+        {
+            v1Kt = Fmt.Int(s.V1Kt),
+            vrKt = Fmt.Int(s.VrKt),
+            v2Kt = Fmt.Int(s.V2Kt),
+            flexTempC = Fmt.Int(s.FlexTempC),
         };
     }
 

@@ -46,6 +46,11 @@ public sealed record FlightSnapshot
 
     public double? FlapsIndex { get; init; }
 
+    /// <summary>Klappenstellung im Klartext aus dem Profil ("1+F", "FULL"), null ohne Profil.</summary>
+    public string? FlapsLabel { get; init; }
+
+    public bool? SpoilersArmed { get; init; }
+
     public double? GearExtendedPct { get; init; }
 
     public bool? GearHandleDown { get; init; }
@@ -55,6 +60,15 @@ public sealed record FlightSnapshot
     public double? SelectedAltitudeFt { get; init; }
 
     public double? SpeedTargetKt { get; init; }
+
+    /// <summary>FMS-Meldung T/D REACHED (null, wenn das Flugzeug sie nicht liefert).</summary>
+    public bool? TdReached { get; init; }
+
+    /// <summary>Entfernung zum Top of Descent laut SimBrief-Plan (nm), null wenn unbekannt oder schon vorbei.</summary>
+    public double? PlanTodDistanceNm { get; init; }
+
+    /// <summary>FMA-Anzeige für das FMA-Log.</summary>
+    public FmaState? Fma { get; init; }
 
     public bool? MasterWarning { get; init; }
 
@@ -77,3 +91,14 @@ public sealed record FlightSnapshot
 
     public bool GearNotUp => GearExtendedPct is > 5 || (GearExtendedPct is null && GearHandleDown == true);
 }
+
+/// <summary>Was die FMA gerade zeigt.</summary>
+public sealed record FmaState(
+    string? Thrust,
+    string? Vertical,
+    string? VerticalArmed,
+    string? Lateral,
+    string? LateralArmed,
+    string? Autopilot,
+    bool? FlightDirector,
+    string? Autothrust);

@@ -48,7 +48,8 @@ public static class MonitoringTools
     [McpServerTool(Name = "get_alerts", ReadOnly = true)]
     [Description(
         "Monitoring alerts raised by Kopilot (gear/flap speed, speed limit below FL100, speed deviation, sink rate, bank angle, autopilot off, " +
-        "master warning/caution, one thousand to go, runway assigned by ATC, sim paused). Returns events with id > sinceId (oldest first) and the " +
+        "master warning/caution with the newest ECAM message, new ECAM messages, one thousand to go, top of descent, landing checklist at 2000/1000 ft, " +
+        "runway assigned by ATC, sim paused). Returns events with id > sinceId (oldest first) and the " +
         "currently active alerts. Each event has a short English 'callout' to say aloud (null for silent events such as 'Clear'). " +
         "Remember 'lastId' and pass it as sinceId next time.")]
     public static string GetAlerts(
@@ -82,6 +83,40 @@ public static class MonitoringTools
             lastId = alerts.LastId,
             timedOut = events.Count == 0,
             events = events.Select(AlertView.Full),
+            activeAlerts = AlertView.Active(alerts),
+        });
+    }
+
+    [McpServerTool(Name = "get_fma_log", ReadOnly = true)]
+    [Description(
+        "History of flight mode annunciator changes (thrust, vertical, lateral, armed modes, AP, FD, A/THR) with UTC time, IAS, altitude and radio altitude " +
+        "at each change. Use it to check what the autoflight system did, e.g. after an autoland whether LAND, FLARE and ROLL OUT were active.")]
+    public static string GetFmaLog(
+        FmaLog fmaLog,
+        AlertBus alerts,
+        [Description("Number of most recent changes to return (1–200). Default 40.")] int last = 40)
+    {
+        var entries = fmaLog.Last(Math.Clamp(last, 1, 200));
+        var since = DateTimeOffset.UtcNow.AddMinutes(-30);
+        return Json.Serialize(new
+        {
+            entries = entries.Select(e => new
+            {
+                id = e.Id,
+                timeUtc = e.TimeUtc.ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) + "Z",
+                changes = e.Changes,
+                fma = FmaLog.Describe(e.State),
+                iasKt = Fmt.Int(e.IasKt),
+                altitudeFt = Fmt.Int(e.AltitudeFt),
+                radioAltFt = e.RadioAltFt is < 5000 ? Fmt.Int(e.RadioAltFt) : null,
+                onGround = e.OnGround,
+            }),
+            last30Minutes = new
+            {
+                land = fmaLog.Seen("LAND", since),
+                flare = fmaLog.Seen("FLARE", since),
+                rollOut = fmaLog.Seen("ROLL OUT", since),
+            },
             activeAlerts = AlertView.Active(alerts),
         });
     }

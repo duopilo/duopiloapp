@@ -11,6 +11,9 @@ public sealed class SnapshotFactory(SimConnectClient sim, EcamCatalog ecam, SimB
 {
     private static readonly AircraftLimits DefaultLimits = new();
 
+    private DateTimeOffset _todComputedUtc;
+    private double? _todDistance;
+
     public FlightSnapshot Build(DateTimeOffset now)
     {
         if (!sim.Connection.IsConnected)
@@ -42,11 +45,16 @@ public sealed class SnapshotFactory(SimConnectClient sim, EcamCatalog ecam, SimB
             // MSFS: Bank links = positiv
             BankRightDeg = -sim.Num("bank"),
             FlapsIndex = sim.Num("flapsIndex"),
+            FlapsLabel = signals.FlapsLabel,
+            SpoilersArmed = signals.SpoilersArmed,
             GearExtendedPct = sim.Num("gearCenterPct"),
             GearHandleDown = sim.Bool("gearHandle"),
             ApEngaged = signals.ApEngaged,
             SelectedAltitudeFt = signals.SelectedAltitudeFt,
             SpeedTargetKt = signals.SpeedTargetKt,
+            TdReached = signals.TdReached,
+            PlanTodDistanceNm = PlanTodDistance(),
+            Fma = Fma(signals),
             MasterWarning = signals.MasterWarning,
             MasterCaution = signals.MasterCaution,
             EcamTitles = ecamState.Titles,
@@ -55,5 +63,62 @@ public sealed class SnapshotFactory(SimConnectClient sim, EcamCatalog ecam, SimB
             Limits = signals.Profile?.Limits ?? DefaultLimits,
             AssignedRunway = AtcReader.AssignedRunway(sim, simBrief.Current),
         };
+    }
+
+    public static FmaState Fma(AircraftSignals s)
+    {
+        string? ap = null;
+        if (s.Ap1 == true && s.Ap2 == true)
+        {
+            ap = "AP1+2";
+        }
+        else if (s.Ap1 == true)
+        {
+            ap = "AP1";
+        }
+        else if (s.Ap2 == true)
+        {
+            ap = "AP2";
+        }
+        else if (s.ApEngaged == true)
+        {
+            ap = "AP";
+        }
+
+        static string? Join(IReadOnlyList<string>? items) => items is { Count: > 0 } ? string.Join(" ", items) : null;
+        static string? Empty(string? text) => string.IsNullOrEmpty(text) ? null : text;
+
+        return new FmaState(
+            Empty(s.AutothrustMode),
+            Empty(s.FmaVertical),
+            Join(s.FmaVerticalArmed),
+            Empty(s.FmaLateral),
+            Join(s.FmaLateralArmed),
+            ap,
+            s.FlightDirector,
+            Empty(s.AutothrustStatus));
+    }
+
+    /// <summary>TOD laut SimBrief nur alle paar Sekunden neu rechnen – die Route ändert sich nicht im 200-ms-Takt.</summary>
+    private double? PlanTodDistance()
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (now - _todComputedUtc < TimeSpan.FromSeconds(2))
+        {
+            return _todDistance;
+        }
+
+        _todComputedUtc = now;
+        _todDistance = null;
+        if (simBrief.Current is { } ofp && sim.Num("lat") is { } lat && sim.Num("lon") is { } lon)
+        {
+            var points = ofp.RoutePoints();
+            if (simBrief.Locate(ofp, points, lat, lon) is { } route)
+            {
+                _todDistance = ProgressCalculator.Compute(ofp, points, route, null).TopOfDescent?.DistanceNm;
+            }
+        }
+
+        return _todDistance;
     }
 }

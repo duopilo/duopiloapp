@@ -1,3 +1,4 @@
+using System.Globalization;
 using Kopilot.Aircraft;
 
 namespace Kopilot.Sim;
@@ -21,17 +22,27 @@ public sealed class AircraftSignals(SimConnectClient sim)
 
     // ------------------------------------------------------------------ Rohzugriff
 
+    /// <summary>Wert eines Bindings (mit Scale). Bei ARINC-429-Wörtern nur, wenn das Wort gültig ist (Normal Operation).</summary>
     public double? Raw(string key, int? engine = null)
     {
         var b = Binding(key);
-        if (b is null)
+        if (b is null || RawValue(b, engine) is not { } v)
         {
             return null;
         }
 
-        var name = engine is { } i ? b.Name.Replace("{i}", i.ToString(System.Globalization.CultureInfo.InvariantCulture)) : b.Name;
-        return Sim.Num(SimConnectClient.VarKey(name, b.EffectiveUnit)) is { } v ? v * b.Scale : null;
+        if (IsArinc(b))
+        {
+            var word = Arinc429Word.Decode(v);
+            return word.IsNormal ? word.Value * b.Scale : null;
+        }
+
+        return v * b.Scale;
     }
+
+    /// <summary>ARINC-429-Wort eines Bindings vom Typ "arinc429" (auch ungültige Wörter, z. B. für die SSM).</summary>
+    public Arinc429Word? Arinc(string key) =>
+        Binding(key) is { } b && IsArinc(b) && RawValue(b, null) is { } v ? Arinc429Word.Decode(v) : null;
 
     public bool? Flag(string key) => Raw(key) is { } v ? Math.Abs(v) > 0.5 : null;
 
@@ -48,11 +59,19 @@ public sealed class AircraftSignals(SimConnectClient sim)
             return Sim.Str(SimConnectClient.VarKey(b.Name, b.EffectiveUnit));
         }
 
-        return Raw(key) is { } raw ? b.Translate(raw) ?? raw.ToString(System.Globalization.CultureInfo.InvariantCulture) : null;
+        return Raw(key) is { } raw ? b.Translate(raw) ?? raw.ToString(CultureInfo.InvariantCulture) : null;
     }
 
     public IReadOnlyList<string>? Bits(string key) =>
         Binding(key) is { } b && Raw(key) is { } raw ? b.DecodeBits(raw) : null;
+
+    private double? RawValue(ProfileBinding b, int? engine)
+    {
+        var name = engine is { } i ? b.Name.Replace("{i}", i.ToString(CultureInfo.InvariantCulture)) : b.Name;
+        return Sim.Num(SimConnectClient.VarKey(name, b.EffectiveUnit));
+    }
+
+    private static bool IsArinc(ProfileBinding b) => b.Type.Equals("arinc429", StringComparison.OrdinalIgnoreCase);
 
     // ------------------------------------------------------------------ Autopilot / FMA
 
@@ -89,7 +108,24 @@ public sealed class AircraftSignals(SimConnectClient sim)
 
     public IReadOnlyList<string>? FmaLateralArmed => Bits(BindingKeys.FmaLateralArmed);
 
-    public string? FmaVertical => Text(BindingKeys.FmaVertical);
+    /// <summary>
+    /// Vertikaler FMA-Modus. "ALT CRZ" kennt die alte FBW-Variable nicht – dann wie das FBW-PFD aus dem
+    /// FMGC Discrete Word 1 ableiten (Bit 26 Strich-Anzeige, Bit 19 ALT, ohne gültige Höhenbeschränkung).
+    /// </summary>
+    public string? FmaVertical
+    {
+        get
+        {
+            var text = Text(BindingKeys.FmaVertical);
+            if (!string.IsNullOrEmpty(text) || Arinc(BindingKeys.FmgcDiscreteWord1) is not { IsNormal: true } dw1)
+            {
+                return text;
+            }
+
+            var constraintValid = Arinc(BindingKeys.FmAltitudeConstraint) is { IsNormal: true };
+            return dw1.Bit(26) && (!dw1.Bit(19) || !constraintValid) ? "ALT CRZ" : text;
+        }
+    }
 
     public IReadOnlyList<string>? FmaVerticalArmed => Bits(BindingKeys.FmaVerticalArmed);
 
@@ -99,7 +135,12 @@ public sealed class AircraftSignals(SimConnectClient sim)
 
     public bool? MasterCaution => Flag(BindingKeys.MasterCaution);
 
-    /// <summary>Ziel-Speed in kt: managed (FMS), wenn aktiv und bekannt, sonst die im FCU gewählte. Null bei Mach-Ziel oder unbekannt.</summary>
+    /// <summary>FMS-Meldung "T/D REACHED" (nur mit Profil-Binding).</summary>
+    public bool? TdReached => Flag(BindingKeys.TdReached);
+
+    // ------------------------------------------------------------------ Geschwindigkeiten (immer Knoten)
+
+    /// <summary>Ziel-Speed in kt: managed (FMS), wenn aktiv und bekannt, sonst die im FCU gewählte. Mach-Ziele werden in kt umgerechnet.</summary>
     public double? SpeedTargetKt
     {
         get
@@ -115,14 +156,26 @@ public sealed class AircraftSignals(SimConnectClient sim)
 
     public bool? SpeedManaged => Flag(BindingKeys.SpeedManaged);
 
-    /// <summary>Am FCU gewählte Geschwindigkeit in kt. Null, wenn das FCU Mach zeigt.</summary>
+    /// <summary>true, wenn das FCU eine Machzahl zeigt (für die Anzeige "aus Mach umgerechnet").</summary>
+    public bool SelectedSpeedIsMach =>
+        Has(BindingKeys.MachMode) ? Flag(BindingKeys.MachMode) == true : Sim.Bool("apMachHold") == true;
+
+    /// <summary>Am FCU gewählte Geschwindigkeit in kt. Ein Mach-Ziel wird über den Umgebungsdruck in Knoten (CAS) umgerechnet.</summary>
     public double? SelectedSpeedKt
     {
         get
         {
-            if (Flag(BindingKeys.MachMode) == true)
+            if (SelectedSpeedIsMach)
             {
-                return null;
+                var mach = Has(BindingKeys.SelectedSpeed) ? Raw(BindingKeys.SelectedSpeed) : Sim.Num("apMachVar");
+
+                // Manche Anzeigen liefern "78" statt "0.78"
+                if (mach is > 1 and < 100)
+                {
+                    mach /= 100;
+                }
+
+                return AirspeedMath.MachToCasKt(mach, Sim.Num("ambientPressureHpa"));
             }
 
             if (Has(BindingKeys.SelectedSpeed))
@@ -134,13 +187,50 @@ public sealed class AircraftSignals(SimConnectClient sim)
         }
     }
 
+    public double? VlsKt => Raw(BindingKeys.Vls) is { } v && v > 30 ? v : null;
+
+    public double? V1Kt => Raw(BindingKeys.V1) is { } v && v > 30 ? v : null;
+
+    public double? VrKt => Raw(BindingKeys.Vr) is { } v && v > 30 ? v : null;
+
+    public double? V2Kt => Raw(BindingKeys.V2) is { } v && v > 30 ? v : null;
+
+    /// <summary>FLEX-Temperatur in °C, null wenn keine eingetragen ist.</summary>
+    public double? FlexTempC => Raw(BindingKeys.FlexTemp) is { } v && Math.Abs(v) > 0.5 ? v : null;
+
+    // ------------------------------------------------------------------ FCU
+
     /// <summary>Am FCU gewählte Höhe in ft.</summary>
     public double? SelectedAltitudeFt =>
         Has(BindingKeys.SelectedAltitude) ? Raw(BindingKeys.SelectedAltitude) : Sim.Num("apAlt");
 
     public string SelectedAltitudeSource => Has(BindingKeys.SelectedAltitude) ? "profile" : "generic";
 
-    public double? VlsKt => Raw(BindingKeys.Vls) is { } v && v > 30 ? v : null;
+    /// <summary>Am FCU gewählter Kurs. Null, wenn das Fenster Striche zeigt (managed NAV).</summary>
+    public double? SelectedHeadingDeg
+    {
+        get
+        {
+            if (!Has(BindingKeys.SelectedHeading))
+            {
+                return Sim.Num("apHdg");
+            }
+
+            return Flag(BindingKeys.SelectedHeadingDashes) == true ? null : Raw(BindingKeys.SelectedHeading) is { } v && v >= 0 ? v : null;
+        }
+    }
+
+    // ------------------------------------------------------------------ Konfiguration
+
+    public bool? ParkingBrake => Has(BindingKeys.ParkingBrake) ? Flag(BindingKeys.ParkingBrake) : Sim.Bool("parkingBrake");
+
+    public bool? SpoilersArmed => Has(BindingKeys.SpoilersArmed) ? Flag(BindingKeys.SpoilersArmed) : Sim.Bool("spoilersArmed");
+
+    /// <summary>Klappenstellung im Klartext aus dem Profil (z. B. "1+F", "FULL"), sonst null.</summary>
+    public string? FlapsLabel => Has(BindingKeys.Flaps) ? Text(BindingKeys.Flaps) : null;
+
+    /// <summary>Klappenstellung zur Anzeige: Klartext aus dem Profil oder der generische Hebel-Index.</summary>
+    public string? FlapsDisplay => FlapsLabel ?? (Sim.Num("flapsIndex") is { } i ? Math.Round(i).ToString(CultureInfo.InvariantCulture) : null);
 
     // ------------------------------------------------------------------ Triebwerke
 
@@ -150,6 +240,51 @@ public sealed class AircraftSignals(SimConnectClient sim)
         Has(BindingKeys.FuelFlowKgh)
             ? Raw(BindingKeys.FuelFlowKgh, engine)
             : Sim.Num($"eng{engine}FuelFlowPph") * LbsToKg;
+
+    public string EgtSource => Has(BindingKeys.EgtC) ? "profile" : "generic";
+
+    public double? EgtC(int engine) => Has(BindingKeys.EgtC) ? Raw(BindingKeys.EgtC, engine) : Sim.Num($"eng{engine}Egt");
+
+    // ------------------------------------------------------------------ Elektrik
+
+    /// <summary>Elektrik-Werte aus dem Profil (Spannung, Frequenz, Busse versorgt).</summary>
+    public IReadOnlyList<(string Key, string? Description, double? Value, string? Text)> Electrical()
+    {
+        if (Profile is null || Profile.Electrical.Count == 0)
+        {
+            return [];
+        }
+
+        return Profile.Electrical.Select(v =>
+        {
+            var unit = string.IsNullOrWhiteSpace(v.Unit) ? "number" : v.Unit;
+            var value = Sim.Num(SimConnectClient.VarKey(v.Name, unit));
+            return (v.Key, v.Description, value, v.Translate(value));
+        }).ToList();
+    }
+
+    // ------------------------------------------------------------------ FMS
+
+    /// <summary>Distanz (nm) und Peilung (°) zum aktiven FMS-Wegpunkt, falls das Profil sie kennt.</summary>
+    public (double DistanceNm, double BearingDeg)? FmsToWaypoint =>
+        Raw(BindingKeys.FmsToWptDistance) is { } d && d > 0 && Raw(BindingKeys.FmsToWptBearing) is { } b ? (d, b) : null;
+
+    /// <summary>Eingabe für die Zuordnung des FMS-Wegpunkts zum SimBrief-Plan, null ohne FMS-Daten.</summary>
+    public Kopilot.FlightPlan.FmsWaypointInput? FmsWaypoint(double lat, double lon)
+    {
+        if (FmsToWaypoint is not { } fms)
+        {
+            return null;
+        }
+
+        var variation = 0.0;
+        if (Sim.Num("hdgTrue") is { } t && Sim.Num("hdgMag") is { } m)
+        {
+            variation = ((t - m) % 360 + 540) % 360 - 180;
+        }
+
+        return new Kopilot.FlightPlan.FmsWaypointInput(lat, lon, fms.DistanceNm, fms.BearingDeg, variation);
+    }
 
     // ------------------------------------------------------------------ ECAM
 
@@ -166,7 +301,7 @@ public sealed class AircraftSignals(SimConnectClient sim)
         var codes = new List<long>();
         for (var n = 1; n <= ecam.Lines; n++)
         {
-            var name = pattern.Replace("{n}", n.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            var name = pattern.Replace("{n}", n.ToString(CultureInfo.InvariantCulture));
             if (Sim.Num(SimConnectClient.VarKey(name, "number")) is { } v && v > 0.5)
             {
                 codes.Add((long)Math.Round(v));
