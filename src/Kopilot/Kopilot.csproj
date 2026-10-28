@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <TargetFramework>net10.0-windows</TargetFramework>
-    <!-- Windows-Anwendung ohne Konsolenfenster: Kopilot sitzt im Infobereich. Mit --console gibt es trotzdem eine Konsole. -->
+    <!-- Windows-Anwendung ohne Konsolenfenster: Kopilot sitzt im Infobereich. Der Schalter "console" öffnet bei Bedarf eine Konsole. -->
     <OutputType>WinExe</OutputType>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationIcon>Assets\kopilot.ico</ApplicationIcon>
