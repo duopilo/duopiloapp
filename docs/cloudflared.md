@@ -27,7 +27,7 @@ Die Anleitung folgt der offiziellen Cloudflare-Doku für [lokal verwaltete Tunne
    cloudflared.exe --version
    ```
 
-> Mit `winget install --id Cloudflare.cloudflared` geht es auch. Dann liegt die EXE woanders, und du musst den Pfad in Schritt 7 anpassen.
+> Mit `winget install --id Cloudflare.cloudflared` geht es auch. Dann liegt die EXE woanders. Rufe sie in den Schritten 2 bis 7 ohne `cd` direkt als `cloudflared` auf und passe den EXE-Pfad im `ImagePath` in Schritt 8 an (`where cloudflared` zeigt ihn).
 
 ## 2. Bei Cloudflare anmelden
 
