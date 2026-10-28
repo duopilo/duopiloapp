@@ -101,6 +101,27 @@ namespace Microsoft.FlightSimulator.SimConnect
         public object[] dwData;
     }
 
+    public class SIMCONNECT_RECV_EVENT : SIMCONNECT_RECV
+    {
+        public uint uGroupID;
+        public uint uEventID;
+        public uint dwData;
+    }
+
+    public class SIMCONNECT_RECV_EVENT_FILENAME : SIMCONNECT_RECV_EVENT
+    {
+        public string szFileName;
+        public uint dwFlags;
+    }
+
+    public class SIMCONNECT_RECV_SYSTEM_STATE : SIMCONNECT_RECV
+    {
+        public uint dwRequestID;
+        public uint dwInteger;
+        public float fFloat;
+        public string szString;
+    }
+
     public class SimConnect : IDisposable
     {
         public const uint SIMCONNECT_OBJECT_ID_USER = 0;
@@ -113,6 +134,12 @@ namespace Microsoft.FlightSimulator.SimConnect
         public delegate void RecvExceptionEventHandler(SimConnect sender, SIMCONNECT_RECV_EXCEPTION data);
 
         public delegate void RecvSimobjectDataEventHandler(SimConnect sender, SIMCONNECT_RECV_SIMOBJECT_DATA data);
+
+        public delegate void RecvEventEventHandler(SimConnect sender, SIMCONNECT_RECV_EVENT data);
+
+        public delegate void RecvEventFilenameEventHandler(SimConnect sender, SIMCONNECT_RECV_EVENT_FILENAME data);
+
+        public delegate void RecvSystemStateEventHandler(SimConnect sender, SIMCONNECT_RECV_SYSTEM_STATE data);
 
         public SimConnect(string szName, IntPtr hWnd, uint UserEventWin32, WaitHandle hEventHandle, uint ConfigIndex)
         {
@@ -128,6 +155,20 @@ namespace Microsoft.FlightSimulator.SimConnect
         public event RecvExceptionEventHandler OnRecvException;
 
         public event RecvSimobjectDataEventHandler OnRecvSimobjectData;
+
+        public event RecvEventEventHandler OnRecvEvent;
+
+        public event RecvEventFilenameEventHandler OnRecvEventFilename;
+
+        public event RecvSystemStateEventHandler OnRecvSystemState;
+
+        public void SubscribeToSystemEvent(Enum EventID, string SystemEventName)
+        {
+        }
+
+        public void RequestSystemState(Enum RequestID, string szState)
+        {
+        }
 
         public void AddToDataDefinition(Enum DefineID, string DatumName, string UnitsName, SIMCONNECT_DATATYPE DatumType, float fEpsilon, uint DatumID)
         {

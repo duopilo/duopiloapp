@@ -31,7 +31,14 @@ public sealed class ProfileStore
 
     public IReadOnlyList<string> Errors => _errors;
 
-    public AircraftProfile? Match(string? title) => _profiles.FirstOrDefault(p => p.Matches(title));
+    /// <summary>Bestes Profil für Titel und aircraft.cfg-Pfad (Pfad-Treffer schlagen Titel-Treffer).</summary>
+    public AircraftProfile? Match(string? title, string? path) =>
+        _profiles
+            .Select(p => (Profile: p, Score: p.MatchScore(title, path)))
+            .Where(x => x.Score > 0)
+            .OrderByDescending(x => x.Score)
+            .Select(x => x.Profile)
+            .FirstOrDefault();
 
     public void Reload()
     {
@@ -53,6 +60,9 @@ public sealed class ProfileStore
 
                     profile.SourceFile = Path.GetFileName(file);
                     profile.Variables.RemoveAll(v => string.IsNullOrWhiteSpace(v.Key) || string.IsNullOrWhiteSpace(v.Name));
+                    profile.Bindings = new Dictionary<string, ProfileBinding>(
+                        profile.Bindings.Where(b => !string.IsNullOrWhiteSpace(b.Value.Name)),
+                        StringComparer.OrdinalIgnoreCase);
                     profiles.Add(profile);
                 }
                 catch (Exception ex) when (ex is JsonException or IOException)

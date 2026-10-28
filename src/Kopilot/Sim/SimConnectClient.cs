@@ -18,8 +18,9 @@ namespace Kopilot.Sim;
 public sealed class SimConnectClient : BackgroundService
 {
     private const uint AdHocRequestBase = 1_000_000;
+    private const uint StateRequestAircraft = 900_001;
+    private const uint StateRequestSim = 900_002;
     private const string TitleKey = "title";
-    public const string ProfileKeyPrefix = "profile.";
 
     private readonly ILogger<SimConnectClient> _log;
     private readonly KopilotOptions _options;
@@ -41,8 +42,12 @@ public sealed class SimConnectClient : BackgroundService
     private readonly HashSet<string> _registeredValueKeys = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, uint> _adHocDefIds = new(StringComparer.OrdinalIgnoreCase);
     private string? _lastTitle;
+    private string? _lastPath;
     private string? _lastConnectError;
     private bool _quitRequested;
+
+    // Simulator-Zustand (Pause, Flug läuft, Flugzeugpfad) – von anderen Threads gelesen
+    private volatile SimStatus _simStatus = new(false, 0, null, null);
 
     private volatile ConnectionInfo _connection = ConnectionInfo.Disconnected;
     private volatile AircraftProfile? _activeProfile;
@@ -59,6 +64,11 @@ public sealed class SimConnectClient : BackgroundService
     public AircraftProfile? ActiveProfile => _activeProfile;
 
     public int ReceivingCount => _values.Count;
+
+    public SimStatus Status => _simStatus;
+
+    /// <summary>Schlüssel, unter dem der Wert einer beliebigen Variable abgelegt wird.</summary>
+    public static string VarKey(string name, string unit) => $"var:{name.Trim()}|{unit.Trim().ToLowerInvariant()}";
 
     /// <summary>Letzter Fehler beim Verbindungsaufbau (z. B. fehlende SimConnect.dll), sonst null.</summary>
     public string? LastError => _lastConnectError;
@@ -139,9 +149,8 @@ public sealed class SimConnectClient : BackgroundService
     /// <summary>Profil nach dem Neuladen der Profildateien erneut zuordnen.</summary>
     public void RefreshProfile() => Enqueue(sc =>
     {
-        var title = _lastTitle;
-        _lastTitle = null;
-        HandleTitle(sc, title);
+        _activeProfile = null;
+        ApplyProfile(sc, force: true);
     });
 
     // ------------------------------------------------------------------ SimConnect-Thread
@@ -231,6 +240,9 @@ public sealed class SimConnectClient : BackgroundService
             sc.OnRecvQuit += OnQuit;
             sc.OnRecvException += OnException;
             sc.OnRecvSimobjectData += OnData;
+            sc.OnRecvEvent += OnEvent;
+            sc.OnRecvEventFilename += OnEventFilename;
+            sc.OnRecvSystemState += OnSystemState;
             _sc = sc;
             _lastConnectError = null;
             return true;
@@ -278,6 +290,8 @@ public sealed class SimConnectClient : BackgroundService
         _connection = ConnectionInfo.Disconnected;
         _activeProfile = null;
         _lastTitle = null;
+        _lastPath = null;
+        _simStatus = new SimStatus(false, 0, null, null);
         _nextDefId = 0;
         _valueKeyByDefId.Clear();
         _registeredValueKeys.Clear();
@@ -369,41 +383,80 @@ public sealed class SimConnectClient : BackgroundService
         var defId = DefineVariable(sc, spec);
         _valueKeyByDefId[defId] = spec.Key;
 
-        // Request-ID = Definition-ID, 1x pro Sekunde
+        // Request-ID = Definition-ID. Schnelle Werte jedes n-te Sim-Frame, alle anderen 1x pro Sekunde.
         sc.RequestDataOnSimObject(
             (SimRequestId)defId,
             (SimDefinitionId)defId,
             SimConnect.SIMCONNECT_OBJECT_ID_USER,
-            SIMCONNECT_PERIOD.SECOND,
+            spec.Fast ? SIMCONNECT_PERIOD.SIM_FRAME : SIMCONNECT_PERIOD.SECOND,
             SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
             0,
-            0,
+            spec.Fast ? (uint)Math.Clamp(_options.FastIntervalFrames, 0, 60) : 0,
             0);
     }
 
-    private void HandleTitle(SimConnect sc, string? title)
+    /// <summary>Profil anhand von Titel und aircraft.cfg-Pfad wählen und seine Variablen abonnieren.</summary>
+    private void ApplyProfile(SimConnect sc, bool force = false)
     {
-        if (string.Equals(title, _lastTitle, StringComparison.Ordinal))
+        var title = _lastTitle;
+        var path = _lastPath;
+        var profile = _profiles.Match(title, path);
+        if (!force && ReferenceEquals(profile, _activeProfile))
         {
             return;
         }
 
-        _lastTitle = title;
-        var profile = _profiles.Match(title);
         _activeProfile = profile;
-
         if (profile is null)
         {
-            _log.LogInformation("Flugzeug: {Title} (kein Profil)", title ?? "unbekannt");
+            _log.LogInformation("Flugzeug: {Title} ({Path}) – kein Profil", title ?? "unbekannt", path ?? "Pfad unbekannt");
             return;
         }
 
-        _log.LogInformation("Flugzeug: {Title} → Profil {Profile} ({Count} Variablen)", title, profile.Name, profile.Variables.Count);
+        foreach (var (key, binding) in profile.Bindings)
+        {
+            var unit = binding.EffectiveUnit;
+            var fast = binding.Fast ?? BindingKeys.FastByDefault.Contains(key);
+
+            // "{i}" = Triebwerksindex → je Triebwerk eine Variable
+            var names = binding.Name.Contains("{i}", StringComparison.Ordinal)
+                ? Enumerable.Range(1, SimVarCatalog.MaxEngines).Select(i => binding.Name.Replace("{i}", i.ToString(System.Globalization.CultureInfo.InvariantCulture)))
+                : [binding.Name];
+
+            foreach (var name in names)
+            {
+                Subscribe(sc, new SimVarSpec(VarKey(name, unit), name.Trim(), unit, SimVarSpec.KindFromUnit(unit)) { Fast = fast });
+            }
+        }
+
+        if (profile.Ecam is { } ecam)
+        {
+            for (var n = 1; n <= Math.Clamp(ecam.Lines, 0, 20); n++)
+            {
+                foreach (var pattern in new[] { ecam.LeftLines, ecam.RightLines })
+                {
+                    if (!string.IsNullOrWhiteSpace(pattern))
+                    {
+                        var name = pattern.Replace("{n}", n.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                        Subscribe(sc, new SimVarSpec(VarKey(name, "number"), name, "number", SimVarKind.Number));
+                    }
+                }
+            }
+        }
+
         foreach (var variable in profile.Variables)
         {
-            var kind = SimVarSpec.KindFromUnit(variable.Unit);
-            Subscribe(sc, new SimVarSpec(ProfileKeyPrefix + variable.Key, variable.Name.Trim(), variable.Unit, kind));
+            var unit = string.IsNullOrWhiteSpace(variable.Unit) ? "number" : variable.Unit;
+            Subscribe(sc, new SimVarSpec(VarKey(variable.Name, unit), variable.Name.Trim(), unit, SimVarSpec.KindFromUnit(unit)));
         }
+
+        _log.LogInformation(
+            "Flugzeug: {Title} ({Path}) → Profil {Profile} ({Bindings} Bindings, {Vars} Variablen)",
+            title ?? "unbekannt",
+            path ?? "Pfad unbekannt",
+            profile.Name,
+            profile.Bindings.Count,
+            profile.Variables.Count);
     }
 
     // ------------------------------------------------------------------ SimConnect-Ereignisse
@@ -418,6 +471,13 @@ public sealed class SimConnectClient : BackgroundService
         {
             Subscribe(sender, spec);
         }
+
+        // Systemereignisse: Pause, Flug läuft, Flugzeugwechsel
+        sender.SubscribeToSystemEvent(SimEventId.Pause, "Pause_EX1");
+        sender.SubscribeToSystemEvent(SimEventId.Sim, "Sim");
+        sender.SubscribeToSystemEvent(SimEventId.AircraftLoaded, "AircraftLoaded");
+        sender.RequestSystemState((SimRequestId)StateRequestAircraft, "AircraftLoaded");
+        sender.RequestSystemState((SimRequestId)StateRequestSim, "Sim");
 
         _log.LogInformation("{Count} SimVars abonniert.", SimVarCatalog.All.Count);
     }
@@ -436,6 +496,64 @@ public sealed class SimConnectClient : BackgroundService
             (SIMCONNECT_EXCEPTION)data.dwException,
             data.dwSendID,
             data.dwIndex);
+    }
+
+    private void OnEvent(SimConnect sender, SIMCONNECT_RECV_EVENT data)
+    {
+        var status = _simStatus;
+        switch ((SimEventId)data.uEventID)
+        {
+            case SimEventId.Pause:
+                var flags = data.dwData & ~2u; // Bit 2 (Legacy-Pause mit Ton) wird nicht mehr benutzt
+                if (flags != status.PauseFlags && flags == 0)
+                {
+                    _log.LogInformation("Sim läuft weiter.");
+                }
+                else if (flags != status.PauseFlags)
+                {
+                    _log.LogInformation("Sim pausiert (Flags {Flags}).", flags);
+                }
+
+                _simStatus = status with { Paused = flags != 0, PauseFlags = flags };
+                break;
+            case SimEventId.Sim:
+                _simStatus = status with { FlightRunning = data.dwData == 1 };
+                break;
+        }
+    }
+
+    private void OnEventFilename(SimConnect sender, SIMCONNECT_RECV_EVENT_FILENAME data)
+    {
+        if ((SimEventId)data.uEventID == SimEventId.AircraftLoaded)
+        {
+            SetAircraftPath(sender, data.szFileName);
+        }
+    }
+
+    private void OnSystemState(SimConnect sender, SIMCONNECT_RECV_SYSTEM_STATE data)
+    {
+        switch (data.dwRequestID)
+        {
+            case StateRequestAircraft:
+                SetAircraftPath(sender, data.szString);
+                break;
+            case StateRequestSim:
+                _simStatus = _simStatus with { FlightRunning = data.dwInteger == 1 };
+                break;
+        }
+    }
+
+    private void SetAircraftPath(SimConnect sc, string? path)
+    {
+        path = string.IsNullOrWhiteSpace(path) ? null : path.Trim();
+        if (string.Equals(path, _lastPath, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _lastPath = path;
+        _simStatus = _simStatus with { AircraftPath = path };
+        ApplyProfile(sc);
     }
 
     private void OnData(SimConnect sender, SIMCONNECT_RECV_SIMOBJECT_DATA data)
@@ -465,9 +583,10 @@ public sealed class SimConnectClient : BackgroundService
 
         _values[key] = new SimValue(value, DateTimeOffset.UtcNow);
 
-        if (key == TitleKey)
+        if (key == TitleKey && !string.Equals(value as string, _lastTitle, StringComparison.Ordinal))
         {
-            HandleTitle(sender, value as string);
+            _lastTitle = value as string;
+            ApplyProfile(sender);
         }
     }
 
