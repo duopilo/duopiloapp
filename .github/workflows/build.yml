@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    # Baut gegen den SimConnect-Stub (das MSFS-SDK gibt es auf GitHub-Runnern nicht).
+    # Baut und testet gegen den SimConnect-Stub (das MSFS-SDK gibt es auf GitHub-Runnern nicht).
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,3 +18,40 @@ jobs:
 
       - name: Build
         run: dotnet build Kopilot.slnx -c Release -p:UseSimConnectStub=true
+
+      - name: Test
+        run: dotnet test Kopilot.slnx -c Release --no-build -p:UseSimConnectStub=true --logger "trx;LogFileName=tests.trx" --logger "console;verbosity=normal"
+
+      - name: Fehlgeschlagene Tests als Annotation
+        if: failure()
+        shell: pwsh
+        run: |
+          $ns = @{ t = 'http://microsoft.com/schemas/VisualStudio/TeamTest/2010' }
+          Get-ChildItem -Recurse -Filter *.trx | ForEach-Object {
+            [xml]$trx = Get-Content $_.FullName -Raw
+            Select-Xml -Xml $trx -XPath "//t:UnitTestResult[@outcome='Failed']" -Namespace $ns | ForEach-Object {
+              $r = $_.Node
+              $msg = "$($r.Output.ErrorInfo.Message) | $((($r.Output.ErrorInfo.StackTrace -split "`n") | Select-Object -First 2) -join ' ')"
+              $msg = $msg -replace "`r?`n", ' '
+              if ($msg.Length -gt 1500) { $msg = $msg.Substring(0, 1500) }
+              Write-Output "::error title=$($r.testName)::$msg"
+            }
+          }
+
+      - name: Test-Zusammenfassung
+        if: always()
+        shell: pwsh
+        run: |
+          $ns = @{ t = 'http://microsoft.com/schemas/VisualStudio/TeamTest/2010' }
+          Get-ChildItem -Recurse -Filter *.trx | ForEach-Object {
+            [xml]$trx = Get-Content $_.FullName -Raw
+            $c = (Select-Xml -Xml $trx -XPath '//t:ResultSummary/t:Counters' -Namespace $ns).Node
+            Write-Output "::notice title=Tests::Gesamt $($c.total), bestanden $($c.passed), fehlgeschlagen $($c.failed), nicht ausgeführt $($c.notExecuted)"
+          }
+
+      - name: Testergebnisse hochladen
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testergebnisse
+          path: '**/TestResults/*.trx'
