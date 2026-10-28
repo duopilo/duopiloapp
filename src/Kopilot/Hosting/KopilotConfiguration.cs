@@ -65,10 +65,9 @@ public static class KopilotConfiguration
         return true;
     }
 
+    private static readonly string[] Switches = ["--stdio", "--http", "--generate-secret", "--console", "--no-tray", "--autostart"];
+
     /// <summary>Entfernt Kopilot-eigene Schalter, die der Kommandozeilen-Provider nicht versteht.</summary>
     public static string[] FilterSwitches(string[] args) =>
-        args.Where(a => !string.Equals(a, "--stdio", StringComparison.OrdinalIgnoreCase)
-                     && !string.Equals(a, "--http", StringComparison.OrdinalIgnoreCase)
-                     && !string.Equals(a, "--generate-secret", StringComparison.OrdinalIgnoreCase))
-            .ToArray();
+        args.Where(a => !Switches.Contains(a, StringComparer.OrdinalIgnoreCase)).ToArray();
 }

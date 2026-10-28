@@ -107,89 +107,31 @@ public static class FlightPlanTools
 
         var gs = sim.Num("gs");
         var zulu = sim.Num("zuluTimeSec");
-        var next = points[progress.NextPointIndex];
-        var nextFix = next.FixIndex >= 0 ? ofp.Fixes[next.FixIndex] : null;
-        var prev = points[progress.LegIndex];
-
-        // Restliche Strecke bis zu einem Punkt der Route
-        double DistanceTo(int pointIndex)
-        {
-            var d = progress.DistanceToNextNm;
-            for (var i = progress.NextPointIndex; i < pointIndex; i++)
-            {
-                d += RouteMath.DistanceNm(points[i].Lat, points[i].Lon, points[i + 1].Lat, points[i + 1].Lon);
-            }
-
-            return d;
-        }
-
-        object? Marker(string ident)
-        {
-            var index = -1;
-            for (var i = progress.NextPointIndex; i < points.Count; i++)
-            {
-                if (points[i].Ident.Equals(ident, StringComparison.OrdinalIgnoreCase))
-                {
-                    index = i;
-                    break;
-                }
-            }
-
-            if (index < 0)
-            {
-                return null;
-            }
-
-            var dist = DistanceTo(index);
-            return new { distanceNm = Math.Round(dist), ete = Ete(dist, gs), etaUtc = Eta(zulu, dist, gs) };
-        }
-
-        // Treibstoff: Planwert an der aktuellen Position, linear zwischen den Fixes
-        var fuelPrev = prev.FixIndex >= 0 ? ofp.Fixes[prev.FixIndex].FuelPlanOnboardKg : ofp.Fuel.PlanTakeoffKg;
-        var fuelNext = nextFix?.FuelPlanOnboardKg;
-        double? plannedHere = fuelPrev is { } fp && fuelNext is { } fn ? fp + (fn - fp) * progress.LegFraction : fuelNext ?? fuelPrev;
-        var actual = sim.Num("fuelTotalKg");
-        double? diff = actual is { } a && plannedHere is { } p ? a - p : null;
-        double? predictedLanding = ofp.Fuel.PlanLandingKg is { } landing && diff is { } dd ? landing + dd : null;
-
+        var fp = ProgressCalculator.Compute(ofp, points, progress, sim.Num("fuelTotalKg"));
         var destDist = progress.DistanceToGoNm;
-        string? delay = null;
-        if (zulu is { } z && gs is > 50 && ofp.Times.ScheduledOnUtc is { } schedOn)
-        {
-            var etaSec = z + destDist / gs.Value * 3600;
-            var schedSec = schedOn.UtcDateTime.TimeOfDay.TotalSeconds;
-            var deltaMin = ((etaSec - schedSec) % 86400 + 86400) % 86400 / 60;
-            if (deltaMin > 720)
-            {
-                deltaMin -= 1440;
-            }
-
-            delay = deltaMin >= 0 ? $"+{deltaMin:0} min" : $"{deltaMin:0} min";
-        }
-
         var xt = progress.CrossTrackNm;
-        var inTerminal = nextFix?.IsSidStar == true || progress.LegIndex == 0 || progress.NextPointIndex == points.Count - 1;
+
         return Json.Serialize(new
         {
             connected = true,
             loaded = true,
             route = $"{ofp.Origin.Icao} → {ofp.Destination.Icao}",
             groundSpeedKt = Fmt.Int(gs),
-            previousFix = prev.Ident,
+            previousFix = fp.Previous.Ident,
             nextFix = new
             {
-                ident = next.Ident,
-                airway = nextFix?.Airway,
+                ident = fp.Next.Ident,
+                airway = fp.NextFix?.Airway,
                 distanceNm = Math.Round(progress.DistanceToNextNm, 1),
-                bearingTrueDeg = Fmt.Heading(RouteMath.BearingDeg(lat, lon, next.Lat, next.Lon)),
+                bearingTrueDeg = Fmt.Heading(RouteMath.BearingDeg(lat, lon, fp.Next.Lat, fp.Next.Lon)),
                 ete = Ete(progress.DistanceToNextNm, gs),
                 etaUtc = Eta(zulu, progress.DistanceToNextNm, gs),
-                plannedAltitudeFt = nextFix?.AltitudeFt,
-                plannedStage = nextFix?.Stage,
+                plannedAltitudeFt = fp.NextFix?.AltitudeFt,
+                plannedStage = fp.NextFix?.Stage,
             },
-            following = points.Skip(progress.NextPointIndex + 1).Take(3).Select(pt => pt.Ident),
-            topOfClimb = Marker("TOC"),
-            topOfDescent = Marker("TOD"),
+            following = fp.Following,
+            topOfClimb = Marker(fp.TopOfClimb, gs, zulu),
+            topOfDescent = Marker(fp.TopOfDescent, gs, zulu),
             destination = new
             {
                 icao = ofp.Destination.Icao,
@@ -198,23 +140,45 @@ public static class FlightPlanTools
                 ete = Ete(destDist, gs),
                 etaUtc = Eta(zulu, destDist, gs),
                 scheduledOnUtc = Clock(ofp.Times.ScheduledOnUtc),
-                versusSchedule = delay,
+                versusSchedule = VersusSchedule(ofp, destDist, gs, zulu),
             },
             crossTrackNm = Math.Round(xt, 1),
             crossTrackSide = Math.Abs(xt) < 0.1 ? null : xt > 0 ? "right" : "left",
-            onRoute = Math.Abs(xt) <= (inTerminal ? 10 : 3),
+            onRoute = fp.OnRoute,
             fuel = new
             {
-                actualKg = Fmt.Int(actual),
-                plannedHereKg = Fmt.Int(plannedHere),
-                differenceKg = Fmt.Int(diff),
+                actualKg = Fmt.Int(fp.ActualFuelKg),
+                plannedHereKg = Fmt.Int(fp.PlannedFuelHereKg),
+                differenceKg = Fmt.Int(fp.FuelDifferenceKg),
                 plannedLandingKg = Fmt.Int(ofp.Fuel.PlanLandingKg),
-                predictedLandingKg = Fmt.Int(predictedLanding),
+                predictedLandingKg = Fmt.Int(fp.PredictedLandingFuelKg),
                 minimumAtDestinationKg = Fmt.Int(ofp.Fixes.Count > 0 ? ofp.Fixes[^1].FuelMinOnboardKg : null),
             },
-            note = inTerminal ? "Im SID/STAR- oder Flughafenbereich weicht die Flugbahn oft vom Plan ab (Vektoren)." : null,
+            note = fp.InTerminalArea ? "Im SID/STAR- oder Flughafenbereich weicht die Flugbahn oft vom Plan ab (Vektoren)." : null,
             activeAlerts = AlertView.Active(alerts),
         });
+    }
+
+    private static object? Marker(RouteMarker? marker, double? gs, double? zulu) =>
+        marker is null ? null : new { distanceNm = Math.Round(marker.DistanceNm), ete = Ete(marker.DistanceNm, gs), etaUtc = Eta(zulu, marker.DistanceNm, gs) };
+
+    /// <summary>Ankunft gegen den Plan ("+12 min" / "-5 min"). Der Sim kennt nur die Uhrzeit, daher modulo 24 h.</summary>
+    internal static string? VersusSchedule(Ofp ofp, double distanceToGoNm, double? gs, double? zulu)
+    {
+        if (zulu is not { } z || gs is not > 50 || ofp.Times.ScheduledOnUtc is not { } schedOn)
+        {
+            return null;
+        }
+
+        var etaSec = z + distanceToGoNm / gs.Value * 3600;
+        var schedSec = schedOn.UtcDateTime.TimeOfDay.TotalSeconds;
+        var deltaMin = ((etaSec - schedSec) % 86400 + 86400) % 86400 / 60;
+        if (deltaMin > 720)
+        {
+            deltaMin -= 1440;
+        }
+
+        return deltaMin >= 0 ? $"+{deltaMin:0} min" : $"{deltaMin:0} min";
     }
 
     private static object Airport(OfpAirport a) => new
@@ -228,10 +192,10 @@ public static class FlightPlanTools
         metar = a.Metar,
     };
 
-    private static string? Clock(DateTimeOffset? t) => t is { } v ? v.UtcDateTime.ToString("HH:mm", CultureInfo.InvariantCulture) + "Z" : null;
+    internal static string? Clock(DateTimeOffset? t) => t is { } v ? v.UtcDateTime.ToString("HH:mm", CultureInfo.InvariantCulture) + "Z" : null;
 
-    private static string? Ete(double distanceNm, double? gs) => gs is > 50 ? Fmt.Duration(distanceNm / gs.Value * 3600) : null;
+    internal static string? Ete(double distanceNm, double? gs) => gs is > 50 ? Fmt.Duration(distanceNm / gs.Value * 3600) : null;
 
-    private static string? Eta(double? zulu, double distanceNm, double? gs) =>
+    internal static string? Eta(double? zulu, double distanceNm, double? gs) =>
         zulu is { } z && gs is > 50 ? Fmt.ClockTime(z + distanceNm / gs.Value * 3600) + "Z" : null;
 }
