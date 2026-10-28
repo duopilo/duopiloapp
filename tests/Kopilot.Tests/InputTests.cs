@@ -212,7 +212,7 @@ public sealed class InputTests
     {
         var action = Speed();
         action.Interlocks = ["irgendwas"];
-        Assert.Contains("Unbekannte Sperre", ActionPlanner.Plan(action, null, Limits, Air()).Refusal);
+        Assert.Contains("Unbekannte Sperre", ActionPlanner.Plan(action, "250", Limits, Air()).Refusal);
     }
 
     [Theory]
