@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Kopilot.Aircraft;
+using Kopilot.Input;
 using Microsoft.Extensions.Options;
 using Microsoft.FlightSimulator.SimConnect;
 
@@ -18,6 +19,7 @@ namespace Kopilot.Sim;
 public sealed class SimConnectClient : BackgroundService
 {
     private const uint AdHocRequestBase = 1_000_000;
+    private const uint ClientEventBase = 10_000;
     private const uint StateRequestAircraft = 900_001;
     private const uint StateRequestSim = 900_002;
     private const string TitleKey = "title";
@@ -41,6 +43,9 @@ public sealed class SimConnectClient : BackgroundService
     private readonly Dictionary<uint, string> _valueKeyByDefId = [];
     private readonly HashSet<string> _registeredValueKeys = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, uint> _adHocDefIds = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, uint> _writeDefIds = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, uint> _eventIds = new(StringComparer.OrdinalIgnoreCase);
+    private uint _nextEventId;
     private string? _lastTitle;
     private string? _lastPath;
     private string? _lastConnectError;
@@ -152,6 +157,83 @@ public sealed class SimConnectClient : BackgroundService
         {
             return ReadResult.Fail(ex.Message);
         }
+    }
+
+    // ------------------------------------------------------------------ Schreiben (nur für das Eingabe-Modul)
+
+    /// <summary>
+    /// Schickt ein Event an das eigene Flugzeug: Standard-Event ("GEAR_DOWN") oder Custom-Event ("A32NX.FCU_SPD_SET").
+    /// Negative Werte werden als Zweierkomplement übergeben. Gesperrte Namen (Triebwerk, Feuer, Treibstoff, MCDU) werfen.
+    /// </summary>
+    public Task TransmitEventAsync(string name, uint data, CancellationToken ct)
+    {
+        var eventName = name.Trim();
+        if (eventName.StartsWith("K:", StringComparison.OrdinalIgnoreCase))
+        {
+            eventName = eventName[2..].Trim();
+        }
+
+        ActionSafety.EnsureAllowed(eventName);
+        return RunOnSimThreadAsync(sc =>
+        {
+            if (!_eventIds.TryGetValue(eventName, out var id))
+            {
+                id = ClientEventBase + ++_nextEventId;
+                sc.MapClientEventToSimEvent((SimClientEventId)id, eventName);
+                _eventIds[eventName] = id;
+            }
+
+            sc.TransmitClientEvent(
+                SimConnect.SIMCONNECT_OBJECT_ID_USER,
+                (SimClientEventId)id,
+                data,
+                SimGroupId.PriorityHighest,
+                SIMCONNECT_EVENT_FLAG.GROUPID_IS_PRIORITY);
+        }, ct);
+    }
+
+    /// <summary>Schreibt eine Variable (L:-Variable oder schreibbare SimVar). Gesperrte Namen werfen.</summary>
+    public Task SetVariableAsync(string name, string unit, double value, CancellationToken ct)
+    {
+        var normalized = SimVarSpec.NormalizeName(name);
+        ActionSafety.EnsureAllowed(normalized);
+        var effectiveUnit = string.IsNullOrWhiteSpace(unit) ? "number" : unit.Trim();
+        var key = $"set:{normalized}|{effectiveUnit.ToLowerInvariant()}";
+        return RunOnSimThreadAsync(sc =>
+        {
+            if (!_writeDefIds.TryGetValue(key, out var defId))
+            {
+                defId = DefineVariable(sc, new SimVarSpec(key, normalized, effectiveUnit, SimVarKind.Number));
+                _writeDefIds[key] = defId;
+            }
+
+            sc.SetDataOnSimObject((SimDefinitionId)defId, SimConnect.SIMCONNECT_OBJECT_ID_USER, SIMCONNECT_DATA_SET_FLAG.DEFAULT, value);
+        }, ct);
+    }
+
+    private Task RunOnSimThreadAsync(Action<SimConnect> action, CancellationToken ct)
+    {
+        if (!_connection.IsConnected)
+        {
+            return Task.FromException(new InvalidOperationException("Keine Verbindung zu MSFS."));
+        }
+
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Enqueue(sc =>
+        {
+            try
+            {
+                action(sc);
+                tcs.TrySetResult();
+            }
+            catch (Exception ex)
+            {
+                tcs.TrySetException(ex);
+                throw;
+            }
+        });
+
+        return tcs.Task.WaitAsync(TimeSpan.FromMilliseconds(Math.Max(1000, _options.ReadTimeoutMs)), ct);
     }
 
     /// <summary>Profil nach dem Neuladen der Profildateien erneut zuordnen.</summary>
@@ -304,6 +386,9 @@ public sealed class SimConnectClient : BackgroundService
         _valueKeyByDefId.Clear();
         _registeredValueKeys.Clear();
         _adHocDefIds.Clear();
+        _writeDefIds.Clear();
+        _eventIds.Clear();
+        _nextEventId = 0;
         _values.Clear();
 
         foreach (var (id, pending) in _pending)

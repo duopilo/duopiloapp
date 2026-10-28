@@ -14,6 +14,18 @@ public enum SimRequestId : uint
     None = 0,
 }
 
+/// <summary>IDs für eigene Client-Events (Eingaben). Werden je Verbindung dynamisch vergeben.</summary>
+public enum SimClientEventId : uint
+{
+    None = 0,
+}
+
+/// <summary>Gruppe beim Senden von Events: mit GROUPID_IS_PRIORITY ist das die Priorität (1 = höchste).</summary>
+public enum SimGroupId : uint
+{
+    PriorityHighest = 1,
+}
+
 /// <summary>Container für String-SimVars (SIMCONNECT_DATATYPE.STRING256).</summary>
 [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
 public struct SimString256

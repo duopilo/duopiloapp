@@ -40,6 +40,41 @@ public sealed class ProfileStore
             .Select(x => x.Profile)
             .FirstOrDefault();
 
+    /// <summary>Entfernt ungültige oder gesperrte Aktionen (Triebwerk, Feuer, Treibstoff, MCDU, unbekannte Sperren) und meldet sie.</summary>
+    public static void ValidateActions(AircraftProfile profile, List<string> errors)
+    {
+        var file = profile.SourceFile ?? profile.Name;
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        profile.Actions.RemoveAll(action =>
+        {
+            string? problem = null;
+            if (string.IsNullOrWhiteSpace(action.Id) || action.Steps.Count == 0)
+            {
+                problem = $"Aktion \"{action.Id}\" ohne id oder Schritte";
+            }
+            else if (!seen.Add(action.Id))
+            {
+                problem = $"Aktion {action.Id} doppelt";
+            }
+            else if (Kopilot.Input.ActionSafety.FirstForbidden(action) is { } forbidden)
+            {
+                problem = $"Aktion {action.Id} nutzt {forbidden} – gesperrt";
+            }
+            else if (action.Interlocks.FirstOrDefault(i => !Kopilot.Input.Interlocks.All.Contains(i, StringComparer.OrdinalIgnoreCase)) is { } unknown)
+            {
+                problem = $"Aktion {action.Id}: unbekannte Sperre \"{unknown}\"";
+            }
+
+            if (problem is null)
+            {
+                return false;
+            }
+
+            errors.Add($"{file}: {problem} – entfernt");
+            return true;
+        });
+    }
+
     public void Reload()
     {
         var profiles = new List<AircraftProfile>();
@@ -64,6 +99,7 @@ public sealed class ProfileStore
                     profile.Bindings = new Dictionary<string, ProfileBinding>(
                         profile.Bindings.Where(b => !string.IsNullOrWhiteSpace(b.Value.Name)),
                         StringComparer.OrdinalIgnoreCase);
+                    ValidateActions(profile, errors);
                     profiles.Add(profile);
                 }
                 catch (Exception ex) when (ex is JsonException or IOException)

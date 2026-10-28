@@ -3,6 +3,7 @@ using Kopilot.Atc;
 using Kopilot.Ecam;
 using Kopilot.FlightPlan;
 using Kopilot.Hosting;
+using Kopilot.Input;
 using Kopilot.Monitoring;
 using Kopilot.Sim;
 using Kopilot.Speech;
@@ -19,6 +20,7 @@ public sealed class DashboardData(
     EcamCatalog ecam,
     FmaLog fmaLog,
     LogBuffer logs,
+    InputService? input = null,
     ISpeechOutput? speech = null)
 {
     public object Build(long sinceId, bool includeLog)
@@ -46,6 +48,7 @@ public sealed class DashboardData(
                     speaking = speech.Status.Speaking,
                     error = speech.Status.Error,
                 },
+            input = input is null ? null : InputView(input, now),
             monitoring = new
             {
                 enabled = monitoring.Enabled,
@@ -282,4 +285,29 @@ public sealed class DashboardData(
             progress,
         };
     }
+
+    internal static object InputView(InputService input, DateTimeOffset now) => new
+    {
+        enabled = input.Enabled,
+        actions = input.Actions.Count,
+        pending = input.Pending is { } p
+            ? new
+            {
+                action = p.Plan.Action.Id,
+                label = p.Plan.Action.Label,
+                value = p.Plan.ValueText,
+                readback = p.Plan.Readback,
+                expiresInSec = Math.Max(0, (int)Math.Ceiling((p.ExpiresUtc - now).TotalSeconds)),
+            }
+            : null,
+        log = input.History.Take(10).Select(e => new
+        {
+            time = e.TimeUtc.ToLocalTime().ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture),
+            action = e.Action,
+            value = e.Value,
+            outcome = e.Outcome,
+            detail = e.Detail,
+            verified = e.Verified,
+        }),
+    };
 }

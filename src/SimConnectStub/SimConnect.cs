@@ -45,6 +45,22 @@ namespace Microsoft.FlightSimulator.SimConnect
         TAGGED = 2,
     }
 
+    [Flags]
+    public enum SIMCONNECT_EVENT_FLAG
+    {
+        DEFAULT = 0,
+        FAST_REPEAT_TIMER = 1,
+        SLOW_REPEAT_TIMER = 2,
+        GROUPID_IS_PRIORITY = 16,
+    }
+
+    [Flags]
+    public enum SIMCONNECT_DATA_SET_FLAG
+    {
+        DEFAULT = 0,
+        TAGGED = 1,
+    }
+
     public enum SIMCONNECT_EXCEPTION
     {
         NONE,
@@ -126,6 +142,7 @@ namespace Microsoft.FlightSimulator.SimConnect
     {
         public const uint SIMCONNECT_OBJECT_ID_USER = 0;
         public const uint SIMCONNECT_UNUSED = uint.MaxValue;
+        public const uint SIMCONNECT_GROUP_PRIORITY_HIGHEST = 1;
 
         public delegate void RecvOpenEventHandler(SimConnect sender, SIMCONNECT_RECV_OPEN data);
 
@@ -179,6 +196,18 @@ namespace Microsoft.FlightSimulator.SimConnect
         }
 
         public void RequestDataOnSimObject(Enum RequestID, Enum DefineID, uint ObjectID, SIMCONNECT_PERIOD Period, SIMCONNECT_DATA_REQUEST_FLAG Flags, uint origin, uint interval, uint limit)
+        {
+        }
+
+        public void MapClientEventToSimEvent(Enum EventID, string EventName)
+        {
+        }
+
+        public void TransmitClientEvent(uint ObjectID, Enum EventID, uint dwData, Enum GroupID, SIMCONNECT_EVENT_FLAG Flags)
+        {
+        }
+
+        public void SetDataOnSimObject(Enum DefineID, uint ObjectID, SIMCONNECT_DATA_SET_FLAG Flags, object pDataSet)
         {
         }
 

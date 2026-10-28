@@ -35,6 +35,9 @@ public sealed class AircraftProfile
     /// <summary>Elektrik-Werte für get_systems (z. B. Generatorspannung, Busse versorgt). Leer = kein Elektrik-Block.</summary>
     public List<ProfileVariable> Electrical { get; set; } = [];
 
+    /// <summary>Erlaubte Eingaben (Eingabe-Modul). Nur was hier steht, kann Kopilot im Cockpit bedienen.</summary>
+    public List<Kopilot.Input.ProfileAction> Actions { get; set; } = [];
+
     [JsonIgnore]
     public string? SourceFile { get; set; }
 
