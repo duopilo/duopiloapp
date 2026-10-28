@@ -133,6 +133,12 @@ public sealed class ActionCheck
     /// Wert sofort wieder zurücksetzen (z. B. APU START ohne Strom).
     /// </summary>
     public int HoldMs { get; set; } = 1000;
+
+    /// <summary>
+    /// true = die geprüfte Variable wird zwar auch geschrieben, aber vom Flugzeug aktiv zurückgesetzt, wenn die Aktion nicht wirkt
+    /// (z. B. APU START: ohne Strom/Master schaltet die APU-Elektronik das ON-Licht sofort aus). Gilt dann als echter Nachweis.
+    /// </summary>
+    public bool ConfirmsEffect { get; set; }
 }
 
 /// <summary>Was Kopilot an MSFS schickt – fertig ausgerechnet.</summary>

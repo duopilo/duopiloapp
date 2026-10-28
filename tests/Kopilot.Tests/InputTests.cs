@@ -641,6 +641,67 @@ public sealed class InputTests
     }
 
     [Fact]
+    public async Task APU_Start_ohne_Wirkung_wird_als_fehlgeschlagen_gemeldet()
+    {
+        var (input, backend, time) = Create();
+        backend.Profile!.Actions.Add(new ProfileAction
+        {
+            Id = "apu.start", Area = "APU", Label = "APU start", Readback = "APU start",
+            Steps = [new ActionStep { Set = "L:A32NX_OVHD_APU_START_PB_IS_ON", Value = J("1") }],
+            Check = new ActionCheck { Variable = "L:A32NX_OVHD_APU_START_PB_IS_ON", Expect = J("1"), HoldMs = 2500, ConfirmsEffect = true },
+        });
+        backend.State["L:A32NX_OVHD_APU_START_PB_IS_ON"] = 0;
+        backend.RevertAfterRead["L:A32NX_OVHD_APU_START_PB_IS_ON"] = 0; // APU-Elektronik ohne Strom schaltet das ON-Licht aus
+
+        var prepared = await input.PrepareAsync("apu.start", null, default);
+        time.Now += TimeSpan.FromSeconds(2);
+        var result = await input.ConfirmAsync(prepared.Token!, "confirm", default);
+
+        Assert.Equal(InputResult.Executed, result.Status);
+        Assert.False(result.Confirmed);
+        Assert.True(result.CheckIndependent);
+
+        // Läuft die APU an, bleibt das Licht an
+        backend.RevertAfterRead.Clear();
+        prepared = await input.PrepareAsync("apu.start", null, default);
+        time.Now += TimeSpan.FromSeconds(2);
+        result = await input.ConfirmAsync(prepared.Token!, "confirm", default);
+        Assert.True(result.Confirmed);
+    }
+
+    private sealed class ThrowingBackend : IInputBackend
+    {
+        public bool Connected => true;
+
+        public AircraftProfile? Profile => throw new InvalidCastException("kaputt");
+
+        public FlightSnapshot Snapshot() => Air();
+
+        public Task<double?> ReadAsync(string name, string unit, CancellationToken ct) => Task.FromResult<double?>(null);
+
+        public Task SendEventAsync(string name, uint data, CancellationToken ct) => Task.CompletedTask;
+
+        public Task SetAsync(string name, string unit, double value, CancellationToken ct) => Task.CompletedTask;
+    }
+
+    [Fact]
+    public async Task Ausnahmen_werden_zu_einer_strukturierten_Antwort()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "kopilot-tests", Guid.NewGuid().ToString("N"));
+        var options = Options.Create(new KopilotOptions { DataDirectory = dir, Input = new InputOptions { Enabled = true } });
+        var input = new InputService(options, new ThrowingBackend(), NullLogger<InputService>.Instance);
+
+        var result = await input.PrepareAsync("apu.start", null, default);
+
+        Assert.Equal(InputResult.Error, result.Status);
+        Assert.Contains("kaputt", result.Reason);
+
+        // Fehlende Parameter: strukturierte Antwort statt MCP-Fehler
+        var (ok, _, _) = Create();
+        Assert.Equal(InputResult.Failed, (await ok.ConfirmAsync(null, null, default)).Status);
+    }
+
+    [Fact]
     public async Task Bedingung_gilt_nur_fuer_die_genannte_Auswahl()
     {
         var (input, backend, _) = Create();

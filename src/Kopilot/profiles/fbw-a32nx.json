@@ -1131,10 +1131,13 @@
       "steps": [
         { "set": "L:A32NX_OVHD_APU_START_PB_IS_ON", "value": 1 }
       ],
+      "description": "Drückt APU START. Das ON-Licht bleibt nur an, wenn die APU wirklich anläuft – ohne Strom oder Master schaltet die APU-Elektronik es sofort wieder aus. Deshalb muss es 2,5 s stehen bleiben.",
       "readback": "APU start",
-      "check": { "variable": "L:A32NX_OVHD_APU_START_PB_IS_ON", "expect": 1 },
+      "check": { "variable": "L:A32NX_OVHD_APU_START_PB_IS_ON", "expect": 1, "holdMs": 2500, "confirmsEffect": true },
       "requires": [
-        { "variable": "L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", "equalTo": 1, "message": "APU master ist aus – erst apu.master on." }
+        { "variable": "L:A32NX_ELEC_DC_BAT_BUS_IS_POWERED", "equalTo": 1, "message": "Kein Strom auf dem DC BAT BUS – erst die Batterien einschalten." },
+        { "variable": "L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", "equalTo": 1, "message": "APU master ist aus – erst apu.master on." },
+        { "variable": "L:A32NX_OVHD_APU_START_PB_IS_AVAILABLE", "equalTo": 0, "message": "APU läuft schon (AVAIL)." }
       ],
       "verified": false
     },

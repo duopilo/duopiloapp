@@ -44,6 +44,9 @@ public sealed record InputResult(
     public const string Cancelled = "cancelled";
     public const string Failed = "failed";
     public const string Disabled = "disabled";
+
+    /// <summary>Unerwarteter Fehler (Ausnahme) – Details im Log.</summary>
+    public const string Error = "error";
 }
 
 /// <summary>
@@ -148,7 +151,20 @@ public sealed partial class InputService
 
     // ------------------------------------------------------------------ Schritt 1: vorbereiten
 
-    public async Task<InputResult> PrepareAsync(string actionId, string? value, CancellationToken ct)
+    public async Task<InputResult> PrepareAsync(string? actionId, string? value, CancellationToken ct)
+    {
+        try
+        {
+            return await PrepareCoreAsync(actionId ?? "", value, ct);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Eingabe: prepare_action {Action} = {Value} fehlgeschlagen", actionId, value);
+            return new InputResult(InputResult.Error, $"Interner Fehler: {ex.Message}", Action: actionId, Value: value);
+        }
+    }
+
+    private async Task<InputResult> PrepareCoreAsync(string actionId, string? value, CancellationToken ct)
     {
         if (!Enabled)
         {
@@ -209,7 +225,7 @@ public sealed partial class InputService
 
     // ------------------------------------------------------------------ Schritt 2: bestätigen und ausführen
 
-    public async Task<InputResult> ConfirmAsync(string token, string? pilotConfirmation, CancellationToken ct)
+    public async Task<InputResult> ConfirmAsync(string? token, string? pilotConfirmation, CancellationToken ct)
     {
         PendingAction pending;
         string? input;
@@ -290,7 +306,7 @@ public sealed partial class InputService
         }
         catch (Exception ex)
         {
-            return Fail(pending.Plan, ex is OperationCanceledException ? "Zeitüberschreitung beim Ausführen." : ex.Message, executedAny: true);
+            return ErrorResult(pending.Plan, ex, executedAny: true);
         }
         finally
         {
@@ -378,9 +394,14 @@ public sealed partial class InputService
                 }
             }
         }
+        catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
+        {
+            // Bekannte Fälle: Verbindung weg, Event/Variable gesperrt, MSFS antwortet nicht
+            return Fail(plan, ex.Message, executedAny: sent > 0);
+        }
         catch (Exception ex)
         {
-            return Fail(plan, ex is OperationCanceledException ? "Zeitüberschreitung beim Ausführen." : ex.Message, executedAny: sent > 0);
+            return ErrorResult(plan, ex, executedAny: sent > 0);
         }
 
         bool? verified = null;
@@ -392,8 +413,9 @@ public sealed partial class InputService
             {
                 (verified, after, reverted) = await VerifyAsync(check, ct);
             }
-            catch (Exception ex) when (ex is OperationCanceledException or InvalidOperationException or TimeoutException)
+            catch (Exception ex)
             {
+                _log.LogWarning("Eingabe: Prüfung von {Action} fehlgeschlagen: {Message}", plan.Action.Id, ex.Message);
                 verified = null;
             }
         }
@@ -505,6 +527,19 @@ public sealed partial class InputService
         }
 
         return new InputResult(InputResult.Refused, reason, Action: action, Value: value);
+    }
+
+    private InputResult ErrorResult(ActionPlan plan, Exception ex, bool executedAny)
+    {
+        _log.LogError(ex, "Eingabe: {Action} = {Value} mit Ausnahme abgebrochen", plan.Action.Id, plan.ValueText);
+        var reason = ex is OperationCanceledException ? "Zeitüberschreitung beim Ausführen." : $"Interner Fehler: {ex.Message}";
+        var text = executedAny ? reason + " Möglicherweise teilweise ausgeführt – bitte im Cockpit prüfen." : reason;
+        lock (_lock)
+        {
+            AddLogLocked(plan.Action.Id, plan.ValueText, "fehlgeschlagen", text, null);
+        }
+
+        return new InputResult(InputResult.Error, text, Action: plan.Action.Id, Value: plan.ValueText);
     }
 
     private InputResult Fail(ActionPlan plan, string reason, bool executedAny)

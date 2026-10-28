@@ -133,7 +133,7 @@ public static class ActionPlanner
                 new ResolvedCondition(variable, Unit(chk.Unit), expect, chk.Tolerance),
                 Math.Clamp(chk.TimeoutMs, 500, 15000),
                 Math.Clamp(chk.HoldMs, 0, 5000),
-                independent);
+                independent || chk.ConfirmsEffect);
         }
 
         var requires = new List<ResolvedCondition>();
