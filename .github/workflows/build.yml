@@ -38,6 +38,17 @@ jobs:
             }
           }
 
+      - name: Test-Zusammenfassung
+        if: always()
+        shell: pwsh
+        run: |
+          $ns = @{ t = 'http://microsoft.com/schemas/VisualStudio/TeamTest/2010' }
+          Get-ChildItem -Recurse -Filter *.trx | ForEach-Object {
+            [xml]$trx = Get-Content $_.FullName -Raw
+            $c = (Select-Xml -Xml $trx -XPath '//t:ResultSummary/t:Counters' -Namespace $ns).Node
+            Write-Output "::notice title=Tests::Gesamt $($c.total), bestanden $($c.passed), fehlgeschlagen $($c.failed), nicht ausgeführt $($c.notExecuted)"
+          }
+
       - name: Testergebnisse hochladen
         if: always()
         uses: actions/upload-artifact@v4
