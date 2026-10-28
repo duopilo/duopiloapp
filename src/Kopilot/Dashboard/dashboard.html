@@ -978,7 +978,7 @@ function renderInput(d) {
 
   const log = inp.log || [];
   $("inputLog").hidden = log.length === 0;
-  const cls = { "ausgeführt": "g", "abgelehnt": "a", "fehlgeschlagen": "a", "abgelaufen": "dim", "abgebrochen": "dim", "ersetzt": "dim", "vorbereitet": "c" };
+  const cls = { "ausgeführt": "g", "geprüft": "g", "abgelehnt": "a", "fehlgeschlagen": "a", "abgelaufen": "dim", "abgebrochen": "dim", "ersetzt": "dim", "vorbereitet": "c" };
   setHtml("inputLogList", log.map((e) => {
     const ok = e.verified === true ? " ✓" : e.verified === false ? " ✗" : "";
     return `<li><span class="t">${esc(e.time)}</span><span><b class="${e.verified === false ? "a" : cls[e.outcome] || "w"}">${esc(e.outcome)}${ok}</b> ${esc(e.action)}${e.value ? " = " + esc(e.value) : ""}${e.detail ? `<br><span class="dim">${esc(e.detail)}</span>` : ""}</span></li>`;

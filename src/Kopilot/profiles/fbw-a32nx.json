@@ -140,6 +140,8 @@
   // Eingaben (Eingabe-Modul, v0.7): nur diese Aktionen kann Kopilot im Cockpit bedienen – nach Readback und Bestätigung.
   // Quellen: fbw-a32nx/docs/a320-events.md, a320-simvars.md, aircraft_preset_procedures.xml (FBW-Presets), Rust-Systeme.
   // "verified": false = laut FBW-Quellcode, im Sim noch nicht geprüft. Triebwerk, Feuer, Treibstoff und MCDU sind im Code gesperrt.
+  // "verified": true = im Sim getestet (28.10.2026: fcu.heading, flaps, lights.beacon, antiice.engines, apu.bleed).
+  // Weitere geprüfte Aktionen merkt sich Kopilot in %LOCALAPPDATA%\Kopilot\verified-actions.json.
   "actions": [
     {
       "id": "fcu.speed",
@@ -196,7 +198,7 @@
       "requires": [
         { "variable": "L:A32NX_FCU_AFS_DISPLAY_TRK_FPA_MODE", "equalTo": 0, "message": "FCU steht auf TRK/FPA – erst auf HDG/VS umschalten." }
       ],
-      "verified": false
+      "verified": true
     },
     {
       "id": "fcu.headingManaged",
@@ -670,7 +672,7 @@
         "expect": "{value}"
       },
       "interlocks": [ "flapsSpeed" ],
-      "verified": false
+      "verified": true
     },
     {
       "id": "speedbrake",
@@ -759,7 +761,7 @@
         "expect": "{value}",
         "unit": "Bool"
       },
-      "verified": false
+      "verified": true
     },
     {
       "id": "lights.wing",
@@ -1014,7 +1016,7 @@
         "expect": "{value}",
         "unit": "Bool"
       },
-      "verified": false
+      "verified": true
     },
     {
       "id": "antiice.eng1",
@@ -1186,7 +1188,7 @@
         "variable": "L:A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON",
         "expect": "{value}"
       },
-      "verified": false
+      "verified": true
     },
     {
       "id": "elec.extPwr",

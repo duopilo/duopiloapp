@@ -30,7 +30,7 @@ public static class InputTools
                 area = a.Area,
                 label = a.Label,
                 value = a.Parameter is { } p ? ActionPlanner.Describe(p) : null,
-                verified = a.Verified,
+                verified = input.VerifiedBy(a),
                 interlocks = a.Interlocks.Count > 0 ? a.Interlocks : null,
             })
             .ToList();
@@ -82,6 +82,20 @@ public static class InputTools
         CancellationToken cancellationToken = default)
     {
         return await Guard(log, "confirm_action", async () => View(await input.ConfirmAsync(token, pilotConfirmation, cancellationToken), null));
+    }
+
+    [McpServerTool(Name = "mark_action_verified", Destructive = false, Idempotent = true)]
+    [Description(
+        "Stores an action as verified after the pilot has seen in the cockpit that it really worked (e.g. the pushbutton light came on, the switch moved). " +
+        "Use it for actions where confirm_action reported verification 'unverified' (Kopilot could only read the switch variable). " +
+        "Actions with a real aircraft-state check are stored automatically. Only call this when the pilot explicitly says it worked.")]
+    public static async Task<string> MarkActionVerified(
+        InputService input,
+        ILogger<InputService> log,
+        [Description("Action id, e.g. 'apu.bleed'.")] string? action = null,
+        [Description("The pilot's words confirming it worked, e.g. 'confirm, APU bleed is on'.")] string? pilotConfirmation = null)
+    {
+        return await Guard(log, "mark_action_verified", () => Task.FromResult(View(input.MarkVerified(action, pilotConfirmation), null)));
     }
 
     [McpServerTool(Name = "cancel_action", Destructive = false, Idempotent = true)]
@@ -136,7 +150,7 @@ public static class InputTools
             false => "switch variable only",
             null => null,
         },
-        bindingVerified = r.Verified,
+        actionVerified = r.Verified,
         instruction,
     };
 

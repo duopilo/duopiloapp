@@ -778,6 +778,71 @@ public sealed class InputTests
     }
 
     [Fact]
+    public async Task Echt_bestaetigte_Aktion_wird_als_geprueft_gespeichert()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "kopilot-tests", Guid.NewGuid().ToString("N"));
+        var (input, backend, time) = Create(dataDir: dir);
+        backend.OnEvent = (name, data) =>
+        {
+            if (name == "A32NX.FCU_SPD_SET")
+            {
+                backend.State["L:A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE"] = data;
+            }
+        };
+        var speed = backend.Profile!.Actions.Single(a => a.Id == "fcu.speed");
+        Assert.Null(input.VerifiedBy(speed));
+
+        var prepared = await input.PrepareAsync("fcu.speed", "250", default);
+        time.Now += TimeSpan.FromSeconds(2);
+        var result = await input.ConfirmAsync(prepared.Token!, "confirm", default);
+
+        Assert.True(result.Confirmed);
+        Assert.True(result.Verified);
+        Assert.Equal("sim", input.VerifiedBy(speed));
+
+        // Gilt auch für andere Kopilot-Instanzen (gleicher Datenordner) …
+        var (other, otherBackend, _) = Create(dataDir: dir);
+        Assert.Equal("sim", other.VerifiedBy(otherBackend.Profile!.Actions.Single(a => a.Id == "fcu.speed")));
+
+        // … aber nicht mehr, wenn sich die Definition im Profil ändert
+        var changed = Speed();
+        changed.Check!.Tolerance = 2;
+        Assert.Null(input.VerifiedBy(changed));
+    }
+
+    [Fact]
+    public async Task Nur_Schalterstellung_braucht_die_Bestaetigung_des_Piloten()
+    {
+        var (input, backend, time) = Create();
+        backend.State["L:A32NX_ELEC_DC_BAT_BUS_IS_POWERED"] = 1;
+        backend.State["L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON"] = 0;
+        var master = backend.Profile!.Actions.Single(a => a.Id == "apu.master");
+
+        Assert.Equal(InputResult.Refused, input.MarkVerified("apu.master", "confirm").Status); // noch nicht ausgeführt
+
+        var prepared = await input.PrepareAsync("apu.master", "on", default);
+        time.Now += TimeSpan.FromSeconds(2);
+        var result = await input.ConfirmAsync(prepared.Token!, "confirm", default);
+
+        Assert.True(result.Confirmed);
+        Assert.False(result.CheckIndependent);
+        Assert.Null(input.VerifiedBy(master)); // nicht automatisch
+
+        Assert.Equal(InputResult.Refused, input.MarkVerified("apu.master", "no, it did not work").Status);
+        Assert.Equal(InputResult.Executed, input.MarkVerified("apu.master", "confirm, APU master is on").Status);
+        Assert.Equal("pilot", input.VerifiedBy(master));
+    }
+
+    [Fact]
+    public void Im_Profil_markierte_Aktion_gilt_als_geprueft()
+    {
+        var (input, backend, _) = Create();
+        var gear = backend.Profile!.Actions.Single(a => a.Id == "gear.up");
+        gear.Verified = true;
+        Assert.Equal("profile", input.VerifiedBy(gear));
+    }
+
+    [Fact]
     public async Task Bedingung_gilt_nur_fuer_die_genannte_Auswahl()
     {
         var (input, backend, _) = Create();

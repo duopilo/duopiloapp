@@ -76,6 +76,7 @@ public sealed partial class InputService
     private readonly IInputBackend _backend;
     private readonly InputOptions _options;
     private readonly InputSettingsStore _store;
+    private readonly VerifiedActionStore _verified;
     private readonly TimeProvider _time;
     private readonly ILogger<InputService> _log;
     private readonly object _lock = new();
@@ -92,6 +93,7 @@ public sealed partial class InputService
         _backend = backend;
         _options = options.Value.Input;
         _store = new InputSettingsStore(options.Value.ResolveDataDirectory());
+        _verified = new VerifiedActionStore(options.Value.ResolveDataDirectory());
         _time = time ?? TimeProvider.System;
         _log = log;
     }
@@ -132,6 +134,59 @@ public sealed partial class InputService
 
     /// <summary>Aktionen des aktuellen Flugzeugs (leer ohne Profil).</summary>
     public IReadOnlyList<ProfileAction> Actions => _backend.Profile?.Actions ?? [];
+
+    /// <summary>
+    /// Geprüft? "profile" = im Profil markiert, "sim"/"pilot" = in verified-actions.json mit passender Definition, null = ungeprüft.
+    /// </summary>
+    public string? VerifiedBy(ProfileAction action)
+    {
+        if (action.Verified)
+        {
+            return "profile";
+        }
+
+        return _backend.Profile is { } profile ? _verified.Find(profile.Name, action)?.Source : null;
+    }
+
+    /// <summary>
+    /// Der Pilot bestätigt, dass eine gerade ausgeführte Aktion im Cockpit wirklich funktioniert hat – für Aktionen,
+    /// bei denen Kopilot nur die Schalterstellung lesen kann. Geht nur nach einer Ausführung in den letzten 15 Minuten.
+    /// </summary>
+    public InputResult MarkVerified(string? actionId, string? pilotConfirmation)
+    {
+        var profile = _backend.Profile;
+        var action = profile?.Actions.FirstOrDefault(a => a.Id.Equals(actionId?.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (profile is null || action is null)
+        {
+            return new InputResult(InputResult.Refused, $"Aktion \"{actionId}\" gibt es für dieses Flugzeug nicht.", Action: actionId);
+        }
+
+        var words = Words(pilotConfirmation);
+        if (words.Overlaps(NoWords) || !words.Overlaps(YesWords))
+        {
+            return new InputResult(InputResult.Refused, "Nur speichern, wenn der Pilot klar bestätigt, dass es im Cockpit funktioniert hat.", Action: action.Id);
+        }
+
+        var cutoff = _time.GetUtcNow() - TimeSpan.FromMinutes(15);
+        var executed = History.FirstOrDefault(e => e.Action.Equals(action.Id, StringComparison.OrdinalIgnoreCase) && e.Outcome == "ausgeführt" && e.TimeUtc >= cutoff);
+        if (executed is null)
+        {
+            return new InputResult(InputResult.Refused, "Diese Aktion wurde in den letzten 15 Minuten nicht ausgeführt – erst ausführen, dann im Cockpit prüfen.", Action: action.Id);
+        }
+
+        if (executed.Verified == false)
+        {
+            return new InputResult(InputResult.Refused, "Das Flugzeug hat den Wert bei der letzten Ausführung nicht übernommen – erst die Ursache klären.", Action: action.Id);
+        }
+
+        _verified.Record(profile.Name, action, "pilot", executed.Value, _time.GetUtcNow());
+        lock (_lock)
+        {
+            AddLogLocked(action.Id, executed.Value, "geprüft", "vom Piloten im Cockpit bestätigt", true);
+        }
+
+        return new InputResult(InputResult.Executed, "Als geprüft gespeichert.", Action: action.Id, Value: executed.Value, Verified: true);
+    }
 
     /// <summary>Schalter im Dashboard. Jede Änderung verwirft offene Aktionen in allen Instanzen.</summary>
     public void SetEnabled(bool enabled)
@@ -220,7 +275,7 @@ public sealed partial class InputService
             Value: plan.ValueText,
             Readback: plan.Readback,
             ExpiresInSec: (int)ConfirmWindow.TotalSeconds,
-            Verified: plan.Action.Verified);
+            Verified: VerifiedBy(plan.Action) is not null);
     }
 
     // ------------------------------------------------------------------ Schritt 2: bestätigen und ausführen
@@ -302,7 +357,7 @@ public sealed partial class InputService
                 return Refuse(action.Id, pending.Plan.ValueText, fresh.Refusal!);
             }
 
-            return await ExecuteAsync(plan, timeout.Token);
+            return await ExecuteAsync(plan, profile.Name, timeout.Token);
         }
         catch (Exception ex)
         {
@@ -350,7 +405,7 @@ public sealed partial class InputService
         return null;
     }
 
-    private async Task<InputResult> ExecuteAsync(ActionPlan plan, CancellationToken ct)
+    private async Task<InputResult> ExecuteAsync(ActionPlan plan, string profileName, CancellationToken ct)
     {
         if (await CheckRequirementsAsync(plan, ct) is { } unmet)
         {
@@ -437,9 +492,27 @@ public sealed partial class InputService
             null => alreadySet ? "war schon so" : null,
         };
 
+        // Echter Nachweis (Flugzeugzustand, nicht nur Schalterstellung) nach einer wirklichen Änderung: als geprüft merken
+        var newlyVerified = false;
+        if (verified == true && sent > 0 && plan.Check!.Independent && !plan.Action.Verified)
+        {
+            try
+            {
+                if (_verified.Find(profileName, plan.Action) is null)
+                {
+                    _verified.Record(profileName, plan.Action, "sim", plan.ValueText, _time.GetUtcNow());
+                    newlyVerified = true;
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _log.LogWarning("verified-actions.json nicht geschrieben: {Message}", ex.Message);
+            }
+        }
+
         lock (_lock)
         {
-            AddLogLocked(plan.Action.Id, plan.ValueText, "ausgeführt", detail, verified);
+            AddLogLocked(plan.Action.Id, plan.ValueText, "ausgeführt", newlyVerified ? detail + " · als geprüft gespeichert" : detail, verified);
         }
 
         return new InputResult(
@@ -452,7 +525,7 @@ public sealed partial class InputService
             Action: plan.Action.Id,
             Value: plan.ValueText,
             Readback: plan.Readback,
-            Verified: plan.Action.Verified,
+            Verified: plan.Action.Verified || newlyVerified || _verified.Find(profileName, plan.Action) is not null,
             Confirmed: verified,
             StateAfter: after,
             Skipped: skipped,
