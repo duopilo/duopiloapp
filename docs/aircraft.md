@@ -4,7 +4,7 @@ Stand: Kopilot 0.5, Testflüge vom 28.10.2026. **Geprüft** heißt: im Sim gegen
 
 ## FlyByWire A32NX
 
-Stand v0.5 nach dem Testflug EDDL–EDDM (Cold and Dark, Air-Start, FL310, ILS-Autoland 26R).
+Stand v0.5 nach dem Testflug EDDL–EDDM (Cold and Dark, Air-Start, FL310, ILS-Autoland 26R), ergänzt um die Callout-Variablen aus v0.6 (noch nicht im Flug geprüft).
 
 | Wert | Quelle | Status |
 |---|---|---|
@@ -30,6 +30,11 @@ Stand v0.5 nach dem Testflug EDDL–EDDM (Cold and Dark, Air-Start, FL310, ILS-A
 | Elektrik | `L:A32NX_ELEC_*_POTENTIAL`, `_FREQUENCY`, `_BUS_IS_POWERED` | neu, Doku |
 | Fire Pushbutton / Guard ENG 1 | `L:A32NX_FIRE_BUTTON_ENG1` (1 = released), `L:A32NX_FIRE_GUARD_ENG1` | geprüft |
 | Anti-Ice | `ENG ANTI ICE:1/2`, `STRUCTURAL DEICE SWITCH`, Wing-Pushbutton | geprüft |
+| Ground Spoiler ausgefahren | `L:A32NX_SEC_1_GROUND_SPOILER_OUT` → „Spoilers“ (Ersatz: `SPOILERS LEFT POSITION`) | neu, Code (v0.6) |
+| DECEL | `L:A32NX_AUTOBRAKES_DECEL_LIGHT` → „Decel“ | neu, Code (v0.6) |
+| Schubumkehr | `TURB ENG REVERSE NOZZLE PERCENT:1/2` → „Reverse green“ ab 90 % | neu (v0.6) |
+| TA / TL | `L:A32NX_FM1_TRANS_ALT`, `_TRANS_LVL` (ARINC 429, TL in FL) – leer: SimBrief | neu, Code (v0.6) |
+| DH / MDA | `L:A32NX_FM1_DECISION_HEIGHT`, `_MINIMUM_DESCENT_ALTITUDE` (ARINC 429) | neu, Code (v0.6) |
 
 Nicht nutzbar beim A32NX: `AUTOPILOT MASTER`, `BRAKE PARKING POSITION`, `SPOILERS ARMED`, `ENG EXHAUST GAS TEMPERATURE`, `ELECTRICAL MAIN BUS VOLTAGE` (fest 25,4 V), `AUTOPILOT HEADING LOCK DIR`, `ENG ON FIRE:1/2`. Engine Fire lässt sich über die Flypad-Failures nicht auslösen und hat keine eigene Variable – ein Brand käme als ECAM-Meldung „ENG 1 FIRE“ und damit als Master-Warning-Callout.
 

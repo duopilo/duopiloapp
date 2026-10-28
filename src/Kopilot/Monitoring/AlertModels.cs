@@ -59,9 +59,32 @@ public static class Rules
     public const string TopOfDescent = "TOP_OF_DESCENT";
     public const string LandingCheck = "LANDING_CHECK";
 
+    // Pilot-Monitoring-Callouts (Startlauf, Landung, Höhenmarken, Konfiguration)
+    public const string Pm100Knots = "PM_100_KNOTS";
+    public const string PmV1 = "PM_V1";
+    public const string PmRotate = "PM_ROTATE";
+    public const string PmPositiveClimb = "PM_POSITIVE_CLIMB";
+    public const string PmSpoilers = "PM_SPOILERS";
+    public const string PmReverse = "PM_REVERSE";
+    public const string PmDecel = "PM_DECEL";
+    public const string Pm70Knots = "PM_70_KNOTS";
+    public const string PmTenThousand = "PM_TEN_THOUSAND";
+    public const string PmTransition = "PM_TRANSITION";
+    public const string PmFlaps = "PM_FLAPS";
+    public const string PmGear = "PM_GEAR";
+
+    // Ansagen, die viele Airliner selbst machen (FWC) – nur mit Monitoring:AircraftAutoCallouts
+    public const string AutoRadioAltitude = "AUTO_RA";
+    public const string AutoMinimum = "AUTO_MINIMUM";
+    public const string AutoRetard = "AUTO_RETARD";
+
+    public static bool IsAircraftAutoCallout(string rule) => rule.StartsWith("AUTO_", StringComparison.OrdinalIgnoreCase);
+
     public static readonly IReadOnlyList<string> All =
     [
         SimPaused, GearSpeed, FlapSpeed, GearDownHigh, SpeedLimitFl100, SpeedDeviation, SinkRate, BankAngle,
         ApDisconnect, MasterWarning, MasterCaution, EcamMessage, Alt1000ToGo, TopOfDescent, LandingCheck, RunwayAssigned, Stall, Overspeed,
+        Pm100Knots, PmV1, PmRotate, PmPositiveClimb, PmSpoilers, PmReverse, PmDecel, Pm70Knots, PmTenThousand, PmTransition, PmFlaps, PmGear,
+        AutoRadioAltitude, AutoMinimum, AutoRetard,
     ];
 }

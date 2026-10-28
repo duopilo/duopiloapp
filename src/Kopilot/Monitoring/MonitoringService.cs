@@ -28,6 +28,7 @@ public sealed class MonitoringService : BackgroundService
         _engine = new MonitorEngine(new MonitorSettings
         {
             DisabledRules = new HashSet<string>(_options.DisabledRules, StringComparer.OrdinalIgnoreCase),
+            AircraftAutoCallouts = _options.AircraftAutoCallouts,
         });
     }
 
@@ -36,6 +37,13 @@ public sealed class MonitoringService : BackgroundService
     public int IntervalMs => Math.Clamp(_options.IntervalMs, 50, 2000);
 
     public string Phase => _engine.Phase;
+
+    /// <summary>Radiohöhen/Minimum/Retard zusätzlich ansagen (Dashboard-Schalter).</summary>
+    public bool AircraftAutoCallouts
+    {
+        get => _engine.AircraftAutoCallouts;
+        set => _engine.AircraftAutoCallouts = value;
+    }
 
     public DateTimeOffset SuppressedUntilUtc => _engine.SuppressedUntilUtc;
 

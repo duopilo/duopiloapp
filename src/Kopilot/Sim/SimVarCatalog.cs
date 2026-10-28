@@ -50,6 +50,7 @@ public static class SimVarCatalog
             SimVarSpec.Num("gearCenterPct", "GEAR CENTER POSITION", "percent").AsFast(),
             SimVarSpec.Bool("spoilersArmed", "SPOILERS ARMED"),
             SimVarSpec.Num("spoilersHandlePct", "SPOILERS HANDLE POSITION", "percent"),
+            SimVarSpec.Num("spoilerLeftPct", "SPOILERS LEFT POSITION", "percent").AsFast(),
             SimVarSpec.Bool("parkingBrake", "BRAKE PARKING POSITION"),
 
             // Autopilot (Standard-SimVars – bei Study-Level-Airlinern evtl. nicht aussagekräftig)
@@ -144,6 +145,7 @@ public static class SimVarCatalog
             list.Add(SimVarSpec.Num($"eng{i}N2", $"TURB ENG N2:{i}", "percent"));
             list.Add(SimVarSpec.Num($"eng{i}Egt", $"ENG EXHAUST GAS TEMPERATURE:{i}", "celsius"));
             list.Add(SimVarSpec.Num($"eng{i}FuelFlowPph", $"ENG FUEL FLOW PPH:{i}", "pounds per hour"));
+            list.Add(SimVarSpec.Num($"eng{i}RevPct", $"TURB ENG REVERSE NOZZLE PERCENT:{i}", "percent").AsFast());
         }
 
         return list;

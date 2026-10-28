@@ -232,6 +232,42 @@ public sealed class AircraftSignals(SimConnectClient sim)
     /// <summary>Klappenstellung zur Anzeige: Klartext aus dem Profil oder der generische Hebel-Index.</summary>
     public string? FlapsDisplay => FlapsLabel ?? (Sim.Num("flapsIndex") is { } i ? Math.Round(i).ToString(CultureInfo.InvariantCulture) : null);
 
+    /// <summary>Ground Spoiler ausgefahren: aus dem Profil, sonst über die Stellung der linken Spoiler.</summary>
+    public bool? GroundSpoilersOut =>
+        Has(BindingKeys.GroundSpoilersOut) ? Flag(BindingKeys.GroundSpoilersOut) : Sim.Num("spoilerLeftPct") is { } pct ? pct > 50 : null;
+
+    /// <summary>Autobrake DECEL-Licht, null wenn das Flugzeug es nicht liefert.</summary>
+    public bool? DecelLight => Flag(BindingKeys.DecelLight);
+
+    /// <summary>Größte Schubumkehr-Stellung (Prozent) aller Triebwerke.</summary>
+    public double? ReverserPct
+    {
+        get
+        {
+            double? max = null;
+            for (var i = 1; i <= SimVarCatalog.MaxEngines; i++)
+            {
+                if (Sim.Num($"eng{i}RevPct") is { } v && (max is null || v > max))
+                {
+                    max = v;
+                }
+            }
+
+            return max;
+        }
+    }
+
+    /// <summary>Transition Altitude (ft) aus dem FMS, null wenn unbekannt.</summary>
+    public double? TransitionAltitudeFt => Raw(BindingKeys.TransitionAltitude) is { } v && v > 0 ? v : null;
+
+    /// <summary>Transition Level als Druckhöhe in ft (FL70 = 7000) aus dem FMS.</summary>
+    public double? TransitionLevelFt => Raw(BindingKeys.TransitionLevel) is { } v && v > 0 ? v : null;
+
+    /// <summary>Entscheidungshöhe (ft RA) aus dem FMS, null wenn keine (FBW: −1 = nicht eingetragen, −2 = NO).</summary>
+    public double? DecisionHeightFt => Raw(BindingKeys.DecisionHeight) is { } v && v > 0 ? v : null;
+
+    public double? MinimumDescentAltitudeFt => Raw(BindingKeys.MinimumDescentAltitude) is { } v && v > 0 ? v : null;
+
     // ------------------------------------------------------------------ Triebwerke
 
     public string FuelFlowSource => Has(BindingKeys.FuelFlowKgh) ? "profile" : "generic";

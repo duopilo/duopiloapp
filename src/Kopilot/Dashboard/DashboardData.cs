@@ -5,6 +5,7 @@ using Kopilot.FlightPlan;
 using Kopilot.Hosting;
 using Kopilot.Monitoring;
 using Kopilot.Sim;
+using Kopilot.Speech;
 using Kopilot.Tools;
 
 namespace Kopilot.Dashboard;
@@ -17,7 +18,8 @@ public sealed class DashboardData(
     SimBriefService simBrief,
     EcamCatalog ecam,
     FmaLog fmaLog,
-    LogBuffer logs)
+    LogBuffer logs,
+    ISpeechOutput? speech = null)
 {
     public object Build(long sinceId, bool includeLog)
     {
@@ -35,6 +37,15 @@ public sealed class DashboardData(
             paused = status.Paused,
             pauseKind = status.PauseKind,
             lastError = sim.LastError,
+            speech = speech is null
+                ? null
+                : new
+                {
+                    available = speech.Status.Available,
+                    enabled = speech.Status.Settings.Enabled,
+                    speaking = speech.Status.Speaking,
+                    error = speech.Status.Error,
+                },
             monitoring = new
             {
                 enabled = monitoring.Enabled,

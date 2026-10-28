@@ -168,6 +168,12 @@ main {
 }
 .btn:hover { border-color: var(--cyan); }
 .btn[aria-pressed="true"] { border-color: var(--green); color: var(--green); }
+.speech-panel { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; padding: 10px 0 12px; border-bottom: 1px solid #1d242b; font-size: 13px; color: var(--du-dim); }
+.speech-panel label { display: flex; align-items: center; gap: 6px; }
+.speech-panel label.check { flex-basis: 100%; }
+.speech-panel input[type="range"] { width: 110px; accent-color: var(--cyan); }
+.speech-panel select.btn { max-width: 220px; }
+.speech-error { flex-basis: 100%; margin: 0; color: var(--amber); }
 select.btn { padding: 4px 6px; max-width: 190px; }
 
 /* ECAM */
@@ -323,11 +329,25 @@ select.btn { padding: 4px 6px; max-width: 190px; }
   <section class="du call" aria-label="Ansagen" aria-live="polite">
     <h2>Ansagen
       <span class="right">
-        <button class="btn" id="speak" type="button" aria-pressed="false">Vorlesen aus</button>
-        <select class="btn" id="voice" aria-label="Stimme"></select>
+        <button class="btn" id="speak" type="button" aria-pressed="false">Ansagen aus</button>
+        <select class="btn" id="voice" aria-label="Stimme im Browser"></select>
+        <button class="btn" id="speechSettings" type="button" aria-expanded="false" aria-controls="speechPanel" hidden>Stimme</button>
         <button class="btn" id="speakTest" type="button">Test</button>
       </span>
     </h2>
+    <div class="speech-panel" id="speechPanel" hidden>
+      <label>Stimme <select class="btn" id="srvVoice"></select></label>
+      <label>Ausgabe <select class="btn" id="srvDevice"></select></label>
+      <label>Lautstärke <input type="range" id="srvVolume" min="0" max="1" step="0.05"></label>
+      <label>Tempo <input type="range" id="srvRate" min="0.7" max="1.6" step="0.05"></label>
+      <label>Ansagen <select class="btn" id="srvSeverity">
+        <option value="Info">alle</option>
+        <option value="Caution">ab Caution</option>
+        <option value="Warning">nur Warnings</option>
+      </select></label>
+      <label class="check"><input type="checkbox" id="srvAuto"> Radiohöhen, Minimum und Retard auch von Kopilot (nur für Flugzeuge ohne eigene Ansagen)</label>
+      <p class="speech-error" id="srvError" hidden></p>
+    </div>
     <div class="hero quiet" id="hero"><div class="callout" id="heroCallout">Verbinde mit Kopilot …</div><div class="msg" id="heroMsg"></div><div class="when" id="heroWhen"></div></div>
     <div class="chips" id="activeChips"></div>
     <ul class="history" id="history"></ul>
@@ -602,7 +622,12 @@ function renderCallouts(d) {
   }).join("") || `<li><span class="t"></span><span class="ms">Noch keine Meldungen in dieser Sitzung.</span></li>`);
 }
 
-/* Sprachausgabe im Browser – englische Stimme, Warnings unterbrechen alles andere */
+/*
+  Sprachausgabe: Kopilot spricht selbst über Windows (Tray-Instanz). Nur wenn das nicht geht,
+  liest der Browser die Callouts vor – englische Stimme, Warnings unterbrechen alles andere.
+*/
+const server = { available: false, status: null, saveTimer: null, loading: false };
+
 function voices() { return ("speechSynthesis" in window) ? speechSynthesis.getVoices().filter((v) => v.lang && v.lang.toLowerCase().startsWith("en")) : []; }
 function fillVoices() {
   const sel = $("voice");
@@ -617,7 +642,8 @@ function fillVoices() {
   }
 }
 function speak(text, urgent) {
-  if (!ui.speech || !("speechSynthesis" in window) || !text) return;
+  // Spricht Kopilot selbst, bleibt der Browser still – sonst käme alles doppelt
+  if (server.available || !ui.speech || !("speechSynthesis" in window) || !text) return;
   if (urgent) speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   const v = voices().find((x) => x.name === $("voice").value);
@@ -625,20 +651,92 @@ function speak(text, urgent) {
   u.rate = 1.05;
   speechSynthesis.speak(u);
 }
+function speechOn() { return server.available ? !!server.status.settings.enabled : ui.speech; }
 function renderSpeechButton() {
   const b = $("speak");
-  b.setAttribute("aria-pressed", ui.speech ? "true" : "false");
-  b.textContent = ui.speech ? "Vorlesen an" : "Vorlesen aus";
+  b.setAttribute("aria-pressed", speechOn() ? "true" : "false");
+  b.textContent = speechOn() ? "Ansagen an" : "Ansagen aus";
+  b.title = server.available ? "Kopilot spricht über Windows" : "Der Browser liest vor";
+  $("voice").hidden = server.available;
+  $("speechSettings").hidden = !server.available;
 }
+function renderServerSpeech() {
+  const st = server.status;
+  if (!st) return;
+  const set = st.settings;
+  const voicesList = st.voices || [];
+  setHtml("srvVoice", voicesList.length
+    ? voicesList.map((v) => `<option value="${esc(v.id)}">${esc(v.name.replace(/^Microsoft /, ""))} (${esc(v.language)})</option>`).join("")
+    : `<option value="">Keine Stimme gefunden</option>`);
+  const active = voicesList.find((v) => v.id === set.voice || v.name === set.voice) || voicesList.find((v) => v.name === st.activeVoice);
+  if (active) $("srvVoice").value = active.id;
+  setHtml("srvDevice", `<option value="">Windows-Standardgerät</option>` + (st.devices || []).map((d) => `<option value="${esc(d.id)}">${esc(d.name)}</option>`).join(""));
+  $("srvDevice").value = set.device || "";
+  $("srvVolume").value = set.volume;
+  $("srvRate").value = set.rate;
+  $("srvSeverity").value = set.minSeverity;
+  $("srvAuto").checked = !!set.aircraftAutoCallouts;
+  const err = $("srvError");
+  err.hidden = !st.error;
+  err.textContent = st.error || "";
+}
+async function loadServerSpeech() {
+  if (server.loading) return;
+  server.loading = true;
+  try {
+    const r = await fetch("/api/speech", { cache: "no-store" });
+    const j = await r.json();
+    server.available = !!j.available;
+    server.status = j.available ? j : null;
+    if (!j.available && j.error && $("speechPanel")) { $("srvError").hidden = false; $("srvError").textContent = j.error; }
+  } catch { server.available = false; }
+  server.loading = false;
+  renderSpeechButton();
+  renderServerSpeech();
+}
+async function saveServerSpeech(patch) {
+  if (!server.status) return;
+  const body = Object.assign({}, server.status.settings, patch);
+  server.status.settings = body;
+  renderSpeechButton();
+  try {
+    const r = await fetch("/api/speech", { method: "POST", headers: { "X-Kopilot": "1", "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (r.ok) { server.status = await r.json(); renderServerSpeech(); renderSpeechButton(); }
+  } catch { /* nächster Abruf zeigt den Stand */ }
+}
+function saveSoon(patch) {
+  clearTimeout(server.saveTimer);
+  server.saveTimer = setTimeout(() => saveServerSpeech(patch), 300);
+}
+
 $("speak").addEventListener("click", () => {
+  if (server.available) { saveServerSpeech({ enabled: !server.status.settings.enabled }); return; }
   ui.speech = !ui.speech; save("speech", ui.speech); renderSpeechButton();
   if (ui.speech) speak("Callouts on", false);
 });
-$("speakTest").addEventListener("click", () => { const was = ui.speech; ui.speech = true; speak("Runway two three left assigned", false); ui.speech = was; });
+$("speakTest").addEventListener("click", async () => {
+  if (server.available) {
+    try { await fetch("/api/speech/test", { method: "POST", headers: { "X-Kopilot": "1" } }); } catch { /* egal */ }
+    return;
+  }
+  const was = ui.speech; ui.speech = true; speak("Runway two three left assigned", false); ui.speech = was;
+});
+$("speechSettings").addEventListener("click", () => {
+  const panel = $("speechPanel");
+  panel.hidden = !panel.hidden;
+  $("speechSettings").setAttribute("aria-expanded", panel.hidden ? "false" : "true");
+  if (!panel.hidden) loadServerSpeech();
+});
+$("srvVoice").addEventListener("change", (e) => saveServerSpeech({ voice: e.target.value }));
+$("srvDevice").addEventListener("change", (e) => saveServerSpeech({ device: e.target.value || null }));
+$("srvVolume").addEventListener("input", (e) => saveSoon({ volume: Number(e.target.value) }));
+$("srvRate").addEventListener("input", (e) => saveSoon({ rate: Number(e.target.value) }));
+$("srvSeverity").addEventListener("change", (e) => saveServerSpeech({ minSeverity: e.target.value }));
+$("srvAuto").addEventListener("change", (e) => saveServerSpeech({ aircraftAutoCallouts: e.target.checked }));
 $("voice").addEventListener("change", (e) => { ui.voice = e.target.value; save("voice", ui.voice); });
 if ("speechSynthesis" in window) { fillVoices(); speechSynthesis.onvoiceschanged = fillVoices; }
-else { $("speak").disabled = true; $("speakTest").disabled = true; $("voice").disabled = true; }
 renderSpeechButton();
+loadServerSpeech();
 
 /* ------------------------------------------------------------------ ECAM */
 function renderEcam(s) {
@@ -822,6 +920,11 @@ async function poll() {
   }
 }
 function render(d) {
+  // Sprachausgabe von Kopilot: Zustand mitführen, nachladen sobald sie bereit ist
+  if (d.speech) {
+    if (d.speech.available && !server.available) loadServerSpeech();
+    else if (server.status && server.status.settings.enabled !== d.speech.enabled) { server.status.settings.enabled = d.speech.enabled; renderSpeechButton(); }
+  }
   renderHeader(d);
   renderFma(d.sim);
   renderFmaLog(d);

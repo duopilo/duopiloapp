@@ -255,6 +255,12 @@ public static class BindingKeys
     public const string FmAltitudeConstraint = "fmAltitudeConstraint";
     public const string FmsToWptDistance = "fmsToWptDistance";
     public const string FmsToWptBearing = "fmsToWptBearing";
+    public const string GroundSpoilersOut = "groundSpoilersOut";
+    public const string DecelLight = "decelLight";
+    public const string TransitionAltitude = "transAlt";
+    public const string TransitionLevel = "transLevel";
+    public const string DecisionHeight = "decisionHeight";
+    public const string MinimumDescentAltitude = "minimumDescentAltitude";
 
     /// <summary>Alle bekannten Schlüssel (für get_aircraft_profile).</summary>
     public static readonly IReadOnlyList<string> All =
@@ -262,7 +268,8 @@ public static class BindingKeys
         Ap1, Ap2, FlightDirector, AthrStatus, AthrMode, FmaLateral, FmaLateralArmed, FmaVertical, FmaVerticalArmed, Autobrake,
         MasterWarning, MasterCaution, SpeedTarget, SpeedManaged, SelectedSpeed, MachMode, SelectedAltitude, Vls, FuelFlowKgh,
         EgtC, ParkingBrake, SpoilersArmed, SelectedHeading, SelectedHeadingDashes, Flaps, V1, Vr, V2, FlexTemp, TdReached,
-        FmgcDiscreteWord1, FmAltitudeConstraint, FmsToWptDistance, FmsToWptBearing,
+        FmgcDiscreteWord1, FmAltitudeConstraint, FmsToWptDistance, FmsToWptBearing, GroundSpoilersOut, DecelLight,
+        TransitionAltitude, TransitionLevel, DecisionHeight, MinimumDescentAltitude,
     ];
 
     /// <summary>Schlüssel, die standardmäßig schnell abonniert werden (Monitoring).</summary>
@@ -270,6 +277,6 @@ public static class BindingKeys
     {
         Ap1, Ap2, AthrStatus, FmaLateral, FmaVertical, MasterWarning, MasterCaution, SpeedTarget, SpeedManaged,
         SelectedSpeed, MachMode, SelectedAltitude, Vls, FmaLateralArmed, FmaVerticalArmed, AthrMode, Flaps, SpoilersArmed,
-        FmgcDiscreteWord1, TdReached,
+        FmgcDiscreteWord1, TdReached, GroundSpoilersOut, DecelLight, V1, Vr,
     };
 }

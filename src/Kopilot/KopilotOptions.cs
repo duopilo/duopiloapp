@@ -38,6 +38,9 @@ public sealed class KopilotOptions
     /// <summary>Aktives Monitoring.</summary>
     public MonitoringOptions Monitoring { get; set; } = new();
 
+    /// <summary>Sprachausgabe der Callouts über Windows.</summary>
+    public SpeechOptions Speech { get; set; } = new();
+
     /// <summary>Ordner für Caches (ECAM-Tabellen). Leer = %LOCALAPPDATA%\Kopilot.</summary>
     public string DataDirectory { get; set; } = "";
 
@@ -73,6 +76,33 @@ public sealed class MonitoringOptions
 
     /// <summary>Wie viele vergangene Ereignisse für get_alerts aufgehoben werden.</summary>
     public int HistorySize { get; set; } = 500;
+
+    /// <summary>
+    /// Radiohöhen (2500, 1000, 500 …), Hundred above/Minimum und Retard auch von Kopilot ansagen.
+    /// Standard aus – der FBW A32NX und andere Airliner sprechen sie selbst. Im Dashboard umschaltbar.
+    /// </summary>
+    public bool AircraftAutoCallouts { get; set; }
+}
+
+/// <summary>Sprachausgabe über Windows (nur HTTP-Modus mit Tray). Die Einstellungen aus dem Dashboard liegen in DataDirectory\speech.json.</summary>
+public sealed class SpeechOptions
+{
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>Name der Stimme (z. B. "Microsoft George"). Leer = erste englische Stimme (en-GB bevorzugt).</summary>
+    public string Voice { get; set; } = "";
+
+    /// <summary>Ausgabegerät (Windows-Geräte-ID). Leer = Standardgerät.</summary>
+    public string Device { get; set; } = "";
+
+    /// <summary>Lautstärke 0–1.</summary>
+    public double Volume { get; set; } = 1.0;
+
+    /// <summary>Sprechtempo 0,5–2.</summary>
+    public double Rate { get; set; } = 1.1;
+
+    /// <summary>Ab welcher Stufe gesprochen wird: Info, Caution oder Warning.</summary>
+    public string MinSeverity { get; set; } = "Info";
 }
 
 /// <summary>

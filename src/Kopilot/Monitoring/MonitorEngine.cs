@@ -6,6 +6,12 @@ public sealed class MonitorSettings
 {
     public ISet<string> DisabledRules { get; init; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Radiohöhen, Minimum und Retard auch von Kopilot ansagen. Standard aus – Airliner wie der FBW A32NX sprechen sie selbst (FWC).
+    /// Zur Laufzeit umschaltbar (Dashboard).
+    /// </summary>
+    public bool AircraftAutoCallouts { get; set; }
+
     /// <summary>Ruhezeit nach Verbindungsaufbau, Flugzeugwechsel oder Air-Start.</summary>
     public TimeSpan SuppressAfterLoad { get; init; } = TimeSpan.FromSeconds(10);
 
@@ -20,7 +26,7 @@ public sealed class MonitorSettings
 /// Regelwerk des Pilot Monitoring. Rein rechnend (keine Sim-Abhängigkeit): bekommt Snapshots, liefert Meldungen.
 /// Nicht threadsicher – wird nur vom MonitoringService aufgerufen.
 /// </summary>
-public sealed class MonitorEngine
+public sealed partial class MonitorEngine
 {
     private readonly MonitorSettings _settings;
     private readonly List<StateRule> _stateRules;
@@ -81,7 +87,14 @@ public sealed class MonitorEngine
 
     public IEnumerable<string> EnabledRules => Rules.All.Where(IsEnabled);
 
-    public bool IsEnabled(string rule) => !_settings.DisabledRules.Contains(rule);
+    public bool IsEnabled(string rule) =>
+        !_settings.DisabledRules.Contains(rule) && (!Rules.IsAircraftAutoCallout(rule) || _settings.AircraftAutoCallouts);
+
+    public bool AircraftAutoCallouts
+    {
+        get => _settings.AircraftAutoCallouts;
+        set => _settings.AircraftAutoCallouts = value;
+    }
 
     public IReadOnlyList<AlertEvent> Evaluate(FlightSnapshot s)
     {
@@ -159,6 +172,8 @@ public sealed class MonitorEngine
         CheckTopOfDescent(s, now, suppressed, events);
         CheckLandingConfiguration(s, now, suppressed, events);
         CheckRunwayAssigned(s, now, suppressed, events);
+        CheckPmCallouts(s, now, suppressed, events);
+        CheckAircraftAutoCallouts(s, now, suppressed, events);
 
         _prev = s;
         return events;
@@ -594,6 +609,13 @@ public sealed class MonitorEngine
                 _liftoffUtc = now;
             }
 
+            // Aufsetzen: bis unter 30 kt Rollgeschwindigkeit gilt das als Landerollen
+            if (p.OnGround == false && s.OnGround == true)
+            {
+                _touchdownUtc = now;
+                _onLandingRoll = true;
+            }
+
             var dt = (now - p.TimeUtc).TotalSeconds;
             if (dt is > 0.05 and < 2 && s.IasKt is { } ias && p.IasKt is { } pias)
             {
@@ -615,6 +637,11 @@ public sealed class MonitorEngine
             _lastSpeedTarget = null;
         }
 
+        if (s.OnGround == true && s.GroundSpeedKt is < 30)
+        {
+            _onLandingRoll = false;
+        }
+
         Phase = DetectPhase(s, now);
     }
 
@@ -627,7 +654,7 @@ public sealed class MonitorEngine
                 return "ground";
             }
 
-            return Phase is "approach" or "rollout" or "descent" ? "rollout" : "takeoff_roll";
+            return _onLandingRoll || Phase is "approach" or "rollout" or "descent" ? "rollout" : "takeoff_roll";
         }
 
         if (s.OnGround is null)
@@ -731,6 +758,7 @@ public sealed class MonitorEngine
         _todPlanArmed = false;
         _landingCheck2000Done = false;
         _landingCheck1000Done = false;
+        ResetCallouts();
     }
 
     private static void Later(ref DateTimeOffset target, DateTimeOffset candidate)

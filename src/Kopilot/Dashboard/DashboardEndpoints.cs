@@ -2,6 +2,7 @@ using Kopilot.Aircraft;
 using Kopilot.FlightPlan;
 using Kopilot.Hosting;
 using Kopilot.Sim;
+using Kopilot.Speech;
 using Kopilot.Tools;
 
 namespace Kopilot.Dashboard;
@@ -72,6 +73,43 @@ public static class DashboardEndpoints
             return Results.Content(Json.Serialize(new { profiles = profiles.All.Count, errors = profiles.Errors }), "application/json");
         }).LocalOnly();
 
+        app.MapGet("/api/speech", async (HttpContext context, CancellationToken ct) =>
+        {
+            NoCache(context);
+            var speech = context.RequestServices.GetService<ISpeechOutput>();
+            return speech is null
+                ? Results.Content(Json.Serialize(new { available = false, error = "Sprachausgabe gibt es nur in der Tray-Instanz (HTTP-Modus)." }), "application/json")
+                : Results.Content(Json.Serialize(SpeechView(await speech.RefreshAsync(ct))), "application/json");
+        }).LocalOnly();
+
+        app.MapPost("/api/speech", async (HttpContext context, SpeechSettings settings, CancellationToken ct) =>
+        {
+            if (!IsDashboardAction(context) || context.RequestServices.GetService<ISpeechOutput>() is not { } speech)
+            {
+                return Results.BadRequest();
+            }
+
+            return Results.Content(Json.Serialize(SpeechView(await speech.UpdateAsync(settings, ct))), "application/json");
+        }).LocalOnly();
+
+        app.MapPost("/api/speech/test", async (HttpContext context, CancellationToken ct) =>
+        {
+            if (!IsDashboardAction(context) || context.RequestServices.GetService<ISpeechOutput>() is not { } speech)
+            {
+                return Results.BadRequest();
+            }
+
+            try
+            {
+                await speech.SpeakNowAsync("Runway two three left assigned", ct);
+                return Results.Content(Json.Serialize(new { ok = true }), "application/json");
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or TimeoutException or System.Runtime.InteropServices.COMException)
+            {
+                return Results.Content(Json.Serialize(new { ok = false, error = ex.Message }), "application/json");
+            }
+        }).LocalOnly();
+
         app.MapPost("/api/simbrief/refresh", async (HttpContext context, SimBriefService simBrief, CancellationToken ct) =>
         {
             if (!IsDashboardAction(context))
@@ -83,6 +121,28 @@ public static class DashboardEndpoints
             return Results.Content(Json.Serialize(new { loaded = ofp is not null, error = simBrief.LastError }), "application/json");
         }).LocalOnly();
     }
+
+    internal static object SpeechView(SpeechStatus s) => new
+    {
+        available = s.Available,
+        error = s.Error,
+        settings = new
+        {
+            enabled = s.Settings.Enabled,
+            voice = s.Settings.Voice,
+            device = s.Settings.Device,
+            volume = s.Settings.Volume,
+            rate = s.Settings.Rate,
+            minSeverity = s.Settings.MinSeverity.ToString(),
+            mutedRules = s.Settings.MutedRules,
+            aircraftAutoCallouts = s.Settings.AircraftAutoCallouts,
+        },
+        activeVoice = s.ActiveVoice,
+        voices = s.Voices,
+        devices = s.Devices,
+        speaking = s.Speaking,
+        lastSpoken = s.LastSpoken,
+    };
 
     private static bool IsDashboardAction(HttpContext context) =>
         context.Request.Headers.TryGetValue(ActionHeader, out var value) && value == "1";
