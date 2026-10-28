@@ -1,4 +1,5 @@
 using Kopilot.Aircraft;
+using Kopilot.Dashboard;
 using Kopilot.Ecam;
 using Kopilot.FlightPlan;
 using Kopilot.Monitoring;
@@ -6,6 +7,7 @@ using Kopilot.Remote;
 using Kopilot.Sim;
 using Kopilot.Tools;
 using Microsoft.AspNetCore.HostFiltering;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 
 namespace Kopilot.Hosting;
@@ -31,6 +33,8 @@ public static class HttpHost
     public static void AddServices(WebApplicationBuilder builder)
     {
         builder.Services.AddKopilotCore(builder.Configuration);
+        builder.Services.TryAddSingleton(new LogBuffer());
+        builder.Services.AddSingleton<DashboardData>();
         builder.Services.AddSingleton<OAuthStore>();
         builder.Services.AddSingleton<LoginThrottle>();
 
@@ -58,7 +62,8 @@ public static class HttpHost
         app.UseMiddleware<McpAuthMiddleware>();
 
         // Prüfseiten für den Browser – nur lokal, über den Tunnel nicht erreichbar.
-        app.MapGet("/", (SimConnectClient sim, ProfileStore profiles, MonitoringService monitoring, SimBriefService simBrief, EcamCatalog ecam, AlertBus alerts) =>
+        app.MapDashboard();
+        app.MapGet("/status", (SimConnectClient sim, ProfileStore profiles, MonitoringService monitoring, SimBriefService simBrief, EcamCatalog ecam, AlertBus alerts) =>
             JsonText(KopilotTools.Status(sim, profiles, monitoring, simBrief, ecam, alerts))).LocalOnly();
         app.MapGet("/state", (SimConnectClient sim, AlertBus alerts) => JsonText(KopilotTools.GetFlightState(sim, alerts))).LocalOnly();
         app.MapGet("/systems", (SimConnectClient sim, AlertBus alerts) => JsonText(KopilotTools.GetSystems(sim, alerts))).LocalOnly();
@@ -88,7 +93,7 @@ public static class HttpHost
 
     private static IResult JsonText(string json) => Results.Content(json, "application/json");
 
-    private static RouteHandlerBuilder LocalOnly(this RouteHandlerBuilder builder) =>
+    internal static RouteHandlerBuilder LocalOnly(this RouteHandlerBuilder builder) =>
         builder.AddEndpointFilter(async (context, next) =>
             RequestOrigin.IsLocal(context.HttpContext) ? await next(context) : Results.NotFound());
 

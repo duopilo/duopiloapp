@@ -1,0 +1,814 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kopilot</title>
+<link rel="icon" href="/favicon.ico">
+<style>
+/* B612 – die Schrift, die Airbus und ONERA für Cockpit-Displays entwickelt haben (SIL Open Font License 1.1) */
+@font-face { font-family: "B612"; src: url("/dashboard/fonts/B612-Regular.woff") format("woff"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "B612"; src: url("/dashboard/fonts/B612-Bold.woff") format("woff"); font-weight: 700; font-display: swap; }
+@font-face { font-family: "B612 Mono"; src: url("/dashboard/fonts/B612Mono-Regular.woff") format("woff"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "B612 Mono"; src: url("/dashboard/fonts/B612Mono-Bold.woff") format("woff"); font-weight: 700; font-display: swap; }
+
+/*
+  Farben bedeuten, was sie im Airbus-Cockpit bedeuten:
+  grün = aktiv/normal, cyan = armed/gewählt, magenta = managed, amber = Caution, rot = Warning, weiß = Werte.
+  Das Panel ist das blaugraue Cockpit-Panel, die Anzeigen sind schwarze Display Units.
+*/
+:root {
+  --panel: #2a3540;
+  --panel-raised: #33404c;
+  --panel-edge: #445260;
+  --panel-text: #d3dce3;
+  --panel-dim: #93a1ad;
+  --du: #000000;
+  --bezel: #161c22;
+  --du-dim: #7d8a95;
+  --green: #3be06a;
+  --cyan: #31c6ee;
+  --magenta: #f25cf0;
+  --amber: #ffa620;
+  --red: #ff3b30;
+  --white: #e9eef1;
+  --yellow: #ffd400;
+  --brt: 1;
+  --gap: 14px;
+  --mono: "B612 Mono", "Cascadia Mono", Consolas, monospace;
+  --sans: "B612", "Segoe UI", system-ui, sans-serif;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--panel);
+  color: var(--panel-text);
+  font: 15px/1.45 var(--sans);
+  min-height: 100vh;
+}
+button, select, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+[hidden] { display: none !important; }
+
+/* ------------------------------------------------------------------ Glareshield (Kopfzeile) */
+.glare {
+  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  padding: 12px 20px;
+  background: var(--panel-raised);
+  border-bottom: 1px solid var(--panel-edge);
+}
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; color: var(--white); }
+.brand small { font-weight: 400; font-size: 12px; color: var(--panel-dim); }
+.link { display: flex; align-items: center; gap: 8px; color: var(--panel-text); }
+.lamp { width: 10px; height: 10px; border-radius: 50%; background: var(--panel-dim); box-shadow: 0 0 0 2px #1d252d; }
+.lamp.on { background: var(--green); }
+.lamp.wait { background: var(--amber); }
+.aircraft { color: var(--white); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 46ch; }
+.aircraft .tag { color: var(--panel-dim); margin-left: 8px; }
+.paused-pill { font-family: var(--mono); font-weight: 700; color: #1b1300; background: var(--amber); padding: 3px 10px; border-radius: 4px; }
+.spacer { flex: 1; }
+
+/* Attention Getter – wie die Tasten auf dem Glareshield */
+.attention { display: flex; gap: 10px; }
+.ag {
+  width: 74px; height: 46px; border-radius: 6px; cursor: pointer;
+  font: 700 12px/1.1 var(--mono); letter-spacing: .02em;
+  background: #20272e; border: 2px solid #11161b; color: #5b6772;
+}
+.ag.lit.warn { background: var(--red); color: #fff; border-color: #ff8a83; }
+.ag.lit.caut { background: var(--amber); color: #241600; border-color: #ffd18a; }
+.ag.lit.flash { animation: flash .5s steps(1) infinite; }
+@keyframes flash { 50% { filter: brightness(.45); } }
+
+.brt { display: flex; align-items: center; gap: 8px; color: var(--panel-dim); font-size: 13px; }
+.brt input { width: 110px; accent-color: var(--cyan); }
+
+.banner {
+  margin: var(--gap) var(--gap) 0; padding: 12px 16px; border-radius: 8px;
+  background: #1f2830; border: 1px solid var(--panel-edge); color: var(--panel-text);
+}
+.banner strong { color: var(--white); }
+.banner.amber { border-color: var(--amber); }
+
+/* ------------------------------------------------------------------ Display Units */
+main {
+  display: grid; gap: var(--gap); padding: var(--gap);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.45fr) minmax(0, 1fr);
+  grid-template-areas:
+    "fma fma fma"
+    "pfd call ecam"
+    "route route route"
+    "eng cfg atc";
+}
+.du {
+  background: var(--du); color: var(--white);
+  border: 7px solid var(--bezel); border-radius: 12px;
+  box-shadow: 0 0 0 1px var(--panel-edge);
+  padding: 14px 16px 16px;
+  filter: brightness(var(--brt));
+  min-width: 0;
+}
+.du > h2 { margin: 0 0 10px; font: 400 13px/1.2 var(--sans); color: var(--du-dim); display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.du > h2 .right { margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; }
+.mono { font-family: var(--mono); }
+.dim { color: var(--du-dim); }
+.g { color: var(--green); } .c { color: var(--cyan); } .m { color: var(--magenta); }
+.a { color: var(--amber); } .r { color: var(--red); } .w { color: var(--white); } .y { color: var(--yellow); }
+.none { color: #3f4a54; }
+
+/* FMA */
+.fma { grid-area: fma; padding: 8px 0; }
+.fma-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.fma-col { padding: 4px 18px; border-left: 2px solid #3a434c; min-height: 62px; font-family: var(--mono); }
+.fma-col:first-child { border-left: 0; }
+.fma-col .act { font-size: 24px; font-weight: 700; color: var(--green); line-height: 1.15; min-height: 28px; }
+.fma-col .arm { font-size: 17px; color: var(--cyan); min-height: 22px; }
+.fma-col .lbl { font-family: var(--sans); font-size: 11px; color: var(--du-dim); }
+.fma-col.ap .act { color: var(--white); font-weight: 400; font-size: 18px; }
+.fma-note { padding: 2px 18px 0; font-size: 12px; color: var(--du-dim); }
+
+/* PFD-Werte */
+.pfd { grid-area: pfd; }
+.vals { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; }
+.val .lbl { font-size: 12px; color: var(--du-dim); }
+.val .big { font: 700 34px/1.05 var(--mono); letter-spacing: -.01em; }
+.unit { font: 400 13px var(--mono); color: var(--du-dim); margin-left: 4px; }
+.val .sub { font: 400 14px/1.4 var(--mono); }
+.att { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px 18px; font: 14px var(--mono); color: var(--du-dim); border-top: 1px solid #1d242b; padding-top: 10px; }
+.att b { color: var(--white); font-weight: 400; }
+.att span, .val .sub > span { white-space: nowrap; }
+
+/* Ansagen – das Herzstück */
+.call { grid-area: call; display: flex; flex-direction: column; }
+.hero { padding: 6px 0 14px; border-bottom: 1px solid #1d242b; min-height: 128px; }
+.hero .callout { font: 700 clamp(28px, 3.4vw, 46px)/1.1 var(--sans); }
+.hero .msg { margin-top: 8px; color: var(--white); opacity: .85; max-width: 60ch; }
+.hero .when { margin-top: 4px; font: 13px var(--mono); color: var(--du-dim); }
+.hero.quiet .callout { color: var(--green); font-size: clamp(24px, 2.6vw, 32px); font-weight: 400; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 4px; }
+.chip { font: 700 13px var(--mono); padding: 3px 9px; border-radius: 4px; border: 1px solid currentColor; }
+.history { list-style: none; margin: 10px 0 0; padding: 0; overflow: auto; max-height: 260px; }
+.history li { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 10px; padding: 5px 0; border-bottom: 1px solid #12171c; }
+.history .t { font: 13px var(--mono); color: var(--du-dim); }
+.history .co { font: 700 15px var(--mono); }
+.history .ms { font-size: 13px; color: var(--du-dim); }
+.history li.clear .co { font-weight: 400; color: var(--du-dim); }
+.btn {
+  background: #11171d; border: 1px solid #2c363f; border-radius: 6px; padding: 4px 10px; cursor: pointer; color: var(--white); font-size: 13px;
+}
+.btn:hover { border-color: var(--cyan); }
+.btn[aria-pressed="true"] { border-color: var(--green); color: var(--green); }
+select.btn { padding: 4px 6px; max-width: 190px; }
+
+/* ECAM */
+.ecam { grid-area: ecam; }
+.ecam-cols { display: grid; grid-template-columns: 1.4fr 1fr; gap: 14px; font: 15px/1.5 var(--mono); }
+.ecam-cols ul { list-style: none; margin: 0; padding: 0; }
+.ecam-cols li { white-space: pre-wrap; }
+.ecam-cols li.title { font-weight: 700; }
+.ecam-cols li.msg { font: 14px/1.5 var(--sans); white-space: normal; }
+.ecam-cols:has(li.msg) { grid-template-columns: 1fr; }
+.ecam .sim-warn { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+
+/* Route */
+.route { grid-area: route; }
+.track { position: relative; height: 54px; margin: 6px 8px 14px; }
+.track .line { position: absolute; left: 0; right: 0; top: 30px; height: 2px; background: #3a434c; }
+.track .flown { position: absolute; left: 0; top: 30px; height: 2px; background: var(--green); width: 0; }
+.track .mark { position: absolute; top: 0; transform: translateX(-50%); text-align: center; font: 12px var(--mono); white-space: nowrap; }
+.track .mark::after { content: ""; display: block; width: 2px; height: 10px; margin: 4px auto 0; background: currentColor; }
+.track .plane { position: absolute; top: 21px; transform: translateX(-50%); width: 22px; height: 20px; }
+.ends { display: flex; justify-content: space-between; font: 700 16px var(--mono); }
+.ends .dim { font-weight: 400; }
+.stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; margin-top: 4px; }
+.stat .lbl { font-size: 12px; color: var(--du-dim); }
+.stat .big { font: 700 24px/1.15 var(--mono); }
+.stat .sub { font: 13px/1.4 var(--mono); color: var(--du-dim); }
+.route .empty { color: var(--du-dim); }
+
+/* Triebwerke, Konfiguration, ATC */
+.eng { grid-area: eng; }
+.cfg { grid-area: cfg; }
+.atc { grid-area: atc; }
+.engs { display: grid; grid-template-columns: repeat(var(--n, 2), minmax(0, 1fr)); gap: 14px; }
+.engine .lbl { font-size: 12px; color: var(--du-dim); }
+.n1 { font: 700 24px var(--mono); }
+.bar { height: 6px; background: #1d242b; border-radius: 3px; overflow: hidden; margin: 4px 0 6px; }
+.bar i { display: block; height: 100%; background: var(--green); width: 0; }
+.engine .sub { font: 13px/1.5 var(--mono); }
+.totals { margin-top: 10px; font: 13px var(--mono); color: var(--du-dim); }
+.totals b { color: var(--white); font-weight: 400; }
+.rows { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; font-size: 14px; }
+.rows dt { color: var(--du-dim); }
+.rows dd { margin: 0; font-family: var(--mono); }
+.rwy { font: 700 34px/1 var(--mono); color: var(--cyan); }
+.rwy-sub { font: 13px var(--mono); color: var(--du-dim); margin: 4px 0 10px; }
+
+/* ------------------------------------------------------------------ Einrichtung (auf dem Panel, kein Display) */
+.setup { padding: 0 var(--gap) 28px; }
+.setup details { border-top: 1px solid var(--panel-edge); padding-top: 12px; }
+.setup summary { cursor: pointer; color: var(--white); font-weight: 700; padding: 4px 0; }
+.setup p { max-width: 80ch; color: var(--panel-dim); }
+.setup-grid > div { min-width: 0; }
+.setup-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 24px; margin-top: 12px; }
+.setup h3 { font-size: 14px; color: var(--white); margin: 0 0 8px; }
+.table-wrap { overflow-x: auto; }
+.setup table { width: 100%; min-width: 520px; border-collapse: collapse; font-size: 13px; }
+.setup th { text-align: left; font-weight: 400; color: var(--panel-dim); border-bottom: 1px solid var(--panel-edge); padding: 4px 6px; }
+.setup td { padding: 4px 6px; border-bottom: 1px solid #34414d; vertical-align: top; }
+.setup td.var { font-family: var(--mono); font-size: 12px; word-break: break-all; color: var(--panel-dim); }
+.state { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.state::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.state.ok { color: var(--green); } .state.open { color: var(--amber); }
+.log { background: #1b232a; border: 1px solid var(--panel-edge); border-radius: 6px; padding: 8px 10px; height: 320px; overflow: auto; font: 12px/1.5 var(--mono); }
+.log .WRN { color: var(--amber); } .log .ERR, .log .CRT { color: var(--red); }
+.actions { display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0 16px; }
+.setup .btn { background: var(--panel-raised); border-color: var(--panel-edge); }
+.links { font-size: 13px; color: var(--panel-dim); }
+.links a { color: var(--cyan); margin-right: 10px; }
+.toast { color: var(--green); font-size: 13px; align-self: center; }
+
+.offline {
+  position: fixed; inset: auto 16px 16px 16px; padding: 14px 18px; border-radius: 8px;
+  background: #3a1d1b; border: 1px solid var(--red); color: var(--white);
+}
+
+/* ------------------------------------------------------------------ schmalere Bildschirme */
+@media (max-width: 1180px) {
+  main {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas: "fma fma" "call call" "pfd ecam" "route route" "eng cfg" "atc atc";
+  }
+  .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .setup-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 720px) {
+  :root { --gap: 10px; }
+  main { grid-template-columns: minmax(0, 1fr); grid-template-areas: "fma" "call" "pfd" "ecam" "route" "eng" "cfg" "atc"; }
+  .fma-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fma-col:nth-child(3) { border-left: 0; }
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ecam-cols { grid-template-columns: 1fr; }
+  .glare { gap: 12px; }
+  .brt input { width: 80px; }
+  select.btn { max-width: 150px; }
+  .aircraft { max-width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ag.lit.flash { animation: none; }
+}
+</style>
+</head>
+<body>
+
+<header class="glare">
+  <div class="brand">
+    <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+      <defs><clipPath id="adi"><circle cx="13" cy="13" r="10.5"/></clipPath></defs>
+      <circle cx="13" cy="13" r="12.5" fill="#1d252d"/>
+      <g clip-path="url(#adi)"><rect width="26" height="14" fill="#2b7bb9"/><rect y="14" width="26" height="12" fill="#7a4a22"/><rect y="13.4" width="26" height="1.2" fill="#e9eef1"/></g>
+      <path d="M5 12.5h5v3h-1.5v-1.5H5zM21 12.5h-5v3h1.5v-1.5H21zM12 12h2v2h-2z" fill="#ffd400" stroke="#000" stroke-width=".6"/>
+    </svg>
+    Kopilot <small id="version"></small>
+  </div>
+  <div class="link"><span class="lamp" id="lamp"></span><span id="linkText">Verbinde …</span></div>
+  <div class="aircraft" id="aircraft"></div>
+  <span class="paused-pill" id="paused" hidden>Sim pausiert</span>
+  <span class="spacer"></span>
+  <div class="attention">
+    <button class="ag warn" id="agWarn" type="button" title="Master Warning – Klick quittiert das Blinken">MASTER<br>WARN</button>
+    <button class="ag caut" id="agCaut" type="button" title="Master Caution – Klick quittiert das Blinken">MASTER<br>CAUT</button>
+  </div>
+  <label class="brt">Helligkeit <input type="range" id="brt" min="35" max="100" step="5" value="100"></label>
+</header>
+
+<div class="banner" id="banner" hidden></div>
+
+<main>
+  <section class="du fma" aria-label="Flugmodus-Anzeige">
+    <div class="fma-row">
+      <div class="fma-col"><div class="act" id="fmaThrust"></div><div class="arm" id="fmaAthrArm"></div><div class="lbl">Schub</div></div>
+      <div class="fma-col"><div class="act" id="fmaVert"></div><div class="arm" id="fmaVertArm"></div><div class="lbl">Vertikal</div></div>
+      <div class="fma-col"><div class="act" id="fmaLat"></div><div class="arm" id="fmaLatArm"></div><div class="lbl">Lateral</div></div>
+      <div class="fma-col ap"><div class="act" id="fmaAp"></div><div class="arm" id="fmaFd"></div><div class="lbl">Autopilot</div></div>
+    </div>
+    <div class="fma-note" id="fmaNote" hidden></div>
+  </section>
+
+  <section class="du pfd" aria-label="Flugdaten">
+    <h2>Flugdaten</h2>
+    <div class="vals">
+      <div class="val"><div class="lbl">IAS</div><div><span class="big" id="ias">–</span><span class="unit">kt</span></div><div class="sub" id="iasSub"></div></div>
+      <div class="val"><div class="lbl">Höhe</div><div><span class="big" id="alt">–</span><span class="unit">ft</span></div><div class="sub" id="altSub"></div></div>
+      <div class="val"><div class="lbl">V/S</div><div><span class="big" id="vs">–</span><span class="unit">ft/min</span></div><div class="sub" id="vsSub"></div></div>
+      <div class="val"><div class="lbl">Kurs</div><div><span class="big" id="hdg">–</span><span class="unit">°</span></div><div class="sub" id="hdgSub"></div></div>
+      <div class="att" id="att"></div>
+    </div>
+  </section>
+
+  <section class="du call" aria-label="Ansagen" aria-live="polite">
+    <h2>Ansagen
+      <span class="right">
+        <button class="btn" id="speak" type="button" aria-pressed="false">Vorlesen aus</button>
+        <select class="btn" id="voice" aria-label="Stimme"></select>
+        <button class="btn" id="speakTest" type="button">Test</button>
+      </span>
+    </h2>
+    <div class="hero quiet" id="hero"><div class="callout" id="heroCallout">Verbinde mit Kopilot …</div><div class="msg" id="heroMsg"></div><div class="when" id="heroWhen"></div></div>
+    <div class="chips" id="activeChips"></div>
+    <ul class="history" id="history"></ul>
+  </section>
+
+  <section class="du ecam" aria-label="Warnungen">
+    <h2>Warnungen <span class="right dim" id="ecamTable"></span></h2>
+    <div class="ecam-cols">
+      <ul id="ecamLeft"></ul>
+      <ul id="ecamRight"></ul>
+    </div>
+    <div class="sim-warn" id="simWarn"></div>
+  </section>
+
+  <section class="du route" aria-label="Route">
+    <h2>Route <span class="right"><span class="dim" id="routeInfo"></span><button class="btn" id="planReload" type="button">Plan laden</button></span></h2>
+    <div id="routeBody"></div>
+  </section>
+
+  <section class="du eng" aria-label="Triebwerke">
+    <h2>Triebwerke <span class="right dim" id="ffSource"></span></h2>
+    <div class="engs" id="engs"></div>
+    <div class="totals" id="totals"></div>
+  </section>
+
+  <section class="du cfg" aria-label="Konfiguration">
+    <h2>Konfiguration</h2>
+    <dl class="rows" id="cfg"></dl>
+  </section>
+
+  <section class="du atc" aria-label="ATC und Wetter">
+    <h2>ATC und Wetter</h2>
+    <div id="rwy"></div>
+    <dl class="rows" id="atcRows"></dl>
+  </section>
+</main>
+
+<section class="setup">
+  <details id="setup">
+    <summary>Einrichtung und Diagnose</summary>
+    <p>Hier prüfst du, welche Werte aus dem Flugzeugprofil kommen. „Ungeprüft“ heißt: Der Variablenname stammt aus der Doku und wurde im Sim noch nicht gegen das Cockpit verglichen. Eine 0 beweist nicht, dass die Variable existiert – schalte im Cockpit etwas um und schau, ob der Wert folgt.</p>
+    <div class="actions">
+      <button class="btn" id="reloadProfiles" type="button">Profile neu laden</button>
+      <button class="btn" id="reloadPlan" type="button">SimBrief-Plan neu laden</button>
+      <span class="toast" id="toast"></span>
+    </div>
+    <div class="setup-grid">
+      <div>
+        <h3 id="profileTitle">Flugzeugprofil</h3>
+        <p id="profileInfo"></p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Wert</th><th>Variable</th><th>Status</th><th>Jetzt</th></tr></thead>
+            <tbody id="bindings"></tbody>
+          </table>
+        </div>
+      </div>
+      <div>
+        <h3>Log</h3>
+        <div class="log" id="log" tabindex="0"></div>
+        <p class="links">Rohdaten: <a href="/status">Status</a><a href="/state">Flugzustand</a><a href="/systems">Systeme</a><a href="/warnings">Warnungen</a><a href="/alerts">Meldungen</a><a href="/atc">ATC</a><a href="/progress">Fortschritt</a><a href="/profile">Profil</a></p>
+      </div>
+    </div>
+  </details>
+</section>
+
+<div class="offline" id="offline" role="alert" hidden>Kopilot antwortet nicht. Läuft Kopilot noch? Das Symbol im Infobereich zeigt es – sonst Kopilot.exe neu starten.</div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const DASH = "–";
+
+const PHASES = {
+  ground: "Boden", takeoff_roll: "Startlauf", takeoff: "Start", climb: "Steigflug", cruise: "Reiseflug",
+  level: "Horizontalflug", descent: "Sinkflug", approach: "Anflug", rollout: "Ausrollen", paused: "pausiert",
+  stale: "keine Daten", menu: "Hauptmenü", offline: "nicht verbunden", unknown: "unbekannt",
+};
+const SEV = { Warning: "r", Caution: "a", Info: "g" };
+
+function load(key, fallback) {
+  try { const v = localStorage.getItem("kopilot." + key); return v === null ? fallback : JSON.parse(v); } catch { return fallback; }
+}
+function save(key, value) {
+  try { localStorage.setItem("kopilot." + key, JSON.stringify(value)); } catch { /* privates Fenster o. Ä. */ }
+}
+
+const ui = {
+  lastId: -1,
+  spokenId: null,
+  events: [],
+  speech: load("speech", false),
+  voice: load("voice", ""),
+  ack: { warn: false, caut: false },
+  lit: { warn: false, caut: false },
+};
+
+/* ------------------------------------------------------------------ kleine Helfer */
+const n = (v) => (v === null || v === undefined ? null : v);
+const fmt = (v, digits = 0) => (n(v) === null ? DASH : Number(v).toFixed(digits));
+const signed = (v) => (n(v) === null ? DASH : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(Math.round(v)));
+const hdg3 = (v) => (n(v) === null ? DASH : String(Math.round(v) % 360).padStart(3, "0"));
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const span = (text, cls) => `<span class="${cls}">${esc(text)}</span>`;
+function setText(id, text, cls) {
+  const el = $(id);
+  if (el.textContent !== text) el.textContent = text;
+  if (cls !== undefined) {
+    const next = el.className.split(" ").filter((c) => c && !/^(g|c|m|a|r|w|y|dim|none)$/.test(c)).concat(cls ? [cls] : []).join(" ");
+    if (el.className !== next) el.className = next;
+  }
+}
+function setHtml(id, html) { const el = $(id); if (el.innerHTML !== html) el.innerHTML = html; }
+const timeOf = (iso) => (iso || "").replace("Z", "");
+
+/* ------------------------------------------------------------------ Kopfzeile */
+function renderHeader(d) {
+  $("version").textContent = d.version ? "v" + d.version : "";
+  const lamp = $("lamp");
+  if (!d.connected) {
+    lamp.className = "lamp wait";
+    $("linkText").textContent = "Wartet auf MSFS";
+  } else {
+    lamp.className = "lamp on";
+    $("linkText").textContent = d.flightLoaded === false ? "MSFS im Hauptmenü" : "MSFS verbunden";
+  }
+
+  const ac = d.sim && d.sim.aircraft;
+  $("aircraft").innerHTML = ac
+    ? esc(ac.title || "Flugzeug unbekannt") + (ac.profile ? `<span class="tag">Profil ${esc(ac.profile)}</span>` : `<span class="tag">ohne Profil</span>`)
+    : "";
+  $("paused").hidden = !d.paused;
+
+  const banner = $("banner");
+  let text = null;
+  if (!d.connected) {
+    text = "<strong>Warte auf Microsoft Flight Simulator.</strong> Kopilot verbindet sich automatisch, sobald MSFS läuft."
+      + (d.lastError ? `<br><span class="a">${esc(d.lastError)}</span>` : "");
+  } else if (d.flightLoaded === false) {
+    text = "<strong>Kein Flug geladen.</strong> Sobald ein Flug läuft, erscheinen hier die Werte.";
+  }
+  banner.hidden = !text;
+  if (text) banner.innerHTML = text;
+
+  // Master Warning/Caution: blinken, bis sie im Dashboard quittiert werden oder ausgehen
+  const w = !!(d.sim && d.sim.warnings.master);
+  const c = !!(d.sim && d.sim.warnings.caution);
+  attention("warn", $("agWarn"), w);
+  attention("caut", $("agCaut"), c);
+}
+function attention(key, el, on) {
+  if (on && !ui.lit[key]) ui.ack[key] = false;
+  ui.lit[key] = on;
+  el.classList.toggle("lit", on);
+  el.classList.toggle("flash", on && !ui.ack[key]);
+  el.setAttribute("aria-pressed", on ? "true" : "false");
+}
+$("agWarn").addEventListener("click", () => { ui.ack.warn = true; $("agWarn").classList.remove("flash"); });
+$("agCaut").addEventListener("click", () => { ui.ack.caut = true; $("agCaut").classList.remove("flash"); });
+
+/* ------------------------------------------------------------------ FMA */
+function renderFma(s) {
+  const f = s ? s.fma : null;
+  if (!f) {
+    ["fmaThrust", "fmaAthrArm", "fmaVert", "fmaVertArm", "fmaLat", "fmaLatArm", "fmaAp", "fmaFd"].forEach((id) => ($(id).textContent = ""));
+    $("fmaNote").hidden = true;
+    return;
+  }
+  const generic = f.source === "generic";
+  $("fmaThrust").textContent = f.thrust || "";
+  const athr = f.athr;
+  $("fmaAthrArm").textContent = "";
+  $("fmaVert").textContent = f.vertical || "";
+  $("fmaVertArm").textContent = (f.verticalArmed || []).join(" ");
+  $("fmaLat").textContent = f.lateral || "";
+  $("fmaLatArm").textContent = (f.lateralArmed || []).join(" ");
+
+  let ap = "";
+  if (f.ap1 && f.ap2) ap = "AP1+2"; else if (f.ap1) ap = "AP1"; else if (f.ap2) ap = "AP2"; else if (f.ap) ap = "AP";
+  $("fmaAp").textContent = ap;
+  const fd = f.fd ? "1 FD 2" : "";
+  $("fmaFd").innerHTML = esc(fd) + (athr && athr !== "OFF" ? (fd ? "  " : "") + span("A/THR", athr === "ACTIVE" ? "w" : "c") : "");
+
+  const note = $("fmaNote");
+  note.hidden = !generic;
+  if (generic) note.textContent = "Für dieses Flugzeug sind keine FMA-Variablen im Profil – AP-Status aus den generischen SimVars, Schub und Modi unbekannt.";
+}
+
+/* ------------------------------------------------------------------ Flugdaten */
+function renderPfd(s) {
+  const f = s ? s.flight : {};
+  setText("ias", fmt(f.ias));
+  let iasSub = "";
+  if (n(f.iasTarget) !== null) iasSub += span(f.iasTarget + (f.speedManaged ? " managed" : " gewählt"), f.speedManaged ? "m" : "c");
+  if (n(f.vls) !== null) iasSub += " " + span("VLS " + f.vls, "a");
+  if (n(f.gs) !== null) iasSub += " " + span("GS " + f.gs, "dim");
+  setHtml("iasSub", iasSub);
+
+  setText("alt", fmt(f.alt));
+  let altSub = "";
+  if (n(f.altSel) !== null) altSub += span("FCU " + f.altSel, "c");
+  if (n(f.fl) !== null) altSub += " " + span("FL" + String(Math.max(0, f.fl)).padStart(3, "0"), "dim");
+  if (n(f.ra) !== null && f.ra < 2500 && f.onGround === false) altSub += " " + span("RA " + f.ra, "g");
+  setHtml("altSub", altSub);
+
+  setText("vs", signed(f.vs));
+  setHtml("vsSub", f.onGround ? span("am Boden", "dim") : "");
+  setText("hdg", hdg3(f.hdg));
+  let hdgSub = "";
+  if (n(f.hdgSel) !== null) hdgSub += span("HDG " + hdg3(f.hdgSel), "c");
+  if (n(f.trk) !== null) hdgSub += " " + span("TRK " + hdg3(f.trk), "g");
+  setHtml("hdgSub", hdgSub);
+
+  const pitch = n(f.pitch) === null ? DASH : (f.pitch >= 0 ? "+" : "−") + Math.abs(f.pitch).toFixed(1) + "°";
+  const bank = n(f.bank) === null ? DASH : Math.abs(f.bank).toFixed(0) + "° " + (f.bank > 0.5 ? "rechts" : f.bank < -0.5 ? "links" : "");
+  setHtml("att", `<span>Pitch <b>${esc(pitch)}</b></span><span>Bank <b>${esc(bank)}</b></span><span>TAS <b>${esc(fmt(f.tas))}</b> kt</span>`);
+}
+
+/* ------------------------------------------------------------------ Ansagen */
+function renderCallouts(d) {
+  const a = d.alerts;
+  // Neue Ereignisse übernehmen (die API liefert alles nach "since")
+  for (const e of a.events) {
+    if (!ui.events.some((x) => x.id === e.id)) ui.events.push(e);
+  }
+  ui.events.sort((x, y) => y.id - x.id);
+  ui.events = ui.events.slice(0, 40);
+
+  if (ui.spokenId === null) ui.spokenId = a.lastId; // beim Laden nichts Altes vorlesen
+  const fresh = a.events.filter((e) => e.id > ui.spokenId && e.callout && e.kind !== "Clear").sort((x, y) => x.id - y.id);
+  for (const e of fresh) speak(e.callout, e.severity === "Warning");
+  ui.spokenId = Math.max(ui.spokenId, a.lastId);
+  ui.lastId = a.lastId;
+
+  const hero = $("hero");
+  const top = a.active.find((e) => e.callout) || null;
+  const latest = ui.events.find((e) => e.kind !== "Clear" && e.callout) || null;
+  const show = top || latest;
+  if (show && (top || Date.now() - (show._seen || (show._seen = Date.now())) < 60000)) {
+    if (hero.className !== "hero") hero.className = "hero";
+    setText("heroCallout", show.callout, SEV[show.severity] || "w");
+    setText("heroMsg", show.message || "");
+    setText("heroWhen", timeOf(show.timeUtc) + " UTC" + (top ? "  aktiv" : ""));
+  } else {
+    if (hero.className !== "hero quiet") hero.className = "hero quiet";
+    const phase = PHASES[d.monitoring.phase] || d.monitoring.phase;
+    setText("heroCallout", d.monitoring.enabled ? "Keine Meldungen" : "Monitoring ist aus", d.monitoring.enabled ? "g" : "a");
+    setText("heroMsg", !d.monitoring.enabled ? "In appsettings.Local.json unter Kopilot → Monitoring → Enabled einschalten."
+      : d.monitoring.quietForSec > 0 ? `Ruhezeit nach dem Laden: noch ${d.monitoring.quietForSec} s.`
+      : `Monitoring läuft. Phase: ${phase}.`);
+    setText("heroWhen", "");
+  }
+
+  setHtml("activeChips", a.active.filter((e) => e.kind === "Raise").map((e) => span(e.callout || e.rule, "chip " + (SEV[e.severity] || "w"))).join(""));
+
+  setHtml("history", ui.events.slice(0, 14).map((e) => {
+    const cls = e.kind === "Clear" ? "clear" : "";
+    const co = e.kind === "Clear" ? (e.rule + " beendet") : (e.callout || e.rule);
+    return `<li class="${cls}"><span class="t">${esc(timeOf(e.timeUtc))}</span><span><span class="co ${e.kind === "Clear" ? "" : SEV[e.severity] || "w"}">${esc(co)}</span><br><span class="ms">${esc(e.message)}</span></span></li>`;
+  }).join("") || `<li><span class="t"></span><span class="ms">Noch keine Meldungen in dieser Sitzung.</span></li>`);
+}
+
+/* Sprachausgabe im Browser – englische Stimme, Warnings unterbrechen alles andere */
+function voices() { return ("speechSynthesis" in window) ? speechSynthesis.getVoices().filter((v) => v.lang && v.lang.toLowerCase().startsWith("en")) : []; }
+function fillVoices() {
+  const sel = $("voice");
+  const list = voices();
+  const current = ui.voice;
+  sel.innerHTML = list.length ? list.map((v) => `<option value="${esc(v.name)}">${esc(v.name.replace(/^Microsoft /, "").replace(/ Online \(Natural\)/, " (natural)"))}</option>`).join("")
+    : `<option value="">Keine englische Stimme</option>`;
+  if (current && list.some((v) => v.name === current)) sel.value = current;
+  else if (list.length) {
+    const pick = list.find((v) => /en-GB/i.test(v.lang) && /natural/i.test(v.name)) || list.find((v) => /natural/i.test(v.name)) || list.find((v) => /en-GB/i.test(v.lang)) || list[0];
+    sel.value = pick.name;
+  }
+}
+function speak(text, urgent) {
+  if (!ui.speech || !("speechSynthesis" in window) || !text) return;
+  if (urgent) speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  const v = voices().find((x) => x.name === $("voice").value);
+  if (v) { u.voice = v; u.lang = v.lang; } else { u.lang = "en-GB"; }
+  u.rate = 1.05;
+  speechSynthesis.speak(u);
+}
+function renderSpeechButton() {
+  const b = $("speak");
+  b.setAttribute("aria-pressed", ui.speech ? "true" : "false");
+  b.textContent = ui.speech ? "Vorlesen an" : "Vorlesen aus";
+}
+$("speak").addEventListener("click", () => {
+  ui.speech = !ui.speech; save("speech", ui.speech); renderSpeechButton();
+  if (ui.speech) speak("Callouts on", false);
+});
+$("speakTest").addEventListener("click", () => { const was = ui.speech; ui.speech = true; speak("Runway two three left assigned", false); ui.speech = was; });
+$("voice").addEventListener("change", (e) => { ui.voice = e.target.value; save("voice", ui.voice); });
+if ("speechSynthesis" in window) { fillVoices(); speechSynthesis.onvoiceschanged = fillVoices; }
+else { $("speak").disabled = true; $("speakTest").disabled = true; $("voice").disabled = true; }
+renderSpeechButton();
+
+/* ------------------------------------------------------------------ ECAM */
+function renderEcam(s) {
+  if (!s) { setHtml("ecamLeft", ""); setHtml("ecamRight", ""); setHtml("simWarn", ""); $("ecamTable").textContent = ""; return; }
+  const w = s.warnings;
+  const e = w.ecam;
+  $("ecamTable").textContent = e.available ? (e.table ? "Meldungstabelle: " + e.table : "") : "";
+  if (!e.available) {
+    setHtml("ecamLeft", `<li class="msg dim">Für dieses Flugzeug liest Kopilot kein ECAM. Master Warning und Master Caution erscheinen oben rechts, sobald das Profil sie kennt.</li>`);
+    setHtml("ecamRight", "");
+  } else {
+    const titleColor = w.master ? "r" : "a";
+    setHtml("ecamLeft", e.left.map((l) => `<li class="${l.title ? "title " + titleColor : l.known ? "c" : "dim"}">${esc(l.text)}</li>`).join("") || `<li class="none"> </li>`);
+    setHtml("ecamRight", e.right.map((l) => `<li class="${l.known ? "g" : "dim"}">${esc(l.text)}</li>`).join(""));
+  }
+  let sw = "";
+  if (w.stall) sw += span("STALL", "chip r");
+  if (w.overspeed) sw += span("OVERSPEED", "chip r");
+  setHtml("simWarn", sw);
+}
+
+/* ------------------------------------------------------------------ Route */
+function renderRoute(d) {
+  const p = d.plan;
+  const reload = $("planReload");
+  if (!p.configured) {
+    reload.hidden = true;
+    $("routeInfo").textContent = "";
+    setHtml("routeBody", `<p class="empty">SimBrief ist nicht eingerichtet. Trag in <span class="mono w">appsettings.Local.json</span> unter Kopilot → SimBrief deinen Username oder deine Pilot-ID ein und starte Kopilot neu.</p>`);
+    return;
+  }
+  reload.hidden = false;
+  if (!p.loaded) {
+    $("routeInfo").textContent = "";
+    setHtml("routeBody", `<p class="empty">Noch kein Flugplan geladen.${p.error ? " " + esc(p.error) : ""} Erzeuge den OFP auf simbrief.com und tippe auf „Plan laden“.</p>`);
+    return;
+  }
+  $("routeInfo").textContent = [p.callsign, p.initialAltitudeFt ? "FL" + Math.round(p.initialAltitudeFt / 100) : null, p.costIndex !== null && p.costIndex !== undefined ? "CI " + p.costIndex : null].filter(Boolean).join("   ");
+
+  const g = p.progress;
+  const ends = `<div class="ends"><span>${esc(p.origin.icao)} <span class="dim">${esc(p.origin.runway || "")}</span></span><span>${esc(p.destination.icao)} <span class="dim">${esc(p.destination.runway || "")}</span>${p.alternate ? ` <span class="dim">ALTN ${esc(p.alternate)}</span>` : ""}</span></div>`;
+  if (!g) {
+    setHtml("routeBody", ends + `<p class="empty">Position noch nicht auf der Route – sobald der Sim Werte liefert, erscheint hier der Fortschritt.</p>`);
+    return;
+  }
+
+  const total = Math.max(1, g.totalNm);
+  const pct = (nm) => Math.min(100, Math.max(0, (nm / total) * 100));
+  const at = pct(g.flownNm);
+  let marks = "";
+  marks += `<div class="mark w" style="left:${pct(g.flownNm + g.next.distNm)}%">${esc(g.next.ident)}</div>`;
+  if (g.toc) marks += `<div class="mark c" style="left:${pct(g.flownNm + g.toc.distNm)}%">T/C</div>`;
+  if (g.tod) marks += `<div class="mark w" style="left:${pct(g.flownNm + g.tod.distNm)}%">T/D</div>`;
+  const plane = `<svg class="plane" style="left:${at}%" viewBox="0 0 22 20" aria-label="Flugzeug"><path d="M2 10h18M11 3v14M6 15h10" stroke="#ffd400" stroke-width="2.4" fill="none" stroke-linecap="round" transform="rotate(90 11 10)"/></svg>`;
+  const track = `<div class="track"><div class="line"></div><div class="flown" style="width:${at}%"></div>${marks}${plane}</div>`;
+
+  const xtkSide = Math.abs(g.xtk) < 0.1 ? "" : g.xtk > 0 ? " rechts" : " links";
+  const fuelDiff = n(g.fuel.diff);
+  const fuelCls = fuelDiff === null ? "dim" : fuelDiff >= 0 ? "g" : fuelDiff > -500 ? "w" : "a";
+  const stats = `<div class="stats">
+    <div class="stat"><div class="lbl">Nächster Fix</div><div class="big">${esc(g.next.ident)}</div><div class="sub">${esc(g.next.airway || "")} ${fmt(g.next.distNm, 1)} nm  ETA ${esc(g.next.eta || DASH)}${g.next.altFt ? "  " + g.next.altFt + " ft" : ""}</div></div>
+    <div class="stat"><div class="lbl">Bis ${esc(p.destination.icao)}</div><div class="big">${fmt(g.toGoNm)} nm</div><div class="sub">ETA ${esc(g.eta || DASH)}${g.versusSchedule ? "  " + esc(g.versusSchedule) : ""}</div></div>
+    <div class="stat"><div class="lbl">${g.toc ? "Top of Climb" : "Top of Descent"}</div><div class="big">${g.toc ? fmt(g.toc.distNm) + " nm" : g.tod ? fmt(g.tod.distNm) + " nm" : DASH}</div><div class="sub">${g.toc ? "ETA " + esc(g.toc.eta || DASH) : g.tod ? "ETA " + esc(g.tod.eta || DASH) : "hinter dir"}</div></div>
+    <div class="stat"><div class="lbl">Querablage</div><div class="big ${g.onRoute ? "g" : "a"}">${Math.abs(g.xtk).toFixed(1)} nm</div><div class="sub">${xtkSide ? esc(xtkSide.trim()) + " der Route" : "auf der Route"}${g.terminal ? "  SID/STAR" : ""}</div></div>
+    <div class="stat"><div class="lbl">Treibstoff gegen Plan</div><div class="big ${fuelCls}">${fuelDiff === null ? DASH : (fuelDiff >= 0 ? "+" : "−") + Math.abs(fuelDiff) + " kg"}</div><div class="sub">an Bord ${fmt(g.fuel.actual)} kg  Landung ca. ${fmt(g.fuel.predictedLanding)} kg</div></div>
+  </div>`;
+  setHtml("routeBody", ends + track + stats);
+}
+$("planReload").addEventListener("click", () => action("/api/simbrief/refresh", "SimBrief-Plan geladen."));
+
+/* ------------------------------------------------------------------ Triebwerke */
+function renderEngines(s) {
+  if (!s) { setHtml("engs", ""); setHtml("totals", ""); $("ffSource").textContent = ""; return; }
+  const engs = $("engs");
+  engs.style.setProperty("--n", s.engines.length);
+  setHtml("engs", s.engines.map((e) => `<div class="engine"><div class="lbl">ENG ${e.n}${e.running ? "" : "  aus"}</div>
+    <div class="n1 ${e.running ? "g" : "dim"}">${fmt(e.n1, 1)}<span class="unit dim"> %N1</span></div>
+    <div class="bar"><i style="width:${Math.min(100, Math.max(0, (e.n1 || 0) / 1.1))}%"></i></div>
+    <div class="sub">EGT ${fmt(e.egt)} °C<br>FF ${fmt(e.ff)} kg/h</div></div>`).join(""));
+  $("ffSource").textContent = s.fuelFlowSource === "profile" ? "Fuel Flow aus dem Profil" : "Fuel Flow generisch";
+  setHtml("totals", `Treibstoff <b>${fmt(s.fuelKg)}</b> kg   Gewicht <b>${fmt(s.grossWeightKg)}</b> kg`);
+}
+
+/* ------------------------------------------------------------------ Konfiguration */
+function renderConfig(s) {
+  if (!s) { setHtml("cfg", ""); return; }
+  const c = s.config;
+  const gear = n(c.gearPct) === null ? (c.gearHandleDown ? span("unten", "g") : span("oben", "w"))
+    : c.gearPct >= 99 ? span("unten", "g") : c.gearPct <= 1 ? span("oben", "w") : span(`fährt (${c.gearPct} %)`, "a");
+  const rows = [
+    ["Klappenhebel", span(n(c.flaps) === null ? DASH : String(c.flaps), "w")],
+    ["Fahrwerk", gear],
+    ["Spoiler", c.spoilersArmed ? span("armed", "c") : c.speedbrakePct > 2 ? span(`Speedbrake ${c.speedbrakePct} %`, "w") : span("eingefahren", "w")],
+    ["Autobrake", c.autobrake ? span(c.autobrake, c.autobrake === "OFF" || c.autobrake === "DISARM" ? "w" : "g") : span(DASH, "dim")],
+    ["Parkbremse", c.parkingBrake ? span("gesetzt", "a") : span("gelöst", "w")],
+  ];
+  setHtml("cfg", rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join(""));
+}
+
+/* ------------------------------------------------------------------ ATC und Wetter */
+function renderAtc(s) {
+  if (!s) { setHtml("rwy", ""); setHtml("atcRows", ""); return; }
+  const a = s.atc;
+  setHtml("rwy", a.runway
+    ? `<div class="rwy">${esc(a.runway.ident)}</div><div class="rwy-sub">${esc(a.runway.spoken)}${a.runway.airport ? "  " + esc(a.runway.airport) : ""}${a.runway.designatorSource ? "" : "  L/C/R unbekannt"}</div>`
+    : `<div class="rwy-sub">Keine Bahn vom Ingame-ATC zugewiesen.</div>`);
+  const cl = a.clearances;
+  const chip = (on, label) => span(label, on ? "g" : "none");
+  const e = s.environment;
+  const rows = [
+    ["Callsign", span(a.callsign || DASH, "w")],
+    ["Freigaben", [chip(cl.ifr, "IFR"), chip(cl.taxi, "TAXI"), chip(cl.takeoff, "T/O"), chip(cl.landing, "LDG")].join("  ")],
+    ["Wind", span(n(e.windDir) === null ? DASH : `${hdg3(e.windDir)}/${e.windKt} kt`, "w")],
+    ["OAT", span(n(e.oat) === null ? DASH : `${e.oat} °C`, "w")],
+    ["QNH", span(n(e.qnh) === null ? DASH : `${e.qnh} hPa`, "w") + (n(e.baro) !== null ? "  " + span(`eingestellt ${e.baro}`, Math.round(e.baro) === 1013 ? "c" : "dim") : "")],
+    ["Zeit", span(e.utc ? e.utc + " UTC" : DASH, "w")],
+  ];
+  setHtml("atcRows", rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join(""));
+}
+
+/* ------------------------------------------------------------------ Einrichtung */
+function renderSetup(d) {
+  if (!$("setup").open) return;
+  const s = d.sim;
+  const ac = s ? s.aircraft : null;
+  $("profileTitle").textContent = ac && ac.profile ? "Profil " + ac.profile : "Flugzeugprofil";
+  $("profileInfo").textContent = !s ? "Keine Verbindung zum Sim."
+    : !ac.profile ? `Für „${ac.title || "dieses Flugzeug"}“ gibt es kein Profil. Pfad: ${ac.path || "unbekannt"}`
+    : `${ac.profileFile || ""}${ac.profileNotes ? " – " + ac.profileNotes : ""}`;
+  const b = (s && s.bindings) || [];
+  setHtml("bindings", b.map((x) => `<tr><td>${esc(x.key)}</td><td class="var">${esc(x.variable)}</td><td><span class="state ${x.verified ? "ok" : "open"}">${x.verified ? "geprüft" : "ungeprüft"}</span></td><td class="mono">${esc(x.text ?? (x.raw ?? DASH))}${x.text && n(x.raw) !== null ? ` <span class="dim">(${esc(x.raw)})</span>` : ""}</td></tr>`).join("")
+    || `<tr><td colspan="4" class="dim">Keine Bindings.</td></tr>`);
+
+  if (d.log) {
+    const box = $("log");
+    const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 20;
+    setHtml("log", d.log.map((l) => `<div class="${l.level}">${esc(l.time)} ${esc(l.level)} ${esc(l.category)}: ${esc(l.message)}</div>`).join(""));
+    if (atBottom) box.scrollTop = box.scrollHeight;
+  }
+}
+async function action(url, done) {
+  const toast = $("toast");
+  try {
+    const r = await fetch(url, { method: "POST", headers: { "X-Kopilot": "1" } });
+    const j = await r.json();
+    toast.className = "toast";
+    toast.textContent = j.error ? j.error : (j.errors && j.errors.length ? j.errors.join("; ") : done);
+    if (j.error || (j.errors && j.errors.length)) toast.className = "toast a";
+  } catch {
+    toast.className = "toast a";
+    toast.textContent = "Kopilot hat nicht geantwortet.";
+  }
+  setTimeout(() => { toast.textContent = ""; }, 6000);
+}
+$("reloadProfiles").addEventListener("click", () => action("/api/reload-profiles", "Profile neu geladen."));
+$("reloadPlan").addEventListener("click", () => action("/api/simbrief/refresh", "SimBrief-Plan geladen."));
+
+/* ------------------------------------------------------------------ Helligkeit (dimmt nur die Displays, wie der BRT-Knopf) */
+const brt = $("brt");
+brt.value = load("brt", 100);
+const applyBrt = () => document.documentElement.style.setProperty("--brt", String(brt.value / 100));
+brt.addEventListener("input", () => { applyBrt(); save("brt", Number(brt.value)); });
+applyBrt();
+
+/* ------------------------------------------------------------------ Abfrage-Schleife */
+let logTick = 0;
+async function poll() {
+  const wantLog = $("setup").open && (logTick++ % 4 === 0);
+  try {
+    const r = await fetch(`/api/dashboard?since=${ui.lastId}&log=${wantLog ? "true" : "false"}`, { cache: "no-store" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const d = await r.json();
+    $("offline").hidden = true;
+    render(d);
+  } catch {
+    $("offline").hidden = false;
+  } finally {
+    setTimeout(poll, 500);
+  }
+}
+function render(d) {
+  renderHeader(d);
+  renderFma(d.sim);
+  renderPfd(d.sim);
+  renderCallouts(d);
+  renderEcam(d.sim);
+  renderRoute(d);
+  renderEngines(d.sim);
+  renderConfig(d.sim);
+  renderAtc(d.sim);
+  renderSetup(d);
+}
+$("setup").addEventListener("toggle", () => { logTick = 0; });
+poll();
+</script>
+</body>
+</html>

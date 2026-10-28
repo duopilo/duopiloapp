@@ -38,9 +38,11 @@ robocopy "%STAGE%" "%TARGET%" /E /NFL /NDL /NJH /NJS /NP >nul
 if errorlevel 8 goto :error
 
 echo [5/5] Starte Kopilot ...
-start "Kopilot" "%TARGET%\Kopilot.exe"
+start "" "%TARGET%\Kopilot.exe"
 echo.
-echo Fertig. Claude Desktop startet seine eigene Kopilot-Instanz beim naechsten Neustart von Claude Desktop.
+echo Fertig. Kopilot laeuft jetzt ohne Konsolenfenster im Infobereich (Symbol unten rechts).
+echo Dashboard: http://127.0.0.1:5155/   Log: %LOCALAPPDATA%\Kopilot\logs\kopilot.log
+echo Claude Desktop startet seine eigene Kopilot-Instanz beim naechsten Neustart von Claude Desktop.
 pause
 exit /b 0
 

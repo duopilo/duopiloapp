@@ -2,10 +2,13 @@
 
   <PropertyGroup>
     <TargetFramework>net10.0-windows</TargetFramework>
-    <OutputType>Exe</OutputType>
+    <!-- Windows-Anwendung ohne Konsolenfenster: Kopilot sitzt im Infobereich. Der Schalter "console" öffnet bei Bedarf eine Konsole. -->
+    <OutputType>WinExe</OutputType>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationIcon>Assets\kopilot.ico</ApplicationIcon>
     <AssemblyName>Kopilot</AssemblyName>
     <RootNamespace>Kopilot</RootNamespace>
-    <Version>0.3.0</Version>
+    <Version>0.4.0</Version>
     <!-- SimConnect.dll ist eine native x64-Bibliothek -->
     <PlatformTarget>x64</PlatformTarget>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -17,6 +20,26 @@
     <PackageReference Include="ModelContextProtocol" Version="2.3.0" />
     <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.3.0" />
   </ItemGroup>
+
+  <!-- Dashboard, Schriften (B612, SIL OFL 1.1) und Symbole stecken in der Kopilot.dll -->
+  <ItemGroup>
+    <EmbeddedResource Include="Dashboard\dashboard.html" LogicalName="Kopilot.Dashboard.dashboard.html" />
+    <EmbeddedResource Include="Dashboard\fonts\*.woff" LogicalName="Kopilot.Dashboard.fonts.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Assets\kopilot.ico" LogicalName="Kopilot.Dashboard.favicon.ico" />
+    <EmbeddedResource Include="Assets\tray-*.ico" LogicalName="Kopilot.Assets.%(Filename)%(Extension)" />
+    <None Update="Dashboard\fonts\OFL.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Link="licenses\B612-OFL.txt" />
+  </ItemGroup>
+
+  <!--
+    WinForms bringt globale usings für System.Windows.Forms und System.Drawing mit. Die kollidieren mit Namen wie
+    Timer oder Binding im übrigen Code – deshalb raus damit, der Tray-Code nutzt Aliase.
+  -->
+  <Target Name="KopilotRemoveWinFormsUsings" BeforeTargets="GenerateGlobalUsings">
+    <ItemGroup>
+      <Using Remove="System.Windows.Forms" />
+      <Using Remove="System.Drawing" />
+    </ItemGroup>
+  </Target>
 
   <ItemGroup>
     <Content Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

@@ -1,18 +1,26 @@
 using Kopilot;
+using Kopilot.Desktop;
 using Kopilot.Hosting;
 using Kopilot.Remote;
 using Microsoft.Extensions.Options;
 
 // Kopilot – MCP-Server, der Daten aus Microsoft Flight Simulator 2024 an Claude weitergibt.
 //
+//   Kopilot.exe                    → HTTP-Modus mit Tray-Symbol und Dashboard (http://127.0.0.1:5155/), MCP unter /mcp
 //   Kopilot.exe --stdio            → MCP über stdin/stdout (Claude Desktop startet den Prozess selbst)
-//   Kopilot.exe [--http]           → MCP über Streamable HTTP (http://127.0.0.1:5155/mcp), geschützt per Token/OAuth
+//   Kopilot.exe --console          → zusätzlich ein Konsolenfenster mit dem Log (Fehlersuche)
+//   Kopilot.exe --no-tray          → ohne Tray-Symbol
 //   Kopilot.exe --generate-secret  → zufälliges Geheimnis für BearerToken / ConsentPassword ausgeben
 //
-// Ohne Schalter entscheidet Kopilot:Transport in appsettings(.Local).json.
+// Ohne --stdio/--http entscheidet Kopilot:Transport in appsettings(.Local).json.
 
-if (args.Any(a => string.Equals(a, "--generate-secret", StringComparison.OrdinalIgnoreCase)))
+static bool Has(string[] args, string flag) => args.Any(a => string.Equals(a, flag, StringComparison.OrdinalIgnoreCase));
+
+if (Has(args, "--generate-secret"))
 {
+    // Kopilot ist eine Windows-Anwendung ohne eigene Konsole – an die aufrufende Konsole anhängen.
+    NativeConsole.AttachToParent();
+    Console.WriteLine();
     Console.WriteLine(Secrets.NewToken());
     return;
 }
@@ -28,8 +36,9 @@ if (transport == KopilotTransport.Stdio)
     });
     KopilotConfiguration.AddLocalSettings(builder.Configuration, AppContext.BaseDirectory, KopilotConfiguration.FilterSwitches(args));
 
-    // Im stdio-Modus gehört stdout exklusiv dem MCP-Protokoll – alle Logs gehen nach stderr.
+    // Im stdio-Modus gehört stdout exklusiv dem MCP-Protokoll – alle Logs gehen nach stderr und in die Logdatei.
     builder.Logging.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
+    AddFileLog(builder.Logging, builder.Configuration, builder.Services, "stdio");
 
     builder.Services.AddKopilotCore(builder.Configuration);
     builder.Services
@@ -41,15 +50,47 @@ if (transport == KopilotTransport.Stdio)
 }
 else
 {
-    // Umlaute und Sonderzeichen in der Konsole korrekt anzeigen (nur HTTP-Modus, stdio bleibt unangetastet)
-    Console.OutputEncoding = System.Text.Encoding.UTF8;
+    if (Has(args, "--console"))
+    {
+        NativeConsole.Open();
+    }
+
+    if (NativeConsole.HasConsole)
+    {
+        // Umlaute in der Konsole korrekt anzeigen. Ohne Konsole würde das Setzen scheitern.
+        try
+        {
+            Console.OutputEncoding = System.Text.Encoding.UTF8;
+        }
+        catch (IOException)
+        {
+        }
+    }
 
     var builder = HttpHost.CreateBuilder(args);
+    var logFile = AddFileLog(builder.Logging, builder.Configuration, builder.Services, "http");
     HttpHost.AddServices(builder);
+
+    var url = builder.Configuration.GetSection(KopilotOptions.Section).Get<KopilotOptions>()?.HttpUrl ?? new KopilotOptions().HttpUrl;
+    var dashboardUrl = url.TrimEnd('/') + "/";
+
+    // Nur eine Instanz im HTTP-Modus: Ein zweiter Start öffnet einfach das Dashboard der laufenden Instanz.
+    using var instance = new Mutex(initiallyOwned: true, $"Local\\Kopilot-{new Uri(url).Port}", out var firstInstance);
+    if (!firstInstance)
+    {
+        OpenBrowser(dashboardUrl);
+        return;
+    }
+
+    if (OperatingSystem.IsWindows() && !Has(args, "--no-tray"))
+    {
+        builder.Services.AddSingleton(new DesktopInfo(dashboardUrl, logFile, Has(args, "--autostart")));
+        builder.Services.AddHostedService<TrayService>();
+    }
+
     var app = builder.Build();
     HttpHost.Configure(app);
 
-    var url = app.Services.GetRequiredService<IOptions<KopilotOptions>>().Value.HttpUrl;
     if (!KopilotConfiguration.IsLoopbackUrl(url, out var reason))
     {
         app.Logger.LogCritical("{Reason}", reason);
@@ -57,6 +98,37 @@ else
         return;
     }
 
-    app.Logger.LogInformation("Kopilot HTTP-Modus: {Url} (MCP-Endpunkt: {McpUrl})", url, url.TrimEnd('/') + "/mcp");
+    app.Logger.LogInformation("Kopilot {Version} HTTP-Modus: Dashboard {Dashboard}, MCP-Endpunkt {McpUrl}", typeof(KopilotOptions).Assembly.GetName().Version?.ToString(3), dashboardUrl, url.TrimEnd('/') + "/mcp");
     await app.RunAsync(url);
+}
+
+// Logdatei unter %LOCALAPPDATA%\Kopilot\logs (bzw. Kopilot:DataDirectory\logs) plus Puffer fürs Dashboard.
+static string? AddFileLog(ILoggingBuilder logging, IConfiguration configuration, IServiceCollection services, string mode)
+{
+    var buffer = new LogBuffer();
+    services.AddSingleton(buffer);
+    try
+    {
+        var options = configuration.GetSection(KopilotOptions.Section).Get<KopilotOptions>() ?? new KopilotOptions();
+        var directory = Path.Combine(options.ResolveDataDirectory(), "logs");
+        var provider = new FileLoggerProvider(directory, mode == "stdio" ? "kopilot-stdio.log" : "kopilot.log", buffer);
+        logging.AddProvider(provider);
+        return provider.FilePath;
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+    {
+        Console.Error.WriteLine($"Logdatei nicht verfügbar ({mode}): {ex.Message}");
+        return null;
+    }
+}
+
+static void OpenBrowser(string url)
+{
+    try
+    {
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true })?.Dispose();
+    }
+    catch (System.ComponentModel.Win32Exception)
+    {
+    }
 }

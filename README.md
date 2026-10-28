@@ -103,13 +103,33 @@ Im Ordner `C:\Tools\Kopilot` müssen nach dem Veröffentlichen `Kopilot.exe`, `M
 ## Erster Test im Browser
 
 1. MSFS 2024 starten und einen Flug laden.
-2. `C:\Tools\Kopilot\Kopilot.exe` starten. Ohne Parameter läuft der HTTP-Modus (einstellbar über `Kopilot:Transport`).
-3. Im Browser öffnen. Die Prüfseiten funktionieren nur lokal, über den Tunnel sind sie gesperrt:
-   - <http://127.0.0.1:5155/> zeigt den Status, dort sollte `"connected": true` stehen
-   - <http://127.0.0.1:5155/state> zeigt den Flugzustand
-   - <http://127.0.0.1:5155/systems>, `/nav`, `/env`, `/profile`
-   - `/warnings`, `/alerts`, `/monitoring`, `/atc`, `/plan`, `/progress`
-   - `http://127.0.0.1:5155/read?name=INDICATED ALTITUDE&unit=feet` liest eine einzelne Variable
+2. `C:\Tools\Kopilot\Kopilot.exe` starten. Ohne Parameter läuft der HTTP-Modus (einstellbar über `Kopilot:Transport`). Es öffnet sich kein Fenster – Kopilot sitzt im Infobereich der Taskleiste.
+3. Doppelklick auf das Symbol öffnet das **Dashboard** unter <http://127.0.0.1:5155/>.
+
+## Dashboard und Tray-Symbol
+
+Das Symbol im Infobereich zeigt den Zustand am Punkt unten rechts: grau = wartet auf MSFS, grün = verbunden, gelb = Caution aktiv, rot = Warning aktiv. Rechtsklick öffnet das Menü: Dashboard, Profile neu laden, Logdatei, Programmordner, **Mit Windows starten** und Beenden.
+
+Das Dashboard läuft im Browser, nur lokal auf dem Sim-PC (über den Tunnel ist es gesperrt). Es zeigt:
+
+- FMA-Zeile (Schub, vertikal, lateral, AP/FD/A-THR) in den Airbus-Farben
+- Flugdaten mit Speed- und Höhenziel, Master Warning/Caution als Tasten oben rechts
+- **Ansagen**: aktive Meldungen und Verlauf. Mit „Vorlesen an“ spricht der Browser jeden Callout mit einer englischen Stimme – Warnings unterbrechen alles andere. Das ist im Moment der einzige echte Push-Weg.
+- ECAM im Klartext, Route mit Fortschritt aus SimBrief, Triebwerke, Konfiguration, ATC-Bahn und Wetter
+- „Einrichtung und Diagnose“: alle Profil-Bindings mit Status geprüft/ungeprüft und aktuellem Wert, Log, Knöpfe zum Neuladen
+
+Der Regler „Helligkeit“ dimmt nur die Anzeigen – für Nachtflüge.
+
+**Log:** ohne Konsolenfenster schreibt Kopilot nach `%LOCALAPPDATA%\Kopilot\logs\kopilot.log` (die stdio-Instanz von Claude Desktop nach `kopilot-stdio.log`). Zur Fehlersuche gibt es weiterhin eine Konsole: `Kopilot.exe --console`. Ohne Tray-Symbol: `--no-tray`.
+
+Ein zweiter Start von Kopilot öffnet nur das Dashboard der laufenden Instanz.
+
+Die rohen JSON-Daten gibt es weiterhin (nur lokal):
+
+- <http://127.0.0.1:5155/status> zeigt den Status, dort sollte `"connected": true` stehen
+- <http://127.0.0.1:5155/state> zeigt den Flugzustand
+- `/systems`, `/nav`, `/env`, `/profile`, `/warnings`, `/alerts`, `/monitoring`, `/atc`, `/plan`, `/progress`
+- `http://127.0.0.1:5155/read?name=INDICATED ALTITUDE&unit=feet` liest eine einzelne Variable
 
 ### Prüfliste
 
@@ -164,15 +184,15 @@ Claude (Cloud) ──▶ https://kopilot.flo210500.com/mcp ──▶ Cloudflare 
 
 Beim OAuth-Weg registriert sich Claude selbst (Dynamic Client Registration). Beim Verbinden öffnet sich eine **Freigabeseite von Kopilot**, auf der du das Freigabe-Passwort eingibst. Danach erneuert Claude seinen Zugang selbst: Access-Token 1 Stunde, Refresh-Token 90 Tage, bei jeder Erneuerung ausgetauscht. Nach fünf falschen Passwörtern ist die Freigabe 15 Minuten gesperrt.
 
-Die Prüfseiten (`/`, `/state`, …) sind nur lokal erreichbar. Kopilot nimmt nur Anfragen an `localhost` und an den Hostnamen aus `PublicUrl` an.
+Dashboard und Prüfseiten (`/`, `/state`, …) sind nur lokal erreichbar. Kopilot nimmt nur Anfragen an `localhost` und an den Hostnamen aus `PublicUrl` an.
 
 ### 1. Geheimnisse anlegen
 
 ```bat
-C:\Tools\Kopilot\Kopilot.exe --generate-secret
+C:\Tools\Kopilot\Kopilot.exe --generate-secret | more
 ```
 
-Das gibt einen zufälligen Bearer-Token aus. Das Freigabe-Passwort denkst du dir selbst aus, mindestens 12 Zeichen.
+Das gibt einen zufälligen Bearer-Token aus. (`| more` sorgt dafür, dass die Eingabeaufforderung auf die Ausgabe wartet – Kopilot ist eine Windows-Anwendung ohne eigene Konsole.) Das Freigabe-Passwort denkst du dir selbst aus, mindestens 12 Zeichen.
 
 Dann `appsettings.Local.example.json` im Ordner `C:\Tools\Kopilot` nach **`appsettings.Local.json`** kopieren und ausfüllen:
 
@@ -198,7 +218,7 @@ setx Kopilot__Remote__ConsentPassword "<Passwort>"
 
 ### 2. Kopilot im HTTP-Modus starten
 
-`C:\Tools\Kopilot\Kopilot.exe` starten. Im Log muss stehen:
+`C:\Tools\Kopilot\Kopilot.exe` starten. Im Log (Dashboard → Einrichtung und Diagnose, oder `kopilot.log`) muss stehen:
 
 ```
 Zugriffsschutz: Bearer-Token aktiv.
@@ -287,7 +307,9 @@ Wichtig: Eine L:-Variable, die es nicht gibt, liest SimConnect als `0`. Eine 0 b
 
 ```
 src/Kopilot/
-  Program.cs              Start: --stdio (Claude Desktop) oder HTTP, --generate-secret
+  Program.cs              Start: --stdio (Claude Desktop) oder HTTP mit Tray, --console, --generate-secret
+  Dashboard/              Dashboard im Browser (HTML, eingebettete Schrift B612), Daten-API
+  Desktop/                Tray-Symbol, Autostart
   Hosting/                Transport-Auswahl, Konfiguration, HTTP-Host
   Remote/                 Bearer-Token, OAuth-Server, Freigabeseite, Token-Speicher
   Sim/SimConnectClient.cs SimConnect auf eigenem Thread, Auto-Reconnect, Werte-Cache
@@ -312,7 +334,7 @@ Jede Variable hat eine eigene SimConnect-Data-Definition. Ist ein Name in MSFS u
 - [x] v0.1: MCP-Server mit Flugzustand, Systemen, Navigation, Wetter, L:-Variablen-Profilen
 - [x] v0.3: Pilot Monitoring (Regeln, Callouts, Alerts), FBW-Profile, ECAM-Klartext, SimBrief, Ingame-ATC-Bahn
 - [ ] L:-Variablen des iniBuilds A321LR (FMA, A/THR, Master Warning, ECAM)
-- [ ] Tray-Icon und Dashboard im Browser statt Konsolenfenster
+- [x] v0.4: Tray-Symbol und Dashboard im Browser statt Konsolenfenster, Callouts per Sprachausgabe im Browser
 - [ ] WASimCommander-Anbindung (L:-Variablen auflisten, Events)
 - [ ] Callouts mit eigener Sprachausgabe (z. B. „20 Meilen – Flaps 1", 1000/500/Minimum, Retard, 100 Knoten, V1)
 - [x] Remote-Betrieb: Streamable HTTP mit Bearer-Token und OAuth, Cloudflare Tunnel
