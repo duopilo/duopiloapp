@@ -1,0 +1,15 @@
+# Build-Ausgaben
+bin/
+obj/
+publish/
+*.user
+*.suo
+.vs/
+.vscode/
+.idea/
+
+# SimConnect-DLLs aus dem MSFS-SDK werden lokal hineinkopiert, nicht eingecheckt
+lib/*.dll
+
+# Lokale Einstellungen
+appsettings.Local.json

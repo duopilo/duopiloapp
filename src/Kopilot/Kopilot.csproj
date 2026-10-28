@@ -1,0 +1,68 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Kopilot</AssemblyName>
+    <RootNamespace>Kopilot</RootNamespace>
+    <Version>0.1.0</Version>
+    <!-- SimConnect.dll ist eine native x64-Bibliothek -->
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol" Version="2.3.0" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Update="profiles\**\*.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!--
+    SimConnect-Referenz. Reihenfolge der Suche:
+      1. lib\ im Repo (DLLs manuell hineinkopiert)
+      2. Umgebungsvariable MSFS2024_SDK
+      3. Standardpfad C:\MSFS 2024 SDK\
+    Wird nichts gefunden (oder UseSimConnectStub=true gesetzt), wird gegen einen Stub gebaut.
+    Der Stub kompiliert, kann sich aber nicht mit MSFS verbinden – nur für CI.
+  -->
+  <PropertyGroup>
+    <_KopilotRepoLib>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', '..', 'lib'))</_KopilotRepoLib>
+    <_KopilotSdkRoot Condition="'$(MSFS2024_SDK)' != ''">$([MSBuild]::EnsureTrailingSlash('$(MSFS2024_SDK)'))</_KopilotSdkRoot>
+    <_KopilotSdkRoot Condition="'$(_KopilotSdkRoot)' == ''">C:\MSFS 2024 SDK\</_KopilotSdkRoot>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(UseSimConnectStub)' != 'true' and Exists('$(_KopilotRepoLib)Microsoft.FlightSimulator.SimConnect.dll')">
+    <SimConnectManagedDll>$(_KopilotRepoLib)Microsoft.FlightSimulator.SimConnect.dll</SimConnectManagedDll>
+    <SimConnectNativeDll>$(_KopilotRepoLib)SimConnect.dll</SimConnectNativeDll>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(UseSimConnectStub)' != 'true' and '$(SimConnectManagedDll)' == '' and Exists('$(_KopilotSdkRoot)SimConnect SDK\lib\managed\Microsoft.FlightSimulator.SimConnect.dll')">
+    <SimConnectManagedDll>$(_KopilotSdkRoot)SimConnect SDK\lib\managed\Microsoft.FlightSimulator.SimConnect.dll</SimConnectManagedDll>
+    <SimConnectNativeDll>$(_KopilotSdkRoot)SimConnect SDK\lib\SimConnect.dll</SimConnectNativeDll>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(SimConnectManagedDll)' != ''">
+    <Reference Include="Microsoft.FlightSimulator.SimConnect">
+      <HintPath>$(SimConnectManagedDll)</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <None Include="$(SimConnectNativeDll)" Link="SimConnect.dll" Condition="Exists('$(SimConnectNativeDll)')" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(SimConnectManagedDll)' == ''">
+    <ProjectReference Include="..\SimConnectStub\SimConnectStub.csproj" />
+  </ItemGroup>
+
+  <Target Name="KopilotSimConnectInfo" BeforeTargets="CoreCompile">
+    <Message Importance="high" Condition="'$(SimConnectManagedDll)' != ''" Text="Kopilot: SimConnect aus $(SimConnectManagedDll)" />
+    <Warning Condition="'$(SimConnectManagedDll)' == ''" Text="Kopilot: Kein MSFS-2024-SDK gefunden – Build läuft gegen den SimConnect-Stub. So kann sich Kopilot NICHT mit MSFS verbinden. Siehe README, Abschnitt 'SimConnect-SDK'." />
+    <Warning Condition="'$(SimConnectManagedDll)' != '' and !Exists('$(SimConnectNativeDll)')" Text="Kopilot: Native SimConnect.dll nicht gefunden unter $(SimConnectNativeDll). Bitte manuell neben Kopilot.exe kopieren." />
+  </Target>
+
+</Project>

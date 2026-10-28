@@ -1,0 +1,20 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    # Baut gegen den SimConnect-Stub (das MSFS-SDK gibt es auf GitHub-Runnern nicht).
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build
+        run: dotnet build Kopilot.slnx -c Release -p:UseSimConnectStub=true

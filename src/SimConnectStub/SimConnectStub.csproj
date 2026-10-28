@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Platzhalter für Microsoft.FlightSimulator.SimConnect.dll aus dem MSFS-2024-SDK.
+    Bildet nur die Teile der API nach, die Kopilot benutzt, damit der Build ohne SDK (z. B. in GitHub Actions) klappt.
+    Eine Verbindung zu MSFS ist damit NICHT möglich.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>Microsoft.FlightSimulator.SimConnect</AssemblyName>
+    <RootNamespace>Microsoft.FlightSimulator.SimConnect</RootNamespace>
+    <Nullable>disable</Nullable>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CS0067;CA1724;CA1707;CA1711</NoWarn>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,19 @@
+{
+  // Profil für den iniBuilds A321LR (MSFS 2024).
+  // Die L:-Variablen für FMA, Autobrake usw. sind noch NICHT eingetragen –
+  // die Namen finden wir im Developer Mode (Tools → Behaviors → LocalVariables)
+  // und testen sie mit dem Tool read_simvar, bevor sie hier landen.
+  //
+  // Beispiel für einen Eintrag (Name ist ein Platzhalter, nicht echt):
+  // {
+  //   "key": "fmaLateral",
+  //   "name": "L:BEISPIEL_FMA_LATERAL",
+  //   "unit": "number",
+  //   "description": "Lateraler FMA-Modus",
+  //   "values": { "0": "—", "1": "HDG", "2": "NAV", "3": "LOC" }
+  // }
+  "name": "iniBuilds A321LR",
+  "titleContains": [ "A321" ],
+  "notes": "Noch keine L:-Variablen hinterlegt. FMA-Modi kommen nach der L:var-Suche dazu.",
+  "variables": []
+}
