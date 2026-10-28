@@ -357,6 +357,13 @@ public sealed class InputTests
         Assert.Contains(profile.Actions.Single(a => a.Id == "apu.start").Requires, r => r.Variable == profile.Bindings[BindingKeys.ApuMaster].Name);
         Assert.Contains(profile.Electrical, e => e.Key == "apuGenHz");
 
+        // Engine Anti-Ice einzeln: prüft den echten Zustand ENG ANTI ICE:n (FBW schickt dafür K:ANTI_ICE_SET_ENGn)
+        var eng2 = ActionPlanner.Plan(profile.Actions.Single(a => a.Id == "antiice.eng2"), "on", profile.Limits, Air(150)).Plan!;
+        Assert.Equal("L:A32NX_BUTTON_OVHD_ANTI_ICE_ENG_2_POSITION", Assert.Single(eng2.Steps).Set);
+        Assert.Equal("Engine two anti ice on", eng2.Readback);
+        Assert.True(eng2.Check!.Independent);
+        Assert.Contains(profile.Actions, a => a.Id == "antiice.engines");
+
         // Landescheinwerfer: Stellung, Ausfahren und Stromkreis je Seite
         var landing = ActionPlanner.Plan(profile.Actions.Single(a => a.Id == "lights.landing"), "retract", profile.Limits, Air(150)).Plan!;
         Assert.Equal("Landing lights retracted", landing.Readback);

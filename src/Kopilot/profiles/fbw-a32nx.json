@@ -1020,6 +1020,30 @@
       "verified": false
     },
     {
+      "id": "antiice.eng1",
+      "area": "AntiIce",
+      "label": "Engine 1 anti-ice",
+      "parameter": { "type": "choice", "options": { "on": 1, "off": 0 } },
+      "steps": [
+        { "set": "L:A32NX_BUTTON_OVHD_ANTI_ICE_ENG_1_POSITION", "value": "{value}", "unit": "Bool" }
+      ],
+      "readback": "Engine one anti ice {value}",
+      "check": { "variable": "ENG ANTI ICE:1", "expect": "{value}", "unit": "Bool" },
+      "verified": false
+    },
+    {
+      "id": "antiice.eng2",
+      "area": "AntiIce",
+      "label": "Engine 2 anti-ice",
+      "parameter": { "type": "choice", "options": { "on": 1, "off": 0 } },
+      "steps": [
+        { "set": "L:A32NX_BUTTON_OVHD_ANTI_ICE_ENG_2_POSITION", "value": "{value}", "unit": "Bool" }
+      ],
+      "readback": "Engine two anti ice {value}",
+      "check": { "variable": "ENG ANTI ICE:2", "expect": "{value}", "unit": "Bool" },
+      "verified": false
+    },
+    {
       "id": "antiice.wing",
       "area": "AntiIce",
       "label": "Wing anti-ice",
