@@ -83,6 +83,7 @@ else
     }
 
     // Sprachausgabe nur in dieser (Tray-)Instanz – die stdio-Instanz von Claude Desktop würde sonst doppelt sprechen
+    builder.Services.AddSingleton<Kopilot.Speech.KokoroSpeechEngine>();
     builder.Services.AddSingleton<Kopilot.Speech.CalloutSpeaker>();
     builder.Services.AddSingleton<Kopilot.Speech.ISpeechOutput>(sp => sp.GetRequiredService<Kopilot.Speech.CalloutSpeaker>());
     builder.Services.AddHostedService(sp => sp.GetRequiredService<Kopilot.Speech.CalloutSpeaker>());
