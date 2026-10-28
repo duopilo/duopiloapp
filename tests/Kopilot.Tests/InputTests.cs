@@ -392,7 +392,8 @@ public sealed class InputTests
 
             foreach (var value in values)
             {
-                var result = ActionPlanner.Plan(action, value, profile.Limits, Air(150));
+                var state = action.Interlocks.Contains(Interlocks.OnGround) ? Ground() : Air(150);
+                var result = ActionPlanner.Plan(action, value, profile.Limits, state);
                 Assert.True(result.Plan is not null, $"{action.Id} = {value}: {result.Refusal}");
                 Assert.DoesNotContain("{", result.Plan!.Readback);
                 Assert.NotEmpty(result.Plan.Steps);
