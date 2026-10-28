@@ -192,10 +192,7 @@
         { "event": "A32NX.FCU_HDG_PULL" }
       ],
       "readback": "Heading {value} selected",
-      "check": {
-        "variable": "L:A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE",
-        "expect": "{value}"
-      },
+      "check": { "variable": "L:A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE", "expect": "{value}", "modulo": 360 },
       "requires": [
         { "variable": "L:A32NX_FCU_AFS_DISPLAY_TRK_FPA_MODE", "equalTo": 0, "message": "FCU steht auf TRK/FPA – erst auf HDG/VS umschalten." }
       ],

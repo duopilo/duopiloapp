@@ -269,6 +269,41 @@ public sealed class InputTests
         Assert.Contains("VFE 177", ActionPlanner.Plan(Flaps(), "FULL", mixed, Air(190)).Refusal);
     }
 
+    [Theory]
+    [InlineData(0, 360, true)]
+    [InlineData(0, 359.8, true)]
+    [InlineData(359, 1, false)]
+    [InlineData(90, 90.4, true)]
+    [InlineData(90, 450, true)]
+    public void Kurse_werden_zyklisch_verglichen(double expected, double state, bool matches)
+    {
+        Assert.Equal(matches, new ResolvedCondition("x", "number", expected, 0.5, Modulo: 360).Matches(state));
+        Assert.Equal(Math.Abs(state - expected) <= 0.5, new ResolvedCondition("x", "number", expected, 0.5).Matches(state));
+    }
+
+    [Fact]
+    public async Task Kurs_360_wird_als_360_bestaetigt()
+    {
+        var (input, backend, time) = Create();
+        backend.Profile!.Actions.Add(new ProfileAction
+        {
+            Id = "fcu.heading", Area = "FCU", Label = "FCU heading", Readback = "Heading {value} selected",
+            Parameter = new ActionParameter { Min = 0, Max = 360, Step = 1, Format = "heading" },
+            Steps = [new ActionStep { Event = "A32NX.FCU_HDG_SET", Value = J("\"{value}\"") }],
+            Check = new ActionCheck { Variable = "L:A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE", Expect = J("\"{value}\""), Modulo = 360 },
+        });
+        backend.OnEvent = (name, data) => backend.State["L:A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE"] = data;
+
+        var prepared = await input.PrepareAsync("fcu.heading", "360", default);
+        Assert.Equal("Heading 360 selected", prepared.Readback);
+        time.Now += TimeSpan.FromSeconds(2);
+        var result = await input.ConfirmAsync(prepared.Token!, "confirm", default);
+
+        Assert.True(result.Confirmed);
+        Assert.Equal(360, result.StateAfter);
+        Assert.Equal(new[] { "A32NX.FCU_HDG_SET:0" }, backend.Sent);
+    }
+
     [Fact]
     public void Steuerkurs_360_ist_000()
     {
