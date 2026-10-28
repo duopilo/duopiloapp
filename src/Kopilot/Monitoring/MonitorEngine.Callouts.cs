@@ -168,7 +168,8 @@ public sealed partial class MonitorEngine
         }
 
         // ---------------- Höhenmarken: 10 000 ft, Transition Altitude/Level
-        if (s.Airborne && p is not null && s.AltitudeFt is { } alt && p.AltitudeFt is { } palt)
+        // Sprung um mehr als 2000 ft zwischen zwei Messungen: Positionswechsel/Slew, kein echtes Durchfliegen
+        if (s.Airborne && p is not null && s.AltitudeFt is { } alt && p.AltitudeFt is { } palt && Math.Abs(alt - palt) <= MaxAltitudeStepFt)
         {
             if (Math.Abs(alt - 10000) > 500)
             {
@@ -189,7 +190,7 @@ public sealed partial class MonitorEngine
         }
 
         if (s.Airborne && p is not null && s.PressureAltitudeFt is { } pa && p.PressureAltitudeFt is { } ppa
-            && !_transitionLevelDone && s.TransitionLevelFt is { } tl && tl > 0 && s.VerticalSpeedFpm is < -300 && ppa > tl && pa <= tl)
+            && Math.Abs(pa - ppa) <= MaxAltitudeStepFt && !_transitionLevelDone && s.TransitionLevelFt is { } tl && tl > 0 && s.VerticalSpeedFpm is < -300 && ppa > tl && pa <= tl)
         {
             _transitionLevelDone = true;
             Say(Rules.PmTransition, "Transition level", $"Transition Level FL{tl / 100:000} – Höhenmesser auf QNH.");
@@ -379,6 +380,8 @@ public sealed partial class MonitorEngine
     }
 
     /// <summary>Schwelle zwischen zwei Messungen überschritten (in beide Richtungen).</summary>
+    private const double MaxAltitudeStepFt = 2000;
+
     private static bool Crossed(double before, double after, double threshold) =>
         (before < threshold && after >= threshold) || (before > threshold && after <= threshold);
 

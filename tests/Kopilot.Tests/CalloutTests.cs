@@ -131,6 +131,16 @@ public sealed class CalloutTests
     }
 
     [Fact]
+    public void Kein_Ten_thousand_bei_Hoehensprung()
+    {
+        // Positionswechsel/Slew von FL350 auf 1500 ft: kein echtes Durchfliegen
+        var engine = new MonitorEngine();
+        Feed(engine, Air(0, 35000, -2000, 250), Air(11, 35000, -2000, 250));
+
+        Assert.DoesNotContain(Feed(engine, Air(12, 1500, -2000, 250), Air(13, 1470, -2000, 250)), e => e.Rule == Rules.PmTenThousand);
+    }
+
+    [Fact]
     public void Klappen_mit_Speed_check_erst_wenn_der_Hebel_steht()
     {
         var engine = new MonitorEngine();
