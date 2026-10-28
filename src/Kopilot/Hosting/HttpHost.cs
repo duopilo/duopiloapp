@@ -33,6 +33,7 @@ public static class HttpHost
     public static void AddServices(WebApplicationBuilder builder)
     {
         builder.Services.AddKopilotCore(builder.Configuration);
+        builder.Services.AddKopilotSpeech();
         builder.Services.TryAddSingleton(new LogBuffer());
         builder.Services.AddSingleton<DashboardData>();
         builder.Services.AddSingleton<OAuthStore>();

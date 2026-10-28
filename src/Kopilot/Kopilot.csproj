@@ -8,7 +8,7 @@
     <ApplicationIcon>Assets\kopilot.ico</ApplicationIcon>
     <AssemblyName>Kopilot</AssemblyName>
     <RootNamespace>Kopilot</RootNamespace>
-    <Version>0.4.0</Version>
+    <Version>0.5.0</Version>
     <!-- SimConnect.dll ist eine native x64-Bibliothek -->
     <PlatformTarget>x64</PlatformTarget>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -19,6 +19,19 @@
   <ItemGroup>
     <PackageReference Include="ModelContextProtocol" Version="2.3.0" />
     <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.3.0" />
+    <!-- Sprachausgabe: Kokoro-82M (Apache 2.0) über KokoroSharp (MIT), ONNX Runtime auf der CPU, Wiedergabe mit NAudio -->
+    <PackageReference Include="KokoroSharp" Version="0.8.4" GeneratePathProperty="true" />
+    <PackageReference Include="KokoroSharp.CPU" Version="0.8.4" />
+    <PackageReference Include="NAudio" Version="2.2.1" />
+  </ItemGroup>
+
+  <!--
+    Stimmen: KokoroSharp kopiert beim Build alle Stimmen (auch Chinesisch usw.) nach bin, aber nicht beim Publish.
+    Ins veröffentlichte Programm kommen nur die englischen (a = amerikanisch, b = britisch), ca. 15 MB.
+    Das Modell selbst (~310 MB) lädt Kopilot beim ersten Start nach %LOCALAPPDATA%\Kopilot\models.
+  -->
+  <ItemGroup Condition="'$(PkgKokoroSharp)' != ''">
+    <None Include="$(PkgKokoroSharp)\content\voices\a?_*.npy;$(PkgKokoroSharp)\content\voices\b?_*.npy" Link="voices\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
   </ItemGroup>
 
   <!-- Dashboard, Schriften (B612, SIL OFL 1.1) und Symbole stecken in der Kopilot.dll -->

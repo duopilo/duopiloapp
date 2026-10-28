@@ -53,7 +53,38 @@ Nach dem Laden eines Flugs, einem Flugzeugwechsel oder einem Air-Start schweigt 
 "Kopilot": { "Monitoring": { "DisabledRules": [ "SPEED_DEVIATION" ] } }
 ```
 
-**Push:** Claude.ai und der Sprachmodus können keine Nachrichten vom Server empfangen. Claude sieht Meldungen über `activeAlerts` in jeder Antwort oder ruft `wait_for_alerts` in einer Schleife auf. Echte Push-Callouts kommen mit der eigenen Sprachausgabe (Roadmap).
+**Push:** Claude.ai und der Sprachmodus können keine Nachrichten vom Server empfangen. Claude sieht Meldungen über `activeAlerts` in jeder Antwort oder ruft `wait_for_alerts` in einer Schleife auf. Den echten Push übernimmt Kopilot selbst: Die Callouts werden mit einer eigenen Stimme gesprochen, siehe nächster Abschnitt.
+
+## Sprachausgabe
+
+Kopilot spricht die Callouts selbst – lokal, ohne Cloud und auch ohne offenes Dashboard. Dafür steckt [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) (Apache 2.0) über [KokoroSharp](https://github.com/Lyrcaxis/KokoroSharp) (MIT) in Kopilot, gerechnet mit ONNX Runtime auf der CPU, abgespielt mit NAudio.
+
+- **Erster Start:** Kopilot lädt das Sprachmodell (~310 MB) nach `%LOCALAPPDATA%\Kopilot\models\kokoro.onnx`. Fortschritt im Dashboard und im Tray-Menü. Danach startet die Stimme in ein bis zwei Sekunden.
+- **Cockpit-Logik:** Warnings unterbrechen alles Leisere, Callouts älter als 5 s verfallen statt verspätet zu kommen, gleiche Callouts stehen nicht doppelt in der Schlange. Die festen Callouts (Gear speed, Sink rate, Autopilot off …) werden vorab berechnet und kommen ohne Verzögerung.
+- **ECAM-Titel** werden fürs Sprechen ausgeschrieben: „ENG 1 FIRE" → *engine 1 fire*, „HYD G RSVR LO PR" → *hydraulic green reservoir low pressure*, APU wird buchstabiert.
+- **Bedienung:** Im Dashboard unter „Ansagen" an/aus, Stimme wählen (spricht gleich eine Probe) und Test. Im Tray-Menü „Callouts sprechen". Die Auswahl merkt sich Kopilot in `%LOCALAPPDATA%\Kopilot\speech.json`.
+- **Nur eine Stimme:** Gesprochen wird nur in der HTTP-Instanz mit Tray-Symbol, nicht in der stdio-Instanz von Claude Desktop – sonst käme jeder Callout doppelt. Läuft die eigene Stimme, schweigt der Browser. Ist sie aus oder fehlgeschlagen, liest wie bisher der Browser vor.
+
+Stimmen (Auswahl, alle englisch): `bm_george` (Standard, britisch, männlich), `bm_lewis`, `bf_emma`, `am_michael`, `am_fenrir`, `af_heart` (gilt als die natürlichste), `af_bella`. a = amerikanisch, b = britisch, f/m = weiblich/männlich.
+
+```jsonc
+"Kopilot": {
+  "Speech": {
+    "Enabled": true,              // false = Modul gar nicht laden
+    "Voice": "bm_george",
+    "Speed": 1.1,                 // 0.7–1.4
+    "Volume": 1.0,
+    "OutputDevice": "",           // Teil des Gerätenamens, z. B. "Headset" – leer = Windows-Standard
+    "MinSeverity": "Info",        // oder "Caution" / "Warning"
+    "MutedRules": [],             // nur anzeigen, nicht sprechen, z. B. [ "RUNWAY_ASSIGNED" ]
+    "MaxAgeSeconds": 5,
+    "Threads": 4,                 // CPU-Threads für die Synthese – klein halten, damit MSFS nicht ruckelt
+    "ModelPath": ""               // eigenes kokoro.onnx statt Download
+  }
+}
+```
+
+Ohne Internet beim ersten Start: `kokoro.onnx` aus den [KokoroSharpBinaries](https://github.com/Lyrcaxis/KokoroSharpBinaries/releases) (v2.0.0) manuell nach `%LOCALAPPDATA%\Kopilot\models\` legen.
 
 ## SimBrief
 
@@ -108,13 +139,13 @@ Im Ordner `C:\Tools\Kopilot` müssen nach dem Veröffentlichen `Kopilot.exe`, `M
 
 ## Dashboard und Tray-Symbol
 
-Das Symbol im Infobereich zeigt den Zustand am Punkt unten rechts: grau = wartet auf MSFS, grün = verbunden, gelb = Caution aktiv, rot = Warning aktiv. Rechtsklick öffnet das Menü: Dashboard, Profile neu laden, Logdatei, Programmordner, **Mit Windows starten** und Beenden.
+Das Symbol im Infobereich zeigt den Zustand am Punkt unten rechts: grau = wartet auf MSFS, grün = verbunden, gelb = Caution aktiv, rot = Warning aktiv. Rechtsklick öffnet das Menü: Dashboard, Profile neu laden, Logdatei, Programmordner, **Callouts sprechen**, **Mit Windows starten** und Beenden.
 
 Das Dashboard läuft im Browser, nur lokal auf dem Sim-PC (über den Tunnel ist es gesperrt). Es zeigt:
 
 - FMA-Zeile (Schub, vertikal, lateral, AP/FD/A-THR) in den Airbus-Farben
 - Flugdaten mit Speed- und Höhenziel, Master Warning/Caution als Tasten oben rechts
-- **Ansagen**: aktive Meldungen und Verlauf. Mit „Vorlesen an“ spricht der Browser jeden Callout mit einer englischen Stimme – Warnings unterbrechen alles andere. Das ist im Moment der einzige echte Push-Weg.
+- **Ansagen**: aktive Meldungen und Verlauf. „Vorlesen an/aus“, Stimme und Test steuern die eigene Kopilot-Stimme (siehe [Sprachausgabe](#sprachausgabe)). Ist die aus oder nicht verfügbar, spricht stattdessen der Browser – oben rechts steht, welche Stimme gerade aktiv ist.
 - ECAM im Klartext, Route mit Fortschritt aus SimBrief, Triebwerke, Konfiguration, ATC-Bahn und Wetter
 - „Einrichtung und Diagnose“: alle Profil-Bindings mit Status geprüft/ungeprüft und aktuellem Wert, Log, Knöpfe zum Neuladen
 
@@ -320,10 +351,11 @@ src/Kopilot/
   FlightPlan/             SimBrief-OFP, Routen- und Fortschrittsrechnung
   Atc/                    Ingame-ATC, Bahnnummer/-bezeichner, Phraseologie
   Monitoring/             Regeln (MonitorEngine), Alert-Bus, Hintergrunddienst
+  Speech/                 Sprachausgabe: Kokoro-Synthese, Wiedergabe (NAudio), Warteschlange, ECAM-Text zum Sprechen
   Tools/                  MCP-Tools
   profiles/               Flugzeugprofile (JSON)
 src/SimConnectStub/       Platzhalter-API für CI-Builds ohne MSFS-SDK
-tests/Kopilot.Tests/      Tests (OAuth, Zugriffsschutz, Monitoring-Regeln, ECAM, SimBrief, Profile) – laufen ohne MSFS
+tests/Kopilot.Tests/      Tests (OAuth, Zugriffsschutz, Monitoring-Regeln, Sprachausgabe, ECAM, SimBrief, Profile) – laufen ohne MSFS
 docs/cloudflared.md       Anleitung Cloudflare Tunnel
 ```
 
@@ -336,6 +368,7 @@ Jede Variable hat eine eigene SimConnect-Data-Definition. Ist ein Name in MSFS u
 - [ ] L:-Variablen des iniBuilds A321LR (FMA, A/THR, Master Warning, ECAM)
 - [x] v0.4: Tray-Symbol und Dashboard im Browser statt Konsolenfenster, Callouts per Sprachausgabe im Browser
 - [ ] WASimCommander-Anbindung (L:-Variablen auflisten, Events)
-- [ ] Callouts mit eigener Sprachausgabe (z. B. „20 Meilen – Flaps 1", 1000/500/Minimum, Retard, 100 Knoten, V1)
+- [x] v0.5: Eigene Sprachausgabe der Callouts (Kokoro, lokal), Steuerung im Dashboard und Tray
+- [ ] Weitere Callouts (z. B. „20 Meilen – Flaps 1", 1000/500/Minimum, Retard, 100 Knoten, V1)
 - [x] Remote-Betrieb: Streamable HTTP mit Bearer-Token und OAuth, Cloudflare Tunnel
 - [ ] Sprachmodus mit dem Remote-Connector testen

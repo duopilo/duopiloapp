@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Text.Json;
 using Kopilot.FlightPlan;
 using Kopilot.Hosting;
@@ -92,6 +93,32 @@ public sealed class DashboardTests : IAsyncLifetime
 
         Assert.Equal(HttpStatusCode.BadRequest, without.StatusCode);
         Assert.Equal(HttpStatusCode.OK, with.StatusCode);
+    }
+
+    [Fact]
+    public async Task Sprachausgabe_aus_dann_liest_der_Browser_und_Knoepfe_brauchen_den_Header()
+    {
+        var client = _app.Local();
+        using var data = await client.GetAsync("/api/dashboard");
+        using var json = JsonDocument.Parse(await data.Content.ReadAsStringAsync());
+        var speech = json.RootElement.GetProperty("speech");
+
+        using var without = await client.PostAsync("/api/speech", JsonContent.Create(new { enabled = false }));
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/speech") { Content = JsonContent.Create(new { enabled = false }) };
+        request.Headers.Add("X-Kopilot", "1");
+        using var with = await client.SendAsync(request);
+        using var answer = JsonDocument.Parse(await with.Content.ReadAsStringAsync());
+
+        using var remote = await _app.Remote().PostAsync("/api/speech/test", JsonContent.Create(new { }));
+
+        Assert.False(speech.GetProperty("available").GetBoolean());
+        Assert.Equal("Off", speech.GetProperty("state").GetString());
+        Assert.Equal(HttpStatusCode.BadRequest, without.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, with.StatusCode);
+        Assert.Equal(JsonValueKind.String, answer.RootElement.GetProperty("error").ValueKind);
+        Assert.False(answer.RootElement.GetProperty("speech").GetProperty("available").GetBoolean());
+        Assert.Equal(HttpStatusCode.NotFound, remote.StatusCode);
     }
 
     [Fact]

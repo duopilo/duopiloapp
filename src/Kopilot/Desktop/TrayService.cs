@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Kopilot.Aircraft;
 using Kopilot.Monitoring;
 using Kopilot.Sim;
+using Kopilot.Speech;
 using Microsoft.Win32;
 using Drawing = System.Drawing;
 using WinForms = System.Windows.Forms;
@@ -24,6 +25,7 @@ public sealed class TrayService(
     ProfileStore profiles,
     AlertBus alerts,
     MonitoringService monitoring,
+    CalloutSpeaker speaker,
     IHostApplicationLifetime lifetime,
     ILogger<TrayService> log) : IHostedService
 {
@@ -44,7 +46,7 @@ public sealed class TrayService(
                 var sync = new WinForms.WindowsFormsSynchronizationContext();
                 SynchronizationContext.SetSynchronizationContext(sync);
                 _ui = sync;
-                _context = new TrayContext(info, sim, profiles, alerts, monitoring, lifetime);
+                _context = new TrayContext(info, sim, profiles, alerts, monitoring, speaker, lifetime);
             }
             catch (Exception ex)
             {
@@ -86,22 +88,25 @@ public sealed class TrayService(
         private readonly ProfileStore _profiles;
         private readonly AlertBus _alerts;
         private readonly MonitoringService _monitoring;
+        private readonly CalloutSpeaker _speaker;
         private readonly IHostApplicationLifetime _lifetime;
 
         private readonly WinForms.NotifyIcon _icon;
         private readonly WinForms.ToolStripMenuItem _statusItem;
         private readonly WinForms.ToolStripMenuItem _autostartItem;
+        private readonly WinForms.ToolStripMenuItem _speechItem;
         private readonly WinForms.Timer _timer;
         private readonly Dictionary<string, Drawing.Icon> _icons = [];
         private string _state = "";
 
-        public TrayContext(DesktopInfo info, SimConnectClient sim, ProfileStore profiles, AlertBus alerts, MonitoringService monitoring, IHostApplicationLifetime lifetime)
+        public TrayContext(DesktopInfo info, SimConnectClient sim, ProfileStore profiles, AlertBus alerts, MonitoringService monitoring, CalloutSpeaker speaker, IHostApplicationLifetime lifetime)
         {
             _info = info;
             _sim = sim;
             _profiles = profiles;
             _alerts = alerts;
             _monitoring = monitoring;
+            _speaker = speaker;
             _lifetime = lifetime;
 
             foreach (var name in new[] { "waiting", "ok", "caution", "warning" })
@@ -117,6 +122,7 @@ public sealed class TrayService(
             var dashboard = new WinForms.ToolStripMenuItem("Dashboard öffnen", null, (_, _) => Open(_info.DashboardUrl));
             dashboard.Font = new Drawing.Font(dashboard.Font, Drawing.FontStyle.Bold);
             _autostartItem = new WinForms.ToolStripMenuItem("Mit Windows starten", null, (_, _) => ToggleAutostart()) { Checked = Autostart.IsEnabled() };
+            _speechItem = new WinForms.ToolStripMenuItem("Callouts sprechen", null, (_, _) => _speaker.SetEnabled(!_speaker.Enabled));
 
             var menu = new WinForms.ContextMenuStrip();
             menu.Items.Add(_statusItem);
@@ -126,6 +132,7 @@ public sealed class TrayService(
             menu.Items.Add(new WinForms.ToolStripMenuItem("Logdatei öffnen", null, (_, _) => Open(_info.LogFile)) { Enabled = _info.LogFile is not null });
             menu.Items.Add(new WinForms.ToolStripMenuItem("Programmordner öffnen", null, (_, _) => Open(AppContext.BaseDirectory)));
             menu.Items.Add(new WinForms.ToolStripSeparator());
+            menu.Items.Add(_speechItem);
             menu.Items.Add(_autostartItem);
             menu.Items.Add(new WinForms.ToolStripSeparator());
             menu.Items.Add(new WinForms.ToolStripMenuItem("Beenden", null, (_, _) => _lifetime.StopApplication()));
@@ -133,6 +140,7 @@ public sealed class TrayService(
             {
                 Refresh();
                 _autostartItem.Checked = Autostart.IsEnabled();
+                RefreshSpeechItem();
             };
 
             _icon = new WinForms.NotifyIcon
@@ -200,6 +208,21 @@ public sealed class TrayService(
             _statusItem.Text = !connected ? "Wartet auf Microsoft Flight Simulator"
                 : _sim.Status.Paused ? "Sim pausiert"
                 : $"Verbunden: {_sim.ActiveProfile?.Name ?? "kein Profil"} (Phase {_monitoring.Phase})";
+        }
+
+        private void RefreshSpeechItem()
+        {
+            var state = _speaker.State;
+            _speechItem.Visible = _speaker.Available;
+            _speechItem.Enabled = state is not SpeechState.Failed;
+            _speechItem.Checked = _speaker.Enabled && state is not SpeechState.Failed;
+            _speechItem.Text = state switch
+            {
+                SpeechState.Downloading => "Callouts sprechen (lädt Sprachmodell …)",
+                SpeechState.Loading => "Callouts sprechen (startet …)",
+                SpeechState.Failed => "Callouts sprechen (Fehler – siehe Log)",
+                _ => "Callouts sprechen",
+            };
         }
 
         private void ReloadProfiles()

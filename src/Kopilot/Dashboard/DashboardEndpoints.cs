@@ -2,12 +2,13 @@ using Kopilot.Aircraft;
 using Kopilot.FlightPlan;
 using Kopilot.Hosting;
 using Kopilot.Sim;
+using Kopilot.Speech;
 using Kopilot.Tools;
 
 namespace Kopilot.Dashboard;
 
 /// <summary>
-/// Das Dashboard im Browser (nur lokal): Seite, Schriften, Daten-API und zwei Knöpfe (Profile neu laden, SimBrief laden).
+/// Das Dashboard im Browser (nur lokal): Seite, Schriften, Daten-API und Knöpfe (Profile neu laden, SimBrief laden, Sprachausgabe).
 /// Schreibende Aufrufe verlangen den Header "X-Kopilot: 1" – fremde Webseiten im selben Browser können ihn
 /// nicht ohne CORS-Freigabe setzen.
 /// </summary>
@@ -82,7 +83,47 @@ public static class DashboardEndpoints
             var ofp = await simBrief.GetAsync(refresh: true, ct);
             return Results.Content(Json.Serialize(new { loaded = ofp is not null, error = simBrief.LastError }), "application/json");
         }).LocalOnly();
+
+        // Sprachausgabe: {"enabled": true|false} und/oder {"voice": "bm_george"}
+        app.MapPost("/api/speech", (HttpContext context, CalloutSpeaker speaker, SpeechRequest? request) =>
+        {
+            if (!IsDashboardAction(context) || request is null)
+            {
+                return Results.BadRequest();
+            }
+
+            if (!speaker.Available)
+            {
+                return SpeechResult(speaker, "Die eigene Sprachausgabe ist in appsettings.Local.json ausgeschaltet (Kopilot → Speech → Enabled).");
+            }
+
+            string? error = null;
+            if (request.Voice is { } voice)
+            {
+                error = speaker.SetVoice(voice);
+            }
+
+            if (request.Enabled is { } enabled && error is null)
+            {
+                speaker.SetEnabled(enabled);
+            }
+
+            return SpeechResult(speaker, error);
+        }).LocalOnly();
+
+        app.MapPost("/api/speech/test", (HttpContext context, CalloutSpeaker speaker) =>
+        {
+            if (!IsDashboardAction(context))
+            {
+                return Results.BadRequest();
+            }
+
+            return SpeechResult(speaker, speaker.Test() ? null : "Die Sprachausgabe ist noch nicht bereit.");
+        }).LocalOnly();
     }
+
+    private static IResult SpeechResult(CalloutSpeaker speaker, string? error) =>
+        Results.Content(Json.Serialize(new { speech = speaker.Status(), error }), "application/json");
 
     private static bool IsDashboardAction(HttpContext context) =>
         context.Request.Headers.TryGetValue(ActionHeader, out var value) && value == "1";
@@ -95,3 +136,6 @@ public static class DashboardEndpoints
         return stream is null ? Results.NotFound() : Results.Stream(stream, contentType);
     }
 }
+
+/// <summary>Body von POST /api/speech. Nicht gesetzte Felder bleiben unverändert.</summary>
+public sealed record SpeechRequest(bool? Enabled, string? Voice);

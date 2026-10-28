@@ -311,6 +311,7 @@ select.btn { padding: 4px 6px; max-width: 190px; }
   <section class="du call" aria-label="Ansagen" aria-live="polite">
     <h2>Ansagen
       <span class="right">
+        <span class="dim" id="speechState"></span>
         <button class="btn" id="speak" type="button" aria-pressed="false">Vorlesen aus</button>
         <select class="btn" id="voice" aria-label="Stimme"></select>
         <button class="btn" id="speakTest" type="button">Test</button>
@@ -409,6 +410,10 @@ const ui = {
   events: [],
   speech: load("speech", false),
   voice: load("voice", ""),
+  native: false,        // eigene Kopilot-Stimme (Kokoro) statt Browser
+  nativeEnabled: false,
+  nativeVoices: "",
+  speechNote: null,     // kurze Rückmeldung im Kopf der Ansagen
   ack: { warn: false, caut: false },
   lit: { warn: false, caut: false },
 };
@@ -546,7 +551,7 @@ function renderCallouts(d) {
 
   if (ui.spokenId === null) ui.spokenId = a.lastId; // beim Laden nichts Altes vorlesen
   const fresh = a.events.filter((e) => e.id > ui.spokenId && e.callout && e.kind !== "Clear").sort((x, y) => x.id - y.id);
-  for (const e of fresh) speak(e.callout, e.severity === "Warning");
+  if (!ui.native) for (const e of fresh) speak(e.callout, e.severity === "Warning"); // sonst spricht Kopilot selbst
   ui.spokenId = Math.max(ui.spokenId, a.lastId);
   ui.lastId = a.lastId;
 
@@ -578,9 +583,68 @@ function renderCallouts(d) {
   }).join("") || `<li><span class="t"></span><span class="ms">Noch keine Meldungen in dieser Sitzung.</span></li>`);
 }
 
-/* Sprachausgabe im Browser – englische Stimme, Warnings unterbrechen alles andere */
+/* Sprachausgabe: bevorzugt die eigene Kopilot-Stimme (Kokoro, spricht auch ohne offenes Dashboard).
+   Ist sie ausgeschaltet oder fehlgeschlagen, liest wie bisher der Browser vor. */
+function voiceLabel(v) {
+  const name = v.slice(3);
+  return name.charAt(0).toUpperCase() + name.slice(1) + (v[0] === "b" ? " (UK, " : " (US, ") + (v[1] === "f" ? "w)" : "m)");
+}
+function renderSpeech(d) {
+  const s = d.speech;
+  const native = !!(s && s.available && s.state !== "Failed");
+  if (native !== ui.native) {
+    ui.native = native;
+    ui.nativeVoices = "";
+    if (native) { if ("speechSynthesis" in window) speechSynthesis.cancel(); }
+    else fillVoices();
+  }
+
+  let state, cls = "dim";
+  if (native) {
+    ui.nativeEnabled = s.enabled;
+    const key = s.voices.join(",");
+    const sel = $("voice");
+    if (ui.nativeVoices !== key) {
+      ui.nativeVoices = key;
+      sel.innerHTML = s.voices.map((v) => `<option value="${esc(v)}">${esc(voiceLabel(v))}</option>`).join("") || `<option value="">Keine Stimme</option>`;
+    }
+    if (sel.value !== s.voice && document.activeElement !== sel) sel.value = s.voice;
+    $("speak").disabled = false;
+    sel.disabled = false;
+    $("speakTest").disabled = s.state !== "Ready";
+    $("speak").title = s.device ? "Ausgabe: " + s.device : "";
+    renderSpeechButton(s.enabled);
+    state = s.state === "Downloading" ? `lädt Sprachmodell ${Math.round((s.downloadProgress || 0) * 100)} %`
+      : s.state === "Loading" ? "Kopilot-Stimme startet …" : "Kopilot-Stimme";
+  } else {
+    const can = "speechSynthesis" in window;
+    $("speak").disabled = !can;
+    $("speakTest").disabled = !can;
+    $("voice").disabled = !can;
+    $("speak").title = "";
+    renderSpeechButton(ui.speech);
+    state = "Browser-Stimme";
+    if (s && s.state === "Failed") { state += " (Kopilot-Stimme: Fehler, siehe Log)"; cls = "a"; }
+  }
+
+  if (ui.speechNote && Date.now() < ui.speechNote.until) { state = ui.speechNote.text; cls = "a"; }
+  setText("speechState", state, cls);
+}
+async function speechAction(url, body) {
+  try {
+    const r = await fetch(url, { method: "POST", headers: { "X-Kopilot": "1", "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+    const j = await r.json();
+    ui.speechNote = j.error ? { text: j.error, until: Date.now() + 6000 } : null;
+    if (j.speech) renderSpeech({ speech: j.speech });
+  } catch {
+    ui.speechNote = { text: "Kopilot hat nicht geantwortet.", until: Date.now() + 6000 };
+  }
+}
+
+/* Browser-Stimme – englisch, Warnings unterbrechen alles andere */
 function voices() { return ("speechSynthesis" in window) ? speechSynthesis.getVoices().filter((v) => v.lang && v.lang.toLowerCase().startsWith("en")) : []; }
 function fillVoices() {
+  if (ui.native) return;
   const sel = $("voice");
   const list = voices();
   const current = ui.voice;
@@ -601,20 +665,29 @@ function speak(text, urgent) {
   u.rate = 1.05;
   speechSynthesis.speak(u);
 }
-function renderSpeechButton() {
+function renderSpeechButton(on) {
   const b = $("speak");
-  b.setAttribute("aria-pressed", ui.speech ? "true" : "false");
-  b.textContent = ui.speech ? "Vorlesen an" : "Vorlesen aus";
+  const pressed = on ? "true" : "false";
+  if (b.getAttribute("aria-pressed") !== pressed) b.setAttribute("aria-pressed", pressed);
+  const text = on ? "Vorlesen an" : "Vorlesen aus";
+  if (b.textContent !== text) b.textContent = text;
 }
 $("speak").addEventListener("click", () => {
-  ui.speech = !ui.speech; save("speech", ui.speech); renderSpeechButton();
+  if (ui.native) { speechAction("/api/speech", { enabled: !ui.nativeEnabled }); return; }
+  ui.speech = !ui.speech; save("speech", ui.speech); renderSpeechButton(ui.speech);
   if (ui.speech) speak("Callouts on", false);
 });
-$("speakTest").addEventListener("click", () => { const was = ui.speech; ui.speech = true; speak("Runway two three left assigned", false); ui.speech = was; });
-$("voice").addEventListener("change", (e) => { ui.voice = e.target.value; save("voice", ui.voice); });
+$("speakTest").addEventListener("click", () => {
+  if (ui.native) { speechAction("/api/speech/test"); return; }
+  const was = ui.speech; ui.speech = true; speak("Runway two three left assigned", false); ui.speech = was;
+});
+$("voice").addEventListener("change", (e) => {
+  if (ui.native) { speechAction("/api/speech", { voice: e.target.value }); return; }
+  ui.voice = e.target.value; save("voice", ui.voice);
+});
 if ("speechSynthesis" in window) { fillVoices(); speechSynthesis.onvoiceschanged = fillVoices; }
 else { $("speak").disabled = true; $("speakTest").disabled = true; $("voice").disabled = true; }
-renderSpeechButton();
+renderSpeechButton(ui.speech);
 
 /* ------------------------------------------------------------------ ECAM */
 function renderEcam(s) {
@@ -799,6 +872,7 @@ function render(d) {
   renderHeader(d);
   renderFma(d.sim);
   renderPfd(d.sim);
+  renderSpeech(d);
   renderCallouts(d);
   renderEcam(d.sim);
   renderRoute(d);

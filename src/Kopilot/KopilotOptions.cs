@@ -1,3 +1,5 @@
+using Kopilot.Monitoring;
+
 namespace Kopilot;
 
 /// <summary>Einstellungen aus appsettings.json / appsettings.Local.json / Umgebungsvariablen, Abschnitt "Kopilot".</summary>
@@ -38,6 +40,9 @@ public sealed class KopilotOptions
     /// <summary>Aktives Monitoring.</summary>
     public MonitoringOptions Monitoring { get; set; } = new();
 
+    /// <summary>Eigene Sprachausgabe der Callouts (Kokoro, lokal). Nur im HTTP-Modus mit Tray.</summary>
+    public SpeechOptions Speech { get; set; } = new();
+
     /// <summary>Ordner für Caches (ECAM-Tabellen). Leer = %LOCALAPPDATA%\Kopilot.</summary>
     public string DataDirectory { get; set; } = "";
 
@@ -73,6 +78,44 @@ public sealed class MonitoringOptions
 
     /// <summary>Wie viele vergangene Ereignisse für get_alerts aufgehoben werden.</summary>
     public int HistorySize { get; set; } = 500;
+}
+
+/// <summary>
+/// Sprachausgabe mit Kokoro-82M (lokal, ONNX auf der CPU). Das Modell (~310 MB) wird beim ersten Start
+/// nach <c>%LOCALAPPDATA%\Kopilot\models</c> geladen. An/aus und Stimme lassen sich im Dashboard umschalten,
+/// diese Auswahl wird in <c>speech.json</c> gemerkt und hat Vorrang vor den Werten hier.
+/// </summary>
+public sealed class SpeechOptions
+{
+    /// <summary>false = Modul gar nicht starten (kein Modell, kein Download). Das Dashboard liest dann wieder im Browser vor.</summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>Kokoro-Stimme, z. B. bm_george, am_michael, af_heart (a = amerikanisch, b = britisch, f/m = weiblich/männlich).</summary>
+    public string Voice { get; set; } = "bm_george";
+
+    /// <summary>Sprechtempo, 1.0 = normal (0.7–1.4).</summary>
+    public double Speed { get; set; } = 1.1;
+
+    /// <summary>Lautstärke 0.0–1.0.</summary>
+    public double Volume { get; set; } = 1.0;
+
+    /// <summary>Teil des Gerätenamens für die Ausgabe (z. B. "Headset"). Leer = Windows-Standardgerät.</summary>
+    public string OutputDevice { get; set; } = "";
+
+    /// <summary>Leiseste Stufe, die gesprochen wird: Info, Caution oder Warning.</summary>
+    public AlertSeverity MinSeverity { get; set; } = AlertSeverity.Info;
+
+    /// <summary>Regeln, die nur angezeigt, aber nicht gesprochen werden (IDs, z. B. "RUNWAY_ASSIGNED").</summary>
+    public List<string> MutedRules { get; set; } = [];
+
+    /// <summary>Ältere Callouts werden verworfen statt verspätet gesprochen.</summary>
+    public double MaxAgeSeconds { get; set; } = 5;
+
+    /// <summary>CPU-Threads für die Sprachsynthese. Wenig halten, damit MSFS nicht ruckelt.</summary>
+    public int Threads { get; set; } = 4;
+
+    /// <summary>Pfad zu kokoro.onnx. Leer = %LOCALAPPDATA%\Kopilot\models\kokoro.onnx (wird automatisch geladen).</summary>
+    public string ModelPath { get; set; } = "";
 }
 
 /// <summary>

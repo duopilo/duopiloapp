@@ -29,6 +29,8 @@ internal sealed class TestApp : IAsyncDisposable
             ["Kopilot:Remote:ConsentPassword"] = Password,
             ["Kopilot:Remote:StateFile"] = stateFile,
             ["Kopilot:ReconnectSeconds"] = "60",
+            // Keine Sprachausgabe in Tests: kein Modell-Download, kein Audiogerät
+            ["Kopilot:Speech:Enabled"] = "false",
         };
 
         foreach (var (key, value) in overrides ?? new Dictionary<string, string?>())
