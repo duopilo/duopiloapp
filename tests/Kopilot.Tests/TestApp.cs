@@ -29,6 +29,9 @@ internal sealed class TestApp : IAsyncDisposable
             ["Kopilot:Remote:ConsentPassword"] = Password,
             ["Kopilot:Remote:StateFile"] = stateFile,
             ["Kopilot:ReconnectSeconds"] = "60",
+
+            // Eigener Datenordner, damit Tests nie den echten %LOCALAPPDATA%\Kopilot (z. B. input.json) verändern
+            ["Kopilot:DataDirectory"] = Path.Combine(Path.GetTempPath(), "kopilot-tests", Guid.NewGuid().ToString("N")),
         };
 
         foreach (var (key, value) in overrides ?? new Dictionary<string, string?>())

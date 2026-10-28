@@ -41,6 +41,9 @@ public sealed class KopilotOptions
     /// <summary>Sprachausgabe der Callouts über Windows.</summary>
     public SpeechOptions Speech { get; set; } = new();
 
+    /// <summary>Eingabe-Modul: Schalter und Knöpfe im Cockpit nach Bestätigung durch den Piloten.</summary>
+    public InputOptions Input { get; set; } = new();
+
     /// <summary>Ordner für Caches (ECAM-Tabellen). Leer = %LOCALAPPDATA%\Kopilot.</summary>
     public string DataDirectory { get; set; } = "";
 
@@ -158,4 +161,13 @@ public sealed class RemoteOptions
         string.IsNullOrWhiteSpace(StateFile)
             ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Kopilot", "oauth-state.json")
             : StateFile;
+}
+
+public sealed class InputOptions
+{
+    /// <summary>Eingaben erlauben. Standard: aus. Der Schalter im Dashboard (input.json) hat Vorrang.</summary>
+    public bool Enabled { get; set; }
+
+    /// <summary>So lange wartet eine vorbereitete Aktion auf die Bestätigung des Piloten.</summary>
+    public int ConfirmWindowSeconds { get; set; } = 60;
 }

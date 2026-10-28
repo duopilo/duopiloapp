@@ -95,6 +95,34 @@ public sealed class DashboardTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Eingabe_Schalter_nur_lokal_und_mit_Header()
+    {
+        var client = _app.Local();
+        using var dashboard = JsonDocument.Parse(await client.GetStringAsync("/api/dashboard"));
+        Assert.False(dashboard.RootElement.GetProperty("input").GetProperty("enabled").GetBoolean());
+
+        using var without = await client.PostAsync("/api/input", new StringContent("""{"enabled":true}""", System.Text.Encoding.UTF8, "application/json"));
+        Assert.Equal(HttpStatusCode.BadRequest, without.StatusCode);
+
+        using var remote = await _app.Remote().PostAsync("/api/input", new StringContent("""{"enabled":true}""", System.Text.Encoding.UTF8, "application/json"));
+        Assert.Equal(HttpStatusCode.NotFound, remote.StatusCode);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/input")
+        {
+            Content = new StringContent("""{"enabled":true}""", System.Text.Encoding.UTF8, "application/json"),
+        };
+        request.Headers.Add("X-Kopilot", "1");
+        using var with = await client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.OK, with.StatusCode);
+
+        using var after = JsonDocument.Parse(await client.GetStringAsync("/api/dashboard"));
+        Assert.True(after.RootElement.GetProperty("input").GetProperty("enabled").GetBoolean());
+
+        using var status = JsonDocument.Parse(await client.GetStringAsync("/status"));
+        Assert.True(status.RootElement.GetProperty("input").GetProperty("enabled").GetBoolean());
+    }
+
+    [Fact]
     public async Task Status_JSON_liegt_jetzt_unter_status()
     {
         using var response = await _app.Local().GetAsync("/status");

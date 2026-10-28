@@ -21,7 +21,7 @@ public static class KopilotTools
     [McpServerTool(Name = "kopilot_status", ReadOnly = true)]
     [Description(
         "Connection status of the Kopilot bridge to Microsoft Flight Simulator 2024: whether the sim is connected and paused, " +
-        "loaded aircraft (title and aircraft.cfg path), active aircraft profile, monitoring, SimBrief and ECAM table status and any setup error. " +
+        "loaded aircraft (title and aircraft.cfg path), active aircraft profile, monitoring, input module, SimBrief and ECAM table status and any setup error. " +
         "Call this first if other tools return no data. Every Kopilot response includes 'activeAlerts' (current monitoring alerts with short callouts).")]
     public static string Status(
         SimConnectClient sim,
@@ -29,7 +29,8 @@ public static class KopilotTools
         MonitoringService monitoring,
         SimBriefService simBrief,
         EcamCatalog ecam,
-        AlertBus alerts)
+        AlertBus alerts,
+        Kopilot.Input.InputService input)
     {
         var connection = sim.Connection;
         var status = sim.Status;
@@ -61,6 +62,12 @@ public static class KopilotTools
                 enabled = monitoring.Enabled,
                 phase = monitoring.Phase,
                 lastEvaluationUtc = monitoring.LastEvaluationUtc,
+            },
+            input = new
+            {
+                enabled = input.Enabled,
+                actions = input.Actions.Count,
+                pending = input.Pending?.Plan.Readback,
             },
             simBrief = new
             {

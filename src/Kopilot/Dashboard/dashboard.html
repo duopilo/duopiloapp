@@ -175,6 +175,18 @@ main {
 .speech-panel select.btn { max-width: 220px; }
 .speech-error { flex-basis: 100%; margin: 0; color: var(--amber); }
 select.btn { padding: 4px 6px; max-width: 190px; }
+.btn.input-on { border-color: var(--amber); color: var(--amber); }
+.btn.arm { border-color: var(--amber); color: var(--amber); }
+.pending { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 14px; align-items: center; margin: 10px 0 4px; padding: 10px 12px;
+  border: 1px solid var(--cyan); border-radius: 6px; }
+.pending .rb { font: 700 clamp(20px, 2.2vw, 28px)/1.15 var(--mono); color: var(--cyan); }
+.pending .pl { font-size: 12px; color: var(--du-dim); }
+.pending .btn { grid-row: span 2; }
+.input-log { margin-top: 10px; font-size: 13px; }
+.input-log summary { cursor: pointer; color: var(--du-dim); }
+.input-log ul { list-style: none; margin: 6px 0 0; padding: 0; }
+.input-log li { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 10px; padding: 4px 0; border-bottom: 1px solid #12171c; }
+.input-log .t { font: 13px var(--mono); color: var(--du-dim); }
 
 /* ECAM */
 .ecam { grid-area: ecam; }
@@ -333,6 +345,7 @@ select.btn { padding: 4px 6px; max-width: 190px; }
         <select class="btn" id="voice" aria-label="Stimme im Browser"></select>
         <button class="btn" id="speechSettings" type="button" aria-expanded="false" aria-controls="speechPanel" hidden>Stimme</button>
         <button class="btn" id="speakTest" type="button">Test</button>
+        <button class="btn" id="inputToggle" type="button" aria-pressed="false" title="Eingaben: Kopilot darf nach Readback und Bestätigung Schalter bedienen" hidden>Eingabe gesperrt</button>
       </span>
     </h2>
     <div class="speech-panel" id="speechPanel" hidden>
@@ -348,9 +361,18 @@ select.btn { padding: 4px 6px; max-width: 190px; }
       <label class="check"><input type="checkbox" id="srvAuto"> Radiohöhen, Minimum und Retard auch von Kopilot (nur für Flugzeuge ohne eigene Ansagen)</label>
       <p class="speech-error" id="srvError" hidden></p>
     </div>
+    <div class="pending" id="pending" hidden>
+      <div class="rb" id="pendingReadback"></div>
+      <button class="btn" id="pendingCancel" type="button">Abbrechen</button>
+      <div class="pl" id="pendingInfo"></div>
+    </div>
     <div class="hero quiet" id="hero"><div class="callout" id="heroCallout">Verbinde mit Kopilot …</div><div class="msg" id="heroMsg"></div><div class="when" id="heroWhen"></div></div>
     <div class="chips" id="activeChips"></div>
     <ul class="history" id="history"></ul>
+    <details class="input-log" id="inputLog" hidden>
+      <summary>Eingaben</summary>
+      <ul id="inputLogList"></ul>
+    </details>
   </section>
 
   <section class="du ecam" aria-label="Warnungen">
@@ -896,6 +918,53 @@ async function action(url, done) {
 $("reloadProfiles").addEventListener("click", () => action("/api/reload-profiles", "Profile neu geladen."));
 $("reloadPlan").addEventListener("click", () => action("/api/simbrief/refresh", "SimBrief-Plan geladen."));
 
+/*
+  Eingabe-Modul: Freigabe (zwei Klicks), offene Aktion mit Readback und Countdown, Protokoll.
+  Bestätigt wird per Sprache über Claude – hier lässt sich nur abbrechen.
+*/
+const inputUi = { armUntil: 0, enabled: false };
+function renderInput(d) {
+  const inp = d.input;
+  const btn = $("inputToggle");
+  btn.hidden = !inp;
+  if (!inp) return;
+  inputUi.enabled = !!inp.enabled;
+  const arming = !inp.enabled && Date.now() < inputUi.armUntil;
+  const text = inp.enabled ? "Eingabe frei" : arming ? "Wirklich freigeben?" : "Eingabe gesperrt";
+  if (btn.textContent !== text) btn.textContent = text;
+  btn.setAttribute("aria-pressed", inp.enabled ? "true" : "false");
+  btn.className = "btn" + (inp.enabled ? " input-on" : arming ? " arm" : "");
+  btn.title = inp.enabled ? `Kopilot darf ${inp.actions} Aktionen nach Bestätigung ausführen – klicken zum Sperren` : "Kopilot darf nichts bedienen – zweimal klicken zum Freigeben";
+
+  const p = inp.pending;
+  $("pending").hidden = !p;
+  if (p) {
+    setText("pendingReadback", p.readback);
+    setText("pendingInfo", `Wartet auf „confirm“ – noch ${p.expiresInSec} s · ${p.action}${p.value ? " = " + p.value : ""}${p.other ? " · Claude Desktop" : ""}`);
+  }
+
+  const log = inp.log || [];
+  $("inputLog").hidden = log.length === 0;
+  const cls = { "ausgeführt": "g", "abgelehnt": "a", "fehlgeschlagen": "a", "abgelaufen": "dim", "abgebrochen": "dim", "ersetzt": "dim", "vorbereitet": "c" };
+  setHtml("inputLogList", log.map((e) => {
+    const ok = e.verified === true ? " ✓" : e.verified === false ? " ✗" : "";
+    return `<li><span class="t">${esc(e.time)}</span><span><b class="${e.verified === false ? "a" : cls[e.outcome] || "w"}">${esc(e.outcome)}${ok}</b> ${esc(e.action)}${e.value ? " = " + esc(e.value) : ""}${e.detail ? `<br><span class="dim">${esc(e.detail)}</span>` : ""}</span></li>`;
+  }).join(""));
+}
+async function postInput(url, body) {
+  try {
+    await fetch(url, { method: "POST", headers: { "X-Kopilot": "1", "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : "{}" });
+  } catch { /* nächster Abruf zeigt den Stand */ }
+}
+$("inputToggle").addEventListener("click", () => {
+  if (inputUi.enabled) { postInput("/api/input", { enabled: false }); return; }
+  if (Date.now() < inputUi.armUntil) { inputUi.armUntil = 0; postInput("/api/input", { enabled: true }); return; }
+  inputUi.armUntil = Date.now() + 4000;
+  $("inputToggle").textContent = "Wirklich freigeben?";
+  $("inputToggle").className = "btn arm";
+});
+$("pendingCancel").addEventListener("click", () => postInput("/api/input/cancel"));
+
 /* ------------------------------------------------------------------ Helligkeit (dimmt nur die Displays, wie der BRT-Knopf) */
 const brt = $("brt");
 brt.value = load("brt", 100);
@@ -930,6 +999,7 @@ function render(d) {
   renderFmaLog(d);
   renderPfd(d.sim);
   renderCallouts(d);
+  renderInput(d);
   renderEcam(d.sim);
   renderRoute(d);
   renderEngines(d.sim);

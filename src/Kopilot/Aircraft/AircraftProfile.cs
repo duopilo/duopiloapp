@@ -35,6 +35,9 @@ public sealed class AircraftProfile
     /// <summary>Elektrik-Werte für get_systems (z. B. Generatorspannung, Busse versorgt). Leer = kein Elektrik-Block.</summary>
     public List<ProfileVariable> Electrical { get; set; } = [];
 
+    /// <summary>Erlaubte Eingaben (Eingabe-Modul). Nur was hier steht, kann Kopilot im Cockpit bedienen.</summary>
+    public List<Kopilot.Input.ProfileAction> Actions { get; set; } = [];
+
     [JsonIgnore]
     public string? SourceFile { get; set; }
 
@@ -158,6 +161,9 @@ public sealed class AircraftLimits
     /// <summary>Höchstgeschwindigkeit mit ausgefahrenem Fahrwerk (VLE).</summary>
     public double? VleKt { get; set; }
 
+    /// <summary>Höchstgeschwindigkeit zum Ausfahren des Fahrwerks (VLO). Fehlt = VLE.</summary>
+    public double? VloKt { get; set; }
+
     /// <summary>VFE je Klappenstellung: Schlüssel ist der Klartext der Stellung (z. B. "1+F", "FULL") oder der Hebel-Index ("1", "2", …).</summary>
     public Dictionary<string, double> VfeKt { get; set; } = [];
 
@@ -172,7 +178,7 @@ public sealed class AircraftLimits
     {
         if (flapsLabel is not null)
         {
-            return flapsLabel is "0" or "" ? null : VfeKt.TryGetValue(flapsLabel, out var byLabel) ? byLabel : null;
+            return flapsLabel is "0" or "" ? null : Lookup(flapsLabel);
         }
 
         if (flapsIndex is not { } f || f < 0.5)
@@ -180,8 +186,26 @@ public sealed class AircraftLimits
             return null;
         }
 
-        var key = Math.Round(f).ToString(CultureInfo.InvariantCulture);
-        return VfeKt.TryGetValue(key, out var v) ? v : null;
+        return Lookup(Math.Round(f).ToString(CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>VFE nach Stellung, Groß-/Kleinschreibung egal ("Full" = "FULL").</summary>
+    private double? Lookup(string key)
+    {
+        if (VfeKt is null)
+        {
+            return null;
+        }
+
+        foreach (var (k, v) in VfeKt)
+        {
+            if (string.Equals(k, key, StringComparison.OrdinalIgnoreCase))
+            {
+                return v;
+            }
+        }
+
+        return null;
     }
 
     public bool IsLandingFlaps(double? flapsIndex, string? flapsLabel)

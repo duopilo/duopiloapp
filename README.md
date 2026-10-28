@@ -24,6 +24,10 @@ Kopilot verbindet **Microsoft Flight Simulator 2024** über SimConnect mit **Cla
 | `get_aircraft_profile` | Bindings des Profils mit Rohwert, Klartext und „geprüft“-Status, Zusatzvariablen, Grenzwerte |
 | `read_simvar` | Liest eine beliebige SimVar oder L:-Variable einmalig (Text-Variablen mit `unit: "string"`) |
 | `reload_profiles` | Lädt die Profildateien neu |
+| `list_actions` | Eingabe-Modul: welche Schalter Kopilot im aktuellen Flugzeug bedienen darf, und ob Eingaben freigegeben sind |
+| `prepare_action` | Eingabe vorbereiten: prüft Wert und Sperren, liefert den Readback – im Cockpit ändert sich noch nichts |
+| `confirm_action` | Eingabe ausführen, nachdem der Pilot den Readback bestätigt hat; danach wird der Zustand im Flugzeug geprüft |
+| `cancel_action` | Vorbereitete Eingabe verwerfen |
 
 Jede Antwort enthält `activeAlerts`: die gerade aktiven Monitoring-Meldungen. So bekommt Claude Warnungen auch mit, wenn es eigentlich etwas anderes abfragt.
 
@@ -91,6 +95,49 @@ Die Einstellungen liegen in `%LOCALAPPDATA%\Kopilot\speech.json`. Gesprochen wir
 **Englische Stimme fehlt?** Auf einem deutschen Windows: Einstellungen → Zeit und Sprache → Sprache und Region → Sprache hinzufügen → *English (United Kingdom)*, dabei „Sprachausgabe“ auswählen. Danach Kopilot neu starten. Das Dashboard zeigt einen Hinweis, solange keine englische Stimme da ist.
 
 Einzelne Callouts stumm schalten (weiter sichtbar, aber nicht gesprochen): `"mutedRules": [ "PM_GEAR" ]` in `speech.json`. Ganz abschalten: `Kopilot:Monitoring:DisabledRules`.
+
+## Eingabe-Modul
+
+Kopilot kann im Cockpit Knöpfe drücken und Schalter stellen – als Pilot Monitoring auf Ansage des Piloten. Jede Eingabe hat zwei Schritte:
+
+1. Du sagst z. B. „Set speed two five zero“. Claude ruft `prepare_action` auf, Kopilot prüft Wert und Sperren und gibt den Readback zurück: „Speed 250 selected“.
+2. Claude liest den Readback vor. Erst wenn du „confirm“ sagst, ruft Claude `confirm_action` auf. Kopilot prüft die Sperren noch einmal mit dem aktuellen Zustand, führt aus und liest danach im Flugzeug nach, ob der Wert angekommen ist.
+
+Sagst du „negative“ oder korrigierst den Wert, wird die Aktion verworfen. Eine vorbereitete Aktion verfällt nach 60 Sekunden, es gibt immer nur eine.
+
+**Standardmäßig gesperrt.** Freigeben im Dashboard: in der Ansagen-Leiste zweimal auf **Eingabe gesperrt** klicken („Wirklich freigeben?“). Dort siehst du auch die offene Aktion mit Countdown – auch eine, die über Claude Desktop vorbereitet wurde – und kannst sie abbrechen. Darunter steht das Protokoll aller Eingaben. Alternativ `Kopilot:Input:Enabled` in `appsettings.Local.json`; der Schalter im Dashboard hat Vorrang und gilt für alle Kopilot-Instanzen.
+
+**Was geht (A32NX):**
+
+| Bereich | Aktionen |
+|---|---|
+| FCU | Speed (selected/managed), Heading (selected/managed), Altitude setzen, Pull/Push, Increment 100/1000, V/S, LOC, APPR, EXPED, AP 1/2, A/THR |
+| EFIS | QNH in hPa, STD/QNH, LS, FD, ND-Modus und -Reichweite (Kapitän) |
+| Konfiguration | Fahrwerk, Klappenhebel, Speedbrake, Ground Spoiler armen |
+| Bremsen | Autobrake OFF/LO/MED/MAX |
+| Licht | Beacon, Wing, Runway Turn-off, Landing (on/off/retract), Nose (T.O/Taxi/off), Strobe (on/auto/off) |
+| Schilder | Seat Belts, No Smoking/No PED |
+| Anti-Ice | Triebwerke, Flügel, Probe/Window Heat |
+| Air/APU | Pack 1/2, APU Master, APU Start, APU Bleed |
+| Transponder | Squawk, Modus, ALT RPTG, TCAS-Modus und Traffic |
+| Funk | COM 1 Standby, Swap |
+
+NAV & LOGO fehlt: Der Schalter ist beim A32NX nur als Input Event (`B:`) erreichbar, das kann Kopilot noch nicht.
+
+**Was nie geht:** Triebwerks-Master, Zündung/Start, Schub, Feuer-Handles und -Agents, Treibstoff, MCDU, Pause/Slew/Sim-Steuerung. Das ist im Code festgelegt, auch ein bearbeitetes Profil kommt nicht daran vorbei:
+- Kopilot sendet nur Events aus einer festen Liste (FCU, Autobrake, Fahrwerk, Klappen, Spoiler, Licht, Schilder, Transponder, COM).
+- Kopilot schreibt nur L:-Variablen, nie Standard-SimVars, und auch dort greift die Sperrliste.
+- Fahrwerk und Klappen gehen nur über ihre Events, und nur zusammen mit der passenden Sperre.
+- Es gibt kein Tool, das beliebige Events oder Variablen schreibt.
+
+**Sperren:**
+- Fahrwerk einfahren nur in der Luft
+- Fahrwerk ausfahren nur bis VLO (A320: 250 kt)
+- Klappen nur bis zur VFE der neuen Stellung
+
+Fehlt ein Grenzwert im Profil, ist die Aktion gesperrt. Dazu kommen Bedingungen je Aktion, z. B. V/S und Heading nicht im TRK/FPA-Modus, QNH nur im QNH-Modus, APU Start nur mit APU Master.
+
+Die Aktionen stehen im Flugzeugprofil unter `actions` (Events, Variablen, Readback, Prüfung). Alle sind aus dem FBW-Quellcode abgeleitet und im Sim noch nicht geprüft (`"verified": false`). Ob eine Aktion angekommen ist, zeigt das Protokoll im Dashboard (✓/✗).
 
 ## SimBrief
 
@@ -350,6 +397,7 @@ src/Kopilot/
   Dashboard/              Dashboard im Browser (HTML, eingebettete Schrift B612), Daten-API
   Desktop/                Tray-Symbol, Autostart
   Speech/                 Sprachausgabe über Windows (Warteschlange, Stimme, Ausgabegerät)
+  Input/                  Eingabe-Modul: Aktionen planen, Sperren, Bestätigung, Ausführung über SimConnect
   Hosting/                Transport-Auswahl, Konfiguration, HTTP-Host
   Remote/                 Bearer-Token, OAuth-Server, Freigabeseite, Token-Speicher
   Sim/SimConnectClient.cs SimConnect auf eigenem Thread, Auto-Reconnect, Werte-Cache
@@ -377,8 +425,8 @@ Jede Variable hat eine eigene SimConnect-Data-Definition. Ist ein Name in MSFS u
 - [x] v0.4: Tray-Symbol und Dashboard im Browser statt Konsolenfenster, Callouts per Sprachausgabe im Browser
 - [x] v0.5: Korrekturen nach Testflug EDDL–EDDM (A32NX-Bindings, Knoten statt m/s, ALT CRZ), TOD, Landecheck, FMA-Log, FMS-Wegpunkt
 - [x] v0.6: Lokale Sprachausgabe (Windows, Stimme und Ausgabegerät wählbar) und PM-Callouts (Startlauf, Landung, Höhenmarken, Konfiguration)
-- [ ] v0.7: Eingabe-Modul mit Bestätigung (FCU, Konfiguration, Overhead, Funk, EFIS) – zuerst A32NX
+- [x] v0.7: Eingabe-Modul mit Readback und Bestätigung (FCU, EFIS, Konfiguration, Licht, Schilder, Anti-Ice, Packs, APU, Transponder, Funk) – zuerst A32NX
+- [ ] Eingabe-Modul: im Sim prüfen, NAV & LOGO über Input Events, weitere Flugzeuge
 - [ ] WASimCommander-Anbindung (L:-Variablen auflisten, Events)
-- [ ] Callouts mit eigener Sprachausgabe (z. B. „20 Meilen – Flaps 1", 1000/500/Minimum, Retard, 100 Knoten, V1)
 - [x] Remote-Betrieb: Streamable HTTP mit Bearer-Token und OAuth, Cloudflare Tunnel
 - [ ] Sprachmodus mit dem Remote-Connector testen

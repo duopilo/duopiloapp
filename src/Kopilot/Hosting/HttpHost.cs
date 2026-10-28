@@ -63,8 +63,8 @@ public static class HttpHost
 
         // Prüfseiten für den Browser – nur lokal, über den Tunnel nicht erreichbar.
         app.MapDashboard();
-        app.MapGet("/status", (SimConnectClient sim, ProfileStore profiles, MonitoringService monitoring, SimBriefService simBrief, EcamCatalog ecam, AlertBus alerts) =>
-            JsonText(KopilotTools.Status(sim, profiles, monitoring, simBrief, ecam, alerts))).LocalOnly();
+        app.MapGet("/status", (SimConnectClient sim, ProfileStore profiles, MonitoringService monitoring, SimBriefService simBrief, EcamCatalog ecam, AlertBus alerts, Kopilot.Input.InputService input) =>
+            JsonText(KopilotTools.Status(sim, profiles, monitoring, simBrief, ecam, alerts, input))).LocalOnly();
         app.MapGet("/state", (SimConnectClient sim, AlertBus alerts) => JsonText(KopilotTools.GetFlightState(sim, alerts))).LocalOnly();
         app.MapGet("/systems", (SimConnectClient sim, AlertBus alerts) => JsonText(KopilotTools.GetSystems(sim, alerts))).LocalOnly();
         app.MapGet("/nav", (SimConnectClient sim, AlertBus alerts) => JsonText(KopilotTools.GetNavigation(sim, alerts))).LocalOnly();

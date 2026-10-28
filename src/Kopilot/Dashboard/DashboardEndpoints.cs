@@ -1,6 +1,7 @@
 using Kopilot.Aircraft;
 using Kopilot.FlightPlan;
 using Kopilot.Hosting;
+using Kopilot.Input;
 using Kopilot.Sim;
 using Kopilot.Speech;
 using Kopilot.Tools;
@@ -110,6 +111,28 @@ public static class DashboardEndpoints
             }
         }).LocalOnly();
 
+        app.MapPost("/api/input", (HttpContext context, InputToggle body, InputService input) =>
+        {
+            if (!IsDashboardAction(context))
+            {
+                return Results.BadRequest();
+            }
+
+            input.SetEnabled(body.Enabled);
+            return Results.Content(Json.Serialize(new { enabled = input.Enabled }), "application/json");
+        }).LocalOnly();
+
+        app.MapPost("/api/input/cancel", (HttpContext context, InputService input) =>
+        {
+            if (!IsDashboardAction(context))
+            {
+                return Results.BadRequest();
+            }
+
+            var result = input.CancelEverywhere("Abgebrochen (Dashboard)");
+            return Results.Content(Json.Serialize(new { status = result.Status, action = result.Action }), "application/json");
+        }).LocalOnly();
+
         app.MapPost("/api/simbrief/refresh", async (HttpContext context, SimBriefService simBrief, CancellationToken ct) =>
         {
             if (!IsDashboardAction(context))
@@ -121,6 +144,9 @@ public static class DashboardEndpoints
             return Results.Content(Json.Serialize(new { loaded = ofp is not null, error = simBrief.LastError }), "application/json");
         }).LocalOnly();
     }
+
+    /// <summary>Body von POST /api/input.</summary>
+    public sealed record InputToggle(bool Enabled);
 
     internal static object SpeechView(SpeechStatus s) => new
     {
