@@ -1,13 +1,16 @@
 {
-  // FlyByWire A32NX (MSFS 2024). Variablennamen aus der FBW-Doku (fbw-a32nx/docs/a320-simvars.md).
-  // "verified": true = im Sim getestet (Testflug 28.10.2026), false = laut Doku, noch nicht im Sim geprüft.
+  // FlyByWire A32NX (MSFS 2024). Variablennamen aus der FBW-Doku (fbw-a32nx/docs/a320-simvars.md) und dem FBW-PFD-Code.
+  // "verified": true = im Sim gegen das Cockpit geprüft (Testflüge 28.10.2026), false = laut Doku/Code, noch nicht geprüft.
+  //
+  // Einheiten: FBW speichert Geschwindigkeiten wie V1/VR/V2 und die Managed Speed intern in m/s und liest sie mit der Einheit
+  // "knots" – deshalb "unit": "knots". Mit "number" kämen m/s heraus (z. B. 69 statt 134 kt).
   "name": "FlyByWire A32NX",
   "match": [
     { "path": [ "FlyByWire", "A320" ] },
     { "title": [ "A320neo", "FlyByWire" ] },
     { "title": [ "A32NX" ] }
   ],
-  "notes": "AUTOPILOT MASTER ist beim A32NX falsch – AP-Status kommt aus A32NX_AUTOPILOT_1/2_ACTIVE. Fuel Flow aus A32NX_ENGINE_FF (kg/h). Engine Fire ist über Flypad-Failures nicht auslösbar.",
+  "notes": "AUTOPILOT MASTER, BRAKE PARKING POSITION, SPOILERS ARMED und ENG EXHAUST GAS TEMPERATURE sind beim A32NX falsch – die Werte kommen aus den A32NX-Variablen. Engine Fire ist über Flypad-Failures nicht auslösbar und hat keine eigene Variable; ein Brand käme als ECAM-Meldung.",
   "bindings": {
     "ap1": { "name": "L:A32NX_AUTOPILOT_1_ACTIVE", "type": "bool", "verified": true },
     "ap2": { "name": "L:A32NX_AUTOPILOT_2_ACTIVE", "type": "bool", "verified": true },
@@ -16,25 +19,26 @@
       "values": { "0": "OFF", "1": "ARMED", "2": "ACTIVE" }
     },
     "athrMode": {
-      "name": "L:A32NX_AUTOTHRUST_MODE", "type": "enum", "verified": false,
+      "name": "L:A32NX_AUTOTHRUST_MODE", "type": "enum", "verified": true,
       "values": {
         "0": "", "1": "MAN TOGA", "3": "MAN FLX", "5": "MAN MCT", "6": "MAN THR", "7": "SPEED", "8": "MACH",
         "9": "THR MCT", "10": "THR CLB", "11": "THR LVR", "12": "THR IDLE", "13": "A.FLOOR", "14": "TOGA LK"
       }
     },
     "fmaLateral": {
-      "name": "L:A32NX_FMA_LATERAL_MODE", "type": "enum", "verified": false,
+      "name": "L:A32NX_FMA_LATERAL_MODE", "type": "enum", "verified": true,
       "values": {
         "0": "", "10": "HDG", "11": "TRK", "20": "NAV", "30": "LOC*", "31": "LOC", "32": "LAND", "33": "FLARE",
         "34": "ROLL OUT", "40": "RWY", "41": "RWY TRK", "50": "GA TRK"
       }
     },
     "fmaLateralArmed": {
-      "name": "L:A32NX_FMA_LATERAL_ARMED", "type": "bitmask", "verified": false,
+      "name": "L:A32NX_FMA_LATERAL_ARMED", "type": "bitmask", "verified": true,
       "values": { "0": "NAV", "1": "LOC" }
     },
     "fmaVertical": {
-      "name": "L:A32NX_FMA_VERTICAL_MODE", "type": "enum", "verified": false,
+      "name": "L:A32NX_FMA_VERTICAL_MODE", "type": "enum", "verified": true,
+      "description": "ALT CRZ fehlt in dieser Variable – Kopilot leitet es aus fmgcDiscreteWord1 ab",
       "values": {
         "0": "", "10": "ALT", "11": "ALT*", "12": "OP CLB", "13": "OP DES", "14": "V/S", "15": "FPA",
         "20": "ALT CST", "21": "ALT CST*", "22": "CLB", "23": "DES", "24": "FINAL", "30": "G/S*", "31": "G/S",
@@ -42,22 +46,40 @@
       }
     },
     "fmaVerticalArmed": {
-      "name": "L:A32NX_FMA_VERTICAL_ARMED", "type": "bitmask", "verified": false,
+      "name": "L:A32NX_FMA_VERTICAL_ARMED", "type": "bitmask", "verified": true,
       "values": { "0": "ALT", "1": "ALT CST", "2": "CLB", "3": "DES", "4": "G/S", "5": "FINAL", "6": "TCAS" }
     },
+    "fmgcDiscreteWord1": { "name": "L:A32NX_FMGC_1_DISCRETE_WORD_1", "type": "arinc429", "verified": false, "description": "FMGC 1 Discrete Word 1 (für ALT CRZ)" },
+    "fmAltitudeConstraint": { "name": "L:A32NX_FMGC_1_FM_ALTITUDE_CONSTRAINT", "type": "arinc429", "verified": false, "description": "Nächste Höhenbeschränkung (ft)" },
     "autobrake": {
-      "name": "L:A32NX_AUTOBRAKES_ARMED_MODE", "type": "enum", "verified": false,
+      "name": "L:A32NX_AUTOBRAKES_ARMED_MODE", "type": "enum", "verified": true,
       "values": { "0": "OFF", "1": "LO", "2": "MED", "3": "MAX" }
     },
     "masterWarning": { "name": "L:A32NX_MASTER_WARNING", "type": "bool", "verified": true },
     "masterCaution": { "name": "L:A32NX_MASTER_CAUTION", "type": "bool", "verified": true },
-    "speedTarget": { "name": "L:A32NX_SPEEDS_MANAGED_PFD", "type": "number", "verified": false, "description": "Managed Speed des FMS in kt, 0 = ungültig" },
-    "speedManaged": { "name": "L:A32NX_FCU_AFS_DISPLAY_SPD_MACH_MANAGED", "type": "bool", "verified": false, "description": "Managed-Punkt im SPD-Fenster" },
-    "selectedSpeed": { "name": "L:A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE", "type": "number", "verified": false, "description": "Anzeige im SPD/MACH-Fenster" },
+    "speedTarget": { "name": "L:A32NX_SPEEDS_MANAGED_PFD", "unit": "knots", "type": "number", "verified": false, "description": "Managed Speed des FMS (intern m/s, gelesen in kt), 0 = ungültig" },
+    "speedManaged": { "name": "L:A32NX_FCU_AFS_DISPLAY_SPD_MACH_MANAGED", "type": "bool", "verified": true, "description": "Managed-Punkt im SPD-Fenster" },
+    "selectedSpeed": { "name": "L:A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE", "type": "number", "verified": true, "description": "Anzeige im SPD/MACH-Fenster (kt oder Mach)" },
     "machMode": { "name": "L:A32NX_FCU_AFS_DISPLAY_MACH_MODE", "type": "bool", "verified": false },
-    "selectedAltitude": { "name": "L:A32NX_FCU_AFS_DISPLAY_ALT_VALUE", "type": "number", "verified": false, "description": "Anzeige im ALT-Fenster (ft)" },
-    "vls": { "name": "L:A32NX_SPEEDS_VLS", "type": "number", "verified": false },
-    "fuelFlowKgh": { "name": "L:A32NX_ENGINE_FF:{i}", "type": "number", "verified": false, "description": "Fuel Flow je Triebwerk in kg/h" }
+    "selectedAltitude": { "name": "L:A32NX_FCU_AFS_DISPLAY_ALT_VALUE", "type": "number", "verified": true, "description": "Anzeige im ALT-Fenster (ft)" },
+    "selectedHeading": { "name": "L:A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE", "type": "number", "verified": false, "description": "Anzeige im HDG/TRK-Fenster" },
+    "selectedHeadingDashes": { "name": "L:A32NX_FCU_AFS_DISPLAY_HDG_TRK_DASHES", "type": "bool", "verified": false, "description": "HDG-Fenster zeigt Striche (managed)" },
+    "vls": { "name": "L:A32NX_SPEEDS_VLS", "type": "number", "verified": true },
+    "v1": { "name": "L:AIRLINER_V1_SPEED", "unit": "knots", "type": "number", "verified": false, "description": "V1 aus der MCDU (intern m/s)" },
+    "vr": { "name": "L:AIRLINER_VR_SPEED", "unit": "knots", "type": "number", "verified": false },
+    "v2": { "name": "L:AIRLINER_V2_SPEED", "unit": "knots", "type": "number", "verified": false },
+    "flexTemp": { "name": "L:A32NX_AIRLINER_TO_FLEX_TEMP", "type": "number", "verified": false, "description": "FLEX-Temperatur (°C) aus der MCDU" },
+    "tdReached": { "name": "L:A32NX_PFD_MSG_TD_REACHED", "type": "bool", "verified": false, "description": "PFD-Meldung T/D REACHED" },
+    "fmsToWptDistance": { "name": "L:A32NX_EFIS_L_TO_WPT_DISTANCE", "type": "number", "verified": false, "description": "Distanz zum aktiven FMS-Wegpunkt (nm)" },
+    "fmsToWptBearing": { "name": "L:A32NX_EFIS_L_TO_WPT_BEARING", "type": "number", "verified": false, "description": "Peilung zum aktiven FMS-Wegpunkt (°)" },
+    "fuelFlowKgh": { "name": "L:A32NX_ENGINE_FF:{i}", "type": "number", "verified": true, "description": "Fuel Flow je Triebwerk in kg/h" },
+    "egtC": { "name": "L:A32NX_ENGINE_EGT:{i}", "type": "number", "verified": false, "description": "EGT je Triebwerk in °C" },
+    "parkingBrake": { "name": "L:A32NX_PARK_BRAKE_LEVER_POS", "type": "bool", "verified": false },
+    "spoilersArmed": { "name": "L:A32NX_SPOILERS_ARMED", "type": "bool", "verified": true, "description": "Ground Spoiler armed (Hebel)" },
+    "flaps": {
+      "name": "L:A32NX_FLAPS_CONF_INDEX", "type": "enum", "verified": false,
+      "values": { "0": "0", "1": "1", "2": "1+F", "3": "2", "4": "3", "5": "FULL" }
+    }
   },
   "ecam": {
     "format": "fbw-a32nx",
@@ -66,17 +88,37 @@
     "lines": 7
   },
   "limits": {
-    // A320neo – bitte gegen die FBW-Doku/FCOM prüfen
+    // A320neo – VFE je Klappenstellung (Klartext aus "flaps")
     "vmoKt": 350,
     "vleKt": 280,
-    "vfeKt": { "1": 230, "2": 200, "3": 185, "4": 177 },
+    "vfeKt": { "1": 230, "1+F": 215, "2": 200, "3": 185, "FULL": 177 },
+    "landingFlaps": [ "3", "FULL" ],
     "speedLimitBelowFl100Kt": 250
   },
+  "electrical": [
+    { "key": "gen1Volt", "name": "L:A32NX_ELEC_ENG_GEN_1_POTENTIAL", "description": "GEN 1 (V)" },
+    { "key": "gen1Hz", "name": "L:A32NX_ELEC_ENG_GEN_1_FREQUENCY", "description": "GEN 1 (Hz)" },
+    { "key": "gen2Volt", "name": "L:A32NX_ELEC_ENG_GEN_2_POTENTIAL", "description": "GEN 2 (V)" },
+    { "key": "gen2Hz", "name": "L:A32NX_ELEC_ENG_GEN_2_FREQUENCY", "description": "GEN 2 (Hz)" },
+    { "key": "apuGenVolt", "name": "L:A32NX_ELEC_APU_GEN_1_POTENTIAL", "description": "APU GEN (V)" },
+    { "key": "extPwrVolt", "name": "L:A32NX_ELEC_EXT_PWR_POTENTIAL", "description": "EXT PWR (V)" },
+    { "key": "bat1Volt", "name": "L:A32NX_ELEC_BAT_1_POTENTIAL", "description": "BAT 1 (V)" },
+    { "key": "bat2Volt", "name": "L:A32NX_ELEC_BAT_2_POTENTIAL", "description": "BAT 2 (V)" },
+    { "key": "ac1Powered", "name": "L:A32NX_ELEC_AC_1_BUS_IS_POWERED", "description": "AC BUS 1", "values": { "0": "aus", "1": "versorgt" } },
+    { "key": "ac2Powered", "name": "L:A32NX_ELEC_AC_2_BUS_IS_POWERED", "description": "AC BUS 2", "values": { "0": "aus", "1": "versorgt" } },
+    { "key": "acEssPowered", "name": "L:A32NX_ELEC_AC_ESS_BUS_IS_POWERED", "description": "AC ESS BUS", "values": { "0": "aus", "1": "versorgt" } },
+    { "key": "dc1Powered", "name": "L:A32NX_ELEC_DC_1_BUS_IS_POWERED", "description": "DC BUS 1", "values": { "0": "aus", "1": "versorgt" } },
+    { "key": "dc2Powered", "name": "L:A32NX_ELEC_DC_2_BUS_IS_POWERED", "description": "DC BUS 2", "values": { "0": "aus", "1": "versorgt" } },
+    { "key": "dcEssPowered", "name": "L:A32NX_ELEC_DC_ESS_BUS_IS_POWERED", "description": "DC ESS BUS", "values": { "0": "aus", "1": "versorgt" } },
+    { "key": "dcBatPowered", "name": "L:A32NX_ELEC_DC_BAT_BUS_IS_POWERED", "description": "DC BAT BUS", "values": { "0": "aus", "1": "versorgt" } }
+  ],
   "variables": [
     { "key": "fireButtonEng1", "name": "L:A32NX_FIRE_BUTTON_ENG1", "unit": "number", "description": "ENG 1 Fire Pushbutton (1 = released)", "values": { "0": "IN", "1": "RELEASED" } },
     { "key": "fireGuardEng1", "name": "L:A32NX_FIRE_GUARD_ENG1", "unit": "number", "description": "ENG 1 Fire Guard" },
     { "key": "wingAntiIcePressed", "name": "L:XMLVAR_MOMENTARY_PUSH_OVHD_ANTIICE_WING_PRESSED", "unit": "number", "description": "Wing Anti-Ice Pushbutton" },
     { "key": "vapp", "name": "L:A32NX_SPEEDS_VAPP", "unit": "number", "description": "VAPP aus dem FMS (kt)" },
-    { "key": "greenDot", "name": "L:A32NX_SPEEDS_GD", "unit": "number", "description": "Green Dot (kt)" }
+    { "key": "greenDot", "name": "L:A32NX_SPEEDS_GD", "unit": "number", "description": "Green Dot (kt)" },
+    { "key": "fmgcPhase", "name": "L:A32NX_FMGC_FLIGHT_PHASE", "unit": "number", "description": "FMGC-Flugphase",
+      "values": { "0": "PREFLIGHT", "1": "TAKEOFF", "2": "CLIMB", "3": "CRUISE", "4": "DESCENT", "5": "APPROACH", "6": "GO AROUND", "7": "DONE" } }
   ]
 }

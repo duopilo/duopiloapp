@@ -44,6 +44,16 @@ public sealed class MonitorEngine
     private bool _altArmed;
     private string? _announcedRunwayKey;
 
+    // ECAM: wann ist welche Titelzeile zuerst aufgetaucht (für "neueste Meldung")
+    private readonly Dictionary<string, DateTimeOffset> _ecamFirstSeen = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _ecamAnnounced = new(StringComparer.Ordinal);
+
+    // Top of Descent und Landecheck
+    private bool _todAnnounced;
+    private bool _todPlanArmed;
+    private bool _landingCheck2000Done;
+    private bool _landingCheck1000Done;
+
     public MonitorEngine(MonitorSettings? settings = null)
     {
         _settings = settings ?? new MonitorSettings();
@@ -132,6 +142,7 @@ public sealed class MonitorEngine
         }
 
         UpdateContext(s, now);
+        var newEcamTitles = UpdateEcam(s, now);
         var suppressed = now < _suppressUntil;
 
         foreach (var rule in _stateRules)
@@ -143,7 +154,10 @@ public sealed class MonitorEngine
         }
 
         CheckApDisconnect(s, now, suppressed, events);
+        CheckEcamMessages(s, now, suppressed, newEcamTitles, events);
         CheckAltitudeToGo(s, now, suppressed, events);
+        CheckTopOfDescent(s, now, suppressed, events);
+        CheckLandingConfiguration(s, now, suppressed, events);
         CheckRunwayAssigned(s, now, suppressed, events);
 
         _prev = s;
@@ -158,8 +172,8 @@ public sealed class MonitorEngine
             : null;
 
     private RuleCheck? CheckFlapSpeed(FlightSnapshot s) =>
-        s.Airborne && s.Limits.VfeFor(s.FlapsIndex) is { } vfe && s.IasKt is { } ias && ias > vfe + 3
-            ? new RuleCheck("Flap speed", $"Klappenhebel {s.FlapsIndex:0}: {Kt(ias)} über VFE {Kt(vfe)}.")
+        s.Airborne && s.Limits.VfeFor(s.FlapsIndex, s.FlapsLabel) is { } vfe && s.IasKt is { } ias && ias > vfe + 3
+            ? new RuleCheck("Flap speed", $"Klappen {s.FlapsLabel ?? s.FlapsIndex?.ToString("0", CultureInfo.InvariantCulture)}: {Kt(ias)} über VFE {Kt(vfe)}.")
             : null;
 
     private RuleCheck? CheckOverspeed(FlightSnapshot s)
@@ -242,7 +256,8 @@ public sealed class MonitorEngine
             return null;
         }
 
-        var title = s.EcamTitles.Count > 0 ? s.EcamTitles[0] : null;
+        // Die zuletzt aufgetauchte Meldung nennen, nicht die oberste (z. B. ELEC GEN 1 OFF statt eines alten BRAKES HOT)
+        var title = NewestEcamTitle(s);
         var message = title is null ? callout + "." : $"{callout}: {string.Join(", ", s.EcamTitles)}.";
 
         // Doppelte Ansagen vermeiden: AP OFF kommt schon als "Autopilot off"
@@ -387,6 +402,187 @@ public sealed class MonitorEngine
         }
     }
 
+    /// <summary>
+    /// Neue ECAM-Titel, während Master Warning/Caution schon leuchtet. Die erste Meldung nennt bereits der Master-Callout,
+    /// weitere kämen sonst stumm dazu.
+    /// </summary>
+    private void CheckEcamMessages(FlightSnapshot s, DateTimeOffset now, bool suppressed, IReadOnlyList<string> newTitles, List<AlertEvent> events)
+    {
+        if (newTitles.Count == 0)
+        {
+            return;
+        }
+
+        var warning = _stateRules.First(r => r.Id == Rules.MasterWarning).Active;
+        var caution = _stateRules.First(r => r.Id == Rules.MasterCaution).Active;
+        if (suppressed || (!warning && !caution) || !IsEnabled(Rules.EcamMessage))
+        {
+            return;
+        }
+
+        foreach (var title in newTitles)
+        {
+            if (!_ecamAnnounced.Add(title))
+            {
+                continue;
+            }
+
+            var apOff = title.Contains("AP OFF", StringComparison.OrdinalIgnoreCase)
+                && _lastApDisconnectUtc is { } t && now - t < TimeSpan.FromSeconds(5);
+            events.Add(Event(now, Rules.EcamMessage, warning ? AlertSeverity.Warning : AlertSeverity.Caution, AlertKind.Event,
+                apOff ? null : title, $"Neue ECAM-Meldung: {title}."));
+        }
+    }
+
+    /// <summary>Top of Descent: beim A32NX die FMS-Meldung T/D REACHED, sonst der TOD aus dem SimBrief-Plan.</summary>
+    private void CheckTopOfDescent(FlightSnapshot s, DateTimeOffset now, bool suppressed, List<AlertEvent> events)
+    {
+        if (!s.Airborne)
+        {
+            _todAnnounced = false;
+            _todPlanArmed = false;
+            return;
+        }
+
+        if (s.TdReached is { } reached)
+        {
+            if (!reached)
+            {
+                _todAnnounced = false;
+                return;
+            }
+
+            if (_todAnnounced)
+            {
+                return;
+            }
+
+            _todAnnounced = true;
+            if (!suppressed && IsEnabled(Rules.TopOfDescent))
+            {
+                events.Add(Event(now, Rules.TopOfDescent, AlertSeverity.Info, AlertKind.Event, "Top of descent", "FMS meldet T/D REACHED."));
+            }
+
+            return;
+        }
+
+        // Ohne FMS-Meldung: Plan-TOD. Scharf, solange er noch mehr als 5 nm entfernt ist.
+        switch (s.PlanTodDistanceNm)
+        {
+            case > 5:
+                _todPlanArmed = true;
+                break;
+            case <= 0.5 when _todPlanArmed:
+                _todPlanArmed = false;
+                if (!suppressed && IsEnabled(Rules.TopOfDescent))
+                {
+                    events.Add(Event(now, Rules.TopOfDescent, AlertSeverity.Info, AlertKind.Event, "Top of descent", "Top of Descent laut SimBrief-Plan erreicht."));
+                }
+
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Landecheck im Sinkflug: bei 2000 ft RA Fahrwerk, Landeklappen und Ground Spoiler prüfen,
+    /// bei 1000 ft RA nur noch melden, was dann immer noch fehlt.
+    /// </summary>
+    private void CheckLandingConfiguration(FlightSnapshot s, DateTimeOffset now, bool suppressed, List<AlertEvent> events)
+    {
+        if (!s.Airborne || s.RadioAltFt is not { } ra || s.RadioAltFt is > 3000)
+        {
+            _landingCheck2000Done = false;
+            _landingCheck1000Done = false;
+            return;
+        }
+
+        var prevRa = _prev?.RadioAltFt;
+        var descending = s.VerticalSpeedFpm is < -100;
+        var crossed2000 = prevRa is > 2000 && ra <= 2000 && descending;
+        var crossed1000 = prevRa is > 1000 && ra <= 1000 && descending;
+        if (Phase == "takeoff" || (!crossed2000 && !crossed1000))
+        {
+            return;
+        }
+
+        var problems = new List<(string Callout, string Text)>();
+        if (!s.GearDown)
+        {
+            problems.Add(("Gear not down", "Fahrwerk nicht unten"));
+        }
+
+        if (s.Limits.LandingFlaps.Count > 0 && !s.Limits.IsLandingFlaps(s.FlapsIndex, s.FlapsLabel))
+        {
+            problems.Add(("Flaps not in landing configuration", $"Klappen {s.FlapsLabel ?? s.FlapsIndex?.ToString("0", CultureInfo.InvariantCulture)} statt {string.Join("/", s.Limits.LandingFlaps)}"));
+        }
+
+        if (s.SpoilersArmed == false)
+        {
+            problems.Add(("Spoilers not armed", "Ground Spoiler nicht armed"));
+        }
+
+        if (crossed2000 && !_landingCheck2000Done)
+        {
+            _landingCheck2000Done = true;
+            if (suppressed || !IsEnabled(Rules.LandingCheck))
+            {
+                return;
+            }
+
+            events.Add(problems.Count == 0
+                ? Event(now, Rules.LandingCheck, AlertSeverity.Info, AlertKind.Event, "Landing checklist complete", "2000 ft: Fahrwerk unten, Landeklappen gesetzt" + (s.SpoilersArmed == true ? ", Spoiler armed." : "."))
+                : Event(now, Rules.LandingCheck, AlertSeverity.Caution, AlertKind.Event, string.Join(", ", problems.Select(p => p.Callout)), "2000 ft: " + string.Join(", ", problems.Select(p => p.Text)) + "."));
+        }
+        else if (crossed1000 && !_landingCheck1000Done)
+        {
+            _landingCheck1000Done = true;
+            if (problems.Count > 0 && !suppressed && IsEnabled(Rules.LandingCheck))
+            {
+                events.Add(Event(now, Rules.LandingCheck, AlertSeverity.Warning, AlertKind.Event, string.Join(", ", problems.Select(p => p.Callout)), "1000 ft: " + string.Join(", ", problems.Select(p => p.Text)) + "."));
+            }
+        }
+    }
+
+    /// <summary>Merkt sich, seit wann jede ECAM-Titelzeile da ist, und liefert die in diesem Takt neu hinzugekommenen.</summary>
+    private IReadOnlyList<string> UpdateEcam(FlightSnapshot s, DateTimeOffset now)
+    {
+        var current = s.EcamTitles;
+        foreach (var gone in _ecamFirstSeen.Keys.Where(k => !current.Contains(k)).ToList())
+        {
+            _ecamFirstSeen.Remove(gone);
+            _ecamAnnounced.Remove(gone);
+        }
+
+        var added = new List<string>();
+        foreach (var title in current)
+        {
+            if (_ecamFirstSeen.TryAdd(title, now))
+            {
+                added.Add(title);
+            }
+        }
+
+        return added;
+    }
+
+    /// <summary>Die zuletzt aufgetauchte Titelzeile (bei Gleichstand die oberste), sonst null.</summary>
+    private string? NewestEcamTitle(FlightSnapshot s)
+    {
+        string? newest = null;
+        var newestTime = DateTimeOffset.MinValue;
+        foreach (var title in s.EcamTitles)
+        {
+            var seen = _ecamFirstSeen.TryGetValue(title, out var t) ? t : s.TimeUtc;
+            if (newest is null || seen > newestTime)
+            {
+                newest = title;
+                newestTime = seen;
+            }
+        }
+
+        return newest;
+    }
+
     // ------------------------------------------------------------------ Mechanik
 
     private void UpdateContext(FlightSnapshot s, DateTimeOffset now)
@@ -529,6 +725,12 @@ public sealed class MonitorEngine
         _altTarget = null;
         _altArmed = false;
         _announcedRunwayKey = null;
+        _ecamFirstSeen.Clear();
+        _ecamAnnounced.Clear();
+        _todAnnounced = false;
+        _todPlanArmed = false;
+        _landingCheck2000Done = false;
+        _landingCheck1000Done = false;
     }
 
     private static void Later(ref DateTimeOffset target, DateTimeOffset candidate)

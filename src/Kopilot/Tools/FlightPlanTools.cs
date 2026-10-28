@@ -73,7 +73,8 @@ public static class FlightPlanTools
 
     [McpServerTool(Name = "get_progress", ReadOnly = true)]
     [Description(
-        "Flight progress against the SimBrief plan, computed from the aircraft position: next fix with distance and ETA, distance and time to destination, " +
+        "Flight progress against the SimBrief plan, computed from the aircraft position: next fix with distance and ETA (taken from the FMS active waypoint when the " +
+        "aircraft profile provides it, e.g. after DIR TO – 'source': 'fms'), distance and time to destination, " +
         "distance to top of descent, cross-track deviation from the planned route, planned altitude at the next fix, and fuel on board versus plan " +
         "with predicted landing fuel (kg). Times are UTC.")]
     public static async Task<string> GetProgress(
@@ -107,8 +108,9 @@ public static class FlightPlanTools
 
         var gs = sim.Num("gs");
         var zulu = sim.Num("zuluTimeSec");
-        var fp = ProgressCalculator.Compute(ofp, points, progress, sim.Num("fuelTotalKg"));
-        var destDist = progress.DistanceToGoNm;
+        var signals = new AircraftSignals(sim);
+        var fp = ProgressCalculator.Compute(ofp, points, progress, sim.Num("fuelTotalKg"), signals.FmsWaypoint(lat, lon));
+        var destDist = fp.DistanceToGoNm;
         var xt = progress.CrossTrackNm;
 
         return Json.Serialize(new
@@ -121,17 +123,20 @@ public static class FlightPlanTools
             nextFix = new
             {
                 ident = fp.Next.Ident,
+                source = fp.NextSource,
                 airway = fp.NextFix?.Airway,
-                distanceNm = Math.Round(progress.DistanceToNextNm, 1),
+                distanceNm = Math.Round(fp.DistanceToNextNm, 1),
                 bearingTrueDeg = Fmt.Heading(RouteMath.BearingDeg(lat, lon, fp.Next.Lat, fp.Next.Lon)),
-                ete = Ete(progress.DistanceToNextNm, gs),
-                etaUtc = Eta(zulu, progress.DistanceToNextNm, gs),
+                ete = Ete(fp.DistanceToNextNm, gs),
+                etaUtc = Eta(zulu, fp.DistanceToNextNm, gs),
                 plannedAltitudeFt = fp.NextFix?.AltitudeFt,
                 plannedStage = fp.NextFix?.Stage,
             },
+            fmsWaypointNotInPlan = fp.FmsWaypointNotInPlan ? true : (bool?)null,
             following = fp.Following,
             topOfClimb = Marker(fp.TopOfClimb, gs, zulu),
             topOfDescent = Marker(fp.TopOfDescent, gs, zulu),
+            topOfDescentSource = fp.TopOfDescent is null ? null : "simbrief",
             destination = new
             {
                 icao = ofp.Destination.Icao,
@@ -154,7 +159,9 @@ public static class FlightPlanTools
                 predictedLandingKg = Fmt.Int(fp.PredictedLandingFuelKg),
                 minimumAtDestinationKg = Fmt.Int(ofp.Fixes.Count > 0 ? ofp.Fixes[^1].FuelMinOnboardKg : null),
             },
-            note = fp.InTerminalArea ? "Im SID/STAR- oder Flughafenbereich weicht die Flugbahn oft vom Plan ab (Vektoren)." : null,
+            note = fp.FmsWaypointNotInPlan
+                ? "Das FMS fliegt einen Punkt an, der nicht im SimBrief-Plan steht – nächster Fix und Distanzen kommen aus dem Plan."
+                : fp.InTerminalArea ? "Im SID/STAR- oder Flughafenbereich weicht die Flugbahn oft vom Plan ab (Vektoren)." : null,
             activeAlerts = AlertView.Active(alerts),
         });
     }

@@ -32,6 +32,9 @@ public sealed class AircraftProfile
     /// <summary>Freie Zusatzvariablen, die get_aircraft_profile roh ausgibt.</summary>
     public List<ProfileVariable> Variables { get; set; } = [];
 
+    /// <summary>Elektrik-Werte für get_systems (z. B. Generatorspannung, Busse versorgt). Leer = kein Elektrik-Block.</summary>
+    public List<ProfileVariable> Electrical { get; set; } = [];
+
     [JsonIgnore]
     public string? SourceFile { get; set; }
 
@@ -81,7 +84,7 @@ public sealed class ProfileBinding
 
     public string Unit { get; set; } = "number";
 
-    /// <summary>number | bool | enum | bitmask | string</summary>
+    /// <summary>number | bool | enum | bitmask | string | arinc429 (FBW-Datenwort: Wert nur bei Normal Operation)</summary>
     public string Type { get; set; } = "number";
 
     /// <summary>Umrechnungsfaktor auf die Kopilot-Einheit (z. B. lbs/h → kg/h = 0.45359237).</summary>
@@ -155,14 +158,23 @@ public sealed class AircraftLimits
     /// <summary>Höchstgeschwindigkeit mit ausgefahrenem Fahrwerk (VLE).</summary>
     public double? VleKt { get; set; }
 
-    /// <summary>VFE je Klappenhebel-Index ("1", "2", …).</summary>
+    /// <summary>VFE je Klappenstellung: Schlüssel ist der Klartext der Stellung (z. B. "1+F", "FULL") oder der Hebel-Index ("1", "2", …).</summary>
     public Dictionary<string, double> VfeKt { get; set; } = [];
+
+    /// <summary>Klappenstellungen, die als Landekonfiguration gelten (z. B. "3", "FULL"). Leer = Klappen nicht prüfen.</summary>
+    public List<string> LandingFlaps { get; set; } = [];
 
     /// <summary>Speed-Limit unterhalb FL100.</summary>
     public double SpeedLimitBelowFl100Kt { get; set; } = 250;
 
-    public double? VfeFor(double? flapsIndex)
+    /// <summary>VFE für die aktuelle Stellung: zuerst nach Klartext (aus dem Profil), sonst nach Hebel-Index. Eingefahren = null.</summary>
+    public double? VfeFor(double? flapsIndex, string? flapsLabel = null)
     {
+        if (flapsLabel is not null)
+        {
+            return flapsLabel is "0" or "" ? null : VfeKt.TryGetValue(flapsLabel, out var byLabel) ? byLabel : null;
+        }
+
         if (flapsIndex is not { } f || f < 0.5)
         {
             return null;
@@ -170,6 +182,12 @@ public sealed class AircraftLimits
 
         var key = Math.Round(f).ToString(CultureInfo.InvariantCulture);
         return VfeKt.TryGetValue(key, out var v) ? v : null;
+    }
+
+    public bool IsLandingFlaps(double? flapsIndex, string? flapsLabel)
+    {
+        var key = flapsLabel ?? (flapsIndex is { } f ? Math.Round(f).ToString(CultureInfo.InvariantCulture) : null);
+        return key is not null && LandingFlaps.Contains(key, StringComparer.OrdinalIgnoreCase);
     }
 }
 
@@ -222,18 +240,36 @@ public static class BindingKeys
     public const string SelectedAltitude = "selectedAltitude";
     public const string Vls = "vls";
     public const string FuelFlowKgh = "fuelFlowKgh";
+    public const string EgtC = "egtC";
+    public const string ParkingBrake = "parkingBrake";
+    public const string SpoilersArmed = "spoilersArmed";
+    public const string SelectedHeading = "selectedHeading";
+    public const string SelectedHeadingDashes = "selectedHeadingDashes";
+    public const string Flaps = "flaps";
+    public const string V1 = "v1";
+    public const string Vr = "vr";
+    public const string V2 = "v2";
+    public const string FlexTemp = "flexTemp";
+    public const string TdReached = "tdReached";
+    public const string FmgcDiscreteWord1 = "fmgcDiscreteWord1";
+    public const string FmAltitudeConstraint = "fmAltitudeConstraint";
+    public const string FmsToWptDistance = "fmsToWptDistance";
+    public const string FmsToWptBearing = "fmsToWptBearing";
 
     /// <summary>Alle bekannten Schlüssel (für get_aircraft_profile).</summary>
     public static readonly IReadOnlyList<string> All =
     [
         Ap1, Ap2, FlightDirector, AthrStatus, AthrMode, FmaLateral, FmaLateralArmed, FmaVertical, FmaVerticalArmed, Autobrake,
         MasterWarning, MasterCaution, SpeedTarget, SpeedManaged, SelectedSpeed, MachMode, SelectedAltitude, Vls, FuelFlowKgh,
+        EgtC, ParkingBrake, SpoilersArmed, SelectedHeading, SelectedHeadingDashes, Flaps, V1, Vr, V2, FlexTemp, TdReached,
+        FmgcDiscreteWord1, FmAltitudeConstraint, FmsToWptDistance, FmsToWptBearing,
     ];
 
     /// <summary>Schlüssel, die standardmäßig schnell abonniert werden (Monitoring).</summary>
     public static readonly HashSet<string> FastByDefault = new(StringComparer.OrdinalIgnoreCase)
     {
         Ap1, Ap2, AthrStatus, FmaLateral, FmaVertical, MasterWarning, MasterCaution, SpeedTarget, SpeedManaged,
-        SelectedSpeed, MachMode, SelectedAltitude, Vls,
+        SelectedSpeed, MachMode, SelectedAltitude, Vls, FmaLateralArmed, FmaVerticalArmed, AthrMode, Flaps, SpoilersArmed,
+        FmgcDiscreteWord1, TdReached,
     };
 }

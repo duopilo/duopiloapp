@@ -128,6 +128,14 @@ main {
 .fma-col .lbl { font-family: var(--sans); font-size: 11px; color: var(--du-dim); }
 .fma-col.ap .act { color: var(--white); font-weight: 400; font-size: 18px; }
 .fma-note { padding: 2px 18px 0; font-size: 12px; color: var(--du-dim); }
+.fma-history { padding: 4px 18px 2px; font-size: 13px; }
+.fma-history summary { cursor: pointer; color: var(--du-dim); width: max-content; }
+.fma-history ol { list-style: none; margin: 6px 0 4px; padding: 0; max-height: 220px; overflow: auto; }
+.fma-history li { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; gap: 12px; padding: 3px 0; border-top: 1px solid #12171c; font-family: var(--mono); }
+.fma-history .t, .fma-history .at { color: var(--du-dim); }
+.fma-history .ch { color: var(--green); }
+.elec { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 2px 14px; margin-top: 10px; font: 13px/1.5 var(--mono); }
+.elec span { white-space: nowrap; }
 
 /* PFD-Werte */
 .pfd { grid-area: pfd; }
@@ -295,6 +303,10 @@ select.btn { padding: 4px 6px; max-width: 190px; }
       <div class="fma-col ap"><div class="act" id="fmaAp"></div><div class="arm" id="fmaFd"></div><div class="lbl">Autopilot</div></div>
     </div>
     <div class="fma-note" id="fmaNote" hidden></div>
+    <details class="fma-history" id="fmaHistory">
+      <summary>FMA-Verlauf</summary>
+      <ol id="fmaLog"></ol>
+    </details>
   </section>
 
   <section class="du pfd" aria-label="Flugdaten">
@@ -504,12 +516,18 @@ function renderFma(s) {
   if (generic) note.textContent = "Für dieses Flugzeug sind keine FMA-Variablen im Profil – AP-Status aus den generischen SimVars, Schub und Modi unbekannt.";
 }
 
+function renderFmaLog(d) {
+  const list = d.fmaLog || [];
+  setHtml("fmaLog", list.map((e) => `<li><span class="t">${esc(e.time)}</span><span class="ch">${esc(e.changes.join("; "))}</span><span class="at">${n(e.ra) !== null ? "RA " + e.ra : n(e.alt) !== null ? e.alt + " ft" : ""}${n(e.ias) !== null ? "  " + e.ias + " kt" : ""}</span></li>`).join("")
+    || `<li><span class="t"></span><span class="at">Noch keine FMA-Wechsel aufgezeichnet.</span></li>`);
+}
+
 /* ------------------------------------------------------------------ Flugdaten */
 function renderPfd(s) {
   const f = s ? s.flight : {};
   setText("ias", fmt(f.ias));
   let iasSub = "";
-  if (n(f.iasTarget) !== null) iasSub += span(f.iasTarget + (f.speedManaged ? " managed" : " gewählt"), f.speedManaged ? "m" : "c");
+  if (n(f.iasTarget) !== null) iasSub += span(f.iasTarget + (f.speedManaged ? " managed" : f.targetFromMach ? " aus Mach" : " gewählt"), f.speedManaged ? "m" : "c");
   if (n(f.vls) !== null) iasSub += " " + span("VLS " + f.vls, "a");
   if (n(f.gs) !== null) iasSub += " " + span("GS " + f.gs, "dim");
   setHtml("iasSub", iasSub);
@@ -531,7 +549,13 @@ function renderPfd(s) {
 
   const pitch = n(f.pitch) === null ? DASH : (f.pitch >= 0 ? "+" : "−") + Math.abs(f.pitch).toFixed(1) + "°";
   const bank = n(f.bank) === null ? DASH : Math.abs(f.bank).toFixed(0) + "° " + (f.bank > 0.5 ? "rechts" : f.bank < -0.5 ? "links" : "");
-  setHtml("att", `<span>Pitch <b>${esc(pitch)}</b></span><span>Bank <b>${esc(bank)}</b></span><span>TAS <b>${esc(fmt(f.tas))}</b> kt</span>`);
+  let att = `<span>Pitch <b>${esc(pitch)}</b></span><span>Bank <b>${esc(bank)}</b></span><span>TAS <b>${esc(fmt(f.tas))}</b> kt</span>`;
+  const to = s && s.takeoff;
+  if (to && (f.onGround || (n(f.ra) !== null && f.ra < 1500)) && (n(to.v1) !== null || n(to.flex) !== null)) {
+    att += `<span>V1 <b class="c">${esc(fmt(to.v1))}</b></span><span>VR <b class="c">${esc(fmt(to.vr))}</b></span><span>V2 <b class="c">${esc(fmt(to.v2))}</b></span>`;
+    if (n(to.flex) !== null) att += `<span>FLEX <b class="c">${esc(to.flex)}</b></span>`;
+  }
+  setHtml("att", att);
 }
 
 /* ------------------------------------------------------------------ Ansagen */
@@ -675,13 +699,14 @@ function renderRoute(d) {
   const fuelDiff = n(g.fuel.diff);
   const fuelCls = fuelDiff === null ? "dim" : fuelDiff >= 0 ? "g" : fuelDiff > -500 ? "w" : "a";
   const stats = `<div class="stats">
-    <div class="stat"><div class="lbl">Nächster Fix</div><div class="big">${esc(g.next.ident)}</div><div class="sub">${esc(g.next.airway || "")} ${fmt(g.next.distNm, 1)} nm  ETA ${esc(g.next.eta || DASH)}${g.next.altFt ? "  " + g.next.altFt + " ft" : ""}</div></div>
+    <div class="stat"><div class="lbl">Nächster Fix${g.next.source === "fms" ? " (FMS)" : ""}</div><div class="big">${esc(g.next.ident)}</div><div class="sub">${esc(g.next.airway || "")} ${fmt(g.next.distNm, 1)} nm  ETA ${esc(g.next.eta || DASH)}${g.next.altFt ? "  " + g.next.altFt + " ft" : ""}</div></div>
     <div class="stat"><div class="lbl">Bis ${esc(p.destination.icao)}</div><div class="big">${fmt(g.toGoNm)} nm</div><div class="sub">ETA ${esc(g.eta || DASH)}${g.versusSchedule ? "  " + esc(g.versusSchedule) : ""}</div></div>
     <div class="stat"><div class="lbl">${g.toc ? "Top of Climb" : "Top of Descent"}</div><div class="big">${g.toc ? fmt(g.toc.distNm) + " nm" : g.tod ? fmt(g.tod.distNm) + " nm" : DASH}</div><div class="sub">${g.toc ? "ETA " + esc(g.toc.eta || DASH) : g.tod ? "ETA " + esc(g.tod.eta || DASH) : "hinter dir"}</div></div>
     <div class="stat"><div class="lbl">Querablage</div><div class="big ${g.onRoute ? "g" : "a"}">${Math.abs(g.xtk).toFixed(1)} nm</div><div class="sub">${xtkSide ? esc(xtkSide.trim()) + " der Route" : "auf der Route"}${g.terminal ? "  SID/STAR" : ""}</div></div>
     <div class="stat"><div class="lbl">Treibstoff gegen Plan</div><div class="big ${fuelCls}">${fuelDiff === null ? DASH : (fuelDiff >= 0 ? "+" : "−") + Math.abs(fuelDiff) + " kg"}</div><div class="sub">an Bord ${fmt(g.fuel.actual)} kg  Landung ca. ${fmt(g.fuel.predictedLanding)} kg</div></div>
   </div>`;
-  setHtml("routeBody", ends + track + stats);
+  const note = g.next.notInPlan ? `<p class="empty">Das FMS fliegt einen Punkt an, der nicht im SimBrief-Plan steht – Route und Distanzen kommen aus dem Plan.</p>` : "";
+  setHtml("routeBody", ends + track + stats + note);
 }
 $("planReload").addEventListener("click", () => action("/api/simbrief/refresh", "SimBrief-Plan geladen."));
 
@@ -695,7 +720,8 @@ function renderEngines(s) {
     <div class="bar"><i style="width:${Math.min(100, Math.max(0, (e.n1 || 0) / 1.1))}%"></i></div>
     <div class="sub">EGT ${fmt(e.egt)} °C<br>FF ${fmt(e.ff)} kg/h</div></div>`).join(""));
   $("ffSource").textContent = s.fuelFlowSource === "profile" ? "Fuel Flow aus dem Profil" : "Fuel Flow generisch";
-  setHtml("totals", `Treibstoff <b>${fmt(s.fuelKg)}</b> kg   Gewicht <b>${fmt(s.grossWeightKg)}</b> kg`);
+  const elec = (s.electrical || []).map((e) => `<span><span class="dim">${esc(e.label)}</span> ${e.text ? span(e.text, e.text === "versorgt" ? "g" : "a") : esc(fmt(e.value))}</span>`).join("");
+  setHtml("totals", `Treibstoff <b>${fmt(s.fuelKg)}</b> kg   Gewicht <b>${fmt(s.grossWeightKg)}</b> kg` + (elec ? `<div class="elec">${elec}</div>` : ""));
 }
 
 /* ------------------------------------------------------------------ Konfiguration */
@@ -705,7 +731,7 @@ function renderConfig(s) {
   const gear = n(c.gearPct) === null ? (c.gearHandleDown ? span("unten", "g") : span("oben", "w"))
     : c.gearPct >= 99 ? span("unten", "g") : c.gearPct <= 1 ? span("oben", "w") : span(`fährt (${c.gearPct} %)`, "a");
   const rows = [
-    ["Klappenhebel", span(n(c.flaps) === null ? DASH : String(c.flaps), "w")],
+    ["Klappen", span(n(c.flaps) === null ? DASH : String(c.flaps), "w")],
     ["Fahrwerk", gear],
     ["Spoiler", c.spoilersArmed ? span("armed", "c") : c.speedbrakePct > 2 ? span(`Speedbrake ${c.speedbrakePct} %`, "w") : span("eingefahren", "w")],
     ["Autobrake", c.autobrake ? span(c.autobrake, c.autobrake === "OFF" || c.autobrake === "DISARM" ? "w" : "g") : span(DASH, "dim")],
@@ -798,6 +824,7 @@ async function poll() {
 function render(d) {
   renderHeader(d);
   renderFma(d.sim);
+  renderFmaLog(d);
   renderPfd(d.sim);
   renderCallouts(d);
   renderEcam(d.sim);

@@ -55,10 +55,13 @@ public static class Rules
     public const string RunwayAssigned = "RUNWAY_ASSIGNED";
     public const string Stall = "STALL";
     public const string Overspeed = "OVERSPEED";
+    public const string EcamMessage = "ECAM_MESSAGE";
+    public const string TopOfDescent = "TOP_OF_DESCENT";
+    public const string LandingCheck = "LANDING_CHECK";
 
     public static readonly IReadOnlyList<string> All =
     [
         SimPaused, GearSpeed, FlapSpeed, GearDownHigh, SpeedLimitFl100, SpeedDeviation, SinkRate, BankAngle,
-        ApDisconnect, MasterWarning, MasterCaution, Alt1000ToGo, RunwayAssigned, Stall, Overspeed,
+        ApDisconnect, MasterWarning, MasterCaution, EcamMessage, Alt1000ToGo, TopOfDescent, LandingCheck, RunwayAssigned, Stall, Overspeed,
     ];
 }

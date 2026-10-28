@@ -16,6 +16,7 @@ public sealed class DashboardData(
     AlertBus alerts,
     SimBriefService simBrief,
     EcamCatalog ecam,
+    FmaLog fmaLog,
     LogBuffer logs)
 {
     public object Build(long sinceId, bool includeLog)
@@ -47,6 +48,14 @@ public sealed class DashboardData(
                 events = alerts.Since(sinceId < 0 ? Math.Max(0, alerts.LastId - 30) : sinceId, 30).Select(AlertView.Full),
             },
             sim = connection.IsConnected ? SimPart(status) : null,
+            fmaLog = fmaLog.Last(12).Reverse().Select(e => new
+            {
+                time = e.TimeUtc.ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture),
+                changes = e.Changes,
+                ias = Fmt.Int(e.IasKt),
+                ra = e.RadioAltFt is < 2500 ? Fmt.Int(e.RadioAltFt) : null,
+                alt = Fmt.Int(e.AltitudeFt),
+            }),
             plan = Plan(),
             log = includeLog
                 ? logs.Tail(150).Select(l => new
@@ -85,6 +94,7 @@ public sealed class DashboardData(
                 ias = Fmt.Int(sim.Num("ias")),
                 iasTarget = Fmt.Int(s.SpeedTargetKt),
                 speedManaged = s.SpeedManaged,
+                targetFromMach = s.SpeedManaged != true && s.SelectedSpeedIsMach,
                 vls = Fmt.Int(s.VlsKt),
                 tas = Fmt.Int(sim.Num("tas")),
                 gs = Fmt.Int(sim.Num("gs")),
@@ -93,7 +103,7 @@ public sealed class DashboardData(
                 fl = Fmt.Int(sim.Num("altPressure") / 100),
                 vs = Fmt.Int(sim.Num("vs")),
                 hdg = Fmt.Heading(sim.Num("hdgMag")),
-                hdgSel = Fmt.Heading(sim.Num("apHdg")),
+                hdgSel = Fmt.Heading(s.SelectedHeadingDeg),
                 trk = sim.Num("gs") is > 5 ? Fmt.Heading(sim.Num("trackMag")) : null,
                 ra = Fmt.Int(sim.Num("altRadio")),
                 agl = Fmt.Int(sim.Num("altAgl")),
@@ -116,14 +126,18 @@ public sealed class DashboardData(
             },
             config = new
             {
-                flaps = Fmt.Int(sim.Num("flapsIndex")),
+                flaps = s.FlapsDisplay,
                 gearPct = Fmt.Int(sim.Num("gearCenterPct")),
                 gearHandleDown = sim.Bool("gearHandle"),
-                spoilersArmed = sim.Bool("spoilersArmed"),
+                spoilersArmed = s.SpoilersArmed,
                 speedbrakePct = Fmt.Int(sim.Num("spoilersHandlePct")),
-                parkingBrake = sim.Bool("parkingBrake"),
+                parkingBrake = s.ParkingBrake,
                 autobrake = s.Autobrake,
             },
+            takeoff = s.Has(BindingKeys.V1) || s.Has(BindingKeys.FlexTemp)
+                ? new { v1 = Fmt.Int(s.V1Kt), vr = Fmt.Int(s.VrKt), v2 = Fmt.Int(s.V2Kt), flex = Fmt.Int(s.FlexTempC) }
+                : null,
+            electrical = s.Electrical().Select(e => new { label = e.Description ?? e.Key, value = Fmt.Round(e.Value, 0), text = e.Text }),
             warnings = new
             {
                 master = s.MasterWarning,
@@ -144,7 +158,7 @@ public sealed class DashboardData(
                 running = sim.Bool($"eng{i}Running"),
                 n1 = Fmt.Round(sim.Num($"eng{i}N1"), 1),
                 n2 = Fmt.Round(sim.Num($"eng{i}N2"), 1),
-                egt = Fmt.Int(sim.Num($"eng{i}Egt")),
+                egt = Fmt.Int(s.EgtC(i)),
                 ff = Fmt.Int(s.FuelFlowKgh(i)),
             }),
             fuelFlowSource = s.FuelFlowSource,
@@ -207,20 +221,22 @@ public sealed class DashboardData(
             {
                 var gs = sim.Num("gs");
                 var zulu = sim.Num("zuluTimeSec");
-                var fp = ProgressCalculator.Compute(ofp, points, route, sim.Num("fuelTotalKg"));
+                var fp = ProgressCalculator.Compute(ofp, points, route, sim.Num("fuelTotalKg"), new AircraftSignals(sim).FmsWaypoint(lat, lon));
                 progress = new
                 {
                     flownNm = Math.Round(route.DistanceFlownNm),
                     totalNm = Math.Round(fp.TotalDistanceNm),
-                    toGoNm = Math.Round(route.DistanceToGoNm),
-                    eta = FlightPlanTools.Eta(zulu, route.DistanceToGoNm, gs),
-                    versusSchedule = FlightPlanTools.VersusSchedule(ofp, route.DistanceToGoNm, gs, zulu),
+                    toGoNm = Math.Round(fp.DistanceToGoNm),
+                    eta = FlightPlanTools.Eta(zulu, fp.DistanceToGoNm, gs),
+                    versusSchedule = FlightPlanTools.VersusSchedule(ofp, fp.DistanceToGoNm, gs, zulu),
                     next = new
                     {
                         ident = fp.Next.Ident,
+                        source = fp.NextSource,
+                        notInPlan = fp.FmsWaypointNotInPlan,
                         airway = fp.NextFix?.Airway,
-                        distNm = Math.Round(route.DistanceToNextNm, 1),
-                        eta = FlightPlanTools.Eta(zulu, route.DistanceToNextNm, gs),
+                        distNm = Math.Round(fp.DistanceToNextNm, 1),
+                        eta = FlightPlanTools.Eta(zulu, fp.DistanceToNextNm, gs),
                         altFt = fp.NextFix?.AltitudeFt,
                     },
                     following = fp.Following,

@@ -21,6 +21,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<SimBriefService>();
         services.AddSingleton(sp => new AlertBus(sp.GetRequiredService<IOptions<KopilotOptions>>().Value.Monitoring.HistorySize));
         services.AddSingleton<SnapshotFactory>();
+        services.AddSingleton(new FmaLog());
         services.AddSingleton<MonitoringService>();
         services.AddHostedService(sp => sp.GetRequiredService<MonitoringService>());
         return services;

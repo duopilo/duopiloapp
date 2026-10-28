@@ -104,6 +104,14 @@ public sealed class SimConnectClient : BackgroundService
         }
 
         var kind = SimVarSpec.KindFromUnit(unit);
+
+        // Bekannte Text-SimVars auch ohne unit "string" als Text lesen
+        if (kind == SimVarKind.Number && (string.IsNullOrWhiteSpace(unit) || unit.Trim().Equals("number", StringComparison.OrdinalIgnoreCase))
+            && SimVarSpec.IsTextVariable(normalized))
+        {
+            kind = SimVarKind.String;
+        }
+
         var effectiveUnit = kind == SimVarKind.String ? "" : (string.IsNullOrWhiteSpace(unit) ? "number" : unit.Trim());
         var spec = new SimVarSpec($"adhoc:{normalized}|{effectiveUnit}", normalized, effectiveUnit, kind);
 
@@ -444,7 +452,7 @@ public sealed class SimConnectClient : BackgroundService
             }
         }
 
-        foreach (var variable in profile.Variables)
+        foreach (var variable in profile.Variables.Concat(profile.Electrical))
         {
             var unit = string.IsNullOrWhiteSpace(variable.Unit) ? "number" : variable.Unit;
             Subscribe(sc, new SimVarSpec(VarKey(variable.Name, unit), variable.Name.Trim(), unit, SimVarSpec.KindFromUnit(unit)));

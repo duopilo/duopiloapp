@@ -15,8 +15,9 @@ Kopilot verbindet **Microsoft Flight Simulator 2024** über SimConnect mit **Cla
 | `get_alerts` | Meldungen des Monitorings seit einer ID, mit Callout zum Vorlesen |
 | `wait_for_alerts` | Wartet bis zu 25 s auf die nächste Monitoring-Meldung (Dauerüberwachung in einer Schleife) |
 | `get_monitoring_status` | Flugphase, aktive/abgeschaltete Regeln, Ruhezeit |
+| `get_fma_log` | Verlauf der FMA-Wechsel mit Uhrzeit, IAS und Radiohöhe – z. B. ob nach dem Autoland ROLL OUT aktiv war |
 | `get_flight_plan` | SimBrief-OFP: Route, Bahnen, Reiseflughöhe, Cost Index, Fuel, Gewichte, Zeiten, Navlog |
-| `get_progress` | Fortschritt gegen den Plan: nächster Fix, Distanz/ETA, TOD, Querablage, Fuel gegen Plan |
+| `get_progress` | Fortschritt gegen den Plan: nächster Fix (beim A32NX der aktive FMS-Wegpunkt, z. B. nach DIR TO), Distanz/ETA, TOD, Querablage, Fuel gegen Plan |
 | `get_atc` | Ingame-ATC: Callsign, Freigaben, zugewiesene Bahn (inkl. L/C/R aus SimBrief) |
 | `get_navigation` | GPS-Flugplanvariablen des Sims (bei Airliner-FMS meist leer – dann `get_progress`) |
 | `get_environment` | Wind, OAT, QNH, eingestellter Höhenmesser, Sicht, UTC-/Ortszeit |
@@ -38,12 +39,15 @@ Kopilot prüft alle 200 ms ein paar Regeln und legt Meldungen mit einem kurzen e
 | `STALL` | Stall | Stall-Warnung des Sims in der Luft |
 | `SINK_RATE` | Sink rate | unter 2500 ft RA mehr als 1500–3000 ft/min Sinken |
 | `BANK_ANGLE` | Bank angle | mehr als 35° (unter 150 ft RA enger, über 2500 ft RA 45°) |
-| `MASTER_WARNING` / `MASTER_CAUTION` | Master warning, ENG 1 FIRE | Master-Licht an, mit dem obersten ECAM-Titel |
+| `MASTER_WARNING` / `MASTER_CAUTION` | Master caution, ELEC GEN 1 OFF | Master-Licht an, mit der zuletzt aufgetauchten ECAM-Meldung |
+| `ECAM_MESSAGE` | HYD G RSVR LO LVL | weitere ECAM-Meldung, während Master Warning/Caution schon leuchtet |
 | `GEAR_DOWN_HIGH` | Gear still down | Fahrwerk draußen im Steigflug über 2000 ft AGL oder über FL150 |
 | `SPEED_LIMIT_FL100` | Speed limit | unter 10.000 ft schneller als 250 kt |
 | `SPEED_DEVIATION` | Speed | IAS weicht vom Ziel ab (+15/−10 kt, im Anflug +10/−5 kt) und läuft nicht darauf zu |
 | `AP_DISCONNECT` | Autopilot off | Autopilot in der Luft getrennt |
 | `ALT_1000_TO_GO` | One thousand to go | 1000 ft vor der FCU-Höhe |
+| `TOP_OF_DESCENT` | Top of descent | A32NX: FMS-Meldung T/D REACHED; sonst TOD laut SimBrief-Plan |
+| `LANDING_CHECK` | Landing checklist complete / Spoilers not armed | bei 2000 ft RA im Sinkflug: Fahrwerk, Landeklappen, Ground Spoiler; bei 1000 ft RA erneut, falls noch etwas fehlt |
 | `RUNWAY_ASSIGNED` | Runway two three left assigned | Ingame-ATC hat eine Bahn zugewiesen |
 | `SIM_PAUSED` | Sim paused | Sim pausiert – alle anderen Regeln ruhen |
 
@@ -288,7 +292,9 @@ Study-Level-Flugzeuge legen vieles (AP-Status, FMA, Autobrake, ECAM, Fuel Flow) 
 }
 ```
 
-- **Bindings** sind feste Schlüssel, die Tools und Monitoring verstehen: `ap1`, `ap2`, `flightDirector`, `athrStatus`, `athrMode`, `fmaLateral`, `fmaLateralArmed`, `fmaVertical`, `fmaVerticalArmed`, `autobrake`, `masterWarning`, `masterCaution`, `speedTarget`, `speedManaged`, `selectedSpeed`, `machMode`, `selectedAltitude`, `vls`, `fuelFlowKgh`. Typen: `number`, `bool`, `enum` (Wert → Text), `bitmask` (Bit → Text), `string`. `scale` rechnet um (z. B. lbs/h → kg/h = 0.45359237).
+- **Bindings** sind feste Schlüssel, die Tools und Monitoring verstehen: `ap1`, `ap2`, `flightDirector`, `athrStatus`, `athrMode`, `fmaLateral`, `fmaLateralArmed`, `fmaVertical`, `fmaVerticalArmed`, `fmgcDiscreteWord1`, `fmAltitudeConstraint`, `autobrake`, `masterWarning`, `masterCaution`, `speedTarget`, `speedManaged`, `selectedSpeed`, `machMode`, `selectedAltitude`, `selectedHeading`, `selectedHeadingDashes`, `vls`, `v1`, `vr`, `v2`, `flexTemp`, `tdReached`, `fmsToWptDistance`, `fmsToWptBearing`, `fuelFlowKgh`, `egtC`, `parkingBrake`, `spoilersArmed`, `flaps`. Typen: `number`, `bool`, `enum` (Wert → Text), `bitmask` (Bit → Text), `string`, `arinc429` (FBW-Datenwort, gilt nur bei Normal Operation). `scale` rechnet um (z. B. lbs/h → kg/h = 0.45359237). Achtung bei Geschwindigkeiten: Manche L:-Variablen speichern intern m/s – dann `"unit": "knots"` setzen, nicht umrechnen.
+- **electrical** listet Elektrik-Werte für `get_systems` (Spannung, Frequenz, Busse versorgt).
+- **limits.landingFlaps** sind die Klappenstellungen für den Landecheck, `vfeKt` gilt je Stellung (Klartext aus `flaps` oder Hebel-Index).
 - **variables** sind freie Zusatzwerte, die `get_aircraft_profile` roh ausgibt.
 - **limits** nutzt das Monitoring (Gear/Flap Speed, Overspeed, 250 kt unter FL100).
 
@@ -335,6 +341,9 @@ Jede Variable hat eine eigene SimConnect-Data-Definition. Ist ein Name in MSFS u
 - [x] v0.3: Pilot Monitoring (Regeln, Callouts, Alerts), FBW-Profile, ECAM-Klartext, SimBrief, Ingame-ATC-Bahn
 - [ ] L:-Variablen des iniBuilds A321LR (FMA, A/THR, Master Warning, ECAM)
 - [x] v0.4: Tray-Symbol und Dashboard im Browser statt Konsolenfenster, Callouts per Sprachausgabe im Browser
+- [x] v0.5: Korrekturen nach Testflug EDDL–EDDM (A32NX-Bindings, Knoten statt m/s, ALT CRZ), TOD, Landecheck, FMA-Log, FMS-Wegpunkt
+- [ ] v0.6: Lokale Sprachausgabe (Windows) und weitere PM-Callouts (Startlauf, Landung, Höhenmarken, Konfiguration)
+- [ ] v0.7: Eingabe-Modul mit Bestätigung (FCU, Konfiguration, Overhead, Funk, EFIS) – zuerst A32NX
 - [ ] WASimCommander-Anbindung (L:-Variablen auflisten, Events)
 - [ ] Callouts mit eigener Sprachausgabe (z. B. „20 Meilen – Flaps 1", 1000/500/Minimum, Retard, 100 Knoten, V1)
 - [x] Remote-Betrieb: Streamable HTTP mit Bearer-Token und OAuth, Cloudflare Tunnel

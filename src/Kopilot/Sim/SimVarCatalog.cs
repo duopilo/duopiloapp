@@ -59,6 +59,8 @@ public static class SimVarCatalog
             SimVarSpec.Num("apAlt", "AUTOPILOT ALTITUDE LOCK VAR", "feet").AsFast(),
             SimVarSpec.Num("apHdg", "AUTOPILOT HEADING LOCK DIR", "degrees"),
             SimVarSpec.Num("apSpd", "AUTOPILOT AIRSPEED HOLD VAR", "knots").AsFast(),
+            SimVarSpec.Bool("apMachHold", "AUTOPILOT MACH HOLD"),
+            SimVarSpec.Num("apMachVar", "AUTOPILOT MACH HOLD VAR", "number"),
             SimVarSpec.Num("apVs", "AUTOPILOT VERTICAL HOLD VAR", "feet per minute"),
             SimVarSpec.Bool("apNav", "AUTOPILOT NAV1 LOCK"),
             SimVarSpec.Bool("apAppr", "AUTOPILOT APPROACH HOLD"),
@@ -123,6 +125,7 @@ public static class SimVarCatalog
 
             // Umgebung & Zeit
             SimVarSpec.Num("oatC", "AMBIENT TEMPERATURE", "celsius"),
+            SimVarSpec.Num("ambientPressureHpa", "AMBIENT PRESSURE", "millibars"),
             SimVarSpec.Num("windDir", "AMBIENT WIND DIRECTION", "degrees"),
             SimVarSpec.Num("windKt", "AMBIENT WIND VELOCITY", "knots"),
             SimVarSpec.Num("visibilityM", "AMBIENT VISIBILITY", "meters"),

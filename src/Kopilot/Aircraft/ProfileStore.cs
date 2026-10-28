@@ -60,6 +60,7 @@ public sealed class ProfileStore
 
                     profile.SourceFile = Path.GetFileName(file);
                     profile.Variables.RemoveAll(v => string.IsNullOrWhiteSpace(v.Key) || string.IsNullOrWhiteSpace(v.Name));
+                    profile.Electrical.RemoveAll(v => string.IsNullOrWhiteSpace(v.Key) || string.IsNullOrWhiteSpace(v.Name));
                     profile.Bindings = new Dictionary<string, ProfileBinding>(
                         profile.Bindings.Where(b => !string.IsNullOrWhiteSpace(b.Value.Name)),
                         StringComparer.OrdinalIgnoreCase);
