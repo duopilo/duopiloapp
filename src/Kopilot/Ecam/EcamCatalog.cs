@@ -49,6 +49,7 @@ public sealed partial class EcamCatalog
     private readonly ConcurrentDictionary<string, EcamTable> _tables = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, Task> _loading = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, string> _errors = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _retryAfter = new(StringComparer.OrdinalIgnoreCase);
     private readonly ILogger<EcamCatalog> _log;
     private readonly string _cacheDir;
 
@@ -68,7 +69,8 @@ public sealed partial class EcamCatalog
             return table;
         }
 
-        if (Sources.ContainsKey(format))
+        // Nach einem Fehlschlag nicht im Monitoring-Takt erneut versuchen, sondern erst nach einer Pause
+        if (Sources.ContainsKey(format) && (!_retryAfter.TryGetValue(format, out var retry) || DateTimeOffset.UtcNow >= retry))
         {
             _loading.GetOrAdd(format, f => Task.Run(() => LoadAsync(f)));
         }
@@ -130,9 +132,10 @@ public sealed partial class EcamCatalog
         }
         finally
         {
-            // Nach einem Fehler darf ein späterer Aufruf es erneut versuchen.
+            // Nach einem Fehler darf ein späterer Aufruf es erneut versuchen – frühestens in 5 Minuten.
             if (!_tables.ContainsKey(format))
             {
+                _retryAfter[format] = DateTimeOffset.UtcNow.AddMinutes(5);
                 _loading.TryRemove(format, out _);
             }
         }

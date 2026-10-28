@@ -124,7 +124,7 @@ public sealed class MonitorEngineTests
 
         // Final: FCU steht auf der Fehlanflughöhe über dem Flugzeug, das Flugzeug sinkt weg
         var final = (double s, double alt) => Cruise(s) with { AltitudeFt = alt, AglFt = alt - 100, SelectedAltitudeFt = 5000, VerticalSpeedFpm = -800 };
-        Assert.Empty(Feed(engine, final(12, 3000), final(20, 4200), final(30, 3900)).Where(e => e.Rule == Rules.Alt1000ToGo));
+        Assert.DoesNotContain(Feed(engine, final(12, 3000), final(20, 4200), final(30, 3900)), e => e.Rule == Rules.Alt1000ToGo);
     }
 
     [Fact]
