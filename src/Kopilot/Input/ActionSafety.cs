@@ -172,13 +172,16 @@ public static class Interlocks
     /// <summary>Nicht am Boden (z. B. Fahrwerk einfahren).</summary>
     public const string NotOnGround = "notOnGround";
 
+    /// <summary>Nur am Boden (z. B. External Power).</summary>
+    public const string OnGround = "onGround";
+
     /// <summary>Fahrwerk ausfahren nur bis VLO (ohne VLO: VLE).</summary>
     public const string GearSpeed = "gearSpeed";
 
     /// <summary>Klappenstellung nur bis zu ihrer VFE (Auswahl = Stellung, z. B. "2" oder "FULL").</summary>
     public const string FlapsSpeed = "flapsSpeed";
 
-    public static readonly IReadOnlyList<string> All = [NotOnGround, GearSpeed, FlapsSpeed];
+    public static readonly IReadOnlyList<string> All = [NotOnGround, OnGround, GearSpeed, FlapsSpeed];
 
     /// <summary>Grund für die Sperre, oder null, wenn die Aktion erlaubt ist.</summary>
     public static string? Check(string? name, FlightSnapshot s, AircraftLimits limits, string? option)
@@ -195,6 +198,16 @@ public static class Interlocks
                 true => "Am Boden gesperrt.",
                 null => "Unklar, ob das Flugzeug am Boden ist – gesperrt.",
                 _ => null,
+            };
+        }
+
+        if (name.Equals(OnGround, StringComparison.OrdinalIgnoreCase))
+        {
+            return s.OnGround switch
+            {
+                true => null,
+                false => "Nur am Boden möglich.",
+                null => "Unklar, ob das Flugzeug am Boden ist – gesperrt.",
             };
         }
 

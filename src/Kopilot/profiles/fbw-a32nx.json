@@ -1189,6 +1189,23 @@
       "verified": false
     },
     {
+      "id": "elec.extPwr",
+      "area": "Elec",
+      "label": "External power",
+      "description": "EXT PWR Pushbutton. Nur am Boden, Einschalten nur mit angeschlossener GPU (AVAIL). Geprüft wird der Schütz 3XG (Bodenstrom am Netz).",
+      "parameter": { "type": "choice", "options": { "on": 1, "off": 0 } },
+      "steps": [
+        { "set": "L:A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON", "value": "{value}" }
+      ],
+      "readback": "External power {value}",
+      "interlocks": [ "onGround" ],
+      "requires": [
+        { "variable": "L:A32NX_EXT_PWR_AVAIL:1", "equalTo": 1, "only": [ "on" ], "message": "Kein Bodenstrom verfügbar – GPU nicht angeschlossen (EXT PWR AVAIL aus)." }
+      ],
+      "check": { "variable": "L:A32NX_ELEC_CONTACTOR_3XG_IS_CLOSED", "expect": "{value}", "timeoutMs": 4000 },
+      "verified": false
+    },
+    {
       "id": "xpdr.code",
       "area": "Transponder",
       "label": "Squawk",

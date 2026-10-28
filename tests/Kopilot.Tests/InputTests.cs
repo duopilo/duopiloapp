@@ -218,6 +218,22 @@ public sealed class InputTests
     }
 
     [Fact]
+    public void Nur_am_Boden()
+    {
+        var gpu = new ProfileAction
+        {
+            Id = "elec.extPwr", Readback = "External power {value}",
+            Parameter = new ActionParameter { Type = "choice", Options = new() { ["on"] = 1, ["off"] = 0 } },
+            Steps = [new ActionStep { Set = "L:A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON", Value = J("\"{value}\"") }],
+            Interlocks = [Interlocks.OnGround],
+        };
+
+        Assert.NotNull(ActionPlanner.Plan(gpu, "on", Limits, Ground()).Plan);
+        Assert.Equal("Nur am Boden möglich.", ActionPlanner.Plan(gpu, "on", Limits, Air()).Refusal);
+        Assert.Contains("Unklar", ActionPlanner.Plan(gpu, "off", Limits, Air() with { OnGround = null }).Refusal);
+    }
+
+    [Fact]
     public void Unbekannte_Sperre_sperrt()
     {
         var action = Speed();
@@ -398,6 +414,14 @@ public sealed class InputTests
         Assert.Equal("Engine two anti ice on", eng2.Readback);
         Assert.True(eng2.Check!.Independent);
         Assert.Contains(profile.Actions, a => a.Id == "antiice.engines");
+
+        // External Power: nur am Boden, Einschalten nur mit GPU
+        var extPwr = profile.Actions.Single(a => a.Id == "elec.extPwr");
+        Assert.Equal("Nur am Boden möglich.", ActionPlanner.Plan(extPwr, "on", profile.Limits, Air(150)).Refusal);
+        var onGround = ActionPlanner.Plan(extPwr, "on", profile.Limits, Ground()).Plan!;
+        Assert.Equal("L:A32NX_EXT_PWR_AVAIL:1", Assert.Single(onGround.Requires).Variable);
+        Assert.Empty(ActionPlanner.Plan(extPwr, "off", profile.Limits, Ground()).Plan!.Requires);
+        Assert.True(onGround.Check!.Independent);
 
         // Landescheinwerfer: Stellung, Ausfahren und Stromkreis je Seite
         var landing = ActionPlanner.Plan(profile.Actions.Single(a => a.Id == "lights.landing"), "retract", profile.Limits, Air(150)).Plan!;
