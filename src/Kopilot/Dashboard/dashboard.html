@@ -940,7 +940,7 @@ function renderInput(d) {
   $("pending").hidden = !p;
   if (p) {
     setText("pendingReadback", p.readback);
-    setText("pendingInfo", `Wartet auf „confirm“ – noch ${p.expiresInSec} s · ${p.action}${p.value ? " = " + p.value : ""}`);
+    setText("pendingInfo", `Wartet auf „confirm“ – noch ${p.expiresInSec} s · ${p.action}${p.value ? " = " + p.value : ""}${p.other ? " · Claude Desktop" : ""}`);
   }
 
   const log = inp.log || [];

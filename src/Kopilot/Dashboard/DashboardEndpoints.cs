@@ -129,7 +129,7 @@ public static class DashboardEndpoints
                 return Results.BadRequest();
             }
 
-            var result = input.Cancel(null, "Abgebrochen (Dashboard)");
+            var result = input.CancelEverywhere("Abgebrochen (Dashboard)");
             return Results.Content(Json.Serialize(new { status = result.Status, action = result.Action }), "application/json");
         }).LocalOnly();
 

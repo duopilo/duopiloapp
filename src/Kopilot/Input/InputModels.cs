@@ -59,7 +59,7 @@ public sealed class ActionParameter
     /// <summary>Auswahl: Name → Wert, z. B. { "on": 1, "off": 0 }. Reihenfolge = Anzeige.</summary>
     public Dictionary<string, double>? Options { get; set; }
 
-    /// <summary>Sonderformat: "squawk" (4 Ziffern 0–7), "frequency" (MHz mit 3 Nachkommastellen), "altitude" (auch "FL120").</summary>
+    /// <summary>Sonderformat: "squawk" (4 Ziffern 0–7), "frequency" (MHz mit 3 Nachkommastellen), "altitude" (auch "FL120"), "heading" (360 = 000).</summary>
     public string? Format { get; set; }
 
     /// <summary>Gesprochene Form einer Auswahl im Readback, z. B. { "tara": "TA RA", "lo": "low" }.</summary>
@@ -178,61 +178,83 @@ public sealed record InputLogEntry(
     string? Detail,
     bool? Verified);
 
-/// <summary>Im Dashboard umschaltbar, gespeichert in input.json.</summary>
+/// <summary>Im Dashboard umschaltbar, gespeichert in input.json. Epoch zählt Sperren/Abbrüche – offene Aktionen älterer Epochen verfallen.</summary>
 public sealed record InputSettings
 {
     public bool Enabled { get; init; }
+
+    public long Epoch { get; init; }
 }
 
-/// <summary>Speichert den Schalter "Eingabe an/aus" in DataDirectory\input.json – gilt für alle Kopilot-Instanzen.</summary>
-public sealed class InputSettingsStore(string path)
+/// <summary>Offene Aktion für das Dashboard, auch wenn sie in einer anderen Kopilot-Instanz (stdio) vorbereitet wurde.</summary>
+public sealed record SharedPending(string Action, string? Value, string Readback, DateTimeOffset ExpiresUtc, int ProcessId);
+
+/// <summary>
+/// Gemeinsamer Zustand aller Kopilot-Instanzen im Datenordner: input.json (Schalter, Epoch) und input-pending.json (offene Aktion).
+/// Wird bei jedem Zugriff frisch gelesen – die Tray-Instanz und die stdio-Instanz von Claude Desktop sehen denselben Stand.
+/// </summary>
+public sealed class InputSettingsStore(string directory)
 {
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
     private readonly object _lock = new();
-    private DateTime _loadedStamp = DateTime.MinValue;
-    private InputSettings? _cached;
 
-    public string FilePath { get; } = path;
+    public string FilePath { get; } = Path.Combine(directory, "input.json");
 
-    /// <summary>Gespeicherter Schalter, null = keine Datei (dann gilt appsettings). Liest nur neu, wenn sich die Datei geändert hat.</summary>
-    public InputSettings? Load()
+    public string PendingPath { get; } = Path.Combine(directory, "input-pending.json");
+
+    /// <summary>Gespeicherter Schalter, null = keine Datei (dann gilt appsettings).</summary>
+    public InputSettings? Load() => Read<InputSettings>(FilePath);
+
+    public void Save(InputSettings settings) => Write(FilePath, settings);
+
+    public SharedPending? LoadPending() => Read<SharedPending>(PendingPath);
+
+    public void SavePending(SharedPending? pending)
+    {
+        if (pending is not null)
+        {
+            Write(PendingPath, pending);
+            return;
+        }
+
+        lock (_lock)
+        {
+            try
+            {
+                File.Delete(PendingPath);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // nicht schlimm – das Dashboard prüft die Ablaufzeit
+            }
+        }
+    }
+
+    private T? Read<T>(string path)
+        where T : class
     {
         lock (_lock)
         {
             try
             {
-                if (!File.Exists(FilePath))
-                {
-                    _cached = null;
-                    _loadedStamp = DateTime.MinValue;
-                    return null;
-                }
-
-                var stamp = File.GetLastWriteTimeUtc(FilePath);
-                if (stamp != _loadedStamp)
-                {
-                    _cached = JsonSerializer.Deserialize<InputSettings>(File.ReadAllText(FilePath), Options);
-                    _loadedStamp = stamp;
-                }
-
-                return _cached;
+                return File.Exists(path) ? JsonSerializer.Deserialize<T>(File.ReadAllText(path), Options) : null;
             }
             catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
             {
-                return _cached;
+                return null;
             }
         }
     }
 
-    public void Save(InputSettings settings)
+    private void Write<T>(string path, T value)
     {
         lock (_lock)
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
-            File.WriteAllText(FilePath, JsonSerializer.Serialize(settings, Options));
-            _cached = settings;
-            _loadedStamp = File.GetLastWriteTimeUtc(FilePath);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            var temp = path + "." + Environment.ProcessId + ".tmp";
+            File.WriteAllText(temp, JsonSerializer.Serialize(value, Options));
+            File.Move(temp, path, overwrite: true);
         }
     }
 }

@@ -173,7 +173,7 @@
       "id": "fcu.heading",
       "area": "FCU",
       "label": "FCU heading",
-      "parameter": { "min": 0, "max": 360, "step": 1, "unit": "°" },
+      "parameter": { "min": 0, "max": 360, "step": 1, "unit": "°", "format": "heading" },
       "steps": [
         {
           "event": "A32NX.FCU_HDG_SET",
@@ -436,7 +436,7 @@
       "id": "efis.baro",
       "area": "EFIS",
       "label": "QNH",
-      "description": "QNH in hPa auf beiden Seiten. Im STD-Modus erst efis.baroMode qnh.",
+      "description": "QNH in hPa auf beiden Seiten. Nur im QNH-Modus – aus STD erst efis.baroMode QNH.",
       "parameter": { "min": 900, "max": 1100, "step": 1, "unit": "hPa" },
       "steps": [
         {
@@ -451,6 +451,7 @@
         }
       ],
       "readback": "QNH {value} set",
+    "requires": [ { "variable": "L:A32NX_FCU_EFIS_L_DISPLAY_BARO_MODE", "equalTo": 1, "message": "Höhenmesser steht auf STD (oder QFE) – erst efis.baroMode QNH." } ],
       "check": {
         "variable": "L:A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE",
         "expect": "{value}",

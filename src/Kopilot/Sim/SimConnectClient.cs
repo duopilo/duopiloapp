@@ -173,7 +173,7 @@ public sealed class SimConnectClient : BackgroundService
             eventName = eventName[2..].Trim();
         }
 
-        ActionSafety.EnsureAllowed(eventName);
+        ActionSafety.EnsureEventAllowed(eventName, data);
         return RunOnSimThreadAsync(sc =>
         {
             if (!_eventIds.TryGetValue(eventName, out var id))
@@ -196,7 +196,7 @@ public sealed class SimConnectClient : BackgroundService
     public Task SetVariableAsync(string name, string unit, double value, CancellationToken ct)
     {
         var normalized = SimVarSpec.NormalizeName(name);
-        ActionSafety.EnsureAllowed(normalized);
+        ActionSafety.EnsureVariableAllowed(normalized);
         var effectiveUnit = string.IsNullOrWhiteSpace(unit) ? "number" : unit.Trim();
         var key = $"set:{normalized}|{effectiveUnit.ToLowerInvariant()}";
         return RunOnSimThreadAsync(sc =>
@@ -211,16 +211,25 @@ public sealed class SimConnectClient : BackgroundService
         }, ct);
     }
 
-    private Task RunOnSimThreadAsync(Action<SimConnect> action, CancellationToken ct)
+    /// <summary>
+    /// Führt einen Befehl auf dem SimConnect-Thread aus. Läuft die Zeit ab oder wird abgebrochen, bevor der Befehl dran war,
+    /// wird er verworfen – er darf nicht später noch ausgeführt werden (sonst schaltet ein Taster bei Wiederholung doppelt).
+    /// </summary>
+    private async Task RunOnSimThreadAsync(Action<SimConnect> action, CancellationToken ct)
     {
         if (!_connection.IsConnected)
         {
-            return Task.FromException(new InvalidOperationException("Keine Verbindung zu MSFS."));
+            throw new InvalidOperationException("Keine Verbindung zu MSFS.");
         }
 
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         Enqueue(sc =>
         {
+            if (tcs.Task.IsCompleted)
+            {
+                return;
+            }
+
             try
             {
                 action(sc);
@@ -233,7 +242,12 @@ public sealed class SimConnectClient : BackgroundService
             }
         });
 
-        return tcs.Task.WaitAsync(TimeSpan.FromMilliseconds(Math.Max(1000, _options.ReadTimeoutMs)), ct);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromMilliseconds(Math.Max(1000, _options.ReadTimeoutMs)));
+        using (timeout.Token.Register(() => tcs.TrySetException(new TimeoutException("MSFS hat den Befehl nicht rechtzeitig angenommen."))))
+        {
+            await tcs.Task;
+        }
     }
 
     /// <summary>Profil nach dem Neuladen der Profildateien erneut zuordnen.</summary>

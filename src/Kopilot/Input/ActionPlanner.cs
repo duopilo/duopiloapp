@@ -13,9 +13,9 @@ public static class ActionPlanner
 {
     public static PlanResult Plan(ProfileAction action, string? input, AircraftLimits limits, FlightSnapshot snapshot)
     {
-        if (ActionSafety.FirstForbidden(action) is { } forbidden)
+        if (ActionSafety.Problem(action) is { } problem)
         {
-            return PlanResult.Refuse($"{action.Id} nutzt {forbidden} – Triebwerk, Feuer, Treibstoff und MCDU sind gesperrt.");
+            return PlanResult.Refuse($"{action.Id}: {problem}.");
         }
 
         if (action.Steps.Count == 0)
@@ -97,6 +97,11 @@ public static class ActionPlanner
                 }
 
                 var data = rounded < 0 ? unchecked((uint)(int)rounded) : (uint)rounded;
+                if (ActionSafety.EventProblem(step.Event, data) is { } eventProblem)
+                {
+                    return PlanResult.Refuse($"{action.Id}: {eventProblem}.");
+                }
+
                 steps.Add(new ResolvedStep(step.Event.Trim(), data, null, "", 0, skip, Math.Clamp(step.DelayMs, 0, 2000)));
             }
             else
@@ -111,14 +116,18 @@ public static class ActionPlanner
         }
 
         ResolvedCondition? check = null;
-        if (action.Check is { } chk && !string.IsNullOrWhiteSpace(chk.Variable)
-            && Resolve(chk.Expect, value, option, fallback: value) is { } expect)
+        if (action.Check is { } chk && !string.IsNullOrWhiteSpace(chk.Variable))
         {
+            if (Resolve(chk.Expect, value, option, fallback: value) is not { } expect)
+            {
+                return PlanResult.Refuse($"{action.Id}: Keine Prüfung für \"{option}\" im Profil.");
+            }
+
             check = new ResolvedCondition(chk.Variable.Trim(), Unit(chk.Unit), expect, chk.Tolerance);
         }
 
         var requires = new List<ResolvedCondition>();
-        foreach (var r in action.Requires.Where(r => !string.IsNullOrWhiteSpace(r.Variable)))
+        foreach (var r in action.Requires.Where(r => r is not null && !string.IsNullOrWhiteSpace(r.Variable)))
         {
             if (Resolve(r.EqualTo, value, option, fallback: value) is not { } required)
             {
@@ -151,6 +160,7 @@ public static class ActionPlanner
         return p.Format?.ToLowerInvariant() switch
         {
             "squawk" => "4 Ziffern 0–7",
+            "heading" => "0–360°",
             "altitude" => $"{range}{unit} oder FLxxx",
             _ => range + unit,
         };
@@ -237,9 +247,16 @@ public static class ActionPlanner
             value = Math.Round(steps) * step;
         }
 
+        if (format == "heading" && Math.Abs(value - 360) < 1e-9)
+        {
+            // 360 sagen Piloten, das FCU zeigt 000
+            return new Parsed(0, "360", null, null);
+        }
+
         var shown = format switch
         {
             "frequency" => value.ToString("0.000", CultureInfo.InvariantCulture),
+            "heading" => value.ToString("000", CultureInfo.InvariantCulture),
             "altitude" when flightLevel => "FL" + (value / 100).ToString("000", CultureInfo.InvariantCulture),
             _ => Num(value),
         };

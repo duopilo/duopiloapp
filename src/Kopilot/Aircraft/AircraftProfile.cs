@@ -178,7 +178,7 @@ public sealed class AircraftLimits
     {
         if (flapsLabel is not null)
         {
-            return flapsLabel is "0" or "" ? null : VfeKt.TryGetValue(flapsLabel, out var byLabel) ? byLabel : null;
+            return flapsLabel is "0" or "" ? null : Lookup(flapsLabel);
         }
 
         if (flapsIndex is not { } f || f < 0.5)
@@ -186,8 +186,26 @@ public sealed class AircraftLimits
             return null;
         }
 
-        var key = Math.Round(f).ToString(CultureInfo.InvariantCulture);
-        return VfeKt.TryGetValue(key, out var v) ? v : null;
+        return Lookup(Math.Round(f).ToString(CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>VFE nach Stellung, Groß-/Kleinschreibung egal ("Full" = "FULL").</summary>
+    private double? Lookup(string key)
+    {
+        if (VfeKt is null)
+        {
+            return null;
+        }
+
+        foreach (var (k, v) in VfeKt)
+        {
+            if (string.Equals(k, key, StringComparison.OrdinalIgnoreCase))
+            {
+                return v;
+            }
+        }
+
+        return null;
     }
 
     public bool IsLandingFlaps(double? flapsIndex, string? flapsLabel)

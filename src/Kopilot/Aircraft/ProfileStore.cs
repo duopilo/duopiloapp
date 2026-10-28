@@ -40,13 +40,31 @@ public sealed class ProfileStore
             .Select(x => x.Profile)
             .FirstOrDefault();
 
-    /// <summary>Entfernt ungültige oder gesperrte Aktionen (Triebwerk, Feuer, Treibstoff, MCDU, unbekannte Sperren) und meldet sie.</summary>
+    /// <summary>
+    /// Entfernt ungültige oder gesperrte Aktionen und meldet sie: leere Einträge, doppelte IDs, nicht erlaubte Events/Variablen,
+    /// fehlende Pflicht-Sperren, unbekannte Sperren und Klappenstellungen ohne VFE.
+    /// </summary>
     public static void ValidateActions(AircraftProfile profile, List<string> errors)
     {
         var file = profile.SourceFile ?? profile.Name;
+        profile.Actions ??= [];
+        profile.Limits ??= new();
+        profile.Actions.RemoveAll(a => a is null);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         profile.Actions.RemoveAll(action =>
         {
+            action.Steps ??= [];
+            action.Interlocks ??= [];
+            action.Requires ??= [];
+            action.Requires.RemoveAll(r => r is null);
+
+            var unknownInterlock = action.Interlocks.FirstOrDefault(i => i is null || !Kopilot.Input.Interlocks.All.Contains(i, StringComparer.OrdinalIgnoreCase));
+            var hasUnknownInterlock = action.Interlocks.Any(i => i is null || !Kopilot.Input.Interlocks.All.Contains(i, StringComparer.OrdinalIgnoreCase));
+            var needsVfe = action.Interlocks.Contains(Kopilot.Input.Interlocks.FlapsSpeed, StringComparer.OrdinalIgnoreCase);
+            var missingVfe = needsVfe
+                && (action.Parameter is not { IsChoice: true, Options: { } options }
+                    || options.Keys.Any(o => o != "0" && profile.Limits.VfeFor(null, o) is null));
+
             string? problem = null;
             if (string.IsNullOrWhiteSpace(action.Id) || action.Steps.Count == 0)
             {
@@ -56,13 +74,17 @@ public sealed class ProfileStore
             {
                 problem = $"Aktion {action.Id} doppelt";
             }
-            else if (Kopilot.Input.ActionSafety.FirstForbidden(action) is { } forbidden)
+            else if (Kopilot.Input.ActionSafety.Problem(action) is { } unsafeStep)
             {
-                problem = $"Aktion {action.Id} nutzt {forbidden} – gesperrt";
+                problem = $"Aktion {action.Id}: {unsafeStep}";
             }
-            else if (action.Interlocks.FirstOrDefault(i => !Kopilot.Input.Interlocks.All.Contains(i, StringComparer.OrdinalIgnoreCase)) is { } unknown)
+            else if (hasUnknownInterlock)
             {
-                problem = $"Aktion {action.Id}: unbekannte Sperre \"{unknown}\"";
+                problem = $"Aktion {action.Id}: unbekannte Sperre \"{unknownInterlock}\"";
+            }
+            else if (missingVfe)
+            {
+                problem = $"Aktion {action.Id}: VFE fehlt in limits.vfeKt";
             }
 
             if (problem is null)
@@ -102,8 +124,9 @@ public sealed class ProfileStore
                     ValidateActions(profile, errors);
                     profiles.Add(profile);
                 }
-                catch (Exception ex) when (ex is JsonException or IOException)
+                catch (Exception ex)
                 {
+                    // Ein kaputtes Profil darf den Start nicht verhindern
                     errors.Add($"{Path.GetFileName(file)}: {ex.Message}");
                 }
             }

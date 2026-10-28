@@ -41,7 +41,14 @@ public sealed class InputTests
     {
         Id = "flaps", Area = "Config", Label = "Flaps", Readback = "Flaps {value}",
         Parameter = new ActionParameter { Type = "choice", Options = new() { ["0"] = 0, ["1"] = 1, ["2"] = 2, ["3"] = 3, ["FULL"] = 4 } },
-        Steps = [new ActionStep { Set = "L:A32NX_FLAPS_HANDLE_INDEX", Value = J("\"{value}\"") }],
+        Steps =
+        [
+            new ActionStep { Event = "FLAPS_UP", Only = ["0"] },
+            new ActionStep { Event = "FLAPS_1", Only = ["1"] },
+            new ActionStep { Event = "FLAPS_2", Only = ["2"] },
+            new ActionStep { Event = "FLAPS_3", Only = ["3"] },
+            new ActionStep { Event = "FLAPS_DOWN", Only = ["FULL"] },
+        ],
         Interlocks = [Interlocks.FlapsSpeed],
     };
 
@@ -203,25 +210,70 @@ public sealed class InputTests
     [Fact]
     public void Unbekannte_Sperre_sperrt()
     {
-        var action = GearUp();
+        var action = Speed();
         action.Interlocks = ["irgendwas"];
         Assert.Contains("Unbekannte Sperre", ActionPlanner.Plan(action, null, Limits, Air()).Refusal);
     }
 
     [Theory]
-    [InlineData("FUELSYSTEM_PUMP_TOGGLE", true)]
-    [InlineData("ENGINE_MASTER_1", true)]
-    [InlineData("L:A32NX_ENG_1_MASTER", true)]
-    [InlineData("L:A32NX_FIRE_BUTTON_ENG1", true)]
-    [InlineData("A32NX.MCDU_L_BUTTON", true)]
-    [InlineData("THROTTLE_SET", true)]
-    [InlineData("L:A32NX_ENGINE_MODE_SELECTOR", true)]
-    [InlineData("A32NX.FCU_SPD_SET", false)]
-    [InlineData("L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", false)]
-    [InlineData("L:A32NX_OVHD_COND_PACK_1_PB_IS_ON", false)]
-    [InlineData("GEAR_DOWN", false)]
-    [InlineData("XPNDR_SET", false)]
-    public void Sperrliste(string name, bool forbidden) => Assert.Equal(forbidden, ActionSafety.IsForbidden(name));
+    [InlineData("FUELSYSTEM_PUMP_TOGGLE", 0u, false)]
+    [InlineData("ENGINE_MASTER_1", 0u, false)]
+    [InlineData("A32NX.MCDU_L_BUTTON", 0u, false)]
+    [InlineData("THROTTLE_SET", 0u, false)]
+    [InlineData("RELOAD_USER_AIRCRAFT", 0u, false)]
+    [InlineData("CROSS_FEED_TOGGLE", 0u, false)]
+    [InlineData("GEAR_TOGGLE", 0u, false)]
+    [InlineData("PAUSE_ON", 0u, false)]
+    [InlineData("ELECTRICAL_CIRCUIT_TOGGLE", 5u, false)]
+    [InlineData("ELECTRICAL_CIRCUIT_TOGGLE", 21u, true)]
+    [InlineData("A32NX.FCU_SPD_SET", 250u, true)]
+    [InlineData("K:GEAR_DOWN", 0u, true)]
+    [InlineData("XPNDR_SET", 0x7000u, true)]
+    public void Erlaubte_Events(string name, uint data, bool allowed) => Assert.Equal(allowed, ActionSafety.EventProblem(name, data) is null);
+
+    [Theory]
+    [InlineData("GENERAL ENG COMBUSTION:1", false)]
+    [InlineData("PLANE ALTITUDE", false)]
+    [InlineData("L:A32NX_ENG_1_MASTER", false)]
+    [InlineData("L:A32NX_FIRE_BUTTON_ENG1", false)]
+    [InlineData("L:A32NX_ENGINE_MODE_SELECTOR", false)]
+    [InlineData("L:A32NX_OVHD_FUEL_PUMP_1_PB_IS_AUTO", false)]
+    [InlineData("L:A32NX_GEAR_LEVER_POSITION_REQUEST", false)]
+    [InlineData("L:A32NX_FLAPS_HANDLE_INDEX", false)]
+    [InlineData("L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", true)]
+    [InlineData("L:A32NX_OVHD_COND_PACK_1_PB_IS_ON", true)]
+    [InlineData("L:A32NX_BUTTON_OVHD_ANTI_ICE_ENG_1_POSITION", true)]
+    [InlineData("L:A32NX_TRANSPONDER_MODE", true)]
+    public void Erlaubte_Variablen(string name, bool allowed) => Assert.Equal(allowed, ActionSafety.VariableProblem(name) is null);
+
+    [Fact]
+    public void Fehlende_Grenzwerte_sperren()
+    {
+        var none = new AircraftLimits();
+        Assert.Contains("VLO/VLE", ActionPlanner.Plan(GearDown(), null, none, Air(150)).Refusal);
+        Assert.Contains("VFE", ActionPlanner.Plan(Flaps(), "2", none, Air(150)).Refusal);
+        Assert.NotNull(ActionPlanner.Plan(Flaps(), "0", none, Air(150)).Plan);
+
+        // Groß-/Kleinschreibung der Stellung egal
+        var mixed = new AircraftLimits { VfeKt = new() { ["Full"] = 177, ["2"] = 200, ["1"] = 230, ["3"] = 185 } };
+        Assert.Contains("VFE 177", ActionPlanner.Plan(Flaps(), "FULL", mixed, Air(190)).Refusal);
+    }
+
+    [Fact]
+    public void Steuerkurs_360_ist_000()
+    {
+        var hdg = new ProfileAction
+        {
+            Id = "fcu.heading", Readback = "Heading {value} selected",
+            Parameter = new ActionParameter { Min = 0, Max = 360, Step = 1, Format = "heading" },
+            Steps = [new ActionStep { Event = "A32NX.FCU_HDG_SET", Value = J("\"{value}\"") }],
+        };
+
+        var north = ActionPlanner.Plan(hdg, "360", Limits, Air()).Plan!;
+        Assert.Equal(0u, north.Steps[0].EventData);
+        Assert.Equal("Heading 360 selected", north.Readback);
+        Assert.Equal("Heading 090 selected", ActionPlanner.Plan(hdg, "90", Limits, Air()).Plan!.Readback);
+    }
 
     [Fact]
     public void Gesperrte_Aktionen_werden_beim_Laden_entfernt()
@@ -243,7 +295,8 @@ public sealed class InputTests
 
         Assert.Equal(new[] { "fcu.speed" }, profile.Actions.Select(a => a.Id));
         Assert.Equal(3, errors.Count);
-        Assert.Throws<InvalidOperationException>(() => ActionSafety.EnsureAllowed("ENGINE_MASTER_1"));
+        Assert.Throws<InvalidOperationException>(() => ActionSafety.EnsureEventAllowed("ENGINE_MASTER_1", 0));
+        Assert.Throws<InvalidOperationException>(() => ActionSafety.EnsureVariableAllowed("GENERAL ENG COMBUSTION:1"));
     }
 
     [Fact]
@@ -290,6 +343,36 @@ public sealed class InputTests
         Assert.Equal("Landing lights retracted", landing.Readback);
         Assert.Equal(2, landing.Steps.Count(s => s.Event == "ELECTRICAL_CIRCUIT_TOGGLE"));
         Assert.All(landing.Steps.Where(s => s.Event is not null), s => Assert.Equal(0, s.SkipIf!.Value));
+    }
+
+    [Fact]
+    public void Kaputte_Profile_verhindern_den_Start_nicht()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "kopilot-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "test.json"), """
+            {
+              "name": "Kaputt",
+              "match": [ { "title": [ "Kaputt" ] } ],
+              "limits": null,
+              "actions": [
+                null,
+                { "id": "a", "steps": null },
+                { "id": "b", "steps": [ null ] },
+                { "id": "c", "steps": [ { "event": "GEAR_DOWN" } ], "interlocks": [ null ] },
+                { "id": "d", "steps": [ { "event": "FLAPS_DOWN" } ] },
+                { "id": "e", "steps": [ { "set": "PLANE ALTITUDE", "value": 0 } ] },
+                { "id": "ok", "steps": [ { "event": "A32NX.FCU_ALT_PULL" } ] }
+              ]
+            }
+            """);
+        File.WriteAllText(Path.Combine(dir, "nicht-json.json"), "{ das ist kein JSON");
+
+        var store = new ProfileStore(Options.Create(new KopilotOptions { ProfilesDirectory = dir }), NullLogger<ProfileStore>.Instance);
+
+        var profile = Assert.Single(store.All);
+        Assert.Equal(new[] { "ok" }, profile.Actions.Select(a => a.Id));
+        Assert.Equal(6, store.Errors.Count);
     }
 
     // ------------------------------------------------------------------ Ablauf mit Bestätigung
@@ -344,11 +427,11 @@ public sealed class InputTests
         }
     }
 
-    private static (InputService Service, FakeBackend Backend, ManualTime Time) Create(bool enabled = true)
+    private static (InputService Service, FakeBackend Backend, ManualTime Time) Create(bool enabled = true, string? dataDir = null)
     {
         var time = new ManualTime();
         var backend = new FakeBackend(time);
-        var dir = Path.Combine(Path.GetTempPath(), "kopilot-tests", Guid.NewGuid().ToString("N"));
+        var dir = dataDir ?? Path.Combine(Path.GetTempPath(), "kopilot-tests", Guid.NewGuid().ToString("N"));
         var options = Options.Create(new KopilotOptions { DataDirectory = dir, Input = new InputOptions { Enabled = enabled } });
         return (new InputService(options, backend, NullLogger<InputService>.Instance, time), backend, time);
     }
@@ -411,6 +494,38 @@ public sealed class InputTests
         Assert.Equal(InputResult.Cancelled, result.Status);
         Assert.Empty(backend.Sent);
         Assert.Null(input.Pending);
+    }
+
+    [Theory]
+    [InlineData("Confirm.\nNo, wait")]
+    [InlineData("„nein“")]
+    [InlineData("(no)")]
+    [InlineData("negative")]
+    public async Task Nein_in_jeder_Schreibweise(string answer)
+    {
+        var (input, backend, time) = Create();
+        var prepared = await input.PrepareAsync("gear.up", null, default);
+        time.Now += TimeSpan.FromSeconds(3);
+
+        Assert.Equal(InputResult.Cancelled, (await input.ConfirmAsync(prepared.Token!, answer, default)).Status);
+        Assert.Empty(backend.Sent);
+    }
+
+    [Fact]
+    public async Task Abbrechen_im_Dashboard_gilt_fuer_alle_Instanzen()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "kopilot-tests", Guid.NewGuid().ToString("N"));
+        var (claudeDesktop, backend, time) = Create(dataDir: dir);
+        var (tray, _, _) = Create(dataDir: dir);
+
+        var prepared = await claudeDesktop.PrepareAsync("gear.up", null, default);
+        tray.CancelEverywhere("Abgebrochen (Dashboard)");
+        time.Now += TimeSpan.FromSeconds(3);
+
+        var result = await claudeDesktop.ConfirmAsync(prepared.Token!, "confirm", default);
+        Assert.Equal(InputResult.Refused, result.Status);
+        Assert.Contains("Dashboard", result.Reason);
+        Assert.Empty(backend.Sent);
     }
 
     [Fact]

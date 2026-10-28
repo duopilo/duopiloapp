@@ -294,12 +294,21 @@ public sealed class DashboardData(
             ? new
             {
                 action = p.Plan.Action.Id,
-                label = p.Plan.Action.Label,
                 value = p.Plan.ValueText,
                 readback = p.Plan.Readback,
                 expiresInSec = Math.Max(0, (int)Math.Ceiling((p.ExpiresUtc - now).TotalSeconds)),
+                other = false,
             }
-            : null,
+            : input.ForeignPending is { } f
+                ? new
+                {
+                    action = f.Action,
+                    value = f.Value,
+                    readback = f.Readback,
+                    expiresInSec = Math.Max(0, (int)Math.Ceiling((f.ExpiresUtc - now).TotalSeconds)),
+                    other = true,
+                }
+                : null,
         log = input.History.Take(10).Select(e => new
         {
             time = e.TimeUtc.ToLocalTime().ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture),

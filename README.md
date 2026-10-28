@@ -105,7 +105,7 @@ Kopilot kann im Cockpit Knöpfe drücken und Schalter stellen – als Pilot Moni
 
 Sagst du „negative“ oder korrigierst den Wert, wird die Aktion verworfen. Eine vorbereitete Aktion verfällt nach 60 Sekunden, es gibt immer nur eine.
 
-**Standardmäßig gesperrt.** Freigeben im Dashboard: in der Ansagen-Leiste zweimal auf **Eingabe gesperrt** klicken („Wirklich freigeben?“). Dort siehst du auch die offene Aktion mit Countdown und kannst sie abbrechen, darunter das Protokoll aller Eingaben. Alternativ `Kopilot:Input:Enabled` in `appsettings.Local.json`; der Schalter im Dashboard hat Vorrang und gilt für alle Kopilot-Instanzen.
+**Standardmäßig gesperrt.** Freigeben im Dashboard: in der Ansagen-Leiste zweimal auf **Eingabe gesperrt** klicken („Wirklich freigeben?“). Dort siehst du auch die offene Aktion mit Countdown – auch eine, die über Claude Desktop vorbereitet wurde – und kannst sie abbrechen. Darunter steht das Protokoll aller Eingaben. Alternativ `Kopilot:Input:Enabled` in `appsettings.Local.json`; der Schalter im Dashboard hat Vorrang und gilt für alle Kopilot-Instanzen.
 
 **Was geht (A32NX):**
 
@@ -124,14 +124,18 @@ Sagst du „negative“ oder korrigierst den Wert, wird die Aktion verworfen. Ei
 
 NAV & LOGO fehlt: Der Schalter ist beim A32NX nur als Input Event (`B:`) erreichbar, das kann Kopilot noch nicht.
 
-**Was nie geht:** Triebwerks-Master, Zündung/Start, Schub, Feuer-Handles und -Agents, Treibstoff, MCDU, Pause/Slew/Sim-Steuerung. Diese Namen sind im Code gesperrt – auch ein bearbeitetes Profil kommt nicht daran vorbei. Es gibt kein Tool, das beliebige Events oder Variablen schreibt.
+**Was nie geht:** Triebwerks-Master, Zündung/Start, Schub, Feuer-Handles und -Agents, Treibstoff, MCDU, Pause/Slew/Sim-Steuerung. Das ist im Code festgelegt, auch ein bearbeitetes Profil kommt nicht daran vorbei:
+- Kopilot sendet nur Events aus einer festen Liste (FCU, Autobrake, Fahrwerk, Klappen, Spoiler, Licht, Schilder, Transponder, COM).
+- Kopilot schreibt nur L:-Variablen, nie Standard-SimVars, und auch dort greift die Sperrliste.
+- Fahrwerk und Klappen gehen nur über ihre Events, und nur zusammen mit der passenden Sperre.
+- Es gibt kein Tool, das beliebige Events oder Variablen schreibt.
 
 **Sperren:**
 - Fahrwerk einfahren nur in der Luft
 - Fahrwerk ausfahren nur bis VLO (A320: 250 kt)
 - Klappen nur bis zur VFE der neuen Stellung
 
-Dazu kommen Bedingungen je Aktion, z. B. V/S und Heading nicht im TRK/FPA-Modus, APU Start nur mit APU Master.
+Fehlt ein Grenzwert im Profil, ist die Aktion gesperrt. Dazu kommen Bedingungen je Aktion, z. B. V/S und Heading nicht im TRK/FPA-Modus, QNH nur im QNH-Modus, APU Start nur mit APU Master.
 
 Die Aktionen stehen im Flugzeugprofil unter `actions` (Events, Variablen, Readback, Prüfung). Alle sind aus dem FBW-Quellcode abgeleitet und im Sim noch nicht geprüft (`"verified": false`). Ob eine Aktion angekommen ist, zeigt das Protokoll im Dashboard (✓/✗).
 

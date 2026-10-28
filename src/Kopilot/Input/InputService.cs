@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 using Kopilot.Aircraft;
 using Kopilot.Monitoring;
 using Microsoft.Extensions.Options;
@@ -46,23 +47,26 @@ public sealed record InputResult(
 /// <summary>
 /// Eingabe-Modul: Aktion vorbereiten (Readback), nach Bestätigung des Piloten ausführen, danach prüfen.
 /// Es gibt immer höchstens eine offene Aktion; sie verfällt nach <see cref="InputOptions.ConfirmWindowSeconds"/>.
-/// Vor dem Ausführen werden Freigabe, Flugzeug und Sperren noch einmal geprüft.
+/// Unmittelbar vor dem Senden (unter der Ausführungssperre) werden Freigabe, Flugzeug, Sperren und Bedingungen erneut geprüft.
 /// </summary>
-public sealed class InputService
+public sealed partial class InputService
 {
     private const int MaxLog = 40;
 
-    private static readonly string[] YesWords =
-    [
+    /// <summary>Höchstdauer einer Ausführung samt Prüfung – läuft nach der Bestätigung unabhängig vom MCP-Aufruf zu Ende.</summary>
+    private static readonly TimeSpan ExecutionTimeout = TimeSpan.FromSeconds(20);
+
+    private static readonly HashSet<string> YesWords = new(StringComparer.Ordinal)
+    {
         "confirm", "confirmed", "affirm", "affirmative", "yes", "correct", "approved", "proceed",
         "bestätigt", "bestätige", "bestätigen", "ja", "jawohl", "korrekt", "richtig", "ok", "okay",
-    ];
+    };
 
-    private static readonly string[] NoWords =
-    [
-        "no", "not", "negative", "cancel", "disregard", "wrong", "stop", "abort",
-        "nein", "nicht", "abbrechen", "abbruch", "falsch", "halt",
-    ];
+    private static readonly HashSet<string> NoWords = new(StringComparer.Ordinal)
+    {
+        "no", "not", "negative", "cancel", "disregard", "wrong", "stop", "abort", "wait",
+        "nein", "nicht", "abbrechen", "abbruch", "falsch", "halt", "warte",
+    };
 
     private readonly IInputBackend _backend;
     private readonly InputOptions _options;
@@ -75,19 +79,22 @@ public sealed class InputService
 
     private PendingAction? _pending;
     private string? _pendingInput;
-    private string? _pendingProfile;
+    private AircraftProfile? _pendingProfile;
+    private long _pendingEpoch;
 
     public InputService(IOptions<KopilotOptions> options, IInputBackend backend, ILogger<InputService> log, TimeProvider? time = null)
     {
         _backend = backend;
         _options = options.Value.Input;
-        _store = new InputSettingsStore(Path.Combine(options.Value.ResolveDataDirectory(), "input.json"));
+        _store = new InputSettingsStore(options.Value.ResolveDataDirectory());
         _time = time ?? TimeProvider.System;
         _log = log;
     }
 
     /// <summary>Eingaben erlaubt? Dashboard-Schalter (input.json) vor appsettings.</summary>
     public bool Enabled => _store.Load()?.Enabled ?? _options.Enabled;
+
+    private long Epoch => _store.Load()?.Epoch ?? 0;
 
     public TimeSpan ConfirmWindow => TimeSpan.FromSeconds(Math.Clamp(_options.ConfirmWindowSeconds, 10, 300));
 
@@ -103,6 +110,10 @@ public sealed class InputService
         }
     }
 
+    /// <summary>Offene Aktion einer anderen Kopilot-Instanz (z. B. stdio für Claude Desktop), sonst null.</summary>
+    public SharedPending? ForeignPending =>
+        _store.LoadPending() is { } p && p.ProcessId != Environment.ProcessId && p.ExpiresUtc > _time.GetUtcNow() ? p : null;
+
     public IReadOnlyList<InputLogEntry> History
     {
         get
@@ -117,14 +128,20 @@ public sealed class InputService
     /// <summary>Aktionen des aktuellen Flugzeugs (leer ohne Profil).</summary>
     public IReadOnlyList<ProfileAction> Actions => _backend.Profile?.Actions ?? [];
 
+    /// <summary>Schalter im Dashboard. Jede Änderung verwirft offene Aktionen in allen Instanzen.</summary>
     public void SetEnabled(bool enabled)
     {
-        _store.Save(new InputSettings { Enabled = enabled });
+        _store.Save(new InputSettings { Enabled = enabled, Epoch = Epoch + 1 });
         _log.LogInformation("Eingabe {State} (Dashboard).", enabled ? "freigegeben" : "gesperrt");
-        if (!enabled)
-        {
-            Cancel(null, "Eingabe gesperrt");
-        }
+        Cancel(null, enabled ? "Eingabe freigegeben" : "Eingabe gesperrt");
+    }
+
+    /// <summary>Abbrechen im Dashboard: verwirft offene Aktionen in allen Kopilot-Instanzen.</summary>
+    public InputResult CancelEverywhere(string reason)
+    {
+        _store.Save(new InputSettings { Enabled = Enabled, Epoch = Epoch + 1 });
+        _store.SavePending(null);
+        return Cancel(null, reason);
     }
 
     // ------------------------------------------------------------------ Schritt 1: vorbereiten
@@ -136,13 +153,13 @@ public sealed class InputService
             return new InputResult(InputResult.Disabled, "Eingaben sind gesperrt. Freigabe im Kopilot-Dashboard (Eingabe) oder Kopilot:Input:Enabled.");
         }
 
-        if (Precheck() is { } problem)
+        var profile = _backend.Profile;
+        if (Precheck(profile) is { } problem)
         {
             return Refuse(actionId, value, problem);
         }
 
-        var profile = _backend.Profile!;
-        var action = profile.Actions.FirstOrDefault(a => a.Id.Equals(actionId?.Trim(), StringComparison.OrdinalIgnoreCase));
+        var action = profile!.Actions.FirstOrDefault(a => a.Id.Equals(actionId?.Trim(), StringComparison.OrdinalIgnoreCase));
         if (action is null)
         {
             return Refuse(actionId, value, $"Aktion \"{actionId}\" gibt es für {profile.Name} nicht – siehe list_actions.");
@@ -161,6 +178,8 @@ public sealed class InputService
 
         var now = _time.GetUtcNow();
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(3)).ToLowerInvariant();
+        var pending = new PendingAction(token, plan, now, now + ConfirmWindow);
+        var epoch = Epoch;
         lock (_lock)
         {
             if (_pending is { } old)
@@ -168,12 +187,14 @@ public sealed class InputService
                 AddLogLocked(old.Plan.Action.Id, old.Plan.ValueText, "ersetzt", "Neue Aktion vorbereitet", null);
             }
 
-            _pending = new PendingAction(token, plan, now, now + ConfirmWindow);
+            _pending = pending;
             _pendingInput = value;
-            _pendingProfile = profile.Name;
+            _pendingProfile = profile;
+            _pendingEpoch = epoch;
             AddLogLocked(plan.Action.Id, plan.ValueText, "vorbereitet", plan.Readback, null);
         }
 
+        Share(pending);
         return new InputResult(
             InputResult.AwaitingConfirmation,
             Token: token,
@@ -190,7 +211,8 @@ public sealed class InputService
     {
         PendingAction pending;
         string? input;
-        string? profileName;
+        AircraftProfile? pendingProfile;
+        long pendingEpoch;
         lock (_lock)
         {
             ExpireLocked();
@@ -207,8 +229,7 @@ public sealed class InputService
             var words = Words(pilotConfirmation);
             if (words.Overlaps(NoWords))
             {
-                var cancelled = _pending;
-                _pending = null;
+                var cancelled = TakeLocked();
                 AddLogLocked(cancelled.Plan.Action.Id, cancelled.Plan.ValueText, "abgebrochen", $"Pilot: \"{pilotConfirmation}\"", null);
                 return new InputResult(InputResult.Cancelled, "Pilot hat nicht bestätigt – Aktion verworfen.", Action: cancelled.Plan.Action.Id);
             }
@@ -223,39 +244,51 @@ public sealed class InputService
                 return new InputResult(InputResult.Failed, "Erst den Readback vorlesen und die Antwort des Piloten abwarten.");
             }
 
-            pending = _pending;
             input = _pendingInput;
-            profileName = _pendingProfile;
-            _pending = null;
+            pendingProfile = _pendingProfile;
+            pendingEpoch = _pendingEpoch;
+            pending = TakeLocked();
         }
 
-        var action = pending.Plan.Action;
-        if (!Enabled)
-        {
-            return Refuse(action.Id, pending.Plan.ValueText, "Eingaben wurden inzwischen gesperrt.");
-        }
-
-        if (Precheck() is { } problem)
-        {
-            return Refuse(action.Id, pending.Plan.ValueText, problem);
-        }
-
-        if (!string.Equals(_backend.Profile!.Name, profileName, StringComparison.Ordinal))
-        {
-            return Refuse(action.Id, pending.Plan.ValueText, "Flugzeug hat gewechselt – Aktion verworfen.");
-        }
-
-        // Sperren mit dem aktuellen Zustand erneut prüfen (Fahrt/Boden können sich seit dem Readback geändert haben)
-        var fresh = ActionPlanner.Plan(action, input, _backend.Profile.Limits, _backend.Snapshot());
-        if (fresh.Plan is not { } plan)
-        {
-            return Refuse(action.Id, pending.Plan.ValueText, fresh.Refusal!);
-        }
-
-        await _execution.WaitAsync(ct);
+        // Ab hier läuft die Aktion zu Ende, auch wenn der MCP-Aufruf abgebrochen wird – sonst bliebe sie halb ausgeführt.
+        using var timeout = new CancellationTokenSource(ExecutionTimeout, _time);
+        await _execution.WaitAsync(CancellationToken.None);
         try
         {
-            return await ExecuteAsync(plan, ct);
+            // Alles unmittelbar vor dem Senden prüfen: Eine vorherige Aktion kann die Sperre einige Sekunden gehalten haben.
+            var action = pending.Plan.Action;
+            if (!Enabled)
+            {
+                return Refuse(action.Id, pending.Plan.ValueText, "Eingaben wurden inzwischen gesperrt.");
+            }
+
+            if (Epoch != pendingEpoch)
+            {
+                return Refuse(action.Id, pending.Plan.ValueText, "Im Dashboard abgebrochen.");
+            }
+
+            var profile = _backend.Profile;
+            if (Precheck(profile) is { } problem)
+            {
+                return Refuse(action.Id, pending.Plan.ValueText, problem);
+            }
+
+            if (!ReferenceEquals(profile, pendingProfile))
+            {
+                return Refuse(action.Id, pending.Plan.ValueText, "Flugzeug oder Profil hat gewechselt – bitte neu vorbereiten.");
+            }
+
+            var fresh = ActionPlanner.Plan(action, input, profile!.Limits, _backend.Snapshot());
+            if (fresh.Plan is not { } plan)
+            {
+                return Refuse(action.Id, pending.Plan.ValueText, fresh.Refusal!);
+            }
+
+            return await ExecuteAsync(plan, timeout.Token);
+        }
+        catch (Exception ex)
+        {
+            return Fail(pending.Plan, ex is OperationCanceledException ? "Zeitüberschreitung beim Ausführen." : ex.Message, executedAny: true);
         }
         finally
         {
@@ -272,8 +305,7 @@ public sealed class InputService
                 return new InputResult(InputResult.Cancelled, "Keine passende offene Aktion.");
             }
 
-            var cancelled = _pending;
-            _pending = null;
+            var cancelled = TakeLocked();
             AddLogLocked(cancelled.Plan.Action.Id, cancelled.Plan.ValueText, "abgebrochen", reason, null);
             return new InputResult(InputResult.Cancelled, Action: cancelled.Plan.Action.Id, Value: cancelled.Plan.ValueText);
         }
@@ -344,16 +376,23 @@ public sealed class InputService
                 }
             }
         }
-        catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
+        catch (Exception ex)
         {
-            return Fail(plan, ex.Message, executedAny: sent > 0);
+            return Fail(plan, ex is OperationCanceledException ? "Zeitüberschreitung beim Ausführen." : ex.Message, executedAny: sent > 0);
         }
 
         bool? verified = null;
         double? after = null;
         if (plan.Check is { } check)
         {
-            (verified, after) = await VerifyAsync(check, plan.CheckTimeoutMs, ct);
+            try
+            {
+                (verified, after) = await VerifyAsync(check, plan.CheckTimeoutMs, ct);
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or InvalidOperationException or TimeoutException)
+            {
+                verified = null;
+            }
         }
 
         var inv = System.Globalization.CultureInfo.InvariantCulture;
@@ -402,14 +441,14 @@ public sealed class InputService
         }
     }
 
-    private string? Precheck()
+    private string? Precheck(AircraftProfile? profile)
     {
         if (!_backend.Connected)
         {
             return "Keine Verbindung zu MSFS.";
         }
 
-        if (_backend.Profile is null)
+        if (profile is null)
         {
             return "Für dieses Flugzeug gibt es kein Profil und damit keine Eingaben.";
         }
@@ -440,20 +479,52 @@ public sealed class InputService
 
     private InputResult Fail(ActionPlan plan, string reason, bool executedAny)
     {
+        var text = executedAny ? reason + " Möglicherweise teilweise ausgeführt – bitte im Cockpit prüfen." : reason;
         lock (_lock)
         {
-            AddLogLocked(plan.Action.Id, plan.ValueText, "fehlgeschlagen", reason, null);
+            AddLogLocked(plan.Action.Id, plan.ValueText, "fehlgeschlagen", text, null);
         }
 
-        return new InputResult(InputResult.Failed, executedAny ? reason + " Teilweise ausgeführt – bitte im Cockpit prüfen." : reason, Action: plan.Action.Id, Value: plan.ValueText);
+        return new InputResult(InputResult.Failed, text, Action: plan.Action.Id, Value: plan.ValueText);
+    }
+
+    /// <summary>Offene Aktion entnehmen (einmalig) und die geteilte Anzeige löschen.</summary>
+    private PendingAction TakeLocked()
+    {
+        var taken = _pending!;
+        _pending = null;
+        _pendingInput = null;
+        _pendingProfile = null;
+        Share(null);
+        return taken;
     }
 
     private void ExpireLocked()
     {
         if (_pending is { } p && _time.GetUtcNow() > p.ExpiresUtc)
         {
-            _pending = null;
+            TakeLocked();
             AddLogLocked(p.Plan.Action.Id, p.Plan.ValueText, "abgelaufen", "Keine Bestätigung", null);
+        }
+    }
+
+    private void Share(PendingAction? pending)
+    {
+        try
+        {
+            if (pending is not null)
+            {
+                _store.SavePending(new SharedPending(pending.Plan.Action.Id, pending.Plan.ValueText, pending.Plan.Readback, pending.ExpiresUtc, Environment.ProcessId));
+            }
+            else if (_store.LoadPending()?.ProcessId == Environment.ProcessId)
+            {
+                // Nur die eigene Anzeige löschen, nicht die einer anderen Instanz
+                _store.SavePending(null);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _log.LogDebug("input-pending.json nicht geschrieben: {Message}", ex.Message);
         }
     }
 
@@ -468,10 +539,11 @@ public sealed class InputService
         _log.LogInformation("Eingabe {Outcome}: {Action}{Value} – {Detail}", outcome, action, value is null ? "" : " = " + value, detail ?? "");
     }
 
+    [GeneratedRegex(@"\p{L}+")]
+    private static partial Regex WordPattern();
+
     private static HashSet<string> Words(string? text) =>
         string.IsNullOrWhiteSpace(text)
             ? []
-            : text.ToLowerInvariant()
-                .Split([' ', ',', '.', '!', '?', ';', ':', '-', '"', '\''], StringSplitOptions.RemoveEmptyEntries)
-                .ToHashSet(StringComparer.Ordinal);
+            : WordPattern().Matches(text.ToLowerInvariant()).Select(m => m.Value).ToHashSet(StringComparer.Ordinal);
 }
