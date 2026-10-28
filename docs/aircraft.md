@@ -42,7 +42,9 @@ Nicht nutzbar beim A32NX: `AUTOPILOT MASTER`, `BRAKE PARKING POSITION`, `SPOILER
 
 **FMS/Route:** Das FBW-FMS füllt die GPS-Flugplanvariablen nicht. Route und Fuel-Vergleich kommen aus SimBrief; der nächste Wegpunkt kommt aus Peilung und Distanz des FMS, sofern der Punkt im Plan steht. Die TOD-Entfernung gibt das FMS nicht heraus – die bleibt aus SimBrief, der Callout „Top of descent“ dagegen kommt vom FMS.
 
-### A32NX – Eingaben (v0.7, noch nicht im Sim geprüft)
+### A32NX – Eingaben (v0.7/v0.8.1)
+
+Im Sim geprüft (28.10.2026): fcu.heading, flaps, lights.beacon, antiice.engines, apu.bleed. Alles andere ist ungeprüft.
 
 Abgeleitet aus `fbw-a32nx/docs/a320-events.md`, `a320-simvars.md`, den FBW-Presets (`aircraft_preset_procedures.xml`) und den Rust-Systemen. Steht im Profil unter `actions`.
 
@@ -65,7 +67,11 @@ Abgeleitet aus `fbw-a32nx/docs/a320-events.md`, `a320-simvars.md`, den FBW-Prese
 | Seat Belts | `CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE` (nur wenn nötig) | `CABIN SEATBELTS ALERT SWITCH` |
 | No Smoking | `L:XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position` | gleich |
 | Anti-Ice ENG/WING, Probe Heat | `L:A32NX_BUTTON_OVHD_ANTI_ICE_*_POSITION`, `L:A32NX_MAN_PITOT_HEAT` | gleich |
-| Packs, APU Master/Start/Bleed | `L:A32NX_OVHD_COND_PACK_*_PB_IS_ON`, `L:A32NX_OVHD_APU_*`, `L:A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON` | gleich |
+| Packs, APU Master/Bleed | `L:A32NX_OVHD_COND_PACK_*_PB_IS_ON`, `L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON`, `L:A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON` | gleich (nur Schalterstellung) |
+| APU Start | `L:A32NX_OVHD_APU_START_PB_IS_ON` = 1 | ON-Licht muss 2,5 s stehen – ohne Strom/Master schaltet die APU-Elektronik es aus |
+| APU N/EGT (get_systems) | – | `L:A32NX_APU_N`, `L:A32NX_APU_EGT` (ARINC 429, wie ECAM); `APU PCT RPM` folgt nur verzögert |
+| ENG 1/2 Anti-Ice einzeln | `L:A32NX_BUTTON_OVHD_ANTI_ICE_ENG_n_POSITION` | `ENG ANTI ICE:n` (FBW setzt es per `K:ANTI_ICE_SET_ENGn`) |
+| External Power | `L:A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON`, nur mit `L:A32NX_EXT_PWR_AVAIL:1` | `L:A32NX_ELEC_CONTACTOR_3XG_IS_CLOSED` |
 | Transponder, TCAS | `XPNDR_SET` (BCD), `L:A32NX_TRANSPONDER_MODE`, `L:A32NX_SWITCH_ATC_ALT`, `L:A32NX_SWITCH_TCAS_Position`, `_Traffic_Position` | gleich |
 | COM 1 | `COM_STBY_RADIO_SET_HZ`, `COM1_RADIO_SWAP` | `COM STANDBY FREQUENCY:1` |
 
