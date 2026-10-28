@@ -2,7 +2,7 @@ using System.Text.RegularExpressions;
 using KokoroSharp.Core;
 using KokoroSharp.Processing;
 using Microsoft.Extensions.Options;
-using Microsoft.ML.OnnxRuntime;
+using OnnxSessionOptions = Microsoft.ML.OnnxRuntime.SessionOptions;
 
 namespace Kopilot.Speech;
 
@@ -26,7 +26,7 @@ public sealed partial class KokoroSpeechEngine : ISpeechEngine
     private readonly ILogger<KokoroSpeechEngine> _log;
     private readonly object _voiceLock = new();
     private readonly Dictionary<string, KokoroVoice> _voices = new(StringComparer.OrdinalIgnoreCase);
-    private SessionOptions? _sessionOptions;
+    private OnnxSessionOptions? _sessionOptions;
     private KokoroModel? _model;
 
     public KokoroSpeechEngine(IOptions<KopilotOptions> options, ILogger<KokoroSpeechEngine> log)
@@ -80,7 +80,7 @@ public sealed partial class KokoroSpeechEngine : ISpeechEngine
         }
 
         var threads = Math.Clamp(_options.Threads, 1, 16);
-        _sessionOptions = new SessionOptions
+        _sessionOptions = new OnnxSessionOptions
         {
             IntraOpNumThreads = threads,
             InterOpNumThreads = 1,
