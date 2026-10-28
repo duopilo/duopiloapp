@@ -420,6 +420,12 @@ public sealed partial class InputService
             }
         }
 
+        // Kurs 360: Das FCU zeigt 000 – im Ergebnis wie gesagt als 360
+        if (plan.Action.Parameter?.Format == "heading" && plan.ValueText == "360" && after is { } shown && Math.Abs(shown % 360) < 0.5)
+        {
+            after = 360;
+        }
+
         var alreadySet = sent == 0 && skipped > 0;
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         var detail = verified switch

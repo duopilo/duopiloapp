@@ -130,7 +130,7 @@ public static class ActionPlanner
             var independent = !steps.Any(s => s.Set is not null && SameVariable(s.Set, variable))
                               && !action.Steps.Any(s => s.Set is not null && SameVariable(s.Set, variable));
             check = new ResolvedCheck(
-                new ResolvedCondition(variable, Unit(chk.Unit), expect, chk.Tolerance),
+                new ResolvedCondition(variable, Unit(chk.Unit), expect, chk.Tolerance, Modulo: chk.Modulo),
                 Math.Clamp(chk.TimeoutMs, 500, 15000),
                 Math.Clamp(chk.HoldMs, 0, 5000),
                 independent || chk.ConfirmsEffect);

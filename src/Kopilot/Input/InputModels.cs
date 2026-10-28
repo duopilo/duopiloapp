@@ -139,6 +139,9 @@ public sealed class ActionCheck
     /// (z. B. APU START: ohne Strom/Master schaltet die APU-Elektronik das ON-Licht sofort aus). Gilt dann als echter Nachweis.
     /// </summary>
     public bool ConfirmsEffect { get; set; }
+
+    /// <summary>Zyklischer Wert, z. B. 360 für Kurse: 0 und 360 gelten als gleich.</summary>
+    public double? Modulo { get; set; }
 }
 
 /// <summary>Was Kopilot an MSFS schickt – fertig ausgerechnet.</summary>
@@ -156,9 +159,18 @@ public sealed record ResolvedStep(
         : $"Setze {Set} = {SetValue.ToString(System.Globalization.CultureInfo.InvariantCulture)} ({Unit})";
 }
 
-public sealed record ResolvedCondition(string Variable, string Unit, double Value, double Tolerance, string? Message = null)
+public sealed record ResolvedCondition(string Variable, string Unit, double Value, double Tolerance, string? Message = null, double? Modulo = null)
 {
-    public bool Matches(double state) => Math.Abs(state - Value) <= Tolerance;
+    public bool Matches(double state)
+    {
+        if (Modulo is not { } m || m <= 0)
+        {
+            return Math.Abs(state - Value) <= Tolerance;
+        }
+
+        var diff = (((state - Value) % m) + m) % m;
+        return Math.Min(diff, m - diff) <= Tolerance;
+    }
 }
 
 /// <summary>Prüfung nach dem Ausführen. Independent = liest eine Variable, die die Aktion nicht selbst schreibt (echter Nachweis).</summary>
