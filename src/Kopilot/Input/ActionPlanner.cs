@@ -117,11 +117,25 @@ public static class ActionPlanner
             check = new ResolvedCondition(chk.Variable.Trim(), Unit(chk.Unit), expect, chk.Tolerance);
         }
 
-        var readback = string.IsNullOrWhiteSpace(action.Readback)
-            ? (valueText is null ? action.Label : $"{action.Label} {valueText}")
-            : action.Readback.Replace("{value}", valueText ?? "", StringComparison.OrdinalIgnoreCase);
+        var requires = new List<ResolvedCondition>();
+        foreach (var r in action.Requires.Where(r => !string.IsNullOrWhiteSpace(r.Variable)))
+        {
+            if (Resolve(r.EqualTo, value, option, fallback: value) is not { } required)
+            {
+                return PlanResult.Refuse($"{action.Id}: Keine Bedingung für \"{option}\".");
+            }
 
-        return PlanResult.Ok(new ActionPlan(action, valueText, readback.Trim(), steps, check, Math.Clamp(action.Check?.TimeoutMs ?? 0, 0, 10000)));
+            requires.Add(new ResolvedCondition(r.Variable.Trim(), Unit(r.Unit), required, r.Tolerance, r.Message ?? $"{r.Variable} passt nicht."));
+        }
+
+        var spoken = option is not null && action.Parameter?.Spoken is { } say
+            ? say.FirstOrDefault(kv => kv.Key.Equals(option, StringComparison.OrdinalIgnoreCase)).Value ?? valueText
+            : valueText;
+        var readback = string.IsNullOrWhiteSpace(action.Readback)
+            ? (spoken is null ? action.Label : $"{action.Label} {spoken}")
+            : action.Readback.Replace("{value}", spoken ?? "", StringComparison.OrdinalIgnoreCase);
+
+        return PlanResult.Ok(new ActionPlan(action, valueText, readback.Trim(), steps, check, Math.Clamp(action.Check?.TimeoutMs ?? 0, 0, 10000), requires));
     }
 
     /// <summary>Kurzbeschreibung des erwarteten Werts, z. B. "100–399 kt" oder "on | off".</summary>

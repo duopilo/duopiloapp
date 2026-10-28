@@ -54,7 +54,7 @@ public static class Interlocks
     /// <summary>Nicht am Boden (z. B. Fahrwerk einfahren).</summary>
     public const string NotOnGround = "notOnGround";
 
-    /// <summary>Fahrwerk ausfahren nur bis VLE.</summary>
+    /// <summary>Fahrwerk ausfahren nur bis VLO (ohne VLO: VLE).</summary>
     public const string GearSpeed = "gearSpeed";
 
     /// <summary>Klappenstellung nur bis zu ihrer VFE (Auswahl = Stellung, z. B. "2" oder "FULL").</summary>
@@ -77,15 +77,16 @@ public static class Interlocks
 
         if (name.Equals(GearSpeed, StringComparison.OrdinalIgnoreCase))
         {
-            if (s.OnGround == true || limits.VleKt is not { } vle)
+            if (s.OnGround == true || (limits.VloKt ?? limits.VleKt) is not { } limit)
             {
                 return null;
             }
 
+            var name2 = limits.VloKt is null ? "VLE" : "VLO";
             return s.IasKt switch
             {
                 null => "Fahrt unbekannt – Fahrwerk gesperrt.",
-                { } ias when ias > vle => $"Fahrwerk gesperrt: {ias:0} kt über VLE {vle:0} kt.",
+                { } ias when ias > limit => $"Fahrwerk gesperrt: {ias:0} kt über {name2} {limit:0} kt.",
                 _ => null,
             };
         }

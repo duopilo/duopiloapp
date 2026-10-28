@@ -184,6 +184,10 @@ public sealed class InputTests
     {
         Assert.Contains("VLE", ActionPlanner.Plan(GearDown(), null, Limits, Air(300)).Refusal);
         Assert.NotNull(ActionPlanner.Plan(GearDown(), null, Limits, Air(250)).Plan);
+
+        var withVlo = new AircraftLimits { VleKt = 280, VloKt = 250 };
+        Assert.Contains("VLO 250", ActionPlanner.Plan(GearDown(), null, withVlo, Air(260)).Refusal);
+        Assert.NotNull(ActionPlanner.Plan(GearDown(), null, withVlo, Air(240)).Plan);
     }
 
     [Fact]
@@ -240,6 +244,52 @@ public sealed class InputTests
         Assert.Equal(new[] { "fcu.speed" }, profile.Actions.Select(a => a.Id));
         Assert.Equal(3, errors.Count);
         Assert.Throws<InvalidOperationException>(() => ActionSafety.EnsureAllowed("ENGINE_MASTER_1"));
+    }
+
+    [Fact]
+    public void A32NX_Aktionen_lassen_sich_alle_planen()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !Directory.Exists(Path.Combine(dir.FullName, "src", "Kopilot", "profiles")))
+        {
+            dir = dir.Parent;
+        }
+
+        Assert.NotNull(dir);
+        var options = Options.Create(new KopilotOptions { ProfilesDirectory = Path.Combine(dir.FullName, "src", "Kopilot", "profiles") });
+        var store = new ProfileStore(options, NullLogger<ProfileStore>.Instance);
+        Assert.Empty(store.Errors);
+
+        var profile = store.All.Single(p => p.Name == "FlyByWire A32NX");
+        Assert.True(profile.Actions.Count >= 40);
+        Assert.Contains(profile.Actions, a => a.Id == "gear.up" && a.Interlocks.Contains(Interlocks.NotOnGround));
+        Assert.Contains(profile.Actions, a => a.Id == "flaps" && a.Interlocks.Contains(Interlocks.FlapsSpeed));
+
+        foreach (var action in profile.Actions)
+        {
+            string?[] values = action.Parameter switch
+            {
+                null => [null],
+                { IsChoice: true } p => p.Options!.Keys.ToArray<string?>(),
+                { Format: "squawk" } => ["7000"],
+                { Format: "frequency" } => ["121.800"],
+                { } p => [(p.Min ?? 0).ToString(System.Globalization.CultureInfo.InvariantCulture)],
+            };
+
+            foreach (var value in values)
+            {
+                var result = ActionPlanner.Plan(action, value, profile.Limits, Air(150));
+                Assert.True(result.Plan is not null, $"{action.Id} = {value}: {result.Refusal}");
+                Assert.DoesNotContain("{", result.Plan!.Readback);
+                Assert.NotEmpty(result.Plan.Steps);
+            }
+        }
+
+        // Landescheinwerfer: Stellung, Ausfahren und Stromkreis je Seite
+        var landing = ActionPlanner.Plan(profile.Actions.Single(a => a.Id == "lights.landing"), "retract", profile.Limits, Air(150)).Plan!;
+        Assert.Equal("Landing lights retracted", landing.Readback);
+        Assert.Equal(2, landing.Steps.Count(s => s.Event == "ELECTRICAL_CIRCUIT_TOGGLE"));
+        Assert.All(landing.Steps.Where(s => s.Event is not null), s => Assert.Equal(0, s.SkipIf!.Value));
     }
 
     // ------------------------------------------------------------------ Ablauf mit Bestätigung
@@ -304,12 +354,12 @@ public sealed class InputTests
     }
 
     [Fact]
-    public void Gesperrt_ist_der_Standard()
+    public async Task Gesperrt_ist_der_Standard()
     {
         Assert.False(new InputOptions().Enabled);
         var (input, backend, _) = Create(enabled: false);
 
-        Assert.Equal(InputResult.Disabled, input.Prepare("fcu.speed", "250").Status);
+        Assert.Equal(InputResult.Disabled, (await input.PrepareAsync("fcu.speed", "250", default)).Status);
         Assert.Empty(backend.Sent);
     }
 
@@ -325,7 +375,7 @@ public sealed class InputTests
             }
         };
 
-        var prepared = input.Prepare("fcu.speed", "250");
+        var prepared = await input.PrepareAsync("fcu.speed", "250", default);
         Assert.Equal(InputResult.AwaitingConfirmation, prepared.Status);
         Assert.Equal("Speed 250 selected", prepared.Readback);
         Assert.Empty(backend.Sent);
@@ -353,7 +403,7 @@ public sealed class InputTests
     public async Task Nein_verwirft_die_Aktion()
     {
         var (input, backend, time) = Create();
-        var prepared = input.Prepare("gear.up", null);
+        var prepared = await input.PrepareAsync("gear.up", null, default);
         time.Now += TimeSpan.FromSeconds(3);
 
         var result = await input.ConfirmAsync(prepared.Token!, "negative, gear down", default);
@@ -368,9 +418,9 @@ public sealed class InputTests
     {
         var (input, backend, time) = Create();
         backend.Current = Air(190);
-        Assert.Equal(InputResult.Refused, input.Prepare("flaps", "3").Status);
+        Assert.Equal(InputResult.Refused, (await input.PrepareAsync("flaps", "3", default)).Status);
 
-        var prepared = input.Prepare("flaps", "2");
+        var prepared = await input.PrepareAsync("flaps", "2", default);
         Assert.Equal(InputResult.AwaitingConfirmation, prepared.Status);
 
         backend.Current = Air(230); // inzwischen schneller als VFE 200
@@ -386,7 +436,7 @@ public sealed class InputTests
     public async Task Abgelaufen_nach_dem_Zeitfenster()
     {
         var (input, backend, time) = Create();
-        var prepared = input.Prepare("gear.up", null);
+        var prepared = await input.PrepareAsync("gear.up", null, default);
 
         time.Now += TimeSpan.FromSeconds(61);
 
@@ -402,7 +452,7 @@ public sealed class InputTests
         var (input, backend, time) = Create();
         backend.State["L:BTN_LS_1_FILTER_ACTIVE"] = 1;
 
-        var prepared = input.Prepare("efis.ls", "on");
+        var prepared = await input.PrepareAsync("efis.ls", "on", default);
         time.Now += TimeSpan.FromSeconds(2);
         var result = await input.ConfirmAsync(prepared.Token!, "yes", default);
 
@@ -411,7 +461,7 @@ public sealed class InputTests
         Assert.Empty(backend.Sent);
 
         backend.OnEvent = (name, _) => backend.State["L:BTN_LS_1_FILTER_ACTIVE"] = 0;
-        prepared = input.Prepare("efis.ls", "off");
+        prepared = await input.PrepareAsync("efis.ls", "off", default);
         time.Now += TimeSpan.FromSeconds(2);
         result = await input.ConfirmAsync(prepared.Token!, "bestätigt", default);
 
@@ -426,7 +476,7 @@ public sealed class InputTests
         var (input, backend, time) = Create();
         backend.State["L:A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE"] = 180;
 
-        var prepared = input.Prepare("fcu.speed", "250");
+        var prepared = await input.PrepareAsync("fcu.speed", "250", default);
         time.Now += TimeSpan.FromSeconds(2);
         var result = await input.ConfirmAsync(prepared.Token!, "confirm", default);
 
@@ -437,29 +487,29 @@ public sealed class InputTests
     }
 
     [Fact]
-    public void Ohne_Verbindung_oder_Profil_keine_Eingabe()
+    public async Task Ohne_Verbindung_oder_Profil_keine_Eingabe()
     {
         var (input, backend, _) = Create();
         backend.Connected = false;
-        Assert.Equal(InputResult.Refused, input.Prepare("fcu.speed", "250").Status);
+        Assert.Equal(InputResult.Refused, (await input.PrepareAsync("fcu.speed", "250", default)).Status);
 
         backend.Connected = true;
         backend.Profile = null;
-        Assert.Equal(InputResult.Refused, input.Prepare("fcu.speed", "250").Status);
+        Assert.Equal(InputResult.Refused, (await input.PrepareAsync("fcu.speed", "250", default)).Status);
 
         backend.Profile = new AircraftProfile { Name = "Leer" };
-        Assert.Contains("gibt es", input.Prepare("fcu.speed", "250").Reason);
+        Assert.Contains("gibt es", (await input.PrepareAsync("fcu.speed", "250", default)).Reason);
     }
 
     [Fact]
-    public void Dashboard_Schalter_hat_Vorrang()
+    public async Task Dashboard_Schalter_hat_Vorrang()
     {
         var (input, _, _) = Create(enabled: false);
         Assert.False(input.Enabled);
 
         input.SetEnabled(true);
         Assert.True(input.Enabled);
-        Assert.Equal(InputResult.AwaitingConfirmation, input.Prepare("gear.up", null).Status);
+        Assert.Equal(InputResult.AwaitingConfirmation, (await input.PrepareAsync("gear.up", null, default)).Status);
 
         input.SetEnabled(false);
         Assert.False(input.Enabled);

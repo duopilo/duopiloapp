@@ -161,6 +161,9 @@ public sealed class AircraftLimits
     /// <summary>Höchstgeschwindigkeit mit ausgefahrenem Fahrwerk (VLE).</summary>
     public double? VleKt { get; set; }
 
+    /// <summary>Höchstgeschwindigkeit zum Ausfahren des Fahrwerks (VLO). Fehlt = VLE.</summary>
+    public double? VloKt { get; set; }
+
     /// <summary>VFE je Klappenstellung: Schlüssel ist der Klartext der Stellung (z. B. "1+F", "FULL") oder der Hebel-Index ("1", "2", …).</summary>
     public Dictionary<string, double> VfeKt { get; set; } = [];
 

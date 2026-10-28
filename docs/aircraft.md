@@ -42,6 +42,35 @@ Nicht nutzbar beim A32NX: `AUTOPILOT MASTER`, `BRAKE PARKING POSITION`, `SPOILER
 
 **FMS/Route:** Das FBW-FMS füllt die GPS-Flugplanvariablen nicht. Route und Fuel-Vergleich kommen aus SimBrief; der nächste Wegpunkt kommt aus Peilung und Distanz des FMS, sofern der Punkt im Plan steht. Die TOD-Entfernung gibt das FMS nicht heraus – die bleibt aus SimBrief, der Callout „Top of descent“ dagegen kommt vom FMS.
 
+### A32NX – Eingaben (v0.7, noch nicht im Sim geprüft)
+
+Abgeleitet aus `fbw-a32nx/docs/a320-events.md`, `a320-simvars.md`, den FBW-Presets (`aircraft_preset_procedures.xml`) und den Rust-Systemen. Steht im Profil unter `actions`.
+
+| Bedienelement | Schreiben | Zustand lesen |
+|---|---|---|
+| FCU SPD/HDG/ALT/VS | `A32NX.FCU_*_SET`, `_PUSH`, `_PULL` | `L:A32NX_FCU_AFS_DISPLAY_*_VALUE`, `_MANAGED` |
+| LOC, APPR, EXPED, AP 1/2, A/THR | `A32NX.FCU_*_PUSH` (nur wenn nötig) | `L:A32NX_FCU_*_LIGHT_ON` |
+| QNH, STD/QNH | `A32NX.FCU_EFIS_{L,R}_BARO_SET` (hPa × 16), `_PULL`/`_PUSH` | `L:A32NX_FCU_EFIS_L_DISPLAY_BARO_MODE` (0 STD, 1 QNH) |
+| LS, FD | `A32NX.FCU_EFIS_{L,R}_{LS,FD}_PUSH` | `L:A32NX_FCU_EFIS_{L,R}_{LS,FD}_LIGHT_ON` |
+| ND-Modus/-Reichweite | `L:A32NX_FCU_EFIS_L_EFIS_MODE` (0–4), `_RANGE` (0–5) | gleich |
+| Fahrwerk | `GEAR_UP` / `GEAR_DOWN` | `L:A32NX_GEAR_HANDLE_POSITION` |
+| Klappen | `FLAPS_UP`, `FLAPS_1`…`FLAPS_3`, `FLAPS_DOWN` | `L:A32NX_FLAPS_HANDLE_INDEX` |
+| Speedbrake, Ground Spoiler | `SPOILERS_SET` (0/8192/16384), `SPOILERS_ARM_SET` | `L:A32NX_SPOILERS_HANDLE_POSITION`, `L:A32NX_SPOILERS_ARMED` |
+| Autobrake | `A32NX.AUTOBRAKE_SET` (1–4) | `L:A32NX_AUTOBRAKES_ARMED_MODE` |
+| Beacon, Wing | `BEACON_LIGHTS_SET`, `WING_LIGHTS_SET` | `LIGHT BEACON`, `LIGHT WING` |
+| Runway Turn-off | `ELECTRICAL_CIRCUIT_TOGGLE` 21/22 | `CIRCUIT SWITCH ON:21/22` |
+| Landing L/R | `L:LIGHTING_LANDING_2/3`, `L:LANDING_2/3_RETRACTED`, Stromkreis 18/19 | `L:LIGHTING_LANDING_2` |
+| Nose | `L:LIGHTING_LANDING_1`, Stromkreis 17 (T.O) und 20 (Taxi) | `L:LIGHTING_LANDING_1` |
+| Strobe | `L:STROBE_0_AUTO` + `STROBES_OFF`/`STROBES_ON` | `L:LIGHTING_STROBE_0` (0 ON, 1 AUTO, 2 OFF) |
+| Seat Belts | `CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE` (nur wenn nötig) | `CABIN SEATBELTS ALERT SWITCH` |
+| No Smoking | `L:XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position` | gleich |
+| Anti-Ice ENG/WING, Probe Heat | `L:A32NX_BUTTON_OVHD_ANTI_ICE_*_POSITION`, `L:A32NX_MAN_PITOT_HEAT` | gleich |
+| Packs, APU Master/Start/Bleed | `L:A32NX_OVHD_COND_PACK_*_PB_IS_ON`, `L:A32NX_OVHD_APU_*`, `L:A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON` | gleich |
+| Transponder, TCAS | `XPNDR_SET` (BCD), `L:A32NX_TRANSPONDER_MODE`, `L:A32NX_SWITCH_ATC_ALT`, `L:A32NX_SWITCH_TCAS_Position`, `_Traffic_Position` | gleich |
+| COM 1 | `COM_STBY_RADIO_SET_HZ`, `COM1_RADIO_SWAP` | `COM STANDBY FREQUENCY:1` |
+
+Nicht dabei: NAV & LOGO (nur `B:A32NX_OVH_LIGHTS_NAV_LOGO_SW`). Bei Umschalttastern liest Kopilot vorher den Zustand und drückt nur, wenn nötig.
+
 ## FlyByWire A380X
 
 | Wert | Quelle | Status |

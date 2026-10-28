@@ -129,7 +129,7 @@ public sealed class InputService
 
     // ------------------------------------------------------------------ Schritt 1: vorbereiten
 
-    public InputResult Prepare(string actionId, string? value)
+    public async Task<InputResult> PrepareAsync(string actionId, string? value, CancellationToken ct)
     {
         if (!Enabled)
         {
@@ -152,6 +152,11 @@ public sealed class InputService
         if (result.Plan is not { } plan)
         {
             return Refuse(action.Id, value, result.Refusal!);
+        }
+
+        if (await CheckRequirementsAsync(plan, ct) is { } unmet)
+        {
+            return Refuse(action.Id, plan.ValueText, unmet);
         }
 
         var now = _time.GetUtcNow();
@@ -276,8 +281,32 @@ public sealed class InputService
 
     // ------------------------------------------------------------------ intern
 
+    private async Task<string?> CheckRequirementsAsync(ActionPlan plan, CancellationToken ct)
+    {
+        foreach (var requirement in plan.Requires)
+        {
+            var state = await _backend.ReadAsync(requirement.Variable, requirement.Unit, ct);
+            if (state is null)
+            {
+                return $"Zustand {requirement.Variable} nicht lesbar.";
+            }
+
+            if (!requirement.Matches(state.Value))
+            {
+                return requirement.Message;
+            }
+        }
+
+        return null;
+    }
+
     private async Task<InputResult> ExecuteAsync(ActionPlan plan, CancellationToken ct)
     {
+        if (await CheckRequirementsAsync(plan, ct) is { } unmet)
+        {
+            return Refuse(plan.Action.Id, plan.ValueText, unmet);
+        }
+
         var skipped = 0;
         var sent = 0;
         try
@@ -292,7 +321,7 @@ public sealed class InputService
                         return Fail(plan, $"Zustand {condition.Variable} nicht lesbar.", executedAny: sent > 0);
                     }
 
-                    if (Math.Abs(state.Value - condition.Value) <= condition.Tolerance)
+                    if (condition.Matches(state.Value))
                     {
                         skipped++;
                         continue;
@@ -359,7 +388,7 @@ public sealed class InputService
         while (true)
         {
             last = await _backend.ReadAsync(check.Variable, check.Unit, ct) ?? last;
-            if (last is { } v && Math.Abs(v - check.Value) <= check.Tolerance)
+            if (last is { } v && check.Matches(v))
             {
                 return (true, v);
             }

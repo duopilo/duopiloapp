@@ -34,6 +34,9 @@ public sealed class ProfileAction
     /// <summary>Sperren aus <see cref="Interlocks"/>, z. B. "notOnGround" oder "flapsSpeed".</summary>
     public List<string> Interlocks { get; set; } = [];
 
+    /// <summary>Zustände, die vor dem Ausführen gelten müssen (live gelesen), z. B. FCU nicht im TRK/FPA-Modus.</summary>
+    public List<StepCondition> Requires { get; set; } = [];
+
     /// <summary>false = Event/Variable stammt aus Doku/Quellcode und ist im Sim noch nicht geprüft.</summary>
     public bool Verified { get; set; }
 }
@@ -58,6 +61,9 @@ public sealed class ActionParameter
 
     /// <summary>Sonderformat: "squawk" (4 Ziffern 0–7), "frequency" (MHz mit 3 Nachkommastellen), "altitude" (auch "FL120").</summary>
     public string? Format { get; set; }
+
+    /// <summary>Gesprochene Form einer Auswahl im Readback, z. B. { "tara": "TA RA", "lo": "low" }.</summary>
+    public Dictionary<string, string>? Spoken { get; set; }
 
     public bool IsChoice => Type.Equals("choice", StringComparison.OrdinalIgnoreCase);
 }
@@ -101,6 +107,9 @@ public sealed class StepCondition
     public JsonElement? EqualTo { get; set; }
 
     public double Tolerance { get; set; } = 0.5;
+
+    /// <summary>Für "requires": Grund, wenn die Bedingung nicht erfüllt ist.</summary>
+    public string? Message { get; set; }
 }
 
 public sealed class ActionCheck
@@ -132,7 +141,10 @@ public sealed record ResolvedStep(
         : $"Setze {Set} = {SetValue.ToString(System.Globalization.CultureInfo.InvariantCulture)} ({Unit})";
 }
 
-public sealed record ResolvedCondition(string Variable, string Unit, double Value, double Tolerance);
+public sealed record ResolvedCondition(string Variable, string Unit, double Value, double Tolerance, string? Message = null)
+{
+    public bool Matches(double state) => Math.Abs(state - Value) <= Tolerance;
+}
 
 /// <summary>Ergebnis der Planung: entweder abgelehnt (Reason) oder bereit zur Bestätigung.</summary>
 public sealed record ActionPlan(
@@ -141,7 +153,8 @@ public sealed record ActionPlan(
     string Readback,
     IReadOnlyList<ResolvedStep> Steps,
     ResolvedCondition? Check,
-    int CheckTimeoutMs)
+    int CheckTimeoutMs,
+    IReadOnlyList<ResolvedCondition> Requires)
 {
     public string Summary => ValueText is null ? Action.Id : $"{Action.Id} = {ValueText}";
 }

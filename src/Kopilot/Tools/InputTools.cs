@@ -47,14 +47,15 @@ public static class InputTools
 
     [McpServerTool(Name = "prepare_action", Destructive = false, Idempotent = false)]
     [Description(
-        "Step 1 of a cockpit input: checks the action, its value and the interlocks (no gear up on ground, no flaps above VFE, gear only below VLE) " +
+        "Step 1 of a cockpit input: checks the action, its value and the interlocks (no gear up on ground, no flaps above VFE, gear only below VLO) " +
         "and returns a readback plus a token valid for about 60 s. Nothing is changed in the aircraft yet. " + Rules)]
-    public static string PrepareAction(
+    public static async Task<string> PrepareAction(
         InputService input,
         [Description("Action id from list_actions, e.g. 'fcu.speed', 'fcu.altitude', 'gear.down', 'flaps', 'lights.landing'.")] string action,
-        [Description("Value if the action needs one: a number (e.g. '250', '5000', 'FL120', '1013', '121.800', '7000') or an option from list_actions (e.g. 'on', 'off', '2', 'FULL').")] string? value = null)
+        [Description("Value if the action needs one: a number (e.g. '250', '5000', 'FL120', '1013', '121.800', '7000') or an option from list_actions (e.g. 'on', 'off', '2', 'FULL').")] string? value = null,
+        CancellationToken cancellationToken = default)
     {
-        var result = input.Prepare(action, value);
+        var result = await input.PrepareAsync(action, value, cancellationToken);
         return Json.Serialize(View(result, result.Status == InputResult.AwaitingConfirmation
             ? "Read this back to the pilot now and wait for 'confirm'. Then call confirm_action with the token and the pilot's words."
             : null));
