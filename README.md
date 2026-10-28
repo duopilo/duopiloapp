@@ -51,13 +51,46 @@ Kopilot prüft alle 200 ms ein paar Regeln und legt Meldungen mit einem kurzen e
 | `RUNWAY_ASSIGNED` | Runway two three left assigned | Ingame-ATC hat eine Bahn zugewiesen |
 | `SIM_PAUSED` | Sim paused | Sim pausiert – alle anderen Regeln ruhen |
 
+Dazu kommen die Callouts, die ein Pilot Monitoring macht:
+
+| Regel | Callout | Wann |
+|---|---|---|
+| `PM_100_KNOTS`, `PM_V1`, `PM_ROTATE` | One hundred knots / V1 / Rotate | Startlauf (V1/VR aus der MCDU, beim A32NX) |
+| `PM_POSITIVE_CLIMB` | Positive climb | nach dem Abheben, sobald es wirklich steigt |
+| `PM_SPOILERS` | Spoilers / No spoilers | nach dem Aufsetzen (No spoilers nach 3 s ohne Ground Spoiler) |
+| `PM_REVERSE` | Reverse green | Schubumkehr ausgefahren |
+| `PM_DECEL` | Decel | Autobrake DECEL (A32NX), sonst spürbare Verzögerung |
+| `PM_70_KNOTS` | Seventy knots | Landerollen unter 70 kt |
+| `PM_TEN_THOUSAND` | Ten thousand | durch 10.000 ft, steigend und sinkend |
+| `PM_TRANSITION` | Transition altitude / Transition level | TA im Steigflug, TL im Sinkflug (aus dem FMS, sonst SimBrief) |
+| `PM_FLAPS` | Speed checked, flaps two / Flaps zero | Klappenhebel steht 1,5 s in neuer Stellung; beim Ausfahren mit Speed-Check gegen VFE |
+| `PM_GEAR` | Gear down / Gear up | Fahrwerkshebel in der Luft |
+
+Radiohöhen (2500, 1000, 500 …), „Hundred above“, „Minimum“ und „Retard“ sagt der A32NX selbst an. Kopilot kann sie zusätzlich sprechen – für Flugzeuge ohne eigene Ansagen: Dashboard → Ansagen → Stimme, oder `Kopilot:Monitoring:AircraftAutoCallouts`.
+
 Nach dem Laden eines Flugs, einem Flugzeugwechsel oder einem Air-Start schweigt das Monitoring 10 Sekunden, nach einer Pause 3 Sekunden – dann springen die Werte. Einzelne Regeln schaltest du in `appsettings.Local.json` ab:
 
 ```jsonc
 "Kopilot": { "Monitoring": { "DisabledRules": [ "SPEED_DEVIATION" ] } }
 ```
 
-**Push:** Claude.ai und der Sprachmodus können keine Nachrichten vom Server empfangen. Claude sieht Meldungen über `activeAlerts` in jeder Antwort oder ruft `wait_for_alerts` in einer Schleife auf. Echte Push-Callouts kommen mit der eigenen Sprachausgabe (Roadmap).
+**Push:** Claude.ai und der Sprachmodus können keine Nachrichten vom Server empfangen. Deshalb spricht Kopilot die Callouts selbst (siehe unten). Claude sieht die Meldungen zusätzlich über `activeAlerts` in jeder Antwort oder über `wait_for_alerts`.
+
+## Sprachausgabe
+
+Kopilot spricht die Callouts selbst über die Windows-Sprachausgabe – auf Englisch, Warnings unterbrechen alles andere, ältere Meldungen verfallen nach 8 Sekunden. Im Dashboard unter **Ansagen → Stimme** stellst du ein:
+
+- Stimme (englische Windows-Stimmen, z. B. George oder Hazel für en-GB)
+- Ausgabegerät – z. B. das Headset statt der Lautsprecher
+- Lautstärke und Tempo
+- ab welcher Stufe gesprochen wird (alle, ab Caution, nur Warnings)
+- ob Radiohöhen/Minimum/Retard zusätzlich kommen
+
+Die Einstellungen liegen in `%LOCALAPPDATA%\Kopilot\speech.json`. Gesprochen wird nur von der Tray-Instanz, nicht von der stdio-Instanz, die Claude Desktop startet – sonst käme alles doppelt.
+
+**Englische Stimme fehlt?** Auf einem deutschen Windows: Einstellungen → Zeit und Sprache → Sprache und Region → Sprache hinzufügen → *English (United Kingdom)*, dabei „Sprachausgabe“ auswählen. Danach Kopilot neu starten. Das Dashboard zeigt einen Hinweis, solange keine englische Stimme da ist.
+
+Einzelne Callouts stumm schalten (weiter sichtbar, aber nicht gesprochen): `"mutedRules": [ "PM_GEAR" ]` in `speech.json`. Ganz abschalten: `Kopilot:Monitoring:DisabledRules`.
 
 ## SimBrief
 
@@ -316,6 +349,7 @@ src/Kopilot/
   Program.cs              Start: --stdio (Claude Desktop) oder HTTP mit Tray, --console, --generate-secret
   Dashboard/              Dashboard im Browser (HTML, eingebettete Schrift B612), Daten-API
   Desktop/                Tray-Symbol, Autostart
+  Speech/                 Sprachausgabe über Windows (Warteschlange, Stimme, Ausgabegerät)
   Hosting/                Transport-Auswahl, Konfiguration, HTTP-Host
   Remote/                 Bearer-Token, OAuth-Server, Freigabeseite, Token-Speicher
   Sim/SimConnectClient.cs SimConnect auf eigenem Thread, Auto-Reconnect, Werte-Cache
@@ -342,7 +376,7 @@ Jede Variable hat eine eigene SimConnect-Data-Definition. Ist ein Name in MSFS u
 - [ ] L:-Variablen des iniBuilds A321LR (FMA, A/THR, Master Warning, ECAM)
 - [x] v0.4: Tray-Symbol und Dashboard im Browser statt Konsolenfenster, Callouts per Sprachausgabe im Browser
 - [x] v0.5: Korrekturen nach Testflug EDDL–EDDM (A32NX-Bindings, Knoten statt m/s, ALT CRZ), TOD, Landecheck, FMA-Log, FMS-Wegpunkt
-- [ ] v0.6: Lokale Sprachausgabe (Windows) und weitere PM-Callouts (Startlauf, Landung, Höhenmarken, Konfiguration)
+- [x] v0.6: Lokale Sprachausgabe (Windows, Stimme und Ausgabegerät wählbar) und PM-Callouts (Startlauf, Landung, Höhenmarken, Konfiguration)
 - [ ] v0.7: Eingabe-Modul mit Bestätigung (FCU, Konfiguration, Overhead, Funk, EFIS) – zuerst A32NX
 - [ ] WASimCommander-Anbindung (L:-Variablen auflisten, Events)
 - [ ] Callouts mit eigener Sprachausgabe (z. B. „20 Meilen – Flaps 1", 1000/500/Minimum, Retard, 100 Knoten, V1)

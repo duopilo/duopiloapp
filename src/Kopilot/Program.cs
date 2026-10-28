@@ -82,6 +82,11 @@ else
         return;
     }
 
+    // Sprachausgabe nur in dieser (Tray-)Instanz – die stdio-Instanz von Claude Desktop würde sonst doppelt sprechen
+    builder.Services.AddSingleton<Kopilot.Speech.CalloutSpeaker>();
+    builder.Services.AddSingleton<Kopilot.Speech.ISpeechOutput>(sp => sp.GetRequiredService<Kopilot.Speech.CalloutSpeaker>());
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<Kopilot.Speech.CalloutSpeaker>());
+
     if (OperatingSystem.IsWindows() && !Has(args, "--no-tray"))
     {
         builder.Services.AddSingleton(new DesktopInfo(dashboardUrl, logFile, Has(args, "--autostart")));

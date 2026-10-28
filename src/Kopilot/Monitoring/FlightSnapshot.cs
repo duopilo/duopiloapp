@@ -61,6 +61,31 @@ public sealed record FlightSnapshot
 
     public double? SpeedTargetKt { get; init; }
 
+    public double? V1Kt { get; init; }
+
+    public double? VrKt { get; init; }
+
+    /// <summary>Ground Spoiler ausgefahren (null = unbekannt).</summary>
+    public bool? GroundSpoilersOut { get; init; }
+
+    /// <summary>Größte Schubumkehr-Stellung aller Triebwerke in Prozent.</summary>
+    public double? ReverserPct { get; init; }
+
+    /// <summary>Autobrake DECEL-Licht (null = Flugzeug liefert es nicht).</summary>
+    public bool? DecelLight { get; init; }
+
+    /// <summary>Transition Altitude am Start (ft, QNH).</summary>
+    public double? TransitionAltitudeFt { get; init; }
+
+    /// <summary>Transition Level am Ziel (ft, Druckhöhe – FL70 = 7000).</summary>
+    public double? TransitionLevelFt { get; init; }
+
+    /// <summary>Entscheidungshöhe (Radiohöhe) für Minimum-Ansagen.</summary>
+    public double? DecisionHeightFt { get; init; }
+
+    /// <summary>Minimum Descent Altitude (barometrisch) für Minimum-Ansagen ohne DH.</summary>
+    public double? MinimumDescentAltitudeFt { get; init; }
+
     /// <summary>FMS-Meldung T/D REACHED (null, wenn das Flugzeug sie nicht liefert).</summary>
     public bool? TdReached { get; init; }
 
