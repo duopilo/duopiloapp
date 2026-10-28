@@ -182,6 +182,7 @@ public static class KopilotTools
         var signals = new AircraftSignals(sim);
         var engineCount = Math.Clamp(Fmt.Int(sim.Num("engineCount")) ?? 2, 1, SimVarCatalog.MaxEngines);
         var notes = new List<string>();
+        var electrical = signals.Electrical();
         var engines = Enumerable.Range(1, engineCount).Select(i =>
         {
             var running = sim.Bool($"eng{i}Running");
@@ -225,6 +226,14 @@ public static class KopilotTools
                 egtC = Fmt.Int(signals.Raw(BindingKeys.ApuEgt)),
                 bleed = signals.Flag(BindingKeys.ApuBleed),
                 flapOpenPct = Fmt.Int(signals.Raw(BindingKeys.ApuFlapOpen)),
+                generator = electrical.Any(e => e.Key.StartsWith("apuGen", StringComparison.OrdinalIgnoreCase))
+                    ? new
+                    {
+                        volts = Fmt.Int(electrical.FirstOrDefault(e => e.Key == "apuGenVolt").Value),
+                        hz = Fmt.Int(electrical.FirstOrDefault(e => e.Key == "apuGenHz").Value),
+                        loadPct = Fmt.Int(electrical.FirstOrDefault(e => e.Key == "apuGenLoad").Value),
+                    }
+                    : null,
                 source = signals.ApuSource,
             },
             fuel = new
@@ -254,7 +263,7 @@ public static class KopilotTools
                 com1StandbyMhz = Fmt.Round(sim.Num("com1Standby"), 3),
                 com2ActiveMhz = Fmt.Round(sim.Num("com2Active"), 3),
             },
-            electrical = signals.Electrical().Select(e => new { key = e.Key, label = e.Description, value = Fmt.Round(e.Value, 1), text = e.Text }),
+            electrical = electrical.Select(e => new { key = e.Key, label = e.Description, value = Fmt.Round(e.Value, 1), text = e.Text }),
             plausibility = notes,
             activeAlerts = AlertView.Active(alerts),
         });

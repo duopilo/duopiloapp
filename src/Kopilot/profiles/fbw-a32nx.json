@@ -86,6 +86,9 @@
     "apuStart": { "name": "L:A32NX_OVHD_APU_START_PB_IS_ON", "type": "bool", "verified": false, "description": "APU START ON-Licht" },
     "apuAvailable": { "name": "L:A32NX_OVHD_APU_START_PB_IS_AVAILABLE", "type": "bool", "verified": false, "description": "APU AVAIL" },
     "apuBleed": { "name": "L:A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", "type": "bool", "verified": true, "description": "APU BLEED Pushbutton" },
+    "apuN": { "name": "L:A32NX_APU_N", "type": "arinc429", "verified": false, "description": "APU N (%) aus dem ECB – wie auf dem ECAM. APU PCT RPM folgt beim A32NX nur verzögert." },
+    "apuEgt": { "name": "L:A32NX_APU_EGT", "type": "arinc429", "verified": false, "description": "APU EGT (°C) aus dem ECB" },
+    "apuFlapOpen": { "name": "L:A32NX_APU_FLAP_OPEN_PERCENTAGE", "unit": "percent", "type": "number", "verified": false, "description": "APU-Lufteinlassklappe offen (%)" },
     "flaps": {
       "name": "L:A32NX_FLAPS_CONF_INDEX", "type": "enum", "verified": false,
       "values": { "0": "0", "1": "1", "2": "1+F", "3": "2", "4": "3", "5": "FULL" }
@@ -112,6 +115,8 @@
     { "key": "gen2Volt", "name": "L:A32NX_ELEC_ENG_GEN_2_POTENTIAL", "description": "GEN 2 (V)" },
     { "key": "gen2Hz", "name": "L:A32NX_ELEC_ENG_GEN_2_FREQUENCY", "description": "GEN 2 (Hz)" },
     { "key": "apuGenVolt", "name": "L:A32NX_ELEC_APU_GEN_1_POTENTIAL", "description": "APU GEN (V)" },
+    { "key": "apuGenHz", "name": "L:A32NX_ELEC_APU_GEN_1_FREQUENCY", "description": "APU GEN (Hz)" },
+    { "key": "apuGenLoad", "name": "L:A32NX_ELEC_APU_GEN_1_LOAD", "unit": "percent", "description": "APU GEN Last (%)" },
     { "key": "extPwrVolt", "name": "L:A32NX_ELEC_EXT_PWR_POTENTIAL", "description": "EXT PWR (V)" },
     { "key": "bat1Volt", "name": "L:A32NX_ELEC_BAT_1_POTENTIAL", "description": "BAT 1 (V)" },
     { "key": "bat2Volt", "name": "L:A32NX_ELEC_BAT_2_POTENTIAL", "description": "BAT 2 (V)" },

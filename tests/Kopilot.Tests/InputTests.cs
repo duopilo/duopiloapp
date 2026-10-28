@@ -348,6 +348,15 @@ public sealed class InputTests
             }
         }
 
+        // APU-Werte für get_systems: dieselben Variablen wie die Eingaben, N aus dem ECB (ARINC 429)
+        Assert.Equal("arinc429", profile.Bindings[BindingKeys.ApuN].Type);
+        Assert.Equal("L:A32NX_APU_N", profile.Bindings[BindingKeys.ApuN].Name);
+        var masterAction = profile.Actions.Single(a => a.Id == "apu.master");
+        Assert.Equal(profile.Bindings[BindingKeys.ApuMaster].Name, masterAction.Steps[0].Set);
+        Assert.Equal(profile.Bindings[BindingKeys.ApuMaster].Name, masterAction.Check!.Variable);
+        Assert.Contains(profile.Actions.Single(a => a.Id == "apu.start").Requires, r => r.Variable == profile.Bindings[BindingKeys.ApuMaster].Name);
+        Assert.Contains(profile.Electrical, e => e.Key == "apuGenHz");
+
         // Landescheinwerfer: Stellung, Ausfahren und Stromkreis je Seite
         var landing = ActionPlanner.Plan(profile.Actions.Single(a => a.Id == "lights.landing"), "retract", profile.Limits, Air(150)).Plan!;
         Assert.Equal("Landing lights retracted", landing.Readback);
