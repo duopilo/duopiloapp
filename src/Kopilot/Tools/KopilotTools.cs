@@ -196,7 +196,9 @@ public static class KopilotTools
 
             if (running == true && n2 is > 50 && ff is not > 1)
             {
-                notes.Add($"ENG {i}: Fuel Flow 0 bei laufendem Triebwerk – Variable im Profil prüfen.");
+                notes.Add(signals.Profile is { } profile
+                    ? $"ENG {i}: Fuel Flow 0 bei laufendem Triebwerk – Variable fuelFlowKgh im Profil {profile.Name} prüfen."
+                    : $"ENG {i}: Fuel Flow 0 bei laufendem Triebwerk – für dieses Flugzeug gibt es kein Profil, und die generische SimVar liefert hier nichts.");
             }
 
             return new
@@ -426,7 +428,8 @@ public static class KopilotTools
         "Reads any single simulation variable once, for exploring values not covered by the other tools. " +
         "Accepts standard SimVars (e.g. 'AIRSPEED INDICATED', with index like 'TURB ENG N1:1') and local L: variables (e.g. 'L:SOME_VAR'). " +
         "Text variables (e.g. 'ATC RUNWAY AIRPORT NAME', 'TITLE', 'ATC ID', any '... IDENT' or '... NAME') are read as text automatically; for other text variables pass unit 'string'. " +
-        "Note: an unknown L: variable reads as 0 instead of failing, so a 0 does not prove the variable exists.")]
+        "Note: an unknown L: variable reads as 0 instead of failing, so a 0 does not prove the variable exists. " +
+        "FlyByWire ARINC 429 words (e.g. L:A32NX_APU_N, L:A32NX_FM1_TRANS_ALT) are decoded automatically into 'arinc429' (value and SSM).")]
     public static async Task<string> ReadSimVar(
         SimConnectClient sim,
         [Description("Variable name, e.g. 'INDICATED ALTITUDE' or 'L:XYZ'. An 'A:' prefix is optional.")] string name,
@@ -434,14 +437,43 @@ public static class KopilotTools
         CancellationToken cancellationToken = default)
     {
         var result = await sim.ReadOnceAsync(name, unit, cancellationToken);
+        var arinc = result.Value is double raw ? ArincView(name, raw, sim.ActiveProfile) : null;
         return Json.Serialize(new
         {
             name,
             unit = result.Value is string && !unit.Equals("string", StringComparison.OrdinalIgnoreCase) ? "string (automatisch)" : unit,
             ok = result.Ok,
-            value = result.Value is double d ? Math.Round(d, 4) : result.Value,
+            value = arinc is not null ? null : result.Value is double d ? Math.Round(d, 4) : result.Value,
+            arinc429 = arinc,
+            raw = arinc is not null ? result.Value : null,
             error = result.Error,
         });
+    }
+
+    /// <summary>
+    /// FBW-ARINC-429-Wort erkennen und dekodieren: Das Profil kennt die Variable als arinc429, oder der Rohwert sieht so aus
+    /// (ganzzahlig, SSM-Bits über 2^32 gesetzt). Sonst null.
+    /// </summary>
+    public static object? ArincView(string name, double raw, AircraftProfile? profile)
+    {
+        var normalized = SimVarSpec.NormalizeName(name);
+        var known = profile?.Bindings.Values.Any(b =>
+            b.Type.Equals("arinc429", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(SimVarSpec.NormalizeName(b.Name), normalized, StringComparison.OrdinalIgnoreCase)) == true;
+        var looksLikeWord = raw >= 4294967296d && raw < 17179869184d && Math.Abs(raw - Math.Round(raw)) < 1e-6;
+        if (!known && !looksLikeWord)
+        {
+            return null;
+        }
+
+        var word = Arinc429Word.Decode(raw);
+        return new
+        {
+            value = double.IsFinite(word.Value) ? Math.Round(word.Value, 4) : (double?)null,
+            ssm = word.Ssm.ToString(),
+            valid = word.IsNormal,
+            source = known ? "profile" : "erkannt am Rohwert",
+        };
     }
 
     [McpServerTool(Name = "reload_profiles", ReadOnly = false, Idempotent = true)]

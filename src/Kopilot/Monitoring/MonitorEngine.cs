@@ -42,6 +42,7 @@ public sealed partial class MonitorEngine
     private DateTimeOffset? _liftoffUtc;
     private DateTimeOffset? _lastApDisconnectUtc;
     private bool _apWasEngaged;
+    private DateTimeOffset? _apEngagedSince;
     private DateTimeOffset? _apOffSince;
     private double? _iasRateKtPerSec;
     private double? _lastSpeedTarget;
@@ -338,10 +339,20 @@ public sealed partial class MonitorEngine
         switch (s.ApEngaged)
         {
             case true:
-                _apWasEngaged = true;
+                // Erst nach 2 s gilt der AP als eingeschaltet – ein kurzes Aufblitzen (z. B. generischer AP beim Start) ist kein Disconnect
+                _apEngagedSince ??= now;
+                if (now - _apEngagedSince.Value >= TimeSpan.FromSeconds(2))
+                {
+                    _apWasEngaged = true;
+                }
+
                 _apOffSince = null;
                 break;
-            case false when _apWasEngaged:
+            case false when !_apWasEngaged:
+                _apEngagedSince = null;
+                break;
+            case false:
+                _apEngagedSince = null;
                 _apOffSince ??= now;
                 if (now - _apOffSince.Value >= TimeSpan.FromSeconds(0.5))
                 {
@@ -360,7 +371,8 @@ public sealed partial class MonitorEngine
 
     private void CheckAltitudeToGo(FlightSnapshot s, DateTimeOffset now, bool suppressed, List<AlertEvent> events)
     {
-        if (!s.Airborne || s.SelectedAltitudeFt is not { } sel || s.AltitudeFt is not { } alt || sel < 100)
+        // Nur in der Luft und deutlich über Grund – am Boden (Laden, Rollen) springen V/S und "am Boden" gern kurz
+        if (!s.Airborne || s.AglFt is < 100 || s.SelectedAltitudeFt is not { } sel || s.AltitudeFt is not { } alt || sel < 100)
         {
             _altArmed = false;
             _altTarget = null;
@@ -746,6 +758,7 @@ public sealed partial class MonitorEngine
         _liftoffUtc = null;
         _lastApDisconnectUtc = null;
         _apWasEngaged = false;
+        _apEngagedSince = null;
         _apOffSince = null;
         _iasRateKtPerSec = null;
         _lastSpeedTarget = null;

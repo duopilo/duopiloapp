@@ -89,6 +89,35 @@ Nicht dabei: NAV & LOGO (nur `B:A32NX_OVH_LIGHTS_NAV_LOGO_SW`). Bei Umschalttast
 
 Noch nicht eingebunden: **ECAM-Klartext.** Das A380X hat ein anderes Warnsystem (FWS mit eigener Meldungstabelle). Fire-Variablen (`A32NX_FIRE_TEST_ENG1`, `ENG ON FIRE`) bleiben 0.
 
+## Headwind A330-900neo
+
+Profil `headwind-a339.json`, Testsession 28.10.2026. Basiert auf FlyByWire, viele `A32NX_`-Variablen gelten, die FCU-Werte kommen aber aus den älteren FBW-Variablen.
+
+| Wert | Quelle | Status |
+|---|---|---|
+| Parkbremse | `L:A32NX_PARK_BRAKE_LEVER_POS` | geprüft |
+| EXT PWR, BAT 1/2, GEN 1 | `L:A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON`, `_BAT_1/2_PB_IS_AUTO`, `_ENG_GEN_1_PB_IS_ON` | geprüft |
+| APU | `L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON`, `_START_PB_IS_ON`, `_START_PB_IS_AVAILABLE`, `_MASTER_SW_PB_HAS_FAULT`, `L:A32NX_APU_N` (ARINC 429) | geprüft |
+| ADIRU 1 | `L:A32NX_ADIRS_ADIRU_1_STATE` (1 aligning, 2 aligned) | geprüft |
+| AP 1 / AP 2 | `L:A32NX_AUTOPILOT_1_ACTIVE`, `_2_ACTIVE` | geprüft |
+| Selected Speed | `L:A32NX_AUTOPILOT_SPEED_SELECTED` (kt, −1 bei managed) | geprüft |
+| Managed Speed / Heading | `L:A32NX_FCU_SPD_MANAGED_DOT`, `L:A32NX_FCU_HDG_MANAGED_DASHES` | geprüft |
+| Selected Heading | `L:A32NX_FCU_HEADING_SELECTED` | geprüft |
+| FCU-Höhe | `AUTOPILOT ALTITUDE LOCK VAR:3` | geprüft |
+| FMA lateral/vertikal, armed | `L:A32NX_FMA_*` (Werte wie A32NX) | geprüft |
+| A/THR | `L:A32NX_AUTOTHRUST_STATUS` (1 armed, 2 active) | geprüft |
+| Master Warning / Caution | `L:A32NX_MASTER_WARNING`, `_CAUTION` | Warning geprüft, Caution 1 noch nicht |
+| Autobrake | `L:A32NX_AUTOBRAKES_ARMED_MODE` (1 = LO) | geprüft |
+| Fuel Flow / EGT | `L:A32NX_ENGINE_FF:n` (vermutlich kg/h), `L:A32NX_ENGINE_EGT:n` (°C) | geprüft |
+| Thrust-Modus | `L:A32NX_AUTOTHRUST_MODE`, `_MODE_MESSAGE` bleiben 0 | offen – nicht im Profil |
+| ALT CRZ | Vertical Mode 0, `L:A32NX_FMA_CRUISE_ALT_MODE` 0 | offen |
+| ECAM-Meldungen | – | offen – nicht im Profil |
+| Grenzwerte | VFE 240/215/196/186/180, VLO/VLE 250 kt (A330) | für den -900neo prüfen |
+
+Unbrauchbar (generisch): `BRAKE PARKING POSITION/INDICATOR`, `EXTERNAL POWER ON:1`, `AUTOPILOT MASTER` (blitzt beim Start kurz auf), generischer Fuel Flow und EGT, `AUTO BRAKE SWITCH CB`.
+
+Eingaben: nur External Power, APU Master und APU Start – alle ungeprüft.
+
 ## iniBuilds A321LR
 
 | Wert | Quelle | Status |

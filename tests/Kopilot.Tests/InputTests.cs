@@ -321,6 +321,24 @@ public sealed class InputTests
     }
 
     [Fact]
+    public void read_simvar_dekodiert_ARINC_429()
+    {
+        var raw = Kopilot.Sim.Arinc429Word.Encode(Kopilot.Sim.Arinc429Ssm.NormalOperation, 99.5f);
+        var view = System.Text.Json.JsonSerializer.SerializeToElement(Kopilot.Tools.KopilotTools.ArincView("L:A32NX_APU_N", raw, null));
+        Assert.Equal(99.5, view.GetProperty("value").GetDouble());
+        Assert.True(view.GetProperty("valid").GetBoolean());
+
+        // Normale Zahlen bleiben, wie sie sind
+        Assert.Null(Kopilot.Tools.KopilotTools.ArincView("L:A32NX_FMA_LATERAL_MODE", 20, null));
+
+        // Im Profil als arinc429 bekannt: auch ungültige Wörter (SSM 0) werden dekodiert
+        var profile = new AircraftProfile { Bindings = new() { ["apuN"] = new ProfileBinding { Name = "L:A32NX_APU_N", Type = "arinc429" } } };
+        var failed = System.Text.Json.JsonSerializer.SerializeToElement(Kopilot.Tools.KopilotTools.ArincView("L:A32NX_APU_N", 0, profile));
+        Assert.False(failed.GetProperty("valid").GetBoolean());
+        Assert.Equal("FailureWarning", failed.GetProperty("ssm").GetString());
+    }
+
+    [Fact]
     public void Steuerkurs_360_ist_000()
     {
         var hdg = new ProfileAction
