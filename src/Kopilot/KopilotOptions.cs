@@ -106,6 +106,21 @@ public sealed class SpeechOptions
 
     /// <summary>Ab welcher Stufe gesprochen wird: Info, Caution oder Warning.</summary>
     public string MinSeverity { get; set; } = "Info";
+
+    /// <summary>
+    /// "auto" (englische Windows-Stimme, wenn installiert, sonst Kokoro), "windows" oder "kokoro".
+    /// Kokoro ist eine neuronale englische Stimme, die lokal auf der CPU rechnet (Modell ~310 MB, Download beim ersten Bedarf).
+    /// </summary>
+    public string Engine { get; set; } = "auto";
+
+    /// <summary>Kokoro-Stimme, z. B. bm_george, bf_emma, am_michael, af_heart (a/b = US/GB, f/m = weiblich/männlich).</summary>
+    public string KokoroVoice { get; set; } = "bm_george";
+
+    /// <summary>Pfad zum Kokoro-Modell. Leer = %LOCALAPPDATA%\Kopilot\models\kokoro.onnx (wird bei Bedarf geladen).</summary>
+    public string KokoroModelPath { get; set; } = "";
+
+    /// <summary>CPU-Threads für Kokoro – wenig, damit MSFS nicht ausgebremst wird.</summary>
+    public int KokoroThreads { get; set; } = 2;
 }
 
 /// <summary>

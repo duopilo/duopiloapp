@@ -173,6 +173,7 @@ main {
 .speech-panel label.check { flex-basis: 100%; }
 .speech-panel input[type="range"] { width: 110px; accent-color: var(--cyan); }
 .speech-panel select.btn { max-width: 220px; }
+.speech-panel .speech-info { flex-basis: 100%; margin: 0; color: var(--du-dim); }
 .speech-error { flex-basis: 100%; margin: 0; color: var(--amber); }
 select.btn { padding: 4px 6px; max-width: 190px; }
 .btn.input-on { border-color: var(--amber); color: var(--amber); }
@@ -349,7 +350,13 @@ select.btn { padding: 4px 6px; max-width: 190px; }
       </span>
     </h2>
     <div class="speech-panel" id="speechPanel" hidden>
-      <label>Stimme <select class="btn" id="srvVoice"></select></label>
+      <label>Sprachausgabe <select class="btn" id="srvEngine">
+        <option value="auto">Automatisch</option>
+        <option value="windows">Windows-Stimme</option>
+        <option value="kokoro">Kokoro (neuronal)</option>
+      </select></label>
+      <label id="srvVoiceLabel">Windows-Stimme <select class="btn" id="srvVoice"></select></label>
+      <label id="srvKokoroLabel">Kokoro-Stimme <select class="btn" id="srvKokoroVoice"></select></label>
       <label>Ausgabe <select class="btn" id="srvDevice"></select></label>
       <label>Lautstärke <input type="range" id="srvVolume" min="0" max="1" step="0.05"></label>
       <label>Tempo <input type="range" id="srvRate" min="0.7" max="1.6" step="0.05"></label>
@@ -359,6 +366,7 @@ select.btn { padding: 4px 6px; max-width: 190px; }
         <option value="Warning">nur Warnings</option>
       </select></label>
       <label class="check"><input type="checkbox" id="srvAuto"> Radiohöhen, Minimum und Retard auch von Kopilot (nur für Flugzeuge ohne eigene Ansagen)</label>
+      <p class="speech-info" id="srvInfo"></p>
       <p class="speech-error" id="srvError" hidden></p>
     </div>
     <div class="pending" id="pending" hidden>
@@ -648,7 +656,7 @@ function renderCallouts(d) {
   Sprachausgabe: Kopilot spricht selbst über Windows (Tray-Instanz). Nur wenn das nicht geht,
   liest der Browser die Callouts vor – englische Stimme, Warnings unterbrechen alles andere.
 */
-const server = { available: false, status: null, saveTimer: null, loading: false };
+const server = { available: false, status: null, saveTimer: null, pollTimer: null, loading: false };
 
 function voices() { return ("speechSynthesis" in window) ? speechSynthesis.getVoices().filter((v) => v.lang && v.lang.toLowerCase().startsWith("en")) : []; }
 function fillVoices() {
@@ -680,7 +688,7 @@ function renderSpeechButton() {
   b.textContent = speechOn() ? "Ansagen an" : "Ansagen aus";
   b.title = server.available ? "Kopilot spricht über Windows" : "Der Browser liest vor";
   $("voice").hidden = server.available;
-  $("speechSettings").hidden = !server.available;
+  $("speechSettings").hidden = !server.status;
 }
 function renderServerSpeech() {
   const st = server.status;
@@ -698,9 +706,29 @@ function renderServerSpeech() {
   $("srvRate").value = set.rate;
   $("srvSeverity").value = set.minSeverity;
   $("srvAuto").checked = !!set.aircraftAutoCallouts;
+  $("srvEngine").value = set.engine || "auto";
+  const k = st.kokoro || { state: "Idle", voices: [] };
+  setHtml("srvKokoroVoice", (k.voices || []).map((v) => `<option value="${esc(v)}">${esc(kokoroName(v))}</option>`).join("") || `<option value="">keine Stimmen gefunden</option>`);
+  $("srvKokoroVoice").value = set.kokoroVoice || "";
+  $("srvKokoroLabel").hidden = set.engine === "windows";
+  $("srvVoiceLabel").hidden = set.engine === "kokoro";
+  const info = [];
+  if (st.activeEngine === "windows") info.push(`Spricht: Windows (${(st.activeVoice || "").replace(/^Microsoft /, "")})`);
+  if (st.activeEngine === "kokoro") info.push(`Spricht: Kokoro (${kokoroName(set.kokoroVoice)})` + (k.lastSynthesisMs != null ? ` · zuletzt ${k.lastSynthesisMs} ms Rechenzeit` : ""));
+  if (k.state === "Downloading") info.push(`Kokoro lädt ${Math.round((k.progress || 0) * 100)} % von ~310 MB`);
+  if (k.state === "Loading") info.push("Kokoro startet …");
+  if (!st.activeEngine) info.push("Gerade liest der Browser vor.");
+  setText("srvInfo", info.join(" · "));
+  clearTimeout(server.pollTimer);
+  if (!$("speechPanel").hidden && (k.state === "Downloading" || k.state === "Loading")) server.pollTimer = setTimeout(loadServerSpeech, 2000);
   const err = $("srvError");
   err.hidden = !st.error;
   err.textContent = st.error || "";
+}
+function kokoroName(id) {
+  const m = /^([ab])([fm])_(\w+)$/.exec(id || "");
+  if (!m) return id || "";
+  return `${m[3].charAt(0).toUpperCase()}${m[3].slice(1)} (${m[1] === "b" ? "GB" : "US"}, ${m[2] === "f" ? "w" : "m"})`;
 }
 async function loadServerSpeech() {
   if (server.loading) return;
@@ -709,7 +737,7 @@ async function loadServerSpeech() {
     const r = await fetch("/api/speech", { cache: "no-store" });
     const j = await r.json();
     server.available = !!j.available;
-    server.status = j.available ? j : null;
+    server.status = j.settings ? j : null;
     if (!j.available && j.error && $("speechPanel")) { $("srvError").hidden = false; $("srvError").textContent = j.error; }
   } catch { server.available = false; }
   server.loading = false;
@@ -755,6 +783,11 @@ $("srvVolume").addEventListener("input", (e) => saveSoon({ volume: Number(e.targ
 $("srvRate").addEventListener("input", (e) => saveSoon({ rate: Number(e.target.value) }));
 $("srvSeverity").addEventListener("change", (e) => saveServerSpeech({ minSeverity: e.target.value }));
 $("srvAuto").addEventListener("change", (e) => saveServerSpeech({ aircraftAutoCallouts: e.target.checked }));
+$("srvEngine").addEventListener("change", (e) => saveServerSpeech({ engine: e.target.value }));
+$("srvKokoroVoice").addEventListener("change", async (e) => {
+  await saveServerSpeech({ kokoroVoice: e.target.value });
+  try { await fetch("/api/speech/test", { method: "POST", headers: { "X-Kopilot": "1" } }); } catch { /* egal */ }
+});
 $("voice").addEventListener("change", (e) => { ui.voice = e.target.value; save("voice", ui.voice); });
 if ("speechSynthesis" in window) { fillVoices(); speechSynthesis.onvoiceschanged = fillVoices; }
 renderSpeechButton();
@@ -991,7 +1024,7 @@ async function poll() {
 function render(d) {
   // Sprachausgabe von Kopilot: Zustand mitführen, nachladen sobald sie bereit ist
   if (d.speech) {
-    if (d.speech.available && !server.available) loadServerSpeech();
+    if (d.speech.available !== server.available || (d.speech.engine || null) !== ((server.status && server.status.activeEngine) || null)) loadServerSpeech();
     else if (server.status && server.status.settings.enabled !== d.speech.enabled) { server.status.settings.enabled = d.speech.enabled; renderSpeechButton(); }
   }
   renderHeader(d);

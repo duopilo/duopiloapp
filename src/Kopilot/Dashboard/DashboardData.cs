@@ -39,15 +39,16 @@ public sealed class DashboardData(
             paused = status.Paused,
             pauseKind = status.PauseKind,
             lastError = sim.LastError,
-            speech = speech is null
-                ? null
-                : new
+            speech = speech?.Status is { } st
+                ? new
                 {
-                    available = speech.Status.Available,
-                    enabled = speech.Status.Settings.Enabled,
-                    speaking = speech.Status.Speaking,
-                    error = speech.Status.Error,
-                },
+                    available = st.Available,
+                    enabled = st.Settings.Enabled,
+                    speaking = st.Speaking,
+                    error = st.Error,
+                    engine = st.ActiveEngine,
+                }
+                : null,
             input = input is null ? null : InputView(input, now),
             monitoring = new
             {

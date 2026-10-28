@@ -4,6 +4,7 @@ using Windows.Media.Core;
 using Windows.Media.Devices;
 using Windows.Media.Playback;
 using Windows.Media.SpeechSynthesis;
+using Windows.Storage.Streams;
 
 namespace Kopilot.Speech;
 
@@ -65,10 +66,31 @@ internal sealed class WindowsSpeech : IDisposable
 
     public bool HasEnglishVoice => SpeechSynthesizer.AllVoices.Any(v => v.Language.StartsWith("en", StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>Spricht den Text und wartet, bis er zu Ende ist (oder abgebrochen wird).</summary>
+    /// <summary>Spricht den Text mit der Windows-Stimme und wartet, bis er zu Ende ist (oder abgebrochen wird).</summary>
     public async Task SpeakAsync(string text, CancellationToken ct)
     {
         using var stream = await _synth.SynthesizeTextToStreamAsync(text);
+        await PlayAsync(stream, stream.ContentType, ct);
+    }
+
+    /// <summary>Spielt fertiges Audio (WAV, z. B. von Kokoro) über dasselbe Ausgabegerät.</summary>
+    public async Task PlayWavAsync(byte[] wav, CancellationToken ct)
+    {
+        using var stream = new InMemoryRandomAccessStream();
+        using (var writer = new DataWriter(stream.GetOutputStreamAt(0)))
+        {
+            writer.WriteBytes(wav);
+            await writer.StoreAsync();
+            await writer.FlushAsync();
+            writer.DetachStream();
+        }
+
+        stream.Seek(0);
+        await PlayAsync(stream, "audio/wav", ct);
+    }
+
+    private async Task PlayAsync(IRandomAccessStream stream, string contentType, CancellationToken ct)
+    {
         var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         TypedEventHandler<MediaPlayer, object> ended = (_, _) => done.TrySetResult();
         TypedEventHandler<MediaPlayer, MediaPlayerFailedEventArgs> failed = (_, e) => done.TrySetException(new InvalidOperationException(e.ErrorMessage));
@@ -78,7 +100,7 @@ internal sealed class WindowsSpeech : IDisposable
         player.MediaFailed += failed;
         try
         {
-            player.Source = MediaSource.CreateFromStream(stream, stream.ContentType);
+            player.Source = MediaSource.CreateFromStream(stream, contentType);
             player.Play();
             using (ct.Register(() =>
                    {

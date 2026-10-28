@@ -82,19 +82,35 @@ Nach dem Laden eines Flugs, einem Flugzeugwechsel oder einem Air-Start schweigt 
 
 ## Sprachausgabe
 
-Kopilot spricht die Callouts selbst über die Windows-Sprachausgabe – auf Englisch, Warnings unterbrechen alles andere, ältere Meldungen verfallen nach 8 Sekunden. Im Dashboard unter **Ansagen → Stimme** stellst du ein:
+Kopilot spricht die Callouts selbst, auf Englisch. Warnings unterbrechen alles andere, ältere Meldungen verfallen nach 8 Sekunden. ECAM-Titel werden ausgeschrieben, z. B. „ENG 1 FIRE“ → „engine 1 fire“.
 
-- Stimme (englische Windows-Stimmen, z. B. George oder Hazel für en-GB)
-- Ausgabegerät – z. B. das Headset statt der Lautsprecher
+Es gibt zwei Stimmen:
+
+| | Windows-Stimme | Kokoro |
+|---|---|---|
+| Klang | Sprachausgabe von Windows | neuronal, natürlicher |
+| Voraussetzung | englische Windows-Stimme installiert | nichts – Modell (~310 MB) lädt Kopilot beim ersten Bedarf |
+| Verzögerung | praktisch keine | Rechenzeit auf der CPU; feste Callouts werden vorab berechnet |
+
+**Automatisch** (Standard) nimmt die Windows-Stimme, wenn eine englische installiert ist, sonst Kokoro. Solange Kokoro lädt, liest der Browser im Dashboard vor.
+
+Im Dashboard unter **Ansagen → Stimme** stellst du ein:
+- Sprachausgabe: Automatisch, Windows oder Kokoro
+- Windows-Stimme (z. B. George oder Hazel für en-GB) bzw. Kokoro-Stimme (z. B. George, Emma, Michael)
+- Ausgabegerät, z. B. das Headset statt der Lautsprecher
 - Lautstärke und Tempo
 - ab welcher Stufe gesprochen wird (alle, ab Caution, nur Warnings)
 - ob Radiohöhen/Minimum/Retard zusätzlich kommen
 
-Die Einstellungen liegen in `%LOCALAPPDATA%\Kopilot\speech.json`. Gesprochen wird nur von der Tray-Instanz, nicht von der stdio-Instanz, die Claude Desktop startet – sonst käme alles doppelt.
+Dort steht auch, welche Stimme gerade spricht und wie lange Kokoro für die letzte Ansage gerechnet hat. Ein- und ausschalten geht auch im Tray-Menü (**Callouts sprechen**).
 
-**Englische Stimme fehlt?** Auf einem deutschen Windows: Einstellungen → Zeit und Sprache → Sprache und Region → Sprache hinzufügen → *English (United Kingdom)*, dabei „Sprachausgabe“ auswählen. Danach Kopilot neu starten. Das Dashboard zeigt einen Hinweis, solange keine englische Stimme da ist.
+Die Einstellungen liegen in `%LOCALAPPDATA%\Kopilot\speech.json`, das Kokoro-Modell unter `%LOCALAPPDATA%\Kopilot\models`. Gesprochen wird nur von der Tray-Instanz, nicht von der stdio-Instanz, die Claude Desktop startet – sonst käme alles doppelt. Kokoro rechnet mit 2 CPU-Threads (`Kopilot:Speech:KokoroThreads`), damit MSFS nicht ausgebremst wird.
+
+**Englische Windows-Stimme nachinstallieren** (optional, für die Windows-Stimme): Einstellungen → Zeit und Sprache → Sprache und Region → Sprache hinzufügen → *English (United Kingdom)*, dabei „Sprachausgabe“ auswählen. Danach Kopilot neu starten.
 
 Einzelne Callouts stumm schalten (weiter sichtbar, aber nicht gesprochen): `"mutedRules": [ "PM_GEAR" ]` in `speech.json`. Ganz abschalten: `Kopilot:Monitoring:DisabledRules`.
+
+Lizenzen: Kokoro-82M und seine Stimmen stehen unter Apache 2.0, KokoroSharp unter MIT.
 
 ## Eingabe-Modul
 
@@ -396,7 +412,7 @@ src/Kopilot/
   Program.cs              Start: --stdio (Claude Desktop) oder HTTP mit Tray, --console, --generate-secret
   Dashboard/              Dashboard im Browser (HTML, eingebettete Schrift B612), Daten-API
   Desktop/                Tray-Symbol, Autostart
-  Speech/                 Sprachausgabe über Windows (Warteschlange, Stimme, Ausgabegerät)
+  Speech/                 Sprachausgabe: Windows-Stimme oder Kokoro, Warteschlange, Ausgabegerät, ECAM-Text zum Sprechen
   Input/                  Eingabe-Modul: Aktionen planen, Sperren, Bestätigung, Ausführung über SimConnect
   Hosting/                Transport-Auswahl, Konfiguration, HTTP-Host
   Remote/                 Bearer-Token, OAuth-Server, Freigabeseite, Token-Speicher
@@ -426,6 +442,7 @@ Jede Variable hat eine eigene SimConnect-Data-Definition. Ist ein Name in MSFS u
 - [x] v0.5: Korrekturen nach Testflug EDDL–EDDM (A32NX-Bindings, Knoten statt m/s, ALT CRZ), TOD, Landecheck, FMA-Log, FMS-Wegpunkt
 - [x] v0.6: Lokale Sprachausgabe (Windows, Stimme und Ausgabegerät wählbar) und PM-Callouts (Startlauf, Landung, Höhenmarken, Konfiguration)
 - [x] v0.7: Eingabe-Modul mit Readback und Bestätigung (FCU, EFIS, Konfiguration, Licht, Schilder, Anti-Ice, Packs, APU, Transponder, Funk) – zuerst A32NX
+- [x] v0.8: Kokoro als zweite Stimme (neuronal, ohne Windows-Sprachpaket), ECAM-Titel ausgeschrieben, Tray-Schalter
 - [ ] Eingabe-Modul: im Sim prüfen, NAV & LOGO über Input Events, weitere Flugzeuge
 - [ ] WASimCommander-Anbindung (L:-Variablen auflisten, Events)
 - [x] Remote-Betrieb: Streamable HTTP mit Bearer-Token und OAuth, Cloudflare Tunnel

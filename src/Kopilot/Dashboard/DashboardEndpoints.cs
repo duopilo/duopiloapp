@@ -162,7 +162,20 @@ public static class DashboardEndpoints
             minSeverity = s.Settings.MinSeverity.ToString(),
             mutedRules = s.Settings.MutedRules,
             aircraftAutoCallouts = s.Settings.AircraftAutoCallouts,
+            engine = s.Settings.Engine,
+            kokoroVoice = s.Settings.KokoroVoice,
         },
+        activeEngine = s.ActiveEngine,
+        kokoro = s.Kokoro is { } k
+            ? new
+            {
+                state = k.State.ToString(),
+                progress = k.Progress,
+                error = k.Error,
+                voices = k.Voices,
+                lastSynthesisMs = k.LastSynthesisMs,
+            }
+            : null,
         activeVoice = s.ActiveVoice,
         voices = s.Voices,
         devices = s.Devices,
