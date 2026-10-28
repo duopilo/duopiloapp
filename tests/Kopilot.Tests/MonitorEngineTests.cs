@@ -72,6 +72,27 @@ public sealed class MonitorEngineTests
     }
 
     [Fact]
+    public void Kurz_aufblitzender_Autopilot_ist_kein_Disconnect()
+    {
+        // Generischer AP wird beim Start kurz aktiv (Headwind A330 ohne Profil)
+        var engine = new MonitorEngine();
+        var climb = (double s, bool ap) => Cruise(s) with { ApEngaged = ap, AltitudeFt = 400, AglFt = 250, VerticalSpeedFpm = 2000 };
+        Feed(engine, climb(0, false), climb(11, false));
+
+        Assert.DoesNotContain(Feed(engine, climb(12, true), climb(12.5, true), climb(13, false), climb(13.6, false), climb(15, false)), e => e.Rule == Rules.ApDisconnect);
+    }
+
+    [Fact]
+    public void Kein_thousand_to_go_am_Boden()
+    {
+        // Beim Laden/Rollen springt "am Boden" kurz auf false und V/S ausschlägt – trotzdem keine Ansage
+        var engine = WarmedUp();
+        var taxi = (double s, double vs) => Cruise(s) with { OnGround = false, AltitudeFt = 150, AglFt = 0, RadioAltFt = 0, SelectedAltitudeFt = 3000, VerticalSpeedFpm = vs };
+
+        Assert.DoesNotContain(Feed(engine, taxi(12, 0), taxi(13, 600), taxi(14, 900)), e => e.Rule == Rules.Alt1000ToGo);
+    }
+
+    [Fact]
     public void Autopilot_aus_am_Boden_ist_still()
     {
         var engine = WarmedUp();

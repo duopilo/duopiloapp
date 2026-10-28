@@ -252,6 +252,27 @@ public sealed class PilotDataTests
     }
 
     [Fact]
+    public void Headwind_A330_hat_eigenes_Profil()
+    {
+        var store = RepoProfiles();
+        const string path = @"c:\users\flo21\appdata\local\packages\microsoft.limitless_8wekyb3d8bbwe\localcache\packages\community\headwindsim-aircraft-a330-900\simobjects\airplanes\headwind_a330neo\aircraft.cfg";
+
+        var profile = store.Match("Airbus A330-900neo Condor Sea - Danke Tecke", path);
+
+        Assert.NotNull(profile);
+        Assert.Equal("Headwind A330-900neo", profile.Name);
+        Assert.Equal("L:A32NX_AUTOPILOT_1_ACTIVE", profile.Bindings[BindingKeys.Ap1].Name);
+        Assert.Equal("AUTOPILOT ALTITUDE LOCK VAR:3", profile.Bindings[BindingKeys.SelectedAltitude].Name);
+        Assert.Equal("arinc429", profile.Bindings[BindingKeys.ApuN].Type);
+        Assert.False(profile.Bindings.ContainsKey(BindingKeys.AthrMode)); // bleibt beim A330 0 – lieber leer als falsch
+        Assert.Equal(180, profile.Limits.VfeFor(null, "FULL"));
+        Assert.Equal(new[] { "elec.extPwr", "apu.master", "apu.start" }, profile.Actions.Select(a => a.Id));
+
+        // Der A32NX bleibt beim A32NX
+        Assert.Equal("FlyByWire A32NX", store.Match("FlyByWire A320neo", @"...\flybywire-aircraft-a320-neo\SimObjects\AirPlanes\FlyByWire_A320_NEO\aircraft.cfg")!.Name);
+    }
+
+    [Fact]
     public void Mitgelieferte_Profile_sind_gueltig()
     {
         var store = RepoProfiles();
