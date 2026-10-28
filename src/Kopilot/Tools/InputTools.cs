@@ -95,7 +95,14 @@ public static class InputTools
         expiresInSec = r.ExpiresInSec,
         aircraftConfirmed = r.Confirmed,
         stateAfter = r.StateAfter,
-        alreadySet = r.Skipped is > 0 ? r.Skipped : null,
+        alreadySet = r.AlreadySet ? true : (bool?)null,
+        skippedSteps = r.Skipped is > 0 ? r.Skipped : null,
+        checkedBy = r.CheckIndependent switch
+        {
+            true => "aircraft state",
+            false => "switch variable only",
+            null => null,
+        },
         bindingVerified = r.Verified,
         instruction,
     };

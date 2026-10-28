@@ -110,6 +110,9 @@ public sealed class StepCondition
 
     /// <summary>Für "requires": Grund, wenn die Bedingung nicht erfüllt ist.</summary>
     public string? Message { get; set; }
+
+    /// <summary>Für "requires": nur bei diesen Auswahlwerten prüfen (z. B. [ "on" ]). Leer = immer.</summary>
+    public List<string>? Only { get; set; }
 }
 
 public sealed class ActionCheck
@@ -124,6 +127,12 @@ public sealed class ActionCheck
     public double Tolerance { get; set; } = 0.5;
 
     public int TimeoutMs { get; set; } = 3000;
+
+    /// <summary>
+    /// So lange muss der Wert stehen bleiben, bis er als übernommen gilt (ms). Fängt Systeme ab, die einen geschriebenen
+    /// Wert sofort wieder zurücksetzen (z. B. APU START ohne Strom).
+    /// </summary>
+    public int HoldMs { get; set; } = 1000;
 }
 
 /// <summary>Was Kopilot an MSFS schickt – fertig ausgerechnet.</summary>
@@ -146,14 +155,16 @@ public sealed record ResolvedCondition(string Variable, string Unit, double Valu
     public bool Matches(double state) => Math.Abs(state - Value) <= Tolerance;
 }
 
+/// <summary>Prüfung nach dem Ausführen. Independent = liest eine Variable, die die Aktion nicht selbst schreibt (echter Nachweis).</summary>
+public sealed record ResolvedCheck(ResolvedCondition Condition, int TimeoutMs, int HoldMs, bool Independent);
+
 /// <summary>Ergebnis der Planung: entweder abgelehnt (Reason) oder bereit zur Bestätigung.</summary>
 public sealed record ActionPlan(
     ProfileAction Action,
     string? ValueText,
     string Readback,
     IReadOnlyList<ResolvedStep> Steps,
-    ResolvedCondition? Check,
-    int CheckTimeoutMs,
+    ResolvedCheck? Check,
     IReadOnlyList<ResolvedCondition> Requires)
 {
     public string Summary => ValueText is null ? Action.Id : $"{Action.Id} = {ValueText}";

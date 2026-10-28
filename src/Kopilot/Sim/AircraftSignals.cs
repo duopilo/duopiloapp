@@ -46,6 +46,13 @@ public sealed class AircraftSignals(SimConnectClient sim)
 
     public bool? Flag(string key) => Raw(key) is { } v ? Math.Abs(v) > 0.5 : null;
 
+    // ------------------------------------------------------------------ APU (Profil vor generischer SimVar)
+
+    /// <summary>APU-Drehzahl N in Prozent – beim A32NX aus dem ECB (ARINC 429), sonst APU PCT RPM.</summary>
+    public double? ApuNPct => Has(BindingKeys.ApuN) ? Raw(BindingKeys.ApuN) : Sim.Num("apuRpmPct");
+
+    public string ApuSource => Has(BindingKeys.ApuN) ? "profile" : "generic";
+
     public string? Text(string key)
     {
         var b = Binding(key);

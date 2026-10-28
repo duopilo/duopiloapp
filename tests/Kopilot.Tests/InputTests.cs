@@ -66,6 +66,15 @@ public sealed class InputTests
         Interlocks = [Interlocks.GearSpeed],
     };
 
+    private static ProfileAction ApuMaster() => new()
+    {
+        Id = "apu.master", Area = "APU", Label = "APU master", Readback = "APU master {value}",
+        Parameter = new ActionParameter { Type = "choice", Options = new() { ["on"] = 1, ["off"] = 0 } },
+        Steps = [new ActionStep { Set = "L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", Value = J("\"{value}\"") }],
+        Requires = [new StepCondition { Variable = "L:A32NX_ELEC_DC_BAT_BUS_IS_POWERED", EqualTo = J("1"), Only = ["on"], Message = "Kein Strom" }],
+        Check = new ActionCheck { Variable = "L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", Expect = J("\"{value}\"") },
+    };
+
     private static ProfileAction Ls() => new()
     {
         Id = "efis.ls", Area = "EFIS", Label = "LS", Readback = "LS {value}",
@@ -84,7 +93,8 @@ public sealed class InputTests
         Assert.Equal("Speed 250 selected", plan.Readback);
         Assert.Equal(new[] { "A32NX.FCU_SPD_SET", "A32NX.FCU_SPD_PULL" }, plan.Steps.Select(s => s.Event));
         Assert.Equal(250u, plan.Steps[0].EventData);
-        Assert.Equal(250, plan.Check!.Value);
+        Assert.Equal(250, plan.Check!.Condition.Value);
+        Assert.True(plan.Check.Independent);
     }
 
     [Theory]
@@ -398,18 +408,27 @@ public sealed class InputTests
         {
             Name = "Test",
             Limits = Limits,
-            Actions = [Speed(), Flaps(), GearUp(), Ls()],
+            Actions = [Speed(), Flaps(), GearUp(), Ls(), ApuMaster()],
         };
 
         /// <summary>Was ein Event am Zustand ändert (simuliertes Flugzeug).</summary>
         public Action<string, uint>? OnEvent { get; set; }
+
+        /// <summary>Simuliertes Flugzeug, das bestimmte geschriebene Variablen nach dem ersten Lesen zurücksetzt.</summary>
+        public Dictionary<string, double> RevertAfterRead { get; } = new(StringComparer.OrdinalIgnoreCase);
 
         public FlightSnapshot Snapshot() => Current;
 
         public Task<double?> ReadAsync(string name, string unit, CancellationToken ct)
         {
             time.Now += TimeSpan.FromSeconds(1);
-            return Task.FromResult(State.TryGetValue(name, out var v) ? v : (double?)null);
+            var result = State.TryGetValue(name, out var v) ? v : (double?)null;
+            if (RevertAfterRead.TryGetValue(name, out var revert))
+            {
+                State[name] = revert;
+            }
+
+            return Task.FromResult(result);
         }
 
         public Task SendEventAsync(string name, uint data, CancellationToken ct)
@@ -583,6 +602,53 @@ public sealed class InputTests
         Assert.Equal(InputResult.Executed, result.Status);
         Assert.True(result.Confirmed);
         Assert.Equal(new[] { "A32NX.FCU_EFIS_L_LS_PUSH:0" }, backend.Sent);
+    }
+
+    [Fact]
+    public async Task Absolut_gesetzter_Wert_der_schon_steht_wird_nicht_geschrieben()
+    {
+        var (input, backend, time) = Create();
+        backend.State["L:A32NX_ELEC_DC_BAT_BUS_IS_POWERED"] = 1;
+        backend.State["L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON"] = 1;
+
+        var prepared = await input.PrepareAsync("apu.master", "on", default);
+        time.Now += TimeSpan.FromSeconds(2);
+        var result = await input.ConfirmAsync(prepared.Token!, "confirm", default);
+
+        Assert.Equal(InputResult.Executed, result.Status);
+        Assert.True(result.AlreadySet);
+        Assert.True(result.Confirmed);
+        Assert.False(result.CheckIndependent);
+        Assert.Empty(backend.Sent);
+    }
+
+    [Fact]
+    public async Task Zurueckgesetzter_Wert_gilt_nicht_als_uebernommen()
+    {
+        var (input, backend, time) = Create();
+        backend.State["L:A32NX_ELEC_DC_BAT_BUS_IS_POWERED"] = 1;
+        backend.State["L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON"] = 0;
+        backend.RevertAfterRead["L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON"] = 0; // das System setzt den Schalter sofort zurück
+
+        var prepared = await input.PrepareAsync("apu.master", "on", default);
+        time.Now += TimeSpan.FromSeconds(2);
+        var result = await input.ConfirmAsync(prepared.Token!, "confirm", default);
+
+        Assert.Equal(InputResult.Executed, result.Status);
+        Assert.False(result.Confirmed);
+        Assert.Contains("zurückgesetzt", result.Reason);
+        Assert.Equal(new[] { "L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON=1" }, backend.Sent);
+    }
+
+    [Fact]
+    public async Task Bedingung_gilt_nur_fuer_die_genannte_Auswahl()
+    {
+        var (input, backend, _) = Create();
+        backend.State["L:A32NX_ELEC_DC_BAT_BUS_IS_POWERED"] = 0;
+        backend.State["L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON"] = 1;
+
+        Assert.Equal("Kein Strom", (await input.PrepareAsync("apu.master", "on", default)).Reason);
+        Assert.Equal(InputResult.AwaitingConfirmation, (await input.PrepareAsync("apu.master", "off", default)).Status);
     }
 
     [Fact]

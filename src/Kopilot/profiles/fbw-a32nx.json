@@ -82,6 +82,10 @@
     "transLevel": { "name": "L:A32NX_FM1_TRANS_LVL", "type": "arinc429", "scale": 100, "verified": false, "description": "Transition Level am Ziel (FL → ft)" },
     "decisionHeight": { "name": "L:A32NX_FM1_DECISION_HEIGHT", "type": "arinc429", "verified": false, "description": "DH aus PERF APPR (ft), −1 = keine" },
     "minimumDescentAltitude": { "name": "L:A32NX_FM1_MINIMUM_DESCENT_ALTITUDE", "type": "arinc429", "verified": false, "description": "MDA aus PERF APPR (ft)" },
+    "apuMaster": { "name": "L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", "type": "bool", "verified": false, "description": "APU MASTER SW (gleiche Variable wie die Eingabe apu.master)" },
+    "apuStart": { "name": "L:A32NX_OVHD_APU_START_PB_IS_ON", "type": "bool", "verified": false, "description": "APU START ON-Licht" },
+    "apuAvailable": { "name": "L:A32NX_OVHD_APU_START_PB_IS_AVAILABLE", "type": "bool", "verified": false, "description": "APU AVAIL" },
+    "apuBleed": { "name": "L:A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", "type": "bool", "verified": true, "description": "APU BLEED Pushbutton" },
     "flaps": {
       "name": "L:A32NX_FLAPS_CONF_INDEX", "type": "enum", "verified": false,
       "values": { "0": "0", "1": "1", "2": "1+F", "3": "2", "4": "3", "5": "FULL" }
@@ -1113,6 +1117,7 @@
         }
       ],
       "readback": "APU master {value}",
+    "requires": [ { "variable": "L:A32NX_ELEC_DC_BAT_BUS_IS_POWERED", "equalTo": 1, "only": [ "on" ], "message": "Kein Strom auf dem DC BAT BUS – erst die Batterien einschalten." } ],
       "check": {
         "variable": "L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON",
         "expect": "{value}"

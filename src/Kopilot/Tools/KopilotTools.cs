@@ -216,7 +216,17 @@ public static class KopilotTools
             fuelFlowSource = signals.FuelFlowSource,
             egtSource = signals.EgtSource,
             totalFuelFlowKgPerHour = Fmt.Int(engines.Sum(e => (double?)e.fuelFlowKgPerHour ?? 0)),
-            apu = new { rpmPct = Fmt.Round(sim.Num("apuRpmPct"), 1) },
+            apu = new
+            {
+                master = signals.Flag(BindingKeys.ApuMaster),
+                start = signals.Flag(BindingKeys.ApuStart),
+                available = signals.Flag(BindingKeys.ApuAvailable),
+                rpmPct = Fmt.Round(signals.ApuNPct, 1),
+                egtC = Fmt.Int(signals.Raw(BindingKeys.ApuEgt)),
+                bleed = signals.Flag(BindingKeys.ApuBleed),
+                flapOpenPct = Fmt.Int(signals.Raw(BindingKeys.ApuFlapOpen)),
+                source = signals.ApuSource,
+            },
             fuel = new
             {
                 totalKg = Fmt.Int(sim.Num("fuelTotalKg")),

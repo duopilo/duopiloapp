@@ -106,7 +106,10 @@ public static class ActionPlanner
             }
             else
             {
-                steps.Add(new ResolvedStep(null, 0, step.Set!.Trim(), Unit(step.Unit), scaled, skip, Math.Clamp(step.DelayMs, 0, 2000)));
+                // Absolut setzen: Steht der Wert schon, wird nichts geschrieben (Antwort "alreadySet")
+                var unit = Unit(step.Unit);
+                skip ??= new ResolvedCondition(step.Set!.Trim(), unit, scaled, 0.01);
+                steps.Add(new ResolvedStep(null, 0, step.Set!.Trim(), unit, scaled, skip, Math.Clamp(step.DelayMs, 0, 2000)));
             }
         }
 
@@ -115,7 +118,7 @@ public static class ActionPlanner
             return PlanResult.Refuse($"{action.Id}: Für \"{option}\" ist im Profil kein Schritt hinterlegt.");
         }
 
-        ResolvedCondition? check = null;
+        ResolvedCheck? check = null;
         if (action.Check is { } chk && !string.IsNullOrWhiteSpace(chk.Variable))
         {
             if (Resolve(chk.Expect, value, option, fallback: value) is not { } expect)
@@ -123,12 +126,24 @@ public static class ActionPlanner
                 return PlanResult.Refuse($"{action.Id}: Keine Prüfung für \"{option}\" im Profil.");
             }
 
-            check = new ResolvedCondition(chk.Variable.Trim(), Unit(chk.Unit), expect, chk.Tolerance);
+            var variable = chk.Variable.Trim();
+            var independent = !steps.Any(s => s.Set is not null && SameVariable(s.Set, variable))
+                              && !action.Steps.Any(s => s.Set is not null && SameVariable(s.Set, variable));
+            check = new ResolvedCheck(
+                new ResolvedCondition(variable, Unit(chk.Unit), expect, chk.Tolerance),
+                Math.Clamp(chk.TimeoutMs, 500, 15000),
+                Math.Clamp(chk.HoldMs, 0, 5000),
+                independent);
         }
 
         var requires = new List<ResolvedCondition>();
         foreach (var r in action.Requires.Where(r => r is not null && !string.IsNullOrWhiteSpace(r.Variable)))
         {
+            if (r.Only is { Count: > 0 } onlyFor && (option is null || !onlyFor.Contains(option, StringComparer.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
             if (Resolve(r.EqualTo, value, option, fallback: value) is not { } required)
             {
                 return PlanResult.Refuse($"{action.Id}: Keine Bedingung für \"{option}\".");
@@ -144,7 +159,7 @@ public static class ActionPlanner
             ? (spoken is null ? action.Label : $"{action.Label} {spoken}")
             : action.Readback.Replace("{value}", spoken ?? "", StringComparison.OrdinalIgnoreCase);
 
-        return PlanResult.Ok(new ActionPlan(action, valueText, readback.Trim(), steps, check, Math.Clamp(action.Check?.TimeoutMs ?? 0, 0, 10000), requires));
+        return PlanResult.Ok(new ActionPlan(action, valueText, readback.Trim(), steps, check, requires));
     }
 
     /// <summary>Kurzbeschreibung des erwarteten Werts, z. B. "100–399 kt" oder "on | off".</summary>
@@ -300,6 +315,9 @@ public static class ActionPlanner
     }
 
     private static string Unit(string? unit) => string.IsNullOrWhiteSpace(unit) ? "number" : unit.Trim();
+
+    private static bool SameVariable(string a, string b) =>
+        string.Equals(Sim.SimVarSpec.NormalizeName(a), Sim.SimVarSpec.NormalizeName(b), StringComparison.OrdinalIgnoreCase);
 
     private static string Num(double v) => v.ToString(Math.Abs(v - Math.Round(v)) < 1e-9 ? "0" : "0.###", CultureInfo.InvariantCulture);
 }

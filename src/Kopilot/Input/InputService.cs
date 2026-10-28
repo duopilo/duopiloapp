@@ -34,7 +34,9 @@ public sealed record InputResult(
     bool? Verified = null,
     bool? Confirmed = null,
     double? StateAfter = null,
-    int? Skipped = null)
+    int? Skipped = null,
+    bool AlreadySet = false,
+    bool? CheckIndependent = null)
 {
     public const string AwaitingConfirmation = "awaiting_confirmation";
     public const string Executed = "executed";
@@ -383,11 +385,12 @@ public sealed partial class InputService
 
         bool? verified = null;
         double? after = null;
+        var reverted = false;
         if (plan.Check is { } check)
         {
             try
             {
-                (verified, after) = await VerifyAsync(check, plan.CheckTimeoutMs, ct);
+                (verified, after, reverted) = await VerifyAsync(check, ct);
             }
             catch (Exception ex) when (ex is OperationCanceledException or InvalidOperationException or TimeoutException)
             {
@@ -395,12 +398,15 @@ public sealed partial class InputService
             }
         }
 
+        var alreadySet = sent == 0 && skipped > 0;
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         var detail = verified switch
         {
-            true => "vom Flugzeug bestätigt",
-            false => $"Flugzeug zeigt {after?.ToString(inv) ?? "nichts"} statt {plan.Check!.Value.ToString(inv)}",
-            null => skipped == plan.Steps.Count ? "war schon so" : null,
+            true when alreadySet => "war schon so",
+            true => plan.Check!.Independent ? "vom Flugzeug bestätigt" : "Wert steht (nur Schaltervariable geprüft)",
+            false when reverted => $"vom Flugzeug zurückgesetzt (zeigt {after?.ToString(inv) ?? "nichts"})",
+            false => $"Flugzeug zeigt {after?.ToString(inv) ?? "nichts"} statt {plan.Check!.Condition.Value.ToString(inv)}",
+            null => alreadySet ? "war schon so" : null,
         };
 
         lock (_lock)
@@ -410,31 +416,55 @@ public sealed partial class InputService
 
         return new InputResult(
             InputResult.Executed,
-            Reason: verified == false ? "Das Flugzeug hat den Wert (noch) nicht übernommen – bitte im Cockpit prüfen." : null,
+            Reason: verified == false
+                ? reverted
+                    ? "Das Flugzeug hat den Wert kurz übernommen und wieder zurückgesetzt – Voraussetzungen im Cockpit prüfen (z. B. Strom)."
+                    : "Das Flugzeug hat den Wert (noch) nicht übernommen – bitte im Cockpit prüfen."
+                : null,
             Action: plan.Action.Id,
             Value: plan.ValueText,
             Readback: plan.Readback,
             Verified: plan.Action.Verified,
             Confirmed: verified,
             StateAfter: after,
-            Skipped: skipped);
+            Skipped: skipped,
+            AlreadySet: alreadySet,
+            CheckIndependent: plan.Check?.Independent);
     }
 
-    private async Task<(bool? Ok, double? Value)> VerifyAsync(ResolvedCondition check, int timeoutMs, CancellationToken ct)
+    /// <summary>
+    /// Wartet, bis der erwartete Wert erscheint UND <see cref="ResolvedCheck.HoldMs"/> lang stehen bleibt.
+    /// Ein Wert, der kurz da ist und wieder verschwindet, gilt als zurückgesetzt (reverted).
+    /// </summary>
+    private async Task<(bool? Ok, double? Value, bool Reverted)> VerifyAsync(ResolvedCheck check, CancellationToken ct)
     {
-        var deadline = _time.GetUtcNow() + TimeSpan.FromMilliseconds(timeoutMs <= 0 ? 3000 : timeoutMs);
+        var hold = TimeSpan.FromMilliseconds(check.HoldMs);
+        var deadline = _time.GetUtcNow() + TimeSpan.FromMilliseconds(check.TimeoutMs) + hold;
         double? last = null;
+        DateTimeOffset? matchedSince = null;
+        var reverted = false;
         while (true)
         {
-            last = await _backend.ReadAsync(check.Variable, check.Unit, ct) ?? last;
-            if (last is { } v && check.Matches(v))
+            var read = await _backend.ReadAsync(check.Condition.Variable, check.Condition.Unit, ct);
+            last = read ?? last;
+            var now = _time.GetUtcNow();
+            if (read is { } v && check.Condition.Matches(v))
             {
-                return (true, v);
+                matchedSince ??= now;
+                if (now - matchedSince >= hold)
+                {
+                    return (true, v, false);
+                }
+            }
+            else if (read is not null && matchedSince is not null)
+            {
+                matchedSince = null;
+                reverted = true;
             }
 
-            if (_time.GetUtcNow() >= deadline)
+            if (now >= deadline)
             {
-                return (last is null ? null : false, last);
+                return (last is null ? null : false, last, reverted);
             }
 
             await Task.Delay(TimeSpan.FromMilliseconds(250), _time, ct);
