@@ -110,6 +110,9 @@ public sealed class StepCondition
 
     /// <summary>Für "requires": Grund, wenn die Bedingung nicht erfüllt ist.</summary>
     public string? Message { get; set; }
+
+    /// <summary>Für "requires": nur bei diesen Auswahlwerten prüfen (z. B. [ "on" ]). Leer = immer.</summary>
+    public List<string>? Only { get; set; }
 }
 
 public sealed class ActionCheck
@@ -124,6 +127,21 @@ public sealed class ActionCheck
     public double Tolerance { get; set; } = 0.5;
 
     public int TimeoutMs { get; set; } = 3000;
+
+    /// <summary>
+    /// So lange muss der Wert stehen bleiben, bis er als übernommen gilt (ms). Fängt Systeme ab, die einen geschriebenen
+    /// Wert sofort wieder zurücksetzen (z. B. APU START ohne Strom).
+    /// </summary>
+    public int HoldMs { get; set; } = 1000;
+
+    /// <summary>
+    /// true = die geprüfte Variable wird zwar auch geschrieben, aber vom Flugzeug aktiv zurückgesetzt, wenn die Aktion nicht wirkt
+    /// (z. B. APU START: ohne Strom/Master schaltet die APU-Elektronik das ON-Licht sofort aus). Gilt dann als echter Nachweis.
+    /// </summary>
+    public bool ConfirmsEffect { get; set; }
+
+    /// <summary>Zyklischer Wert, z. B. 360 für Kurse: 0 und 360 gelten als gleich.</summary>
+    public double? Modulo { get; set; }
 }
 
 /// <summary>Was Kopilot an MSFS schickt – fertig ausgerechnet.</summary>
@@ -141,10 +159,22 @@ public sealed record ResolvedStep(
         : $"Setze {Set} = {SetValue.ToString(System.Globalization.CultureInfo.InvariantCulture)} ({Unit})";
 }
 
-public sealed record ResolvedCondition(string Variable, string Unit, double Value, double Tolerance, string? Message = null)
+public sealed record ResolvedCondition(string Variable, string Unit, double Value, double Tolerance, string? Message = null, double? Modulo = null)
 {
-    public bool Matches(double state) => Math.Abs(state - Value) <= Tolerance;
+    public bool Matches(double state)
+    {
+        if (Modulo is not { } m || m <= 0)
+        {
+            return Math.Abs(state - Value) <= Tolerance;
+        }
+
+        var diff = (((state - Value) % m) + m) % m;
+        return Math.Min(diff, m - diff) <= Tolerance;
+    }
 }
+
+/// <summary>Prüfung nach dem Ausführen. Independent = liest eine Variable, die die Aktion nicht selbst schreibt (echter Nachweis).</summary>
+public sealed record ResolvedCheck(ResolvedCondition Condition, int TimeoutMs, int HoldMs, bool Independent);
 
 /// <summary>Ergebnis der Planung: entweder abgelehnt (Reason) oder bereit zur Bestätigung.</summary>
 public sealed record ActionPlan(
@@ -152,8 +182,7 @@ public sealed record ActionPlan(
     string? ValueText,
     string Readback,
     IReadOnlyList<ResolvedStep> Steps,
-    ResolvedCondition? Check,
-    int CheckTimeoutMs,
+    ResolvedCheck? Check,
     IReadOnlyList<ResolvedCondition> Requires)
 {
     public string Summary => ValueText is null ? Action.Id : $"{Action.Id} = {ValueText}";

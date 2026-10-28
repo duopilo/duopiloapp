@@ -34,7 +34,9 @@ public sealed record InputResult(
     bool? Verified = null,
     bool? Confirmed = null,
     double? StateAfter = null,
-    int? Skipped = null)
+    int? Skipped = null,
+    bool AlreadySet = false,
+    bool? CheckIndependent = null)
 {
     public const string AwaitingConfirmation = "awaiting_confirmation";
     public const string Executed = "executed";
@@ -42,6 +44,9 @@ public sealed record InputResult(
     public const string Cancelled = "cancelled";
     public const string Failed = "failed";
     public const string Disabled = "disabled";
+
+    /// <summary>Unerwarteter Fehler (Ausnahme) – Details im Log.</summary>
+    public const string Error = "error";
 }
 
 /// <summary>
@@ -71,6 +76,7 @@ public sealed partial class InputService
     private readonly IInputBackend _backend;
     private readonly InputOptions _options;
     private readonly InputSettingsStore _store;
+    private readonly VerifiedActionStore _verified;
     private readonly TimeProvider _time;
     private readonly ILogger<InputService> _log;
     private readonly object _lock = new();
@@ -87,6 +93,7 @@ public sealed partial class InputService
         _backend = backend;
         _options = options.Value.Input;
         _store = new InputSettingsStore(options.Value.ResolveDataDirectory());
+        _verified = new VerifiedActionStore(options.Value.ResolveDataDirectory());
         _time = time ?? TimeProvider.System;
         _log = log;
     }
@@ -128,6 +135,59 @@ public sealed partial class InputService
     /// <summary>Aktionen des aktuellen Flugzeugs (leer ohne Profil).</summary>
     public IReadOnlyList<ProfileAction> Actions => _backend.Profile?.Actions ?? [];
 
+    /// <summary>
+    /// Geprüft? "profile" = im Profil markiert, "sim"/"pilot" = in verified-actions.json mit passender Definition, null = ungeprüft.
+    /// </summary>
+    public string? VerifiedBy(ProfileAction action)
+    {
+        if (action.Verified)
+        {
+            return "profile";
+        }
+
+        return _backend.Profile is { } profile ? _verified.Find(profile.Name, action)?.Source : null;
+    }
+
+    /// <summary>
+    /// Der Pilot bestätigt, dass eine gerade ausgeführte Aktion im Cockpit wirklich funktioniert hat – für Aktionen,
+    /// bei denen Kopilot nur die Schalterstellung lesen kann. Geht nur nach einer Ausführung in den letzten 15 Minuten.
+    /// </summary>
+    public InputResult MarkVerified(string? actionId, string? pilotConfirmation)
+    {
+        var profile = _backend.Profile;
+        var action = profile?.Actions.FirstOrDefault(a => a.Id.Equals(actionId?.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (profile is null || action is null)
+        {
+            return new InputResult(InputResult.Refused, $"Aktion \"{actionId}\" gibt es für dieses Flugzeug nicht.", Action: actionId);
+        }
+
+        var words = Words(pilotConfirmation);
+        if (words.Overlaps(NoWords) || !words.Overlaps(YesWords))
+        {
+            return new InputResult(InputResult.Refused, "Nur speichern, wenn der Pilot klar bestätigt, dass es im Cockpit funktioniert hat.", Action: action.Id);
+        }
+
+        var cutoff = _time.GetUtcNow() - TimeSpan.FromMinutes(15);
+        var executed = History.FirstOrDefault(e => e.Action.Equals(action.Id, StringComparison.OrdinalIgnoreCase) && e.Outcome == "ausgeführt" && e.TimeUtc >= cutoff);
+        if (executed is null)
+        {
+            return new InputResult(InputResult.Refused, "Diese Aktion wurde in den letzten 15 Minuten nicht ausgeführt – erst ausführen, dann im Cockpit prüfen.", Action: action.Id);
+        }
+
+        if (executed.Verified == false)
+        {
+            return new InputResult(InputResult.Refused, "Das Flugzeug hat den Wert bei der letzten Ausführung nicht übernommen – erst die Ursache klären.", Action: action.Id);
+        }
+
+        _verified.Record(profile.Name, action, "pilot", executed.Value, _time.GetUtcNow());
+        lock (_lock)
+        {
+            AddLogLocked(action.Id, executed.Value, "geprüft", "vom Piloten im Cockpit bestätigt", true);
+        }
+
+        return new InputResult(InputResult.Executed, "Als geprüft gespeichert.", Action: action.Id, Value: executed.Value, Verified: true);
+    }
+
     /// <summary>Schalter im Dashboard. Jede Änderung verwirft offene Aktionen in allen Instanzen.</summary>
     public void SetEnabled(bool enabled)
     {
@@ -146,7 +206,20 @@ public sealed partial class InputService
 
     // ------------------------------------------------------------------ Schritt 1: vorbereiten
 
-    public async Task<InputResult> PrepareAsync(string actionId, string? value, CancellationToken ct)
+    public async Task<InputResult> PrepareAsync(string? actionId, string? value, CancellationToken ct)
+    {
+        try
+        {
+            return await PrepareCoreAsync(actionId ?? "", value, ct);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Eingabe: prepare_action {Action} = {Value} fehlgeschlagen", actionId, value);
+            return new InputResult(InputResult.Error, $"Interner Fehler: {ex.Message}", Action: actionId, Value: value);
+        }
+    }
+
+    private async Task<InputResult> PrepareCoreAsync(string actionId, string? value, CancellationToken ct)
     {
         if (!Enabled)
         {
@@ -202,12 +275,12 @@ public sealed partial class InputService
             Value: plan.ValueText,
             Readback: plan.Readback,
             ExpiresInSec: (int)ConfirmWindow.TotalSeconds,
-            Verified: plan.Action.Verified);
+            Verified: VerifiedBy(plan.Action) is not null);
     }
 
     // ------------------------------------------------------------------ Schritt 2: bestätigen und ausführen
 
-    public async Task<InputResult> ConfirmAsync(string token, string? pilotConfirmation, CancellationToken ct)
+    public async Task<InputResult> ConfirmAsync(string? token, string? pilotConfirmation, CancellationToken ct)
     {
         PendingAction pending;
         string? input;
@@ -284,11 +357,11 @@ public sealed partial class InputService
                 return Refuse(action.Id, pending.Plan.ValueText, fresh.Refusal!);
             }
 
-            return await ExecuteAsync(plan, timeout.Token);
+            return await ExecuteAsync(plan, profile.Name, timeout.Token);
         }
         catch (Exception ex)
         {
-            return Fail(pending.Plan, ex is OperationCanceledException ? "Zeitüberschreitung beim Ausführen." : ex.Message, executedAny: true);
+            return ErrorResult(pending.Plan, ex, executedAny: true);
         }
         finally
         {
@@ -332,7 +405,7 @@ public sealed partial class InputService
         return null;
     }
 
-    private async Task<InputResult> ExecuteAsync(ActionPlan plan, CancellationToken ct)
+    private async Task<InputResult> ExecuteAsync(ActionPlan plan, string profileName, CancellationToken ct)
     {
         if (await CheckRequirementsAsync(plan, ct) is { } unmet)
         {
@@ -376,65 +449,123 @@ public sealed partial class InputService
                 }
             }
         }
+        catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
+        {
+            // Bekannte Fälle: Verbindung weg, Event/Variable gesperrt, MSFS antwortet nicht
+            return Fail(plan, ex.Message, executedAny: sent > 0);
+        }
         catch (Exception ex)
         {
-            return Fail(plan, ex is OperationCanceledException ? "Zeitüberschreitung beim Ausführen." : ex.Message, executedAny: sent > 0);
+            return ErrorResult(plan, ex, executedAny: sent > 0);
         }
 
         bool? verified = null;
         double? after = null;
+        var reverted = false;
         if (plan.Check is { } check)
         {
             try
             {
-                (verified, after) = await VerifyAsync(check, plan.CheckTimeoutMs, ct);
+                (verified, after, reverted) = await VerifyAsync(check, ct);
             }
-            catch (Exception ex) when (ex is OperationCanceledException or InvalidOperationException or TimeoutException)
+            catch (Exception ex)
             {
+                _log.LogWarning("Eingabe: Prüfung von {Action} fehlgeschlagen: {Message}", plan.Action.Id, ex.Message);
                 verified = null;
             }
         }
 
+        // Kurs 360: Das FCU zeigt 000 – im Ergebnis wie gesagt als 360
+        if (plan.Action.Parameter?.Format == "heading" && plan.ValueText == "360" && after is { } shown && Math.Abs(shown % 360) < 0.5)
+        {
+            after = 360;
+        }
+
+        var alreadySet = sent == 0 && skipped > 0;
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         var detail = verified switch
         {
-            true => "vom Flugzeug bestätigt",
-            false => $"Flugzeug zeigt {after?.ToString(inv) ?? "nichts"} statt {plan.Check!.Value.ToString(inv)}",
-            null => skipped == plan.Steps.Count ? "war schon so" : null,
+            true when alreadySet => "war schon so",
+            true => plan.Check!.Independent ? "vom Flugzeug bestätigt" : "Wert steht (nur Schaltervariable geprüft)",
+            false when reverted => $"vom Flugzeug zurückgesetzt (zeigt {after?.ToString(inv) ?? "nichts"})",
+            false => $"Flugzeug zeigt {after?.ToString(inv) ?? "nichts"} statt {plan.Check!.Condition.Value.ToString(inv)}",
+            null => alreadySet ? "war schon so" : null,
         };
+
+        // Echter Nachweis (Flugzeugzustand, nicht nur Schalterstellung) nach einer wirklichen Änderung: als geprüft merken
+        var newlyVerified = false;
+        if (verified == true && sent > 0 && plan.Check!.Independent && !plan.Action.Verified)
+        {
+            try
+            {
+                if (_verified.Find(profileName, plan.Action) is null)
+                {
+                    _verified.Record(profileName, plan.Action, "sim", plan.ValueText, _time.GetUtcNow());
+                    newlyVerified = true;
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _log.LogWarning("verified-actions.json nicht geschrieben: {Message}", ex.Message);
+            }
+        }
 
         lock (_lock)
         {
-            AddLogLocked(plan.Action.Id, plan.ValueText, "ausgeführt", detail, verified);
+            AddLogLocked(plan.Action.Id, plan.ValueText, "ausgeführt", newlyVerified ? detail + " · als geprüft gespeichert" : detail, verified);
         }
 
         return new InputResult(
             InputResult.Executed,
-            Reason: verified == false ? "Das Flugzeug hat den Wert (noch) nicht übernommen – bitte im Cockpit prüfen." : null,
+            Reason: verified == false
+                ? reverted
+                    ? "Das Flugzeug hat den Wert kurz übernommen und wieder zurückgesetzt – Voraussetzungen im Cockpit prüfen (z. B. Strom)."
+                    : "Das Flugzeug hat den Wert (noch) nicht übernommen – bitte im Cockpit prüfen."
+                : null,
             Action: plan.Action.Id,
             Value: plan.ValueText,
             Readback: plan.Readback,
-            Verified: plan.Action.Verified,
+            Verified: plan.Action.Verified || newlyVerified || _verified.Find(profileName, plan.Action) is not null,
             Confirmed: verified,
             StateAfter: after,
-            Skipped: skipped);
+            Skipped: skipped,
+            AlreadySet: alreadySet,
+            CheckIndependent: plan.Check?.Independent);
     }
 
-    private async Task<(bool? Ok, double? Value)> VerifyAsync(ResolvedCondition check, int timeoutMs, CancellationToken ct)
+    /// <summary>
+    /// Wartet, bis der erwartete Wert erscheint UND <see cref="ResolvedCheck.HoldMs"/> lang stehen bleibt.
+    /// Ein Wert, der kurz da ist und wieder verschwindet, gilt als zurückgesetzt (reverted).
+    /// </summary>
+    private async Task<(bool? Ok, double? Value, bool Reverted)> VerifyAsync(ResolvedCheck check, CancellationToken ct)
     {
-        var deadline = _time.GetUtcNow() + TimeSpan.FromMilliseconds(timeoutMs <= 0 ? 3000 : timeoutMs);
+        var hold = TimeSpan.FromMilliseconds(check.HoldMs);
+        var deadline = _time.GetUtcNow() + TimeSpan.FromMilliseconds(check.TimeoutMs) + hold;
         double? last = null;
+        DateTimeOffset? matchedSince = null;
+        var reverted = false;
         while (true)
         {
-            last = await _backend.ReadAsync(check.Variable, check.Unit, ct) ?? last;
-            if (last is { } v && check.Matches(v))
+            var read = await _backend.ReadAsync(check.Condition.Variable, check.Condition.Unit, ct);
+            last = read ?? last;
+            var now = _time.GetUtcNow();
+            if (read is { } v && check.Condition.Matches(v))
             {
-                return (true, v);
+                matchedSince ??= now;
+                if (now - matchedSince >= hold)
+                {
+                    return (true, v, false);
+                }
+            }
+            else if (read is not null && matchedSince is not null)
+            {
+                matchedSince = null;
+                reverted = true;
             }
 
-            if (_time.GetUtcNow() >= deadline)
+            if (now >= deadline)
             {
-                return (last is null ? null : false, last);
+                return (last is null ? null : false, last, reverted);
             }
 
             await Task.Delay(TimeSpan.FromMilliseconds(250), _time, ct);
@@ -475,6 +606,19 @@ public sealed partial class InputService
         }
 
         return new InputResult(InputResult.Refused, reason, Action: action, Value: value);
+    }
+
+    private InputResult ErrorResult(ActionPlan plan, Exception ex, bool executedAny)
+    {
+        _log.LogError(ex, "Eingabe: {Action} = {Value} mit Ausnahme abgebrochen", plan.Action.Id, plan.ValueText);
+        var reason = ex is OperationCanceledException ? "Zeitüberschreitung beim Ausführen." : $"Interner Fehler: {ex.Message}";
+        var text = executedAny ? reason + " Möglicherweise teilweise ausgeführt – bitte im Cockpit prüfen." : reason;
+        lock (_lock)
+        {
+            AddLogLocked(plan.Action.Id, plan.ValueText, "fehlgeschlagen", text, null);
+        }
+
+        return new InputResult(InputResult.Error, text, Action: plan.Action.Id, Value: plan.ValueText);
     }
 
     private InputResult Fail(ActionPlan plan, string reason, bool executedAny)

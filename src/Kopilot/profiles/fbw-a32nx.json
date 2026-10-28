@@ -82,6 +82,13 @@
     "transLevel": { "name": "L:A32NX_FM1_TRANS_LVL", "type": "arinc429", "scale": 100, "verified": false, "description": "Transition Level am Ziel (FL → ft)" },
     "decisionHeight": { "name": "L:A32NX_FM1_DECISION_HEIGHT", "type": "arinc429", "verified": false, "description": "DH aus PERF APPR (ft), −1 = keine" },
     "minimumDescentAltitude": { "name": "L:A32NX_FM1_MINIMUM_DESCENT_ALTITUDE", "type": "arinc429", "verified": false, "description": "MDA aus PERF APPR (ft)" },
+    "apuMaster": { "name": "L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", "type": "bool", "verified": false, "description": "APU MASTER SW (gleiche Variable wie die Eingabe apu.master)" },
+    "apuStart": { "name": "L:A32NX_OVHD_APU_START_PB_IS_ON", "type": "bool", "verified": false, "description": "APU START ON-Licht" },
+    "apuAvailable": { "name": "L:A32NX_OVHD_APU_START_PB_IS_AVAILABLE", "type": "bool", "verified": false, "description": "APU AVAIL" },
+    "apuBleed": { "name": "L:A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", "type": "bool", "verified": true, "description": "APU BLEED Pushbutton" },
+    "apuN": { "name": "L:A32NX_APU_N", "type": "arinc429", "verified": false, "description": "APU N (%) aus dem ECB – wie auf dem ECAM. APU PCT RPM folgt beim A32NX nur verzögert." },
+    "apuEgt": { "name": "L:A32NX_APU_EGT", "type": "arinc429", "verified": false, "description": "APU EGT (°C) aus dem ECB" },
+    "apuFlapOpen": { "name": "L:A32NX_APU_FLAP_OPEN_PERCENTAGE", "unit": "percent", "type": "number", "verified": false, "description": "APU-Lufteinlassklappe offen (%)" },
     "flaps": {
       "name": "L:A32NX_FLAPS_CONF_INDEX", "type": "enum", "verified": false,
       "values": { "0": "0", "1": "1", "2": "1+F", "3": "2", "4": "3", "5": "FULL" }
@@ -108,6 +115,8 @@
     { "key": "gen2Volt", "name": "L:A32NX_ELEC_ENG_GEN_2_POTENTIAL", "description": "GEN 2 (V)" },
     { "key": "gen2Hz", "name": "L:A32NX_ELEC_ENG_GEN_2_FREQUENCY", "description": "GEN 2 (Hz)" },
     { "key": "apuGenVolt", "name": "L:A32NX_ELEC_APU_GEN_1_POTENTIAL", "description": "APU GEN (V)" },
+    { "key": "apuGenHz", "name": "L:A32NX_ELEC_APU_GEN_1_FREQUENCY", "description": "APU GEN (Hz)" },
+    { "key": "apuGenLoad", "name": "L:A32NX_ELEC_APU_GEN_1_LOAD", "unit": "percent", "description": "APU GEN Last (%)" },
     { "key": "extPwrVolt", "name": "L:A32NX_ELEC_EXT_PWR_POTENTIAL", "description": "EXT PWR (V)" },
     { "key": "bat1Volt", "name": "L:A32NX_ELEC_BAT_1_POTENTIAL", "description": "BAT 1 (V)" },
     { "key": "bat2Volt", "name": "L:A32NX_ELEC_BAT_2_POTENTIAL", "description": "BAT 2 (V)" },
@@ -131,6 +140,8 @@
   // Eingaben (Eingabe-Modul, v0.7): nur diese Aktionen kann Kopilot im Cockpit bedienen – nach Readback und Bestätigung.
   // Quellen: fbw-a32nx/docs/a320-events.md, a320-simvars.md, aircraft_preset_procedures.xml (FBW-Presets), Rust-Systeme.
   // "verified": false = laut FBW-Quellcode, im Sim noch nicht geprüft. Triebwerk, Feuer, Treibstoff und MCDU sind im Code gesperrt.
+  // "verified": true = im Sim getestet (28.10.2026: fcu.heading, flaps, lights.beacon, antiice.engines, apu.bleed).
+  // Weitere geprüfte Aktionen merkt sich Kopilot in %LOCALAPPDATA%\Kopilot\verified-actions.json.
   "actions": [
     {
       "id": "fcu.speed",
@@ -183,14 +194,11 @@
         { "event": "A32NX.FCU_HDG_PULL" }
       ],
       "readback": "Heading {value} selected",
-      "check": {
-        "variable": "L:A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE",
-        "expect": "{value}"
-      },
+      "check": { "variable": "L:A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE", "expect": "{value}", "modulo": 360 },
       "requires": [
         { "variable": "L:A32NX_FCU_AFS_DISPLAY_TRK_FPA_MODE", "equalTo": 0, "message": "FCU steht auf TRK/FPA – erst auf HDG/VS umschalten." }
       ],
-      "verified": false
+      "verified": true
     },
     {
       "id": "fcu.headingManaged",
@@ -664,7 +672,7 @@
         "expect": "{value}"
       },
       "interlocks": [ "flapsSpeed" ],
-      "verified": false
+      "verified": true
     },
     {
       "id": "speedbrake",
@@ -753,7 +761,7 @@
         "expect": "{value}",
         "unit": "Bool"
       },
-      "verified": false
+      "verified": true
     },
     {
       "id": "lights.wing",
@@ -1008,6 +1016,30 @@
         "expect": "{value}",
         "unit": "Bool"
       },
+      "verified": true
+    },
+    {
+      "id": "antiice.eng1",
+      "area": "AntiIce",
+      "label": "Engine 1 anti-ice",
+      "parameter": { "type": "choice", "options": { "on": 1, "off": 0 } },
+      "steps": [
+        { "set": "L:A32NX_BUTTON_OVHD_ANTI_ICE_ENG_1_POSITION", "value": "{value}", "unit": "Bool" }
+      ],
+      "readback": "Engine one anti ice {value}",
+      "check": { "variable": "ENG ANTI ICE:1", "expect": "{value}", "unit": "Bool" },
+      "verified": false
+    },
+    {
+      "id": "antiice.eng2",
+      "area": "AntiIce",
+      "label": "Engine 2 anti-ice",
+      "parameter": { "type": "choice", "options": { "on": 1, "off": 0 } },
+      "steps": [
+        { "set": "L:A32NX_BUTTON_OVHD_ANTI_ICE_ENG_2_POSITION", "value": "{value}", "unit": "Bool" }
+      ],
+      "readback": "Engine two anti ice {value}",
+      "check": { "variable": "ENG ANTI ICE:2", "expect": "{value}", "unit": "Bool" },
       "verified": false
     },
     {
@@ -1113,6 +1145,7 @@
         }
       ],
       "readback": "APU master {value}",
+    "requires": [ { "variable": "L:A32NX_ELEC_DC_BAT_BUS_IS_POWERED", "equalTo": 1, "only": [ "on" ], "message": "Kein Strom auf dem DC BAT BUS – erst die Batterien einschalten." } ],
       "check": {
         "variable": "L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON",
         "expect": "{value}"
@@ -1126,10 +1159,13 @@
       "steps": [
         { "set": "L:A32NX_OVHD_APU_START_PB_IS_ON", "value": 1 }
       ],
+      "description": "Drückt APU START. Das ON-Licht bleibt nur an, wenn die APU wirklich anläuft – ohne Strom oder Master schaltet die APU-Elektronik es sofort wieder aus. Deshalb muss es 2,5 s stehen bleiben.",
       "readback": "APU start",
-      "check": { "variable": "L:A32NX_OVHD_APU_START_PB_IS_ON", "expect": 1 },
+      "check": { "variable": "L:A32NX_OVHD_APU_START_PB_IS_ON", "expect": 1, "holdMs": 2500, "confirmsEffect": true },
       "requires": [
-        { "variable": "L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", "equalTo": 1, "message": "APU master ist aus – erst apu.master on." }
+        { "variable": "L:A32NX_ELEC_DC_BAT_BUS_IS_POWERED", "equalTo": 1, "message": "Kein Strom auf dem DC BAT BUS – erst die Batterien einschalten." },
+        { "variable": "L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", "equalTo": 1, "message": "APU master ist aus – erst apu.master on." },
+        { "variable": "L:A32NX_OVHD_APU_START_PB_IS_AVAILABLE", "equalTo": 0, "message": "APU läuft schon (AVAIL)." }
       ],
       "verified": false
     },
@@ -1152,6 +1188,23 @@
         "variable": "L:A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON",
         "expect": "{value}"
       },
+      "verified": true
+    },
+    {
+      "id": "elec.extPwr",
+      "area": "Elec",
+      "label": "External power",
+      "description": "EXT PWR Pushbutton. Nur am Boden, Einschalten nur mit angeschlossener GPU (AVAIL). Geprüft wird der Schütz 3XG (Bodenstrom am Netz).",
+      "parameter": { "type": "choice", "options": { "on": 1, "off": 0 } },
+      "steps": [
+        { "set": "L:A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON", "value": "{value}" }
+      ],
+      "readback": "External power {value}",
+      "interlocks": [ "onGround" ],
+      "requires": [
+        { "variable": "L:A32NX_EXT_PWR_AVAIL:1", "equalTo": 1, "only": [ "on" ], "message": "Kein Bodenstrom verfügbar – GPU nicht angeschlossen (EXT PWR AVAIL aus)." }
+      ],
+      "check": { "variable": "L:A32NX_ELEC_CONTACTOR_3XG_IS_CLOSED", "expect": "{value}", "timeoutMs": 4000 },
       "verified": false
     },
     {

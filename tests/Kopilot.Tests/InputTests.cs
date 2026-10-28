@@ -66,6 +66,15 @@ public sealed class InputTests
         Interlocks = [Interlocks.GearSpeed],
     };
 
+    private static ProfileAction ApuMaster() => new()
+    {
+        Id = "apu.master", Area = "APU", Label = "APU master", Readback = "APU master {value}",
+        Parameter = new ActionParameter { Type = "choice", Options = new() { ["on"] = 1, ["off"] = 0 } },
+        Steps = [new ActionStep { Set = "L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", Value = J("\"{value}\"") }],
+        Requires = [new StepCondition { Variable = "L:A32NX_ELEC_DC_BAT_BUS_IS_POWERED", EqualTo = J("1"), Only = ["on"], Message = "Kein Strom" }],
+        Check = new ActionCheck { Variable = "L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", Expect = J("\"{value}\"") },
+    };
+
     private static ProfileAction Ls() => new()
     {
         Id = "efis.ls", Area = "EFIS", Label = "LS", Readback = "LS {value}",
@@ -84,7 +93,8 @@ public sealed class InputTests
         Assert.Equal("Speed 250 selected", plan.Readback);
         Assert.Equal(new[] { "A32NX.FCU_SPD_SET", "A32NX.FCU_SPD_PULL" }, plan.Steps.Select(s => s.Event));
         Assert.Equal(250u, plan.Steps[0].EventData);
-        Assert.Equal(250, plan.Check!.Value);
+        Assert.Equal(250, plan.Check!.Condition.Value);
+        Assert.True(plan.Check.Independent);
     }
 
     [Theory]
@@ -208,6 +218,22 @@ public sealed class InputTests
     }
 
     [Fact]
+    public void Nur_am_Boden()
+    {
+        var gpu = new ProfileAction
+        {
+            Id = "elec.extPwr", Readback = "External power {value}",
+            Parameter = new ActionParameter { Type = "choice", Options = new() { ["on"] = 1, ["off"] = 0 } },
+            Steps = [new ActionStep { Set = "L:A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON", Value = J("\"{value}\"") }],
+            Interlocks = [Interlocks.OnGround],
+        };
+
+        Assert.NotNull(ActionPlanner.Plan(gpu, "on", Limits, Ground()).Plan);
+        Assert.Equal("Nur am Boden möglich.", ActionPlanner.Plan(gpu, "on", Limits, Air()).Refusal);
+        Assert.Contains("Unklar", ActionPlanner.Plan(gpu, "off", Limits, Air() with { OnGround = null }).Refusal);
+    }
+
+    [Fact]
     public void Unbekannte_Sperre_sperrt()
     {
         var action = Speed();
@@ -257,6 +283,41 @@ public sealed class InputTests
         // Groß-/Kleinschreibung der Stellung egal
         var mixed = new AircraftLimits { VfeKt = new() { ["Full"] = 177, ["2"] = 200, ["1"] = 230, ["3"] = 185 } };
         Assert.Contains("VFE 177", ActionPlanner.Plan(Flaps(), "FULL", mixed, Air(190)).Refusal);
+    }
+
+    [Theory]
+    [InlineData(0, 360, true)]
+    [InlineData(0, 359.8, true)]
+    [InlineData(359, 1, false)]
+    [InlineData(90, 90.4, true)]
+    [InlineData(90, 450, true)]
+    public void Kurse_werden_zyklisch_verglichen(double expected, double state, bool matches)
+    {
+        Assert.Equal(matches, new ResolvedCondition("x", "number", expected, 0.5, Modulo: 360).Matches(state));
+        Assert.Equal(Math.Abs(state - expected) <= 0.5, new ResolvedCondition("x", "number", expected, 0.5).Matches(state));
+    }
+
+    [Fact]
+    public async Task Kurs_360_wird_als_360_bestaetigt()
+    {
+        var (input, backend, time) = Create();
+        backend.Profile!.Actions.Add(new ProfileAction
+        {
+            Id = "fcu.heading", Area = "FCU", Label = "FCU heading", Readback = "Heading {value} selected",
+            Parameter = new ActionParameter { Min = 0, Max = 360, Step = 1, Format = "heading" },
+            Steps = [new ActionStep { Event = "A32NX.FCU_HDG_SET", Value = J("\"{value}\"") }],
+            Check = new ActionCheck { Variable = "L:A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE", Expect = J("\"{value}\""), Modulo = 360 },
+        });
+        backend.OnEvent = (name, data) => backend.State["L:A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE"] = data;
+
+        var prepared = await input.PrepareAsync("fcu.heading", "360", default);
+        Assert.Equal("Heading 360 selected", prepared.Readback);
+        time.Now += TimeSpan.FromSeconds(2);
+        var result = await input.ConfirmAsync(prepared.Token!, "confirm", default);
+
+        Assert.True(result.Confirmed);
+        Assert.Equal(360, result.StateAfter);
+        Assert.Equal(new[] { "A32NX.FCU_HDG_SET:0" }, backend.Sent);
     }
 
     [Fact]
@@ -331,12 +392,37 @@ public sealed class InputTests
 
             foreach (var value in values)
             {
-                var result = ActionPlanner.Plan(action, value, profile.Limits, Air(150));
+                var state = action.Interlocks.Contains(Interlocks.OnGround) ? Ground() : Air(150);
+                var result = ActionPlanner.Plan(action, value, profile.Limits, state);
                 Assert.True(result.Plan is not null, $"{action.Id} = {value}: {result.Refusal}");
                 Assert.DoesNotContain("{", result.Plan!.Readback);
                 Assert.NotEmpty(result.Plan.Steps);
             }
         }
+
+        // APU-Werte für get_systems: dieselben Variablen wie die Eingaben, N aus dem ECB (ARINC 429)
+        Assert.Equal("arinc429", profile.Bindings[BindingKeys.ApuN].Type);
+        Assert.Equal("L:A32NX_APU_N", profile.Bindings[BindingKeys.ApuN].Name);
+        var masterAction = profile.Actions.Single(a => a.Id == "apu.master");
+        Assert.Equal(profile.Bindings[BindingKeys.ApuMaster].Name, masterAction.Steps[0].Set);
+        Assert.Equal(profile.Bindings[BindingKeys.ApuMaster].Name, masterAction.Check!.Variable);
+        Assert.Contains(profile.Actions.Single(a => a.Id == "apu.start").Requires, r => r.Variable == profile.Bindings[BindingKeys.ApuMaster].Name);
+        Assert.Contains(profile.Electrical, e => e.Key == "apuGenHz");
+
+        // Engine Anti-Ice einzeln: prüft den echten Zustand ENG ANTI ICE:n (FBW schickt dafür K:ANTI_ICE_SET_ENGn)
+        var eng2 = ActionPlanner.Plan(profile.Actions.Single(a => a.Id == "antiice.eng2"), "on", profile.Limits, Air(150)).Plan!;
+        Assert.Equal("L:A32NX_BUTTON_OVHD_ANTI_ICE_ENG_2_POSITION", Assert.Single(eng2.Steps).Set);
+        Assert.Equal("Engine two anti ice on", eng2.Readback);
+        Assert.True(eng2.Check!.Independent);
+        Assert.Contains(profile.Actions, a => a.Id == "antiice.engines");
+
+        // External Power: nur am Boden, Einschalten nur mit GPU
+        var extPwr = profile.Actions.Single(a => a.Id == "elec.extPwr");
+        Assert.Equal("Nur am Boden möglich.", ActionPlanner.Plan(extPwr, "on", profile.Limits, Air(150)).Refusal);
+        var onGround = ActionPlanner.Plan(extPwr, "on", profile.Limits, Ground()).Plan!;
+        Assert.Equal("L:A32NX_EXT_PWR_AVAIL:1", Assert.Single(onGround.Requires).Variable);
+        Assert.Empty(ActionPlanner.Plan(extPwr, "off", profile.Limits, Ground()).Plan!.Requires);
+        Assert.True(onGround.Check!.Independent);
 
         // Landescheinwerfer: Stellung, Ausfahren und Stromkreis je Seite
         var landing = ActionPlanner.Plan(profile.Actions.Single(a => a.Id == "lights.landing"), "retract", profile.Limits, Air(150)).Plan!;
@@ -398,18 +484,27 @@ public sealed class InputTests
         {
             Name = "Test",
             Limits = Limits,
-            Actions = [Speed(), Flaps(), GearUp(), Ls()],
+            Actions = [Speed(), Flaps(), GearUp(), Ls(), ApuMaster()],
         };
 
         /// <summary>Was ein Event am Zustand ändert (simuliertes Flugzeug).</summary>
         public Action<string, uint>? OnEvent { get; set; }
+
+        /// <summary>Simuliertes Flugzeug, das bestimmte geschriebene Variablen nach dem ersten Lesen zurücksetzt.</summary>
+        public Dictionary<string, double> RevertAfterRead { get; } = new(StringComparer.OrdinalIgnoreCase);
 
         public FlightSnapshot Snapshot() => Current;
 
         public Task<double?> ReadAsync(string name, string unit, CancellationToken ct)
         {
             time.Now += TimeSpan.FromSeconds(1);
-            return Task.FromResult(State.TryGetValue(name, out var v) ? v : (double?)null);
+            var result = State.TryGetValue(name, out var v) ? v : (double?)null;
+            if (RevertAfterRead.TryGetValue(name, out var revert))
+            {
+                State[name] = revert;
+            }
+
+            return Task.FromResult(result);
         }
 
         public Task SendEventAsync(string name, uint data, CancellationToken ct)
@@ -583,6 +678,179 @@ public sealed class InputTests
         Assert.Equal(InputResult.Executed, result.Status);
         Assert.True(result.Confirmed);
         Assert.Equal(new[] { "A32NX.FCU_EFIS_L_LS_PUSH:0" }, backend.Sent);
+    }
+
+    [Fact]
+    public async Task Absolut_gesetzter_Wert_der_schon_steht_wird_nicht_geschrieben()
+    {
+        var (input, backend, time) = Create();
+        backend.State["L:A32NX_ELEC_DC_BAT_BUS_IS_POWERED"] = 1;
+        backend.State["L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON"] = 1;
+
+        var prepared = await input.PrepareAsync("apu.master", "on", default);
+        time.Now += TimeSpan.FromSeconds(2);
+        var result = await input.ConfirmAsync(prepared.Token!, "confirm", default);
+
+        Assert.Equal(InputResult.Executed, result.Status);
+        Assert.True(result.AlreadySet);
+        Assert.True(result.Confirmed);
+        Assert.False(result.CheckIndependent);
+        Assert.Empty(backend.Sent);
+    }
+
+    [Fact]
+    public async Task Zurueckgesetzter_Wert_gilt_nicht_als_uebernommen()
+    {
+        var (input, backend, time) = Create();
+        backend.State["L:A32NX_ELEC_DC_BAT_BUS_IS_POWERED"] = 1;
+        backend.State["L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON"] = 0;
+        backend.RevertAfterRead["L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON"] = 0; // das System setzt den Schalter sofort zurück
+
+        var prepared = await input.PrepareAsync("apu.master", "on", default);
+        time.Now += TimeSpan.FromSeconds(2);
+        var result = await input.ConfirmAsync(prepared.Token!, "confirm", default);
+
+        Assert.Equal(InputResult.Executed, result.Status);
+        Assert.False(result.Confirmed);
+        Assert.Contains("zurückgesetzt", result.Reason);
+        Assert.Equal(new[] { "L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON=1" }, backend.Sent);
+    }
+
+    [Fact]
+    public async Task APU_Start_ohne_Wirkung_wird_als_fehlgeschlagen_gemeldet()
+    {
+        var (input, backend, time) = Create();
+        backend.Profile!.Actions.Add(new ProfileAction
+        {
+            Id = "apu.start", Area = "APU", Label = "APU start", Readback = "APU start",
+            Steps = [new ActionStep { Set = "L:A32NX_OVHD_APU_START_PB_IS_ON", Value = J("1") }],
+            Check = new ActionCheck { Variable = "L:A32NX_OVHD_APU_START_PB_IS_ON", Expect = J("1"), HoldMs = 2500, ConfirmsEffect = true },
+        });
+        backend.State["L:A32NX_OVHD_APU_START_PB_IS_ON"] = 0;
+        backend.RevertAfterRead["L:A32NX_OVHD_APU_START_PB_IS_ON"] = 0; // APU-Elektronik ohne Strom schaltet das ON-Licht aus
+
+        var prepared = await input.PrepareAsync("apu.start", null, default);
+        time.Now += TimeSpan.FromSeconds(2);
+        var result = await input.ConfirmAsync(prepared.Token!, "confirm", default);
+
+        Assert.Equal(InputResult.Executed, result.Status);
+        Assert.False(result.Confirmed);
+        Assert.True(result.CheckIndependent);
+
+        // Läuft die APU an, bleibt das Licht an
+        backend.RevertAfterRead.Clear();
+        prepared = await input.PrepareAsync("apu.start", null, default);
+        time.Now += TimeSpan.FromSeconds(2);
+        result = await input.ConfirmAsync(prepared.Token!, "confirm", default);
+        Assert.True(result.Confirmed);
+    }
+
+    private sealed class ThrowingBackend : IInputBackend
+    {
+        public bool Connected => true;
+
+        public AircraftProfile? Profile => throw new InvalidCastException("kaputt");
+
+        public FlightSnapshot Snapshot() => Air();
+
+        public Task<double?> ReadAsync(string name, string unit, CancellationToken ct) => Task.FromResult<double?>(null);
+
+        public Task SendEventAsync(string name, uint data, CancellationToken ct) => Task.CompletedTask;
+
+        public Task SetAsync(string name, string unit, double value, CancellationToken ct) => Task.CompletedTask;
+    }
+
+    [Fact]
+    public async Task Ausnahmen_werden_zu_einer_strukturierten_Antwort()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "kopilot-tests", Guid.NewGuid().ToString("N"));
+        var options = Options.Create(new KopilotOptions { DataDirectory = dir, Input = new InputOptions { Enabled = true } });
+        var input = new InputService(options, new ThrowingBackend(), NullLogger<InputService>.Instance);
+
+        var result = await input.PrepareAsync("apu.start", null, default);
+
+        Assert.Equal(InputResult.Error, result.Status);
+        Assert.Contains("kaputt", result.Reason);
+
+        // Fehlende Parameter: strukturierte Antwort statt MCP-Fehler
+        var (ok, _, _) = Create();
+        Assert.Equal(InputResult.Failed, (await ok.ConfirmAsync(null, null, default)).Status);
+    }
+
+    [Fact]
+    public async Task Echt_bestaetigte_Aktion_wird_als_geprueft_gespeichert()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "kopilot-tests", Guid.NewGuid().ToString("N"));
+        var (input, backend, time) = Create(dataDir: dir);
+        backend.OnEvent = (name, data) =>
+        {
+            if (name == "A32NX.FCU_SPD_SET")
+            {
+                backend.State["L:A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE"] = data;
+            }
+        };
+        var speed = backend.Profile!.Actions.Single(a => a.Id == "fcu.speed");
+        Assert.Null(input.VerifiedBy(speed));
+
+        var prepared = await input.PrepareAsync("fcu.speed", "250", default);
+        time.Now += TimeSpan.FromSeconds(2);
+        var result = await input.ConfirmAsync(prepared.Token!, "confirm", default);
+
+        Assert.True(result.Confirmed);
+        Assert.True(result.Verified);
+        Assert.Equal("sim", input.VerifiedBy(speed));
+
+        // Gilt auch für andere Kopilot-Instanzen (gleicher Datenordner) …
+        var (other, otherBackend, _) = Create(dataDir: dir);
+        Assert.Equal("sim", other.VerifiedBy(otherBackend.Profile!.Actions.Single(a => a.Id == "fcu.speed")));
+
+        // … aber nicht mehr, wenn sich die Definition im Profil ändert
+        var changed = Speed();
+        changed.Check!.Tolerance = 2;
+        Assert.Null(input.VerifiedBy(changed));
+    }
+
+    [Fact]
+    public async Task Nur_Schalterstellung_braucht_die_Bestaetigung_des_Piloten()
+    {
+        var (input, backend, time) = Create();
+        backend.State["L:A32NX_ELEC_DC_BAT_BUS_IS_POWERED"] = 1;
+        backend.State["L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON"] = 0;
+        var master = backend.Profile!.Actions.Single(a => a.Id == "apu.master");
+
+        Assert.Equal(InputResult.Refused, input.MarkVerified("apu.master", "confirm").Status); // noch nicht ausgeführt
+
+        var prepared = await input.PrepareAsync("apu.master", "on", default);
+        time.Now += TimeSpan.FromSeconds(2);
+        var result = await input.ConfirmAsync(prepared.Token!, "confirm", default);
+
+        Assert.True(result.Confirmed);
+        Assert.False(result.CheckIndependent);
+        Assert.Null(input.VerifiedBy(master)); // nicht automatisch
+
+        Assert.Equal(InputResult.Refused, input.MarkVerified("apu.master", "no, it did not work").Status);
+        Assert.Equal(InputResult.Executed, input.MarkVerified("apu.master", "confirm, APU master is on").Status);
+        Assert.Equal("pilot", input.VerifiedBy(master));
+    }
+
+    [Fact]
+    public void Im_Profil_markierte_Aktion_gilt_als_geprueft()
+    {
+        var (input, backend, _) = Create();
+        var gear = backend.Profile!.Actions.Single(a => a.Id == "gear.up");
+        gear.Verified = true;
+        Assert.Equal("profile", input.VerifiedBy(gear));
+    }
+
+    [Fact]
+    public async Task Bedingung_gilt_nur_fuer_die_genannte_Auswahl()
+    {
+        var (input, backend, _) = Create();
+        backend.State["L:A32NX_ELEC_DC_BAT_BUS_IS_POWERED"] = 0;
+        backend.State["L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON"] = 1;
+
+        Assert.Equal("Kein Strom", (await input.PrepareAsync("apu.master", "on", default)).Reason);
+        Assert.Equal(InputResult.AwaitingConfirmation, (await input.PrepareAsync("apu.master", "off", default)).Status);
     }
 
     [Fact]

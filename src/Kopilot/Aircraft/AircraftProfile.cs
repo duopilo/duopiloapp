@@ -285,6 +285,13 @@ public static class BindingKeys
     public const string TransitionLevel = "transLevel";
     public const string DecisionHeight = "decisionHeight";
     public const string MinimumDescentAltitude = "minimumDescentAltitude";
+    public const string ApuMaster = "apuMaster";
+    public const string ApuStart = "apuStart";
+    public const string ApuAvailable = "apuAvailable";
+    public const string ApuN = "apuN";
+    public const string ApuEgt = "apuEgt";
+    public const string ApuBleed = "apuBleed";
+    public const string ApuFlapOpen = "apuFlapOpen";
 
     /// <summary>Alle bekannten Schlüssel (für get_aircraft_profile).</summary>
     public static readonly IReadOnlyList<string> All =
@@ -294,6 +301,7 @@ public static class BindingKeys
         EgtC, ParkingBrake, SpoilersArmed, SelectedHeading, SelectedHeadingDashes, Flaps, V1, Vr, V2, FlexTemp, TdReached,
         FmgcDiscreteWord1, FmAltitudeConstraint, FmsToWptDistance, FmsToWptBearing, GroundSpoilersOut, DecelLight,
         TransitionAltitude, TransitionLevel, DecisionHeight, MinimumDescentAltitude,
+        ApuMaster, ApuStart, ApuAvailable, ApuN, ApuEgt, ApuBleed, ApuFlapOpen,
     ];
 
     /// <summary>Schlüssel, die standardmäßig schnell abonniert werden (Monitoring).</summary>

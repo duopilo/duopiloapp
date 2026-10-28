@@ -28,6 +28,7 @@ Kopilot verbindet **Microsoft Flight Simulator 2024** über SimConnect mit **Cla
 | `prepare_action` | Eingabe vorbereiten: prüft Wert und Sperren, liefert den Readback – im Cockpit ändert sich noch nichts |
 | `confirm_action` | Eingabe ausführen, nachdem der Pilot den Readback bestätigt hat; danach wird der Zustand im Flugzeug geprüft |
 | `cancel_action` | Vorbereitete Eingabe verwerfen |
+| `mark_action_verified` | Aktion als geprüft merken, nachdem du im Cockpit gesehen hast, dass sie funktioniert |
 
 Jede Antwort enthält `activeAlerts`: die gerade aktiven Monitoring-Meldungen. So bekommt Claude Warnungen auch mit, wenn es eigentlich etwas anderes abfragt.
 
@@ -133,8 +134,8 @@ Sagst du „negative“ oder korrigierst den Wert, wird die Aktion verworfen. Ei
 | Bremsen | Autobrake OFF/LO/MED/MAX |
 | Licht | Beacon, Wing, Runway Turn-off, Landing (on/off/retract), Nose (T.O/Taxi/off), Strobe (on/auto/off) |
 | Schilder | Seat Belts, No Smoking/No PED |
-| Anti-Ice | Triebwerke, Flügel, Probe/Window Heat |
-| Air/APU | Pack 1/2, APU Master, APU Start, APU Bleed |
+| Anti-Ice | Triebwerke (beide oder einzeln), Flügel, Probe/Window Heat |
+| Air/APU/Elec | Pack 1/2, APU Master, APU Start, APU Bleed, External Power (nur am Boden, mit GPU) |
 | Transponder | Squawk, Modus, ALT RPTG, TCAS-Modus und Traffic |
 | Funk | COM 1 Standby, Swap |
 
@@ -153,7 +154,22 @@ NAV & LOGO fehlt: Der Schalter ist beim A32NX nur als Input Event (`B:`) erreich
 
 Fehlt ein Grenzwert im Profil, ist die Aktion gesperrt. Dazu kommen Bedingungen je Aktion, z. B. V/S und Heading nicht im TRK/FPA-Modus, QNH nur im QNH-Modus, APU Start nur mit APU Master.
 
-Die Aktionen stehen im Flugzeugprofil unter `actions` (Events, Variablen, Readback, Prüfung). Alle sind aus dem FBW-Quellcode abgeleitet und im Sim noch nicht geprüft (`"verified": false`). Ob eine Aktion angekommen ist, zeigt das Protokoll im Dashboard (✓/✗).
+Die Aktionen stehen im Flugzeugprofil unter `actions` (Events, Variablen, Readback, Prüfung). Sie sind aus dem FBW-Quellcode abgeleitet. Ob eine Aktion angekommen ist, zeigt das Protokoll im Dashboard (✓/✗).
+
+**Wie Kopilot prüft:**
+- Werte werden absolut gesetzt. Steht der Wert schon, schreibt Kopilot nichts und meldet `alreadySet`.
+- Der neue Wert muss eine Weile stehen bleiben (`holdMs`, Standard 1 s). Setzt das Flugzeug ihn sofort zurück – z. B. APU START ohne Strom –, gilt die Aktion als nicht übernommen.
+- `verification` in der Antwort:
+  - `confirmed`: Kopilot hat einen echten Flugzeugzustand gelesen (FCU-Anzeige, Klappenhebel, Licht, ENG ANTI ICE, Schütz …).
+  - `unverified`: Kopilot konnte nur die Schalterstellung lesen, die Wirkung ist nicht nachgewiesen.
+  - `failed`: Das Flugzeug hat den Wert nicht übernommen.
+- Fehler kommen immer als `status: "error"` mit Grund zurück, Details im Log.
+
+**Geprüfte Aktionen merken:** Im Sim getestet sind fcu.heading, flaps, lights.beacon, antiice.engines und apu.bleed (`"verified": true` im Profil). Weitere merkt sich Kopilot in `%LOCALAPPDATA%\Kopilot\verified-actions.json` – das überschreibt `update.cmd` nicht:
+- automatisch, wenn eine Ausführung `confirmed` war;
+- per `mark_action_verified`, wenn du nach einer `unverified`-Ausführung im Cockpit siehst, dass es funktioniert hat.
+
+Ändert sich die Definition einer Aktion im Profil, gilt die gespeicherte Prüfung nicht mehr. `list_actions` zeigt je Aktion `verified`: `profile`, `sim`, `pilot` oder leer.
 
 ## SimBrief
 
