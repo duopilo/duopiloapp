@@ -65,10 +65,11 @@ Im Ordner `C:\Tools\Kopilot` müssen danach `Kopilot.exe`, `Microsoft.FlightSimu
 Ein paar Werte habe ich ohne Sim nicht prüfen können:
 
 - [ ] `altitude.indicatedFt` und `speed.iasKt` stimmen mit dem PFD überein
+- [ ] Gewicht (`grossWeightKg`) stimmt mit der MCDU (FUEL PRED, GW) überein
 - [ ] `pitchUpDeg` ist im Steigflug **positiv**, `bankRightDeg` in einer Rechtskurve **positiv**
-- [ ] Der Transponder-Code stimmt, z. B. `2000`
+- [x] Der Transponder-Code stimmt, z. B. `2000` (getestet 28.10.)
 - [ ] `flapsHandleIndex` folgt dem Klappenhebel (0 bis 4 bei 0/1/2/3/FULL)
-- [ ] Beim iniBuilds A321LR: Sind die Navigationswerte (`/nav`) gefüllt, oder speist das FMS die GPS-Variablen nicht?
+- [x] Beim iniBuilds A321LR sind die GPS-Navigationswerte leer, das FMS speist sie nicht. Route und Distanz brauchen L:-Variablen oder die MCDU.
 - [ ] Beim iniBuilds A321LR: Passen die Standard-AP-Werte (`autopilot.*`) zum FCU, oder brauchen wir dafür L:-Variablen?
 
 ## Mit Claude Desktop verbinden

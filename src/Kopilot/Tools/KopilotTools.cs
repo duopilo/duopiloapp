@@ -82,7 +82,8 @@ public static class KopilotTools
             {
                 headingMagDeg = Fmt.Heading(sim.Num("hdgMag")),
                 headingTrueDeg = Fmt.Heading(sim.Num("hdgTrue")),
-                trackMagDeg = Fmt.Heading(sim.Num("trackMag")),
+                // Im Stand ist der Track bedeutungslos
+                trackMagDeg = sim.Num("gs") is > 5 ? Fmt.Heading(sim.Num("trackMag")) : null,
                 // MSFS liefert Pitch "Nase hoch = negativ" und Bank "links = positiv" – hier umgedreht.
                 pitchUpDeg = Fmt.Round(Fmt.Negate(sim.Num("pitch")), 1),
                 bankRightDeg = Fmt.Round(Fmt.Negate(sim.Num("bank")), 1),
@@ -194,11 +195,24 @@ public static class KopilotTools
         var zulu = sim.Num("zuluTimeSec");
         var destEte = sim.Num("destEteSec");
         var nextEte = sim.Num("wpEteSec");
+        var hasPlan = sim.Bool("gpsFlightPlanActive") == true || sim.Str("wpNextId") is not null;
+
+        if (!hasPlan)
+        {
+            // Ohne aktiven GPS-Flugplan liefert MSFS hier nur Nullen – die wären irreführend.
+            return Json.Serialize(new
+            {
+                connected = true,
+                flightPlanActive = false,
+                message = "Die GPS-Flugplanvariablen des Sims sind leer. Das FMS dieses Flugzeugs (z. B. iniBuilds) speist sie vermutlich nicht – Route und Distanzen bitte von der MCDU (F-PLN, PROG) ablesen.",
+                groundSpeedKt = Fmt.Int(sim.Num("gs")),
+            });
+        }
 
         return Json.Serialize(new
         {
             connected = true,
-            flightPlanActive = sim.Bool("gpsFlightPlanActive"),
+            flightPlanActive = true,
             previousWaypoint = sim.Str("wpPrevId"),
             nextWaypoint = sim.Str("wpNextId"),
             nextWaypointDistanceNm = Fmt.Round(sim.Num("wpDistanceNm"), 1),

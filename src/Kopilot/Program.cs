@@ -31,6 +31,9 @@ if (useStdio)
 }
 else
 {
+    // Umlaute und Sonderzeichen in der Konsole korrekt anzeigen (nur HTTP-Modus, stdio bleibt unangetastet)
+    Console.OutputEncoding = System.Text.Encoding.UTF8;
+
     var builder = WebApplication.CreateBuilder(new WebApplicationOptions
     {
         Args = args,
