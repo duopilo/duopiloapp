@@ -48,7 +48,9 @@ cd Kopilot
 dotnet publish src/Kopilot -c Release -o C:\Tools\Kopilot
 ```
 
-Im Ordner `C:\Tools\Kopilot` müssen danach `Kopilot.exe`, `Microsoft.FlightSimulator.SimConnect.dll`, `SimConnect.dll` und der Ordner `profiles` liegen.
+**Aktualisieren:** `update.cmd` im Repo-Ordner doppelklicken. Das Skript beendet einen laufenden Kopilot, holt den neuesten Stand, veröffentlicht nach `C:\Tools\Kopilot` und startet Kopilot neu. Ein anderer Zielordner geht als Parameter: `update.cmd D:\Kopilot`.
+
+Im Ordner `C:\Tools\Kopilot` müssen nach dem Veröffentlichen `Kopilot.exe`, `Microsoft.FlightSimulator.SimConnect.dll`, `SimConnect.dll` und der Ordner `profiles` liegen.
 
 ## Erster Test im Browser
 
