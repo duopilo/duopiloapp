@@ -1,5 +1,8 @@
 using System.ComponentModel;
 using Kopilot.Aircraft;
+using Kopilot.Ecam;
+using Kopilot.FlightPlan;
+using Kopilot.Monitoring;
 using Kopilot.Sim;
 using ModelContextProtocol.Server;
 
@@ -7,20 +10,29 @@ namespace Kopilot.Tools;
 
 /// <summary>
 /// MCP-Tools für Claude. Alle Tools sind lesend. Antworten sind JSON, Schlüssel englisch, Meldungen deutsch.
+/// Jede Antwort enthält "activeAlerts" – die gerade aktiven Monitoring-Meldungen.
 /// </summary>
 [McpServerToolType]
 public static class KopilotTools
 {
-    private const string NotConnectedMessage =
+    internal const string NotConnectedMessage =
         "Keine Verbindung zu Microsoft Flight Simulator. Kopilot verbindet sich automatisch, sobald MSFS läuft.";
 
     [McpServerTool(Name = "kopilot_status", ReadOnly = true)]
     [Description(
-        "Connection status of the Kopilot bridge to Microsoft Flight Simulator 2024: whether the sim is connected, " +
-        "sim version, loaded aircraft title, active aircraft profile and any setup error. Call this first if other tools return no data.")]
-    public static string Status(SimConnectClient sim, ProfileStore profiles)
+        "Connection status of the Kopilot bridge to Microsoft Flight Simulator 2024: whether the sim is connected and paused, " +
+        "loaded aircraft (title and aircraft.cfg path), active aircraft profile, monitoring, SimBrief and ECAM table status and any setup error. " +
+        "Call this first if other tools return no data. Every Kopilot response includes 'activeAlerts' (current monitoring alerts with short callouts).")]
+    public static string Status(
+        SimConnectClient sim,
+        ProfileStore profiles,
+        MonitoringService monitoring,
+        SimBriefService simBrief,
+        EcamCatalog ecam,
+        AlertBus alerts)
     {
         var connection = sim.Connection;
+        var status = sim.Status;
         var profile = sim.ActiveProfile;
         return Json.Serialize(new
         {
@@ -28,8 +40,34 @@ public static class KopilotTools
             simulator = connection.Application,
             simulatorVersion = connection.Version,
             connectedSinceUtc = connection.SinceUtc,
+            flightLoaded = status.FlightRunning,
+            paused = status.Paused,
+            pauseKind = status.PauseKind,
             aircraftTitle = sim.Str("title"),
-            activeProfile = profile is null ? null : new { profile.Name, file = profile.SourceFile, variables = profile.Variables.Count },
+            aircraftPath = status.AircraftPath,
+            activeProfile = profile is null
+                ? null
+                : new
+                {
+                    profile.Name,
+                    file = profile.SourceFile,
+                    bindings = profile.Bindings.Count,
+                    unverifiedBindings = profile.Bindings.Where(b => !b.Value.Verified).Select(b => b.Key),
+                    variables = profile.Variables.Count,
+                    ecamTable = profile.Ecam is { } e ? ecam.StatusFor(e.Format) : null,
+                },
+            monitoring = new
+            {
+                enabled = monitoring.Enabled,
+                phase = monitoring.Phase,
+                lastEvaluationUtc = monitoring.LastEvaluationUtc,
+            },
+            simBrief = new
+            {
+                configured = simBrief.IsConfigured,
+                loaded = simBrief.Current is { } ofp ? $"{ofp.Origin.Icao} → {ofp.Destination.Icao}" : null,
+                error = simBrief.LastError,
+            },
             receivingValues = sim.ReceivingCount,
             lastError = sim.LastError,
             profilesDirectory = profiles.DirectoryPath,
@@ -37,29 +75,34 @@ public static class KopilotTools
             profileErrors = profiles.Errors,
             kopilotVersion = typeof(KopilotTools).Assembly.GetName().Version?.ToString(3),
             message = connection.IsConnected ? null : NotConnectedMessage,
+            activeAlerts = AlertView.Active(alerts),
         });
     }
 
     [McpServerTool(Name = "get_flight_state", ReadOnly = true)]
     [Description(
-        "Current flight state of the pilot's aircraft in MSFS 2024: altitude (indicated, flight level, AGL, radio), speeds (IAS, TAS, GS, Mach, vertical speed), " +
-        "attitude and heading, position, configuration (flaps handle, gear, spoilers, parking brake), basic autopilot targets and warnings. " +
-        "Use this whenever the pilot asks about the current flight situation. Values are null if the sim does not provide them. " +
-        "The autopilot block uses generic SimVars that study-level airliners (e.g. iniBuilds Airbus) may not update – prefer get_aircraft_profile for FMA modes.")]
-    public static string GetFlightState(SimConnectClient sim)
+        "Current flight state of the pilot's aircraft in MSFS 2024: altitude (indicated, flight level, AGL, radio), speeds in knots (IAS, TAS, GS, vertical speed), " +
+        "attitude and heading, position, configuration (flaps handle, gear, spoilers, parking brake), autopilot/autothrust status with FMA modes and speed/altitude targets, " +
+        "and sim warnings. With an aircraft profile (FlyByWire A32NX/A380X) the autopilot block comes from the aircraft's own variables ('source': 'profile'); " +
+        "otherwise from generic SimVars ('source': 'generic'), which study-level airliners may not update. 'paused' is true while the sim is paused.")]
+    public static string GetFlightState(SimConnectClient sim, AlertBus alerts)
     {
         if (!sim.Connection.IsConnected)
         {
-            return NotConnected();
+            return NotConnected(alerts);
         }
 
+        var signals = new AircraftSignals(sim);
+        var status = sim.Status;
         var age = sim.AgeSeconds("altIndicated");
         return Json.Serialize(new
         {
             connected = true,
+            paused = status.Paused,
+            pauseKind = status.PauseKind,
             dataAgeSec = Fmt.Round(age, 1),
-            stale = age is null or > 5,
-            aircraft = new { title = sim.Str("title"), atcId = sim.Str("atcId") },
+            stale = !status.Paused && age is null or > 5,
+            aircraft = new { title = sim.Str("title"), atcId = sim.Str("atcId"), profile = signals.Profile?.Name },
             onGround = sim.Bool("onGround"),
             altitude = new
             {
@@ -75,7 +118,6 @@ public static class KopilotTools
                 iasKt = Fmt.Int(sim.Num("ias")),
                 tasKt = Fmt.Int(sim.Num("tas")),
                 groundSpeedKt = Fmt.Int(sim.Num("gs")),
-                mach = Fmt.Round(sim.Num("mach"), 3),
                 verticalSpeedFpm = Fmt.Int(sim.Num("vs")),
             },
             attitude = new
@@ -101,54 +143,68 @@ public static class KopilotTools
                 spoilersArmed = sim.Bool("spoilersArmed"),
                 speedbrakeHandlePct = Fmt.Int(sim.Num("spoilersHandlePct")),
                 parkingBrakeSet = sim.Bool("parkingBrake"),
+                autobrake = signals.Autobrake,
             },
-            autopilot = new
-            {
-                note = "Generic SimVars – may not reflect the real FMA of study-level airliners.",
-                master = sim.Bool("apMaster"),
-                flightDirector = sim.Bool("fdActive"),
-                autothrustArmed = sim.Bool("athrArmed"),
-                navHold = sim.Bool("apNav"),
-                approachHold = sim.Bool("apAppr"),
-                selectedAltitudeFt = Fmt.Int(sim.Num("apAlt")),
-                selectedHeadingDeg = Fmt.Heading(sim.Num("apHdg")),
-                selectedSpeedKt = Fmt.Int(sim.Num("apSpd")),
-                selectedVerticalSpeedFpm = Fmt.Int(sim.Num("apVs")),
-            },
+            autopilot = Autopilot(sim, signals),
             warnings = new
             {
+                masterWarning = signals.MasterWarning,
+                masterCaution = signals.MasterCaution,
                 stall = sim.Bool("stallWarning"),
                 overspeed = sim.Bool("overspeedWarning"),
             },
+            activeAlerts = AlertView.Active(alerts),
         });
     }
 
     [McpServerTool(Name = "get_systems", ReadOnly = true)]
     [Description(
-        "Aircraft systems in MSFS 2024: engines (running, N1, N2, EGT, fuel flow), APU, fuel on board and gross weight, " +
-        "exterior lights, seatbelt sign, transponder code/mode and COM radio frequencies.")]
-    public static string GetSystems(SimConnectClient sim)
+        "Aircraft systems in MSFS 2024: engines (running, N1, N2, EGT, fuel flow in kg/h), APU, fuel on board and gross weight, " +
+        "exterior lights, seatbelt sign, transponder code/mode and COM radio frequencies. Fuel flow comes from the aircraft profile when available " +
+        "('fuelFlowSource'). 'plausibility' lists values that look implausible (e.g. extreme weather, air start).")]
+    public static string GetSystems(SimConnectClient sim, AlertBus alerts)
     {
         if (!sim.Connection.IsConnected)
         {
-            return NotConnected();
+            return NotConnected(alerts);
         }
 
+        var signals = new AircraftSignals(sim);
         var engineCount = Math.Clamp(Fmt.Int(sim.Num("engineCount")) ?? 2, 1, SimVarCatalog.MaxEngines);
-        var engines = Enumerable.Range(1, engineCount).Select(i => new
+        var notes = new List<string>();
+        var engines = Enumerable.Range(1, engineCount).Select(i =>
         {
-            engine = i,
-            running = sim.Bool($"eng{i}Running"),
-            n1Pct = Fmt.Round(sim.Num($"eng{i}N1"), 1),
-            n2Pct = Fmt.Round(sim.Num($"eng{i}N2"), 1),
-            egtC = Fmt.Int(sim.Num($"eng{i}Egt")),
-            fuelFlowKgPerHour = Fmt.Int(sim.Num($"eng{i}FuelFlowPph") * 0.45359237),
-        });
+            var running = sim.Bool($"eng{i}Running");
+            var n2 = sim.Num($"eng{i}N2");
+            var egt = sim.Num($"eng{i}Egt");
+            var ff = signals.FuelFlowKgh(i);
+            if (running == true && egt is < -40)
+            {
+                notes.Add($"ENG {i}: EGT {egt:0} °C bei laufendem Triebwerk – unplausibel (extremes Wetter oder Air-Start?).");
+            }
+
+            if (running == true && n2 is > 50 && ff is not > 1)
+            {
+                notes.Add($"ENG {i}: Fuel Flow 0 bei laufendem Triebwerk – Variable im Profil prüfen.");
+            }
+
+            return new
+            {
+                engine = i,
+                running,
+                n1Pct = Fmt.Round(sim.Num($"eng{i}N1"), 1),
+                n2Pct = Fmt.Round(n2, 1),
+                egtC = Fmt.Int(egt),
+                fuelFlowKgPerHour = Fmt.Int(ff),
+            };
+        }).ToList();
 
         return Json.Serialize(new
         {
             connected = true,
             engines,
+            fuelFlowSource = signals.FuelFlowSource,
+            totalFuelFlowKgPerHour = Fmt.Int(engines.Sum(e => (double?)e.fuelFlowKgPerHour ?? 0)),
             apu = new { rpmPct = Fmt.Round(sim.Num("apuRpmPct"), 1) },
             fuel = new
             {
@@ -177,19 +233,21 @@ public static class KopilotTools
                 com1StandbyMhz = Fmt.Round(sim.Num("com1Standby"), 3),
                 com2ActiveMhz = Fmt.Round(sim.Num("com2Active"), 3),
             },
+            plausibility = notes,
+            activeAlerts = AlertView.Active(alerts),
         });
     }
 
     [McpServerTool(Name = "get_navigation", ReadOnly = true)]
     [Description(
         "Navigation progress from the sim's GPS flight plan variables: previous/next waypoint, distance and time to the next waypoint, " +
-        "waypoint index, time to destination and ETA in UTC. Note: some airliner FMS (e.g. iniBuilds) may not feed these GPS variables; " +
-        "if they are empty, ask the pilot to read the MCDU F-PLN page instead.")]
-    public static string GetNavigation(SimConnectClient sim)
+        "waypoint index, time to destination and ETA in UTC. Note: airliner FMS (iniBuilds, FlyByWire) usually do not feed these GPS variables; " +
+        "if they are empty, use get_progress (SimBrief plan) instead.")]
+    public static string GetNavigation(SimConnectClient sim, AlertBus alerts)
     {
         if (!sim.Connection.IsConnected)
         {
-            return NotConnected();
+            return NotConnected(alerts);
         }
 
         var zulu = sim.Num("zuluTimeSec");
@@ -204,8 +262,9 @@ public static class KopilotTools
             {
                 connected = true,
                 flightPlanActive = false,
-                message = "Die GPS-Flugplanvariablen des Sims sind leer. Das FMS dieses Flugzeugs (z. B. iniBuilds) speist sie vermutlich nicht – Route und Distanzen bitte von der MCDU (F-PLN, PROG) ablesen.",
+                message = "Die GPS-Flugplanvariablen des Sims sind leer – das FMS dieses Flugzeugs speist sie nicht. Für Route und Fortschritt get_progress (SimBrief) nutzen.",
                 groundSpeedKt = Fmt.Int(sim.Num("gs")),
+                activeAlerts = AlertView.Active(alerts),
             });
         }
 
@@ -223,6 +282,7 @@ public static class KopilotTools
             destinationEte = Fmt.Duration(destEte),
             destinationEtaUtc = zulu is not null && destEte is > 0 ? Fmt.ClockTime(zulu + destEte) + "Z" : null,
             groundSpeedKt = Fmt.Int(sim.Num("gs")),
+            activeAlerts = AlertView.Active(alerts),
         });
     }
 
@@ -230,11 +290,11 @@ public static class KopilotTools
     [Description(
         "Weather and time at the aircraft's position in MSFS 2024: wind, outside air temperature, sea-level pressure (QNH), " +
         "the altimeter setting on the captain side, visibility, UTC and local sim time, and simulation rate.")]
-    public static string GetEnvironment(SimConnectClient sim)
+    public static string GetEnvironment(SimConnectClient sim, AlertBus alerts)
     {
         if (!sim.Connection.IsConnected)
         {
-            return NotConnected();
+            return NotConnected(alerts);
         }
 
         return Json.Serialize(new
@@ -248,18 +308,20 @@ public static class KopilotTools
             timeUtc = Fmt.ClockTime(sim.Num("zuluTimeSec")) is { } z ? z + "Z" : null,
             timeLocal = Fmt.ClockTime(sim.Num("localTimeSec")),
             simulationRate = Fmt.Round(sim.Num("simRate"), 2),
+            activeAlerts = AlertView.Active(alerts),
         });
     }
 
     [McpServerTool(Name = "get_aircraft_profile", ReadOnly = true)]
     [Description(
-        "Aircraft-specific values from the active Kopilot aircraft profile (usually L: variables such as FMA modes, autobrake or ECAM states), " +
-        "with raw values and their text meaning where the profile defines one. Returns which profile is active for the loaded aircraft.")]
-    public static string GetAircraftProfile(SimConnectClient sim, ProfileStore profiles)
+        "The active Kopilot aircraft profile for the loaded aircraft: semantic bindings (e.g. ap1, athrStatus, fmaVertical) with their variable, " +
+        "current raw value, text meaning and whether the variable was verified in the sim, plus extra profile variables, ECAM configuration and speed limits. " +
+        "Use this to check which values come from aircraft-specific L: variables.")]
+    public static string GetAircraftProfile(SimConnectClient sim, ProfileStore profiles, AlertBus alerts)
     {
         if (!sim.Connection.IsConnected)
         {
-            return NotConnected();
+            return NotConnected(alerts);
         }
 
         var profile = sim.ActiveProfile;
@@ -269,14 +331,38 @@ public static class KopilotTools
             {
                 connected = true,
                 aircraftTitle = sim.Str("title"),
+                aircraftPath = sim.Status.AircraftPath,
                 profile = (string?)null,
                 message = $"Für dieses Flugzeug gibt es kein Profil. Profile liegen in {profiles.DirectoryPath}.",
+                activeAlerts = AlertView.Active(alerts),
             });
         }
 
+        var signals = new AircraftSignals(sim);
+        var bindings = profile.Bindings.Select(b =>
+        {
+            var raw = b.Value.Name.Contains("{i}", StringComparison.Ordinal) ? signals.Raw(b.Key, 1) : signals.Raw(b.Key);
+            return new
+            {
+                key = b.Key,
+                variable = b.Value.Name,
+                type = b.Value.Type,
+                verified = b.Value.Verified,
+                raw = Fmt.Round(raw, 3),
+                text = b.Value.Type switch
+                {
+                    "bitmask" => raw is { } r ? string.Join(" ", b.Value.DecodeBits(r)) : null,
+                    "string" => signals.Text(b.Key),
+                    _ => raw is { } r2 ? b.Value.Translate(r2) : null,
+                },
+                description = b.Value.Description,
+            };
+        });
+
         var values = profile.Variables.Select(v =>
         {
-            var raw = sim.Get(SimConnectClient.ProfileKeyPrefix + v.Key)?.Value;
+            var unit = string.IsNullOrWhiteSpace(v.Unit) ? "number" : v.Unit;
+            var raw = sim.Get(SimConnectClient.VarKey(v.Name, unit))?.Value;
             return new
             {
                 key = v.Key,
@@ -291,9 +377,16 @@ public static class KopilotTools
         {
             connected = true,
             aircraftTitle = sim.Str("title"),
+            aircraftPath = sim.Status.AircraftPath,
             profile = profile.Name,
+            file = profile.SourceFile,
             notes = profile.Notes,
+            bindings,
+            missingBindings = BindingKeys.All.Where(k => !profile.Bindings.ContainsKey(k)),
             values,
+            ecam = profile.Ecam is { } e ? new { e.Format, e.LeftLines, e.RightLines, e.Lines } : null,
+            limits = profile.Limits,
+            activeAlerts = AlertView.Active(alerts),
         });
     }
 
@@ -301,6 +394,7 @@ public static class KopilotTools
     [Description(
         "Reads any single simulation variable once, for exploring values not covered by the other tools. " +
         "Accepts standard SimVars (e.g. 'AIRSPEED INDICATED', with index like 'TURB ENG N1:1') and local L: variables (e.g. 'L:SOME_VAR'). " +
+        "For text variables (e.g. 'ATC RUNWAY AIRPORT NAME', 'TITLE', 'ATC ID') pass unit 'string'. " +
         "Note: an unknown L: variable reads as 0 instead of failing, so a 0 does not prove the variable exists.")]
     public static async Task<string> ReadSimVar(
         SimConnectClient sim,
@@ -327,10 +421,56 @@ public static class KopilotTools
         sim.RefreshProfile();
         return Json.Serialize(new
         {
-            profilesLoaded = profiles.All.Select(p => new { p.Name, file = p.SourceFile, variables = p.Variables.Count }),
+            profilesLoaded = profiles.All.Select(p => new { p.Name, file = p.SourceFile, bindings = p.Bindings.Count, variables = p.Variables.Count }),
             errors = profiles.Errors,
         });
     }
 
-    private static string NotConnected() => Json.Serialize(new { connected = false, message = NotConnectedMessage });
+    private static object Autopilot(SimConnectClient sim, AircraftSignals s)
+    {
+        if (s.AutopilotSource == "generic")
+        {
+            return new
+            {
+                source = "generic",
+                note = "Generische SimVars – bei Study-Level-Airlinern evtl. nicht aussagekräftig. A/THR-Status ist ohne Profil unbekannt.",
+                engaged = s.ApEngaged,
+                flightDirector = s.FlightDirector,
+                navHold = sim.Bool("apNav"),
+                approachHold = sim.Bool("apAppr"),
+                selectedAltitudeFt = Fmt.Int(s.SelectedAltitudeFt),
+                selectedHeadingDeg = Fmt.Heading(sim.Num("apHdg")),
+                selectedSpeedKt = Fmt.Int(s.SelectedSpeedKt),
+                selectedVerticalSpeedFpm = Fmt.Int(sim.Num("apVs")),
+            };
+        }
+
+        return new
+        {
+            source = "profile",
+            engaged = s.ApEngaged,
+            ap1 = s.Ap1,
+            ap2 = s.Ap2,
+            flightDirector = s.FlightDirector,
+            autothrust = s.AutothrustStatus,
+            fma = new
+            {
+                thrust = s.AutothrustMode,
+                vertical = s.FmaVertical,
+                verticalArmed = s.FmaVerticalArmed,
+                lateral = s.FmaLateral,
+                lateralArmed = s.FmaLateralArmed,
+            },
+            speedManaged = s.SpeedManaged,
+            speedTargetKt = Fmt.Int(s.SpeedTargetKt),
+            selectedSpeedKt = Fmt.Int(s.SelectedSpeedKt),
+            vlsKt = Fmt.Int(s.VlsKt),
+            selectedAltitudeFt = Fmt.Int(s.SelectedAltitudeFt),
+            selectedAltitudeSource = s.SelectedAltitudeSource,
+            selectedHeadingDeg = Fmt.Heading(sim.Num("apHdg")),
+        };
+    }
+
+    internal static string NotConnected(AlertBus alerts) =>
+        Json.Serialize(new { connected = false, message = NotConnectedMessage, activeAlerts = AlertView.Active(alerts) });
 }

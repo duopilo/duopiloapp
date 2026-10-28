@@ -1,4 +1,7 @@
 using Kopilot.Aircraft;
+using Kopilot.Ecam;
+using Kopilot.FlightPlan;
+using Kopilot.Monitoring;
 using Kopilot.Remote;
 using Kopilot.Sim;
 using Kopilot.Tools;
@@ -55,14 +58,23 @@ public static class HttpHost
         app.UseMiddleware<McpAuthMiddleware>();
 
         // Prüfseiten für den Browser – nur lokal, über den Tunnel nicht erreichbar.
-        app.MapGet("/", (SimConnectClient sim, ProfileStore profiles) => Results.Content(KopilotTools.Status(sim, profiles), "application/json")).LocalOnly();
-        app.MapGet("/state", (SimConnectClient sim) => Results.Content(KopilotTools.GetFlightState(sim), "application/json")).LocalOnly();
-        app.MapGet("/systems", (SimConnectClient sim) => Results.Content(KopilotTools.GetSystems(sim), "application/json")).LocalOnly();
-        app.MapGet("/nav", (SimConnectClient sim) => Results.Content(KopilotTools.GetNavigation(sim), "application/json")).LocalOnly();
-        app.MapGet("/env", (SimConnectClient sim) => Results.Content(KopilotTools.GetEnvironment(sim), "application/json")).LocalOnly();
-        app.MapGet("/profile", (SimConnectClient sim, ProfileStore profiles) => Results.Content(KopilotTools.GetAircraftProfile(sim, profiles), "application/json")).LocalOnly();
+        app.MapGet("/", (SimConnectClient sim, ProfileStore profiles, MonitoringService monitoring, SimBriefService simBrief, EcamCatalog ecam, AlertBus alerts) =>
+            JsonText(KopilotTools.Status(sim, profiles, monitoring, simBrief, ecam, alerts))).LocalOnly();
+        app.MapGet("/state", (SimConnectClient sim, AlertBus alerts) => JsonText(KopilotTools.GetFlightState(sim, alerts))).LocalOnly();
+        app.MapGet("/systems", (SimConnectClient sim, AlertBus alerts) => JsonText(KopilotTools.GetSystems(sim, alerts))).LocalOnly();
+        app.MapGet("/nav", (SimConnectClient sim, AlertBus alerts) => JsonText(KopilotTools.GetNavigation(sim, alerts))).LocalOnly();
+        app.MapGet("/env", (SimConnectClient sim, AlertBus alerts) => JsonText(KopilotTools.GetEnvironment(sim, alerts))).LocalOnly();
+        app.MapGet("/profile", (SimConnectClient sim, ProfileStore profiles, AlertBus alerts) => JsonText(KopilotTools.GetAircraftProfile(sim, profiles, alerts))).LocalOnly();
+        app.MapGet("/warnings", (SimConnectClient sim, EcamCatalog ecam, AlertBus alerts) => JsonText(MonitoringTools.GetWarnings(sim, ecam, alerts))).LocalOnly();
+        app.MapGet("/alerts", (AlertBus alerts, long? sinceId) => JsonText(MonitoringTools.GetAlerts(alerts, sinceId ?? 0))).LocalOnly();
+        app.MapGet("/monitoring", (MonitoringService monitoring, AlertBus alerts) => JsonText(MonitoringTools.GetMonitoringStatus(monitoring, alerts))).LocalOnly();
+        app.MapGet("/atc", (SimConnectClient sim, SimBriefService simBrief, AlertBus alerts) => JsonText(AtcTools.GetAtc(sim, simBrief, alerts))).LocalOnly();
+        app.MapGet("/plan", async (SimBriefService simBrief, AlertBus alerts, bool? refresh, CancellationToken ct) =>
+            JsonText(await FlightPlanTools.GetFlightPlan(simBrief, alerts, refresh ?? false, ct))).LocalOnly();
+        app.MapGet("/progress", async (SimConnectClient sim, SimBriefService simBrief, AlertBus alerts, CancellationToken ct) =>
+            JsonText(await FlightPlanTools.GetProgress(sim, simBrief, alerts, ct))).LocalOnly();
         app.MapGet("/read", async (SimConnectClient sim, string name, string? unit, CancellationToken ct) =>
-            Results.Content(await KopilotTools.ReadSimVar(sim, name, unit ?? "number", ct), "application/json")).LocalOnly();
+            JsonText(await KopilotTools.ReadSimVar(sim, name, unit ?? "number", ct))).LocalOnly();
 
         if (remote.OAuthEnabled)
         {
@@ -73,6 +85,8 @@ public static class HttpHost
 
         LogSecuritySummary(app.Logger, remote);
     }
+
+    private static IResult JsonText(string json) => Results.Content(json, "application/json");
 
     private static RouteHandlerBuilder LocalOnly(this RouteHandlerBuilder builder) =>
         builder.AddEndpointFilter(async (context, next) =>

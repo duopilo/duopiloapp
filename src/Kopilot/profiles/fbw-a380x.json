@@ -1,0 +1,62 @@
+{
+  // FlyByWire A380X (MSFS 2024). Viele Systeme teilen sich die A32NX_-Variablen mit dem A32NX.
+  // "verified": true = im Sim getestet (Testflug 28.10.2026), false = übernommen/angenommen, bitte mit read_simvar prüfen.
+  "name": "FlyByWire A380X",
+  "match": [
+    { "path": [ "FlyByWire", "A380" ] },
+    { "title": [ "A380X" ] }
+  ],
+  "notes": "AUTOPILOT MASTER ist falsch – AP-Status aus A32NX_AUTOPILOT_1/2_ACTIVE. FMA/A-THR/Fuel Flow aus den gemeinsamen A32NX-Variablen übernommen und noch ungeprüft. ECAM-Zeilen des A380X-EWD sind noch nicht eingebunden. Engine-Fire-Variablen (A32NX_FIRE_TEST_ENG1, ENG ON FIRE) bleiben 0.",
+  "bindings": {
+    "ap1": { "name": "L:A32NX_AUTOPILOT_1_ACTIVE", "type": "bool", "verified": true },
+    "ap2": { "name": "L:A32NX_AUTOPILOT_2_ACTIVE", "type": "bool", "verified": false },
+    "athrStatus": {
+      "name": "L:A32NX_AUTOTHRUST_STATUS", "type": "enum", "verified": false,
+      "values": { "0": "OFF", "1": "ARMED", "2": "ACTIVE" }
+    },
+    "athrMode": {
+      "name": "L:A32NX_AUTOTHRUST_MODE", "type": "enum", "verified": false,
+      "values": {
+        "0": "", "1": "MAN TOGA", "3": "MAN FLX", "5": "MAN MCT", "6": "MAN THR", "7": "SPEED", "8": "MACH",
+        "9": "THR MCT", "10": "THR CLB", "11": "THR LVR", "12": "THR IDLE", "13": "A.FLOOR", "14": "TOGA LK"
+      }
+    },
+    "fmaLateral": {
+      "name": "L:A32NX_FMA_LATERAL_MODE", "type": "enum", "verified": false,
+      "values": {
+        "0": "", "10": "HDG", "11": "TRK", "20": "NAV", "30": "LOC*", "31": "LOC", "32": "LAND", "33": "FLARE",
+        "34": "ROLL OUT", "40": "RWY", "41": "RWY TRK", "50": "GA TRK"
+      }
+    },
+    "fmaVertical": {
+      "name": "L:A32NX_FMA_VERTICAL_MODE", "type": "enum", "verified": false,
+      "values": {
+        "0": "", "10": "ALT", "11": "ALT*", "12": "OP CLB", "13": "OP DES", "14": "V/S", "15": "FPA",
+        "20": "ALT CST", "21": "ALT CST*", "22": "CLB", "23": "DES", "24": "FINAL", "30": "G/S*", "31": "G/S",
+        "32": "LAND", "33": "FLARE", "34": "ROLL OUT", "40": "SRS", "41": "SRS GA", "50": "TCAS"
+      }
+    },
+    "masterWarning": { "name": "L:A32NX_MASTER_WARNING", "type": "bool", "verified": true },
+    "masterCaution": { "name": "L:A32NX_MASTER_CAUTION", "type": "bool", "verified": false },
+    "autobrake": {
+      "name": "L:A32NX_AUTOBRAKES_ARMED_MODE", "type": "enum", "verified": false,
+      "values": { "0": "DISARM", "1": "BTV", "2": "LOW", "3": "L2", "4": "L3", "5": "HIGH", "6": "RTO" }
+    },
+    "speedTarget": { "name": "L:A32NX_SPEEDS_MANAGED_PFD", "type": "number", "verified": false },
+    "speedManaged": { "name": "L:A32NX_FCU_AFS_DISPLAY_SPD_MACH_MANAGED", "type": "bool", "verified": false },
+    "selectedSpeed": { "name": "L:A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE", "type": "number", "verified": false },
+    "machMode": { "name": "L:A32NX_FCU_AFS_DISPLAY_MACH_MODE", "type": "bool", "verified": false },
+    "selectedAltitude": { "name": "L:A32NX_FCU_AFS_DISPLAY_ALT_VALUE", "type": "number", "verified": false },
+    "fuelFlowKgh": { "name": "L:A32NX_ENGINE_FF:{i}", "type": "number", "verified": false, "description": "Fuel Flow je Triebwerk in kg/h" }
+  },
+  "limits": {
+    // A380-800 – bitte prüfen
+    "vmoKt": 340,
+    "vleKt": 250,
+    "vfeKt": { "1": 263, "2": 220, "3": 196, "4": 182 },
+    "speedLimitBelowFl100Kt": 250
+  },
+  "variables": [
+    { "key": "fireTestPressed", "name": "L:A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED", "unit": "number", "description": "Fire-Test-Taste gedrückt" }
+  ]
+}

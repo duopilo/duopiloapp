@@ -1,0 +1,82 @@
+{
+  // FlyByWire A32NX (MSFS 2024). Variablennamen aus der FBW-Doku (fbw-a32nx/docs/a320-simvars.md).
+  // "verified": true = im Sim getestet (Testflug 28.10.2026), false = laut Doku, noch nicht im Sim geprüft.
+  "name": "FlyByWire A32NX",
+  "match": [
+    { "path": [ "FlyByWire", "A320" ] },
+    { "title": [ "A320neo", "FlyByWire" ] },
+    { "title": [ "A32NX" ] }
+  ],
+  "notes": "AUTOPILOT MASTER ist beim A32NX falsch – AP-Status kommt aus A32NX_AUTOPILOT_1/2_ACTIVE. Fuel Flow aus A32NX_ENGINE_FF (kg/h). Engine Fire ist über Flypad-Failures nicht auslösbar.",
+  "bindings": {
+    "ap1": { "name": "L:A32NX_AUTOPILOT_1_ACTIVE", "type": "bool", "verified": true },
+    "ap2": { "name": "L:A32NX_AUTOPILOT_2_ACTIVE", "type": "bool", "verified": true },
+    "athrStatus": {
+      "name": "L:A32NX_AUTOTHRUST_STATUS", "type": "enum", "verified": false,
+      "values": { "0": "OFF", "1": "ARMED", "2": "ACTIVE" }
+    },
+    "athrMode": {
+      "name": "L:A32NX_AUTOTHRUST_MODE", "type": "enum", "verified": false,
+      "values": {
+        "0": "", "1": "MAN TOGA", "3": "MAN FLX", "5": "MAN MCT", "6": "MAN THR", "7": "SPEED", "8": "MACH",
+        "9": "THR MCT", "10": "THR CLB", "11": "THR LVR", "12": "THR IDLE", "13": "A.FLOOR", "14": "TOGA LK"
+      }
+    },
+    "fmaLateral": {
+      "name": "L:A32NX_FMA_LATERAL_MODE", "type": "enum", "verified": false,
+      "values": {
+        "0": "", "10": "HDG", "11": "TRK", "20": "NAV", "30": "LOC*", "31": "LOC", "32": "LAND", "33": "FLARE",
+        "34": "ROLL OUT", "40": "RWY", "41": "RWY TRK", "50": "GA TRK"
+      }
+    },
+    "fmaLateralArmed": {
+      "name": "L:A32NX_FMA_LATERAL_ARMED", "type": "bitmask", "verified": false,
+      "values": { "0": "NAV", "1": "LOC" }
+    },
+    "fmaVertical": {
+      "name": "L:A32NX_FMA_VERTICAL_MODE", "type": "enum", "verified": false,
+      "values": {
+        "0": "", "10": "ALT", "11": "ALT*", "12": "OP CLB", "13": "OP DES", "14": "V/S", "15": "FPA",
+        "20": "ALT CST", "21": "ALT CST*", "22": "CLB", "23": "DES", "24": "FINAL", "30": "G/S*", "31": "G/S",
+        "32": "LAND", "33": "FLARE", "34": "ROLL OUT", "40": "SRS", "41": "SRS GA", "50": "TCAS"
+      }
+    },
+    "fmaVerticalArmed": {
+      "name": "L:A32NX_FMA_VERTICAL_ARMED", "type": "bitmask", "verified": false,
+      "values": { "0": "ALT", "1": "ALT CST", "2": "CLB", "3": "DES", "4": "G/S", "5": "FINAL", "6": "TCAS" }
+    },
+    "autobrake": {
+      "name": "L:A32NX_AUTOBRAKES_ARMED_MODE", "type": "enum", "verified": false,
+      "values": { "0": "OFF", "1": "LO", "2": "MED", "3": "MAX" }
+    },
+    "masterWarning": { "name": "L:A32NX_MASTER_WARNING", "type": "bool", "verified": true },
+    "masterCaution": { "name": "L:A32NX_MASTER_CAUTION", "type": "bool", "verified": true },
+    "speedTarget": { "name": "L:A32NX_SPEEDS_MANAGED_PFD", "type": "number", "verified": false, "description": "Managed Speed des FMS in kt, 0 = ungültig" },
+    "speedManaged": { "name": "L:A32NX_FCU_AFS_DISPLAY_SPD_MACH_MANAGED", "type": "bool", "verified": false, "description": "Managed-Punkt im SPD-Fenster" },
+    "selectedSpeed": { "name": "L:A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE", "type": "number", "verified": false, "description": "Anzeige im SPD/MACH-Fenster" },
+    "machMode": { "name": "L:A32NX_FCU_AFS_DISPLAY_MACH_MODE", "type": "bool", "verified": false },
+    "selectedAltitude": { "name": "L:A32NX_FCU_AFS_DISPLAY_ALT_VALUE", "type": "number", "verified": false, "description": "Anzeige im ALT-Fenster (ft)" },
+    "vls": { "name": "L:A32NX_SPEEDS_VLS", "type": "number", "verified": false },
+    "fuelFlowKgh": { "name": "L:A32NX_ENGINE_FF:{i}", "type": "number", "verified": false, "description": "Fuel Flow je Triebwerk in kg/h" }
+  },
+  "ecam": {
+    "format": "fbw-a32nx",
+    "leftLines": "L:A32NX_EWD_LOWER_LEFT_LINE_{n}",
+    "rightLines": "L:A32NX_EWD_LOWER_RIGHT_LINE_{n}",
+    "lines": 7
+  },
+  "limits": {
+    // A320neo – bitte gegen die FBW-Doku/FCOM prüfen
+    "vmoKt": 350,
+    "vleKt": 280,
+    "vfeKt": { "1": 230, "2": 200, "3": 185, "4": 177 },
+    "speedLimitBelowFl100Kt": 250
+  },
+  "variables": [
+    { "key": "fireButtonEng1", "name": "L:A32NX_FIRE_BUTTON_ENG1", "unit": "number", "description": "ENG 1 Fire Pushbutton (1 = released)", "values": { "0": "IN", "1": "RELEASED" } },
+    { "key": "fireGuardEng1", "name": "L:A32NX_FIRE_GUARD_ENG1", "unit": "number", "description": "ENG 1 Fire Guard" },
+    { "key": "wingAntiIcePressed", "name": "L:XMLVAR_MOMENTARY_PUSH_OVHD_ANTIICE_WING_PRESSED", "unit": "number", "description": "Wing Anti-Ice Pushbutton" },
+    { "key": "vapp", "name": "L:A32NX_SPEEDS_VAPP", "unit": "number", "description": "VAPP aus dem FMS (kt)" },
+    { "key": "greenDot", "name": "L:A32NX_SPEEDS_GD", "unit": "number", "description": "Green Dot (kt)" }
+  ]
+}

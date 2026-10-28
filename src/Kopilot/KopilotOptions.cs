@@ -17,6 +17,9 @@ public sealed class KopilotOptions
     /// <summary>Wartezeit zwischen Verbindungsversuchen, solange MSFS nicht läuft.</summary>
     public int ReconnectSeconds { get; set; } = 5;
 
+    /// <summary>Schnelle Werte: Anzahl übersprungener Sim-Frames zwischen zwei Updates (4 ≈ 10 Hz bei 50 fps).</summary>
+    public int FastIntervalFrames { get; set; } = 4;
+
     /// <summary>Timeout für Einzelabfragen (read_simvar).</summary>
     public int ReadTimeoutMs { get; set; } = 3000;
 
@@ -28,6 +31,48 @@ public sealed class KopilotOptions
 
     /// <summary>Zugriffsschutz und Remote-Betrieb (Cloudflare Tunnel, Claude-Connector).</summary>
     public RemoteOptions Remote { get; set; } = new();
+
+    /// <summary>SimBrief-Anbindung für Flugplan und Fortschritt.</summary>
+    public SimBriefOptions SimBrief { get; set; } = new();
+
+    /// <summary>Aktives Monitoring.</summary>
+    public MonitoringOptions Monitoring { get; set; } = new();
+
+    /// <summary>Ordner für Caches (ECAM-Tabellen). Leer = %LOCALAPPDATA%\Kopilot.</summary>
+    public string DataDirectory { get; set; } = "";
+
+    public string ResolveDataDirectory() =>
+        string.IsNullOrWhiteSpace(DataDirectory)
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Kopilot")
+            : DataDirectory;
+}
+
+public sealed class SimBriefOptions
+{
+    /// <summary>SimBrief-Benutzername (alternativ PilotId).</summary>
+    public string Username { get; set; } = "";
+
+    /// <summary>SimBrief Pilot-ID (Account Settings).</summary>
+    public string PilotId { get; set; } = "";
+
+    /// <summary>Wie lange ein geladenes OFP wiederverwendet wird, bevor neu geladen wird.</summary>
+    public int CacheMinutes { get; set; } = 10;
+
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(Username) || !string.IsNullOrWhiteSpace(PilotId);
+}
+
+public sealed class MonitoringOptions
+{
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>Takt der Regelauswertung.</summary>
+    public int IntervalMs { get; set; } = 200;
+
+    /// <summary>Regeln, die ausgeschaltet sein sollen (IDs, z. B. "SPEED_DEVIATION").</summary>
+    public List<string> DisabledRules { get; set; } = [];
+
+    /// <summary>Wie viele vergangene Ereignisse für get_alerts aufgehoben werden.</summary>
+    public int HistorySize { get; set; } = 500;
 }
 
 /// <summary>

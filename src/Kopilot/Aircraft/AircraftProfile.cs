@@ -4,26 +4,173 @@ using System.Text.Json.Serialization;
 namespace Kopilot.Aircraft;
 
 /// <summary>
-/// Flugzeugspezifische Zusatzvariablen (meist L:-Variablen), z. B. FMA-Modi eines Airbus.
-/// Wird über den TITLE des Flugzeugs ausgewählt.
+/// Flugzeugprofil: sagt Kopilot, woher flugzeugspezifische Werte kommen (meist L:-Variablen),
+/// wie das ECAM gelesen wird und welche Grenzwerte gelten.
 /// </summary>
 public sealed class AircraftProfile
 {
     public string Name { get; set; } = "";
 
-    /// <summary>Profil passt, wenn der Flugzeug-TITLE einen dieser Texte enthält (Groß-/Kleinschreibung egal).</summary>
+    /// <summary>
+    /// Erkennung: Eine Regel passt, wenn ALLE ihre Texte im Pfad bzw. Titel vorkommen. Das Profil passt, wenn EINE Regel passt.
+    /// Pfad-Treffer (aircraft.cfg-Pfad aus SimConnect) gehen vor Titel-Treffern.
+    /// </summary>
+    public List<ProfileMatch> Match { get; set; } = [];
+
+    /// <summary>Altform: passt, wenn der TITLE einen dieser Texte enthält.</summary>
     public List<string> TitleContains { get; set; } = [];
 
     public string? Notes { get; set; }
 
+    /// <summary>Semantische Werte (z. B. "ap1", "athrStatus", "fmaVertical") → Quelle. Siehe <see cref="BindingKeys"/>.</summary>
+    public Dictionary<string, ProfileBinding> Bindings { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public EcamConfig? Ecam { get; set; }
+
+    public AircraftLimits Limits { get; set; } = new();
+
+    /// <summary>Freie Zusatzvariablen, die get_aircraft_profile roh ausgibt.</summary>
     public List<ProfileVariable> Variables { get; set; } = [];
 
     [JsonIgnore]
     public string? SourceFile { get; set; }
 
-    public bool Matches(string? title) =>
-        !string.IsNullOrWhiteSpace(title)
-        && TitleContains.Any(t => !string.IsNullOrWhiteSpace(t) && title.Contains(t, StringComparison.OrdinalIgnoreCase));
+    /// <summary>2 = Pfad-Treffer, 1 = Titel-Treffer, 0 = passt nicht.</summary>
+    public int MatchScore(string? title, string? path)
+    {
+        var best = 0;
+        foreach (var rule in Match)
+        {
+            var hasPath = rule.Path.Count > 0;
+            var hasTitle = rule.Title.Count > 0;
+            if (!hasPath && !hasTitle)
+            {
+                continue;
+            }
+
+            var pathOk = !hasPath || (path is not null && rule.Path.All(t => path.Contains(t, StringComparison.OrdinalIgnoreCase)));
+            var titleOk = !hasTitle || (title is not null && rule.Title.All(t => title.Contains(t, StringComparison.OrdinalIgnoreCase)));
+            if (pathOk && titleOk)
+            {
+                best = Math.Max(best, hasPath ? 2 : 1);
+            }
+        }
+
+        if (best == 0 && !string.IsNullOrWhiteSpace(title)
+            && TitleContains.Any(t => !string.IsNullOrWhiteSpace(t) && title.Contains(t, StringComparison.OrdinalIgnoreCase)))
+        {
+            best = 1;
+        }
+
+        return best;
+    }
+}
+
+public sealed class ProfileMatch
+{
+    public List<string> Path { get; set; } = [];
+
+    public List<string> Title { get; set; } = [];
+}
+
+/// <summary>Quelle für einen semantischen Wert.</summary>
+public sealed class ProfileBinding
+{
+    /// <summary>SimVar oder L:-Variable, z. B. "L:A32NX_AUTOPILOT_1_ACTIVE". "{i}" wird bei Triebwerkswerten ersetzt.</summary>
+    public string Name { get; set; } = "";
+
+    public string Unit { get; set; } = "number";
+
+    /// <summary>number | bool | enum | bitmask | string</summary>
+    public string Type { get; set; } = "number";
+
+    /// <summary>Umrechnungsfaktor auf die Kopilot-Einheit (z. B. lbs/h → kg/h = 0.45359237).</summary>
+    public double Scale { get; set; } = 1;
+
+    /// <summary>enum: Rohwert → Text. bitmask: Bitnummer → Text.</summary>
+    public Dictionary<string, string>? Values { get; set; }
+
+    /// <summary>Schnell abonnieren (für Monitoring). Standard je nach Schlüssel.</summary>
+    public bool? Fast { get; set; }
+
+    /// <summary>false = Name stammt aus Doku/Annahme und ist im Sim noch nicht geprüft.</summary>
+    public bool Verified { get; set; } = true;
+
+    public string? Description { get; set; }
+
+    public string EffectiveUnit => Type.Equals("string", StringComparison.OrdinalIgnoreCase) ? "string" : Unit;
+
+    public string? Translate(double raw)
+    {
+        if (Values is null)
+        {
+            return null;
+        }
+
+        var key = Math.Round(raw).ToString(CultureInfo.InvariantCulture);
+        return Values.TryGetValue(key, out var text) ? text : null;
+    }
+
+    public IReadOnlyList<string> DecodeBits(double raw)
+    {
+        var bits = (long)Math.Round(raw);
+        var result = new List<string>();
+        if (Values is null)
+        {
+            return result;
+        }
+
+        foreach (var (bit, text) in Values.OrderBy(v => int.TryParse(v.Key, out var b) ? b : 99))
+        {
+            if (int.TryParse(bit, NumberStyles.Integer, CultureInfo.InvariantCulture, out var b) && b is >= 0 and < 63 && (bits & (1L << b)) != 0)
+            {
+                result.Add(text);
+            }
+        }
+
+        return result;
+    }
+}
+
+/// <summary>Wie das ECAM gelesen wird.</summary>
+public sealed class EcamConfig
+{
+    /// <summary>Codeformat/Tabelle, derzeit "fbw-a32nx".</summary>
+    public string Format { get; set; } = "fbw-a32nx";
+
+    /// <summary>Linker unterer EWD-Bereich (Warnungen/Verfahren), "{n}" = Zeilennummer.</summary>
+    public string LeftLines { get; set; } = "";
+
+    /// <summary>Rechter unterer EWD-Bereich (Memos), "{n}" = Zeilennummer.</summary>
+    public string RightLines { get; set; } = "";
+
+    public int Lines { get; set; } = 7;
+}
+
+/// <summary>Grenzwerte für das Monitoring. Fehlende Werte = Regel nutzt Standard bzw. ist aus.</summary>
+public sealed class AircraftLimits
+{
+    public double? VmoKt { get; set; }
+
+    /// <summary>Höchstgeschwindigkeit mit ausgefahrenem Fahrwerk (VLE).</summary>
+    public double? VleKt { get; set; }
+
+    /// <summary>VFE je Klappenhebel-Index ("1", "2", …).</summary>
+    public Dictionary<string, double> VfeKt { get; set; } = [];
+
+    /// <summary>Speed-Limit unterhalb FL100.</summary>
+    public double SpeedLimitBelowFl100Kt { get; set; } = 250;
+
+    public double? VfeFor(double? flapsIndex)
+    {
+        if (flapsIndex is not { } f || f < 0.5)
+        {
+            return null;
+        }
+
+        var key = Math.Round(f).ToString(CultureInfo.InvariantCulture);
+        return VfeKt.TryGetValue(key, out var v) ? v : null;
+    }
 }
 
 public sealed class ProfileVariable
@@ -51,4 +198,42 @@ public sealed class ProfileVariable
         var key = Math.Round(d).ToString(CultureInfo.InvariantCulture);
         return Values.TryGetValue(key, out var text) ? text : null;
     }
+}
+
+/// <summary>Bekannte semantische Schlüssel, die Tools und Monitoring auswerten.</summary>
+public static class BindingKeys
+{
+    public const string Ap1 = "ap1";
+    public const string Ap2 = "ap2";
+    public const string FlightDirector = "flightDirector";
+    public const string AthrStatus = "athrStatus";
+    public const string AthrMode = "athrMode";
+    public const string FmaLateral = "fmaLateral";
+    public const string FmaLateralArmed = "fmaLateralArmed";
+    public const string FmaVertical = "fmaVertical";
+    public const string FmaVerticalArmed = "fmaVerticalArmed";
+    public const string Autobrake = "autobrake";
+    public const string MasterWarning = "masterWarning";
+    public const string MasterCaution = "masterCaution";
+    public const string SpeedTarget = "speedTarget";
+    public const string SpeedManaged = "speedManaged";
+    public const string SelectedSpeed = "selectedSpeed";
+    public const string MachMode = "machMode";
+    public const string SelectedAltitude = "selectedAltitude";
+    public const string Vls = "vls";
+    public const string FuelFlowKgh = "fuelFlowKgh";
+
+    /// <summary>Alle bekannten Schlüssel (für get_aircraft_profile).</summary>
+    public static readonly IReadOnlyList<string> All =
+    [
+        Ap1, Ap2, FlightDirector, AthrStatus, AthrMode, FmaLateral, FmaLateralArmed, FmaVertical, FmaVerticalArmed, Autobrake,
+        MasterWarning, MasterCaution, SpeedTarget, SpeedManaged, SelectedSpeed, MachMode, SelectedAltitude, Vls, FuelFlowKgh,
+    ];
+
+    /// <summary>Schlüssel, die standardmäßig schnell abonniert werden (Monitoring).</summary>
+    public static readonly HashSet<string> FastByDefault = new(StringComparer.OrdinalIgnoreCase)
+    {
+        Ap1, Ap2, AthrStatus, FmaLateral, FmaVertical, MasterWarning, MasterCaution, SpeedTarget, SpeedManaged,
+        SelectedSpeed, MachMode, SelectedAltitude, Vls,
+    };
 }

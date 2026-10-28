@@ -24,48 +24,48 @@ public static class SimVarCatalog
             SimVarSpec.Num("lat", "PLANE LATITUDE", "degrees"),
             SimVarSpec.Num("lon", "PLANE LONGITUDE", "degrees"),
             SimVarSpec.Num("altTrue", "PLANE ALTITUDE", "feet"),
-            SimVarSpec.Num("altIndicated", "INDICATED ALTITUDE", "feet"),
-            SimVarSpec.Num("altPressure", "PRESSURE ALTITUDE", "feet"),
-            SimVarSpec.Num("altAgl", "PLANE ALT ABOVE GROUND", "feet"),
-            SimVarSpec.Num("altRadio", "RADIO HEIGHT", "feet"),
-            SimVarSpec.Bool("onGround", "SIM ON GROUND"),
+            SimVarSpec.Num("altIndicated", "INDICATED ALTITUDE", "feet").AsFast(),
+            SimVarSpec.Num("altPressure", "PRESSURE ALTITUDE", "feet").AsFast(),
+            SimVarSpec.Num("altAgl", "PLANE ALT ABOVE GROUND", "feet").AsFast(),
+            SimVarSpec.Num("altRadio", "RADIO HEIGHT", "feet").AsFast(),
+            SimVarSpec.Bool("onGround", "SIM ON GROUND").AsFast(),
 
             // Geschwindigkeiten
-            SimVarSpec.Num("ias", "AIRSPEED INDICATED", "knots"),
+            SimVarSpec.Num("ias", "AIRSPEED INDICATED", "knots").AsFast(),
             SimVarSpec.Num("tas", "AIRSPEED TRUE", "knots"),
             SimVarSpec.Num("mach", "AIRSPEED MACH", "mach"),
-            SimVarSpec.Num("gs", "GROUND VELOCITY", "knots"),
-            SimVarSpec.Num("vs", "VERTICAL SPEED", "feet per minute"),
+            SimVarSpec.Num("gs", "GROUND VELOCITY", "knots").AsFast(),
+            SimVarSpec.Num("vs", "VERTICAL SPEED", "feet per minute").AsFast(),
 
             // Lage & Kurs
-            SimVarSpec.Num("hdgMag", "PLANE HEADING DEGREES MAGNETIC", "degrees"),
-            SimVarSpec.Num("hdgTrue", "PLANE HEADING DEGREES TRUE", "degrees"),
+            SimVarSpec.Num("hdgMag", "PLANE HEADING DEGREES MAGNETIC", "degrees").AsFast(),
+            SimVarSpec.Num("hdgTrue", "PLANE HEADING DEGREES TRUE", "degrees").AsFast(),
             SimVarSpec.Num("trackMag", "GPS GROUND MAGNETIC TRACK", "degrees"),
-            SimVarSpec.Num("pitch", "PLANE PITCH DEGREES", "degrees"),
-            SimVarSpec.Num("bank", "PLANE BANK DEGREES", "degrees"),
+            SimVarSpec.Num("pitch", "PLANE PITCH DEGREES", "degrees").AsFast(),
+            SimVarSpec.Num("bank", "PLANE BANK DEGREES", "degrees").AsFast(),
 
             // Konfiguration
-            SimVarSpec.Num("flapsIndex", "FLAPS HANDLE INDEX", "number"),
-            SimVarSpec.Bool("gearHandle", "GEAR HANDLE POSITION"),
-            SimVarSpec.Num("gearCenterPct", "GEAR CENTER POSITION", "percent"),
+            SimVarSpec.Num("flapsIndex", "FLAPS HANDLE INDEX", "number").AsFast(),
+            SimVarSpec.Bool("gearHandle", "GEAR HANDLE POSITION").AsFast(),
+            SimVarSpec.Num("gearCenterPct", "GEAR CENTER POSITION", "percent").AsFast(),
             SimVarSpec.Bool("spoilersArmed", "SPOILERS ARMED"),
             SimVarSpec.Num("spoilersHandlePct", "SPOILERS HANDLE POSITION", "percent"),
             SimVarSpec.Bool("parkingBrake", "BRAKE PARKING POSITION"),
 
             // Autopilot (Standard-SimVars – bei Study-Level-Airlinern evtl. nicht aussagekräftig)
-            SimVarSpec.Bool("apMaster", "AUTOPILOT MASTER"),
+            SimVarSpec.Bool("apMaster", "AUTOPILOT MASTER").AsFast(),
             SimVarSpec.Bool("fdActive", "AUTOPILOT FLIGHT DIRECTOR ACTIVE"),
             SimVarSpec.Bool("athrArmed", "AUTOPILOT THROTTLE ARM"),
-            SimVarSpec.Num("apAlt", "AUTOPILOT ALTITUDE LOCK VAR", "feet"),
+            SimVarSpec.Num("apAlt", "AUTOPILOT ALTITUDE LOCK VAR", "feet").AsFast(),
             SimVarSpec.Num("apHdg", "AUTOPILOT HEADING LOCK DIR", "degrees"),
-            SimVarSpec.Num("apSpd", "AUTOPILOT AIRSPEED HOLD VAR", "knots"),
+            SimVarSpec.Num("apSpd", "AUTOPILOT AIRSPEED HOLD VAR", "knots").AsFast(),
             SimVarSpec.Num("apVs", "AUTOPILOT VERTICAL HOLD VAR", "feet per minute"),
             SimVarSpec.Bool("apNav", "AUTOPILOT NAV1 LOCK"),
             SimVarSpec.Bool("apAppr", "AUTOPILOT APPROACH HOLD"),
 
             // Warnungen
-            SimVarSpec.Bool("stallWarning", "STALL WARNING"),
-            SimVarSpec.Bool("overspeedWarning", "OVERSPEED WARNING"),
+            SimVarSpec.Bool("stallWarning", "STALL WARNING").AsFast(),
+            SimVarSpec.Bool("overspeedWarning", "OVERSPEED WARNING").AsFast(),
 
             // APU, Treibstoff, Gewicht
             SimVarSpec.Num("apuRpmPct", "APU PCT RPM", "percent"),
@@ -88,6 +88,27 @@ public static class SimVarCatalog
             SimVarSpec.Num("com1Active", "COM ACTIVE FREQUENCY:1", "MHz"),
             SimVarSpec.Num("com1Standby", "COM STANDBY FREQUENCY:1", "MHz"),
             SimVarSpec.Num("com2Active", "COM ACTIVE FREQUENCY:2", "MHz"),
+
+            // Ingame-ATC
+            SimVarSpec.Str("atcAirline", "ATC AIRLINE"),
+            SimVarSpec.Str("atcFlightNumber", "ATC FLIGHT NUMBER"),
+            SimVarSpec.Bool("atcClearedIfr", "ATC CLEARED IFR"),
+            SimVarSpec.Bool("atcClearedTaxi", "ATC CLEARED TAXI"),
+            SimVarSpec.Bool("atcClearedTakeoff", "ATC CLEARED TAKEOFF"),
+            SimVarSpec.Bool("atcClearedLanding", "ATC CLEARED LANDING"),
+            SimVarSpec.Bool("atcRunwaySelected", "ATC RUNWAY SELECTED"),
+            SimVarSpec.Str("atcRunwayAirport", "ATC RUNWAY AIRPORT NAME"),
+            SimVarSpec.Num("atcRunwayHeadingTrue", "ATC RUNWAY HEADING DEGREES TRUE", "degrees"),
+            SimVarSpec.Num("atcRunwayLengthFt", "ATC RUNWAY LENGTH", "feet"),
+            SimVarSpec.Num("atcRunwayStartDistanceFt", "ATC RUNWAY START DISTANCE", "feet"),
+            // Kandidaten für Höhenvorgaben des Ingame-ATC – Bedeutung im Testflug prüfen
+            SimVarSpec.Num("atcCurrentWpAltFt", "ATC CURRENT WAYPOINT ALTITUDE", "feet"),
+            SimVarSpec.Num("atcPreviousWpAltFt", "ATC PREVIOUS WAYPOINT ALTITUDE", "feet"),
+            SimVarSpec.Num("atcFpDiffAltFt", "ATC FLIGHTPLAN DIFF ALT", "feet"),
+            SimVarSpec.Num("atcFpDiffHdgDeg", "ATC FLIGHTPLAN DIFF HEADING", "degrees"),
+            SimVarSpec.Num("atcFpDiffDistM", "ATC FLIGHTPLAN DIFF DISTANCE", "meters"),
+            SimVarSpec.Bool("atcAirportTowered", "ATC AIRPORT IS TOWERED"),
+            SimVarSpec.Bool("atcOnParkingSpot", "ATC ON PARKING SPOT"),
 
             // Navigation (GPS-Variablen – werden nicht von jedem FMS befüllt)
             SimVarSpec.Bool("gpsFlightPlanActive", "GPS IS ACTIVE FLIGHT PLAN"),

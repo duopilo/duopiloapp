@@ -1,19 +1,24 @@
 {
-  // Profil für den iniBuilds A321LR (MSFS 2024).
-  // Die L:-Variablen für FMA, Autobrake usw. sind noch NICHT eingetragen –
-  // die Namen finden wir im Developer Mode (Tools → Behaviors → LocalVariables)
-  // und testen sie mit dem Tool read_simvar, bevor sie hier landen.
+  // iniBuilds A321LR (MSFS 2024).
+  // Stand Testflug 28.10.2026: Die generischen AP-Selected-Variablen (ALT/HDG/SPD/VS) spiegeln das FCU korrekt.
+  // FMA, A/THR-Status, Master Warning/Caution und ECAM fehlen noch – die L:-Variablen suchen wir im Developer Mode
+  // (Tools → Behaviors → LocalVariables) und prüfen sie mit read_simvar, bevor sie hier als Binding landen.
   //
-  // Beispiel für einen Eintrag (Name ist ein Platzhalter, nicht echt):
-  // {
-  //   "key": "fmaLateral",
-  //   "name": "L:BEISPIEL_FMA_LATERAL",
-  //   "unit": "number",
-  //   "description": "Lateraler FMA-Modus",
-  //   "values": { "0": "—", "1": "HDG", "2": "NAV", "3": "LOC" }
-  // }
+  // Beispiel für ein Binding (Name ist ein Platzhalter):
+  //   "athrStatus": { "name": "L:BEISPIEL_ATHR", "type": "enum", "values": { "0": "OFF", "1": "ARMED", "2": "ACTIVE" } }
   "name": "iniBuilds A321LR",
-  "titleContains": [ "A321" ],
-  "notes": "Noch keine L:-Variablen hinterlegt. FMA-Modi kommen nach der L:var-Suche dazu.",
+  "match": [
+    { "path": [ "inibuilds", "a321" ] },
+    { "title": [ "A321" ] }
+  ],
+  "notes": "Generische AP-Selected-Werte sind korrekt. FMA, A/THR, ECAM: noch keine L:-Variablen. Das FMS speist keine GPS-Flugplanvariablen, für Route/Fortschritt get_flight_plan/get_progress (SimBrief) nutzen. Keine Fire-Variable gefunden, kein Failure-Menü.",
+  "bindings": {},
+  "limits": {
+    // A321neo – bitte prüfen
+    "vmoKt": 350,
+    "vleKt": 280,
+    "vfeKt": { "1": 235, "2": 215, "3": 195, "4": 190 },
+    "speedLimitBelowFl100Kt": 250
+  },
   "variables": []
 }

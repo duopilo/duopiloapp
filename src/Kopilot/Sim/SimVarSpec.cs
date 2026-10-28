@@ -16,6 +16,11 @@ public enum SimVarKind
 /// <param name="Kind">Datentyp.</param>
 public sealed record SimVarSpec(string Key, string Name, string Unit, SimVarKind Kind)
 {
+    /// <summary>Schnell abonniert (mehrmals pro Sekunde) statt 1x pro Sekunde – für Monitoring und Callouts.</summary>
+    public bool Fast { get; init; }
+
+    public SimVarSpec AsFast() => this with { Fast = true };
+
     public static SimVarSpec Num(string key, string name, string unit) => new(key, name, unit, SimVarKind.Number);
 
     public static SimVarSpec Bool(string key, string name) => new(key, name, "Bool", SimVarKind.Bool);
@@ -40,7 +45,7 @@ public sealed record SimVarSpec(string Key, string Name, string Unit, SimVarKind
     public static SimVarKind KindFromUnit(string? unit) =>
         unit?.Trim().ToLowerInvariant() switch
         {
-            "string" => SimVarKind.String,
+            "string" or "text" => SimVarKind.String,
             "bool" => SimVarKind.Bool,
             _ => SimVarKind.Number,
         };
