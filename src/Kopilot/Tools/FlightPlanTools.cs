@@ -76,7 +76,8 @@ public static class FlightPlanTools
         "Flight progress against the SimBrief plan, computed from the aircraft position: next fix with distance and ETA (taken from the FMS active waypoint when the " +
         "aircraft profile provides it, e.g. after DIR TO – 'source': 'fms'), distance and time to destination, " +
         "distance to top of descent, cross-track deviation from the planned route, planned altitude at the next fix, and fuel on board versus plan " +
-        "with predicted landing fuel (kg). Times are UTC.")]
+        "with predicted landing fuel (kg). Times are UTC. 'etaSource': 'simbrief' = ETE/ETA from the planned navlog times (planned winds, climb and descent), " +
+        "shifted by the deviation from plan at the last fix passed; 'groundspeed' = remaining distance at current ground speed (navlog without times).")]
     public static async Task<string> GetProgress(
         SimConnectClient sim,
         SimBriefService simBrief,
@@ -109,7 +110,9 @@ public static class FlightPlanTools
         var gs = sim.Num("gs");
         var zulu = sim.Num("zuluTimeSec");
         var signals = new AircraftSignals(sim);
+        var passage = simBrief.ObservePassage(ofp, points, progress, zulu, gs);
         var fp = ProgressCalculator.Compute(ofp, points, progress, sim.Num("fuelTotalKg"), signals.FmsWaypoint(lat, lon));
+        var eta = EtaCalculator.Predict(ofp, points, fp, gs, passage);
         var destDist = fp.DistanceToGoNm;
         var xt = progress.CrossTrackNm;
 
@@ -119,6 +122,7 @@ public static class FlightPlanTools
             loaded = true,
             route = $"{ofp.Origin.Icao} → {ofp.Destination.Icao}",
             groundSpeedKt = Fmt.Int(gs),
+            etaSource = eta.Source,
             previousFix = fp.Previous.Ident,
             nextFix = new
             {
@@ -127,25 +131,25 @@ public static class FlightPlanTools
                 airway = fp.NextFix?.Airway,
                 distanceNm = Math.Round(fp.DistanceToNextNm, 1),
                 bearingTrueDeg = Fmt.Heading(RouteMath.BearingDeg(lat, lon, fp.Next.Lat, fp.Next.Lon)),
-                ete = Ete(fp.DistanceToNextNm, gs),
-                etaUtc = Eta(zulu, fp.DistanceToNextNm, gs),
+                ete = Fmt.Duration(eta.NextSec),
+                etaUtc = Eta(zulu, eta.NextSec),
                 plannedAltitudeFt = fp.NextFix?.AltitudeFt,
                 plannedStage = fp.NextFix?.Stage,
             },
             fmsWaypointNotInPlan = fp.FmsWaypointNotInPlan ? true : (bool?)null,
             following = fp.Following,
-            topOfClimb = Marker(fp.TopOfClimb, gs, zulu),
-            topOfDescent = Marker(fp.TopOfDescent, gs, zulu),
+            topOfClimb = Marker(fp.TopOfClimb, eta.TopOfClimbSec, zulu),
+            topOfDescent = Marker(fp.TopOfDescent, eta.TopOfDescentSec, zulu),
             topOfDescentSource = fp.TopOfDescent is null ? null : "simbrief",
             destination = new
             {
                 icao = ofp.Destination.Icao,
                 runway = ofp.Destination.PlanRunway,
                 distanceNm = Math.Round(destDist),
-                ete = Ete(destDist, gs),
-                etaUtc = Eta(zulu, destDist, gs),
+                ete = Fmt.Duration(eta.DestinationSec),
+                etaUtc = Eta(zulu, eta.DestinationSec),
                 scheduledOnUtc = Clock(ofp.Times.ScheduledOnUtc),
-                versusSchedule = VersusSchedule(ofp, destDist, gs, zulu),
+                versusSchedule = VersusSchedule(ofp, zulu, eta.DestinationSec),
             },
             crossTrackNm = Math.Round(xt, 1),
             crossTrackSide = Math.Abs(xt) < 0.1 ? null : xt > 0 ? "right" : "left",
@@ -166,18 +170,18 @@ public static class FlightPlanTools
         });
     }
 
-    private static object? Marker(RouteMarker? marker, double? gs, double? zulu) =>
-        marker is null ? null : new { distanceNm = Math.Round(marker.DistanceNm), ete = Ete(marker.DistanceNm, gs), etaUtc = Eta(zulu, marker.DistanceNm, gs) };
+    private static object? Marker(RouteMarker? marker, double? eteSec, double? zulu) =>
+        marker is null ? null : new { distanceNm = Math.Round(marker.DistanceNm), ete = Fmt.Duration(eteSec), etaUtc = Eta(zulu, eteSec) };
 
     /// <summary>Ankunft gegen den Plan ("+12 min" / "-5 min"). Der Sim kennt nur die Uhrzeit, daher modulo 24 h.</summary>
-    internal static string? VersusSchedule(Ofp ofp, double distanceToGoNm, double? gs, double? zulu)
+    internal static string? VersusSchedule(Ofp ofp, double? zulu, double? destinationEteSec)
     {
-        if (zulu is not { } z || gs is not > 50 || ofp.Times.ScheduledOnUtc is not { } schedOn)
+        if (zulu is not { } z || destinationEteSec is not { } ete || ofp.Times.ScheduledOnUtc is not { } schedOn)
         {
             return null;
         }
 
-        var etaSec = z + distanceToGoNm / gs.Value * 3600;
+        var etaSec = z + ete;
         var schedSec = schedOn.UtcDateTime.TimeOfDay.TotalSeconds;
         var deltaMin = ((etaSec - schedSec) % 86400 + 86400) % 86400 / 60;
         if (deltaMin > 720)
@@ -201,8 +205,7 @@ public static class FlightPlanTools
 
     internal static string? Clock(DateTimeOffset? t) => t is { } v ? v.UtcDateTime.ToString("HH:mm", CultureInfo.InvariantCulture) + "Z" : null;
 
-    internal static string? Ete(double distanceNm, double? gs) => gs is > 50 ? Fmt.Duration(distanceNm / gs.Value * 3600) : null;
-
-    internal static string? Eta(double? zulu, double distanceNm, double? gs) =>
-        zulu is { } z && gs is > 50 ? Fmt.ClockTime(z + distanceNm / gs.Value * 3600) + "Z" : null;
+    /// <summary>Uhrzeit (UTC) in <paramref name="eteSec"/> Sekunden ab der Sim-Uhrzeit.</summary>
+    internal static string? Eta(double? zulu, double? eteSec) =>
+        zulu is { } z && eteSec is { } e ? Fmt.ClockTime(z + e) + "Z" : null;
 }

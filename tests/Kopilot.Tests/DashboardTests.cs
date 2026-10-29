@@ -1,7 +1,11 @@
 using System.Net;
 using System.Text.Json;
+using Kopilot.Aircraft;
+using Kopilot.Dashboard;
 using Kopilot.FlightPlan;
 using Kopilot.Hosting;
+using Kopilot.Monitoring;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Kopilot.Tests;
 
@@ -179,5 +183,105 @@ public sealed class DashboardTests : IAsyncLifetime
         Assert.InRange(progress.TotalDistanceNm, 179, 181);
         Assert.True(progress.OnRoute);
         Assert.Equal(new[] { "BBBB" }, progress.Following);
+    }
+
+    // ------------------------------------------------------------------ Großanzeige und Pause
+
+    private static FlightSnapshot Cruise(DateTimeOffset t0, double sec, bool paused = false) => new()
+    {
+        TimeUtc = t0.AddSeconds(sec),
+        Connected = true,
+        FlightRunning = true,
+        Paused = paused,
+        PauseKind = paused ? "full" : null,
+        DataAgeSec = 0.1,
+        AircraftKey = "test",
+        OnGround = false,
+        IasKt = 250,
+        GroundSpeedKt = 420,
+        VerticalSpeedFpm = 0,
+        AltitudeFt = 30000,
+        PressureAltitudeFt = 30000,
+        AglFt = 29000,
+        BankRightDeg = 0,
+        FlapsIndex = 0,
+        GearExtendedPct = 0,
+        GearHandleDown = false,
+        ApEngaged = true,
+        SelectedAltitudeFt = 30000,
+        Limits = new AircraftLimits { VmoKt = 350, VleKt = 280 },
+    };
+
+    [Fact]
+    public void Nach_der_Pause_steht_nicht_mehr_Sim_paused_gross_da()
+    {
+        var engine = new MonitorEngine();
+        var bus = new AlertBus();
+        var t0 = DateTimeOffset.UtcNow;
+
+        bus.Publish(engine.Evaluate(Cruise(t0, 0)));
+        bus.Publish(engine.Evaluate(Cruise(t0, 11)));
+        Assert.Null(DashboardData.Headline(bus, t0.AddSeconds(11)));
+
+        bus.Publish(engine.Evaluate(Cruise(t0, 12, paused: true)));
+        var paused = DashboardData.Headline(bus, t0.AddSeconds(12));
+        Assert.NotNull(paused);
+        Assert.Equal("Sim paused", paused.Alert.Callout);
+        Assert.True(paused.Active);
+
+        // Pause vorbei: SIM_PAUSED endet, die Großanzeige ist sofort wieder ruhig (nicht erst nach 60 s)
+        var resumed = engine.Evaluate(Cruise(t0, 20));
+        Assert.Contains(resumed, e => e.Rule == Rules.SimPaused && e.Kind == AlertKind.Clear);
+        bus.Publish(resumed);
+        Assert.Null(DashboardData.Headline(bus, t0.AddSeconds(20)));
+        Assert.Null(DashboardData.Headline(bus, t0.AddSeconds(40)));
+
+        // Erneute Pause wird wieder angezeigt
+        bus.Publish(engine.Evaluate(Cruise(t0, 50, paused: true)));
+        Assert.Equal("Sim paused", DashboardData.Headline(bus, t0.AddSeconds(50))?.Alert.Callout);
+    }
+
+    [Fact]
+    public void Einmalige_Ansage_bleibt_eine_Minute_beendeter_Zustand_nicht()
+    {
+        var bus = new AlertBus();
+        var t0 = DateTimeOffset.UtcNow;
+        bus.Publish([new AlertEvent(0, t0, Rules.ApDisconnect, AlertSeverity.Caution, AlertKind.Event, "Autopilot off", "Autopilot aus.")]);
+        bus.Publish([new AlertEvent(0, t0.AddSeconds(5), Rules.SimPaused, AlertSeverity.Info, AlertKind.Raise, "Sim paused", "Simulator pausiert (full).")]);
+        bus.Publish([new AlertEvent(0, t0.AddSeconds(25), Rules.SimPaused, AlertSeverity.Info, AlertKind.Clear, null, "Sim läuft wieder.")]);
+
+        var headline = DashboardData.Headline(bus, t0.AddSeconds(30));
+        Assert.NotNull(headline);
+        Assert.Equal("Autopilot off", headline.Alert.Callout);
+        Assert.False(headline.Active);
+        Assert.Null(DashboardData.Headline(bus, t0.AddSeconds(61)));
+    }
+
+    [Fact]
+    public async Task Daten_API_setzt_die_Grossanzeige_nach_der_Pause_zurueck()
+    {
+        var bus = _app.App.Services.GetRequiredService<AlertBus>();
+        var now = DateTimeOffset.UtcNow;
+
+        bus.Publish([new AlertEvent(0, now, Rules.SimPaused, AlertSeverity.Info, AlertKind.Raise, "Sim paused", "Simulator pausiert (full).")]);
+        using (var json = await DashboardJson())
+        {
+            var headline = json.RootElement.GetProperty("alerts").GetProperty("headline");
+            Assert.Equal("Sim paused", headline.GetProperty("alert").GetProperty("callout").GetString());
+            Assert.True(headline.GetProperty("active").GetBoolean());
+        }
+
+        bus.Publish([new AlertEvent(0, now, Rules.SimPaused, AlertSeverity.Info, AlertKind.Clear, null, "Sim läuft wieder.")]);
+        using (var json = await DashboardJson())
+        {
+            Assert.Equal(JsonValueKind.Null, json.RootElement.GetProperty("alerts").GetProperty("headline").ValueKind);
+        }
+    }
+
+    private async Task<JsonDocument> DashboardJson()
+    {
+        using var response = await _app.Local().GetAsync("/api/dashboard?since=-1");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        return JsonDocument.Parse(await response.Content.ReadAsStringAsync());
     }
 }

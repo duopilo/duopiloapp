@@ -1,7 +1,8 @@
 namespace Kopilot.FlightPlan;
 
 /// <summary>Markante Punkte der Route (TOC/TOD) vor dem Flugzeug.</summary>
-public sealed record RouteMarker(string Ident, double DistanceNm);
+/// <param name="PointIndex">Index in der Punktliste der Route (für die Planzeit aus dem Navlog), -1 wenn unbekannt.</param>
+public sealed record RouteMarker(string Ident, double DistanceNm, int PointIndex = -1);
 
 /// <summary>Was das FMS über den aktiven Wegpunkt verrät (FBW: Distanz und Peilung, aber kein Name).</summary>
 /// <param name="MagVariationDeg">Missweisung Ost positiv (true − magnetic), um eine missweisende Peilung umzurechnen.</param>
@@ -15,6 +16,9 @@ public sealed record FlightProgress
     public required RoutePoint Previous { get; init; }
 
     public required RoutePoint Next { get; init; }
+
+    /// <summary>Index von <see cref="Next"/> in der Punktliste der Route.</summary>
+    public int NextIndex { get; init; }
 
     public OfpFix? NextFix { get; init; }
 
@@ -102,6 +106,7 @@ public static class ProgressCalculator
             Route = progress,
             Previous = prev,
             Next = next,
+            NextIndex = nextIndex,
             NextFix = nextFix,
             DistanceToNextNm = nextDistance,
             DistanceToGoNm = toGo,
@@ -170,7 +175,7 @@ public static class ProgressCalculator
         {
             if (points[i].Ident.Equals(ident, StringComparison.OrdinalIgnoreCase))
             {
-                return new RouteMarker(ident, distance);
+                return new RouteMarker(ident, distance, i);
             }
 
             if (i + 1 < points.Count)

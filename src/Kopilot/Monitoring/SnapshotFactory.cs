@@ -110,7 +110,10 @@ public sealed class SnapshotFactory(SimConnectClient sim, EcamCatalog ecam, SimB
             Empty(s.AutothrustStatus));
     }
 
-    /// <summary>TOD laut SimBrief nur alle paar Sekunden neu rechnen – die Route ändert sich nicht im 200-ms-Takt.</summary>
+    /// <summary>
+    /// TOD laut SimBrief nur alle paar Sekunden neu rechnen – die Route ändert sich nicht im 200-ms-Takt.
+    /// Dabei auch den Überflug der Fixes mitschreiben (ETA nach Plan in get_progress und im Dashboard).
+    /// </summary>
     private double? PlanTodDistance()
     {
         var now = DateTimeOffset.UtcNow;
@@ -126,6 +129,7 @@ public sealed class SnapshotFactory(SimConnectClient sim, EcamCatalog ecam, SimB
             var points = ofp.RoutePoints();
             if (simBrief.Locate(ofp, points, lat, lon) is { } route)
             {
+                simBrief.ObservePassage(ofp, points, route, sim.Num("zuluTimeSec"), sim.Num("gs"));
                 _todDistance = ProgressCalculator.Compute(ofp, points, route, null).TopOfDescent?.DistanceNm;
             }
         }

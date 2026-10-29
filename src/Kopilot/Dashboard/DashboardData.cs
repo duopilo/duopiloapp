@@ -11,6 +11,9 @@ using Kopilot.Tools;
 
 namespace Kopilot.Dashboard;
 
+/// <summary>Großanzeige im Dashboard: eine Meldung und ob ihr Zustand noch besteht.</summary>
+public sealed record DashboardHeadline(AlertEvent Alert, bool Active);
+
 /// <summary>Alle Werte für das Browser-Dashboard in einer Antwort (wird alle 500 ms abgefragt).</summary>
 public sealed class DashboardData(
     SimConnectClient sim,
@@ -23,6 +26,9 @@ public sealed class DashboardData(
     InputService? input = null,
     ISpeechOutput? speech = null)
 {
+    /// <summary>So lange bleibt eine einmalige Ansage groß stehen.</summary>
+    public static readonly TimeSpan HeadlineWindow = TimeSpan.FromSeconds(60);
+
     public object Build(long sinceId, bool includeLog)
     {
         var connection = sim.Connection;
@@ -60,6 +66,7 @@ public sealed class DashboardData(
             {
                 lastId = alerts.LastId,
                 active = alerts.Active(now).Select(AlertView.Full),
+                headline = Headline(alerts, now) is { } headline ? new { alert = AlertView.Full(headline.Alert), active = headline.Active } : null,
                 events = alerts.Since(sinceId < 0 ? Math.Max(0, alerts.LastId - 30) : sinceId, 30).Select(AlertView.Full),
             },
             sim = connection.IsConnected ? SimPart(status) : null,
@@ -82,6 +89,23 @@ public sealed class DashboardData(
                 })
                 : null,
         };
+    }
+
+    /// <summary>
+    /// Was groß angezeigt wird: der wichtigste aktive Zustand, sonst die letzte einmalige Ansage der letzten 60 s.
+    /// Beendete Zustände zählen nicht mehr – sonst bliebe z. B. "Sim paused" nach dem Ende der Pause stehen.
+    /// </summary>
+    public static DashboardHeadline? Headline(AlertBus alerts, DateTimeOffset now)
+    {
+        if (alerts.Active(now).FirstOrDefault(e => e.Callout is not null) is { } top)
+        {
+            return new DashboardHeadline(top, true);
+        }
+
+        var recent = alerts.Since(0, 40)
+            .Where(e => e.Kind == AlertKind.Event && e.Callout is not null && now - e.TimeUtc <= HeadlineWindow)
+            .MaxBy(e => e.Id);
+        return recent is null ? null : new DashboardHeadline(recent, false);
     }
 
     private object SimPart(SimStatus status)
@@ -236,14 +260,17 @@ public sealed class DashboardData(
             {
                 var gs = sim.Num("gs");
                 var zulu = sim.Num("zuluTimeSec");
+                var passage = simBrief.ObservePassage(ofp, points, route, zulu, gs);
                 var fp = ProgressCalculator.Compute(ofp, points, route, sim.Num("fuelTotalKg"), new AircraftSignals(sim).FmsWaypoint(lat, lon));
+                var times = EtaCalculator.Predict(ofp, points, fp, gs, passage);
                 progress = new
                 {
                     flownNm = Math.Round(route.DistanceFlownNm),
                     totalNm = Math.Round(fp.TotalDistanceNm),
                     toGoNm = Math.Round(fp.DistanceToGoNm),
-                    eta = FlightPlanTools.Eta(zulu, fp.DistanceToGoNm, gs),
-                    versusSchedule = FlightPlanTools.VersusSchedule(ofp, fp.DistanceToGoNm, gs, zulu),
+                    eta = FlightPlanTools.Eta(zulu, times.DestinationSec),
+                    etaSource = times.Source,
+                    versusSchedule = FlightPlanTools.VersusSchedule(ofp, zulu, times.DestinationSec),
                     next = new
                     {
                         ident = fp.Next.Ident,
@@ -251,12 +278,12 @@ public sealed class DashboardData(
                         notInPlan = fp.FmsWaypointNotInPlan,
                         airway = fp.NextFix?.Airway,
                         distNm = Math.Round(fp.DistanceToNextNm, 1),
-                        eta = FlightPlanTools.Eta(zulu, fp.DistanceToNextNm, gs),
+                        eta = FlightPlanTools.Eta(zulu, times.NextSec),
                         altFt = fp.NextFix?.AltitudeFt,
                     },
                     following = fp.Following,
-                    toc = fp.TopOfClimb is { } toc ? new { distNm = Math.Round(toc.DistanceNm), eta = FlightPlanTools.Eta(zulu, toc.DistanceNm, gs) } : null,
-                    tod = fp.TopOfDescent is { } tod ? new { distNm = Math.Round(tod.DistanceNm), eta = FlightPlanTools.Eta(zulu, tod.DistanceNm, gs) } : null,
+                    toc = fp.TopOfClimb is { } toc ? new { distNm = Math.Round(toc.DistanceNm), eta = FlightPlanTools.Eta(zulu, times.TopOfClimbSec) } : null,
+                    tod = fp.TopOfDescent is { } tod ? new { distNm = Math.Round(tod.DistanceNm), eta = FlightPlanTools.Eta(zulu, times.TopOfDescentSec) } : null,
                     xtk = Math.Round(route.CrossTrackNm, 1),
                     onRoute = fp.OnRoute,
                     terminal = fp.InTerminalArea,
