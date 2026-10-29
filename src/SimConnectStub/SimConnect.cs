@@ -37,6 +37,16 @@ namespace Microsoft.FlightSimulator.SimConnect
         SECOND,
     }
 
+    public enum SIMCONNECT_SIMOBJECT_TYPE
+    {
+        USER,
+        ALL,
+        AIRCRAFT,
+        HELICOPTER,
+        BOAT,
+        GROUND,
+    }
+
     [Flags]
     public enum SIMCONNECT_DATA_REQUEST_FLAG
     {
@@ -117,6 +127,10 @@ namespace Microsoft.FlightSimulator.SimConnect
         public object[] dwData;
     }
 
+    public class SIMCONNECT_RECV_SIMOBJECT_DATA_BYTYPE : SIMCONNECT_RECV_SIMOBJECT_DATA
+    {
+    }
+
     public class SIMCONNECT_RECV_EVENT : SIMCONNECT_RECV
     {
         public uint uGroupID;
@@ -152,6 +166,8 @@ namespace Microsoft.FlightSimulator.SimConnect
 
         public delegate void RecvSimobjectDataEventHandler(SimConnect sender, SIMCONNECT_RECV_SIMOBJECT_DATA data);
 
+        public delegate void RecvSimobjectDataBytypeEventHandler(SimConnect sender, SIMCONNECT_RECV_SIMOBJECT_DATA_BYTYPE data);
+
         public delegate void RecvEventEventHandler(SimConnect sender, SIMCONNECT_RECV_EVENT data);
 
         public delegate void RecvEventFilenameEventHandler(SimConnect sender, SIMCONNECT_RECV_EVENT_FILENAME data);
@@ -172,6 +188,8 @@ namespace Microsoft.FlightSimulator.SimConnect
         public event RecvExceptionEventHandler OnRecvException;
 
         public event RecvSimobjectDataEventHandler OnRecvSimobjectData;
+
+        public event RecvSimobjectDataBytypeEventHandler OnRecvSimobjectDataBytype;
 
         public event RecvEventEventHandler OnRecvEvent;
 
@@ -196,6 +214,10 @@ namespace Microsoft.FlightSimulator.SimConnect
         }
 
         public void RequestDataOnSimObject(Enum RequestID, Enum DefineID, uint ObjectID, SIMCONNECT_PERIOD Period, SIMCONNECT_DATA_REQUEST_FLAG Flags, uint origin, uint interval, uint limit)
+        {
+        }
+
+        public void RequestDataOnSimObjectType(Enum RequestID, Enum DefineID, uint dwRadiusMeters, SIMCONNECT_SIMOBJECT_TYPE type)
         {
         }
 

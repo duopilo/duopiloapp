@@ -3,11 +3,12 @@ using Kopilot.Atc;
 using Kopilot.Ecam;
 using Kopilot.FlightPlan;
 using Kopilot.Sim;
+using Kopilot.Traffic;
 
 namespace Kopilot.Monitoring;
 
 /// <summary>Baut aus den zwischengespeicherten Sim-Werten einen <see cref="FlightSnapshot"/>.</summary>
-public sealed class SnapshotFactory(SimConnectClient sim, EcamCatalog ecam, SimBriefService simBrief)
+public sealed class SnapshotFactory(SimConnectClient sim, EcamCatalog ecam, SimBriefService simBrief, TrafficService traffic)
 {
     private static readonly AircraftLimits DefaultLimits = new();
 
@@ -71,6 +72,7 @@ public sealed class SnapshotFactory(SimConnectClient sim, EcamCatalog ecam, SimB
             OverspeedWarning = sim.Bool("overspeedWarning"),
             Limits = signals.Profile?.Limits ?? DefaultLimits,
             AssignedRunway = AtcReader.AssignedRunway(sim, simBrief.Current),
+            Traffic = traffic.MonitoringPicture,
         };
     }
 

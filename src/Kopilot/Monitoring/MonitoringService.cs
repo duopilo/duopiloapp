@@ -29,6 +29,9 @@ public sealed class MonitoringService : BackgroundService
         {
             DisabledRules = new HashSet<string>(_options.DisabledRules, StringComparer.OrdinalIgnoreCase),
             AircraftAutoCallouts = _options.AircraftAutoCallouts,
+            TrafficRangeNm = _options.Traffic.ProximityRangeNm,
+            TrafficAltitudeBandFt = _options.Traffic.ProximityAltitudeFt,
+            TrafficCooldownSec = Math.Max(0, _options.Traffic.ProximityCooldownSec),
         });
     }
 

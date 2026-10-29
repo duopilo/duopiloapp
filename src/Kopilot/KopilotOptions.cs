@@ -85,6 +85,23 @@ public sealed class MonitoringOptions
     /// Standard aus – der FBW A32NX und andere Airliner sprechen sie selbst. Im Dashboard umschaltbar.
     /// </summary>
     public bool AircraftAutoCallouts { get; set; }
+
+    /// <summary>Regel TRAFFIC_PROXIMITY (abschalten über <see cref="DisabledRules"/>).</summary>
+    public TrafficMonitoringOptions Traffic { get; set; } = new();
+}
+
+/// <summary>Verkehrswarnung des Monitorings: Ziel näher als <see cref="ProximityRangeNm"/> und innerhalb ±<see cref="ProximityAltitudeFt"/>.</summary>
+public sealed class TrafficMonitoringOptions
+{
+    public double ProximityRangeNm { get; set; } = 3;
+
+    public double ProximityAltitudeFt { get; set; } = 1000;
+
+    /// <summary>Nach dem Ende einer Warnung so lange keine neue.</summary>
+    public int ProximityCooldownSec { get; set; } = 60;
+
+    /// <summary>Abstand der Verkehrsabfragen im Hintergrund (nur in der Luft und wenn die Regel an ist).</summary>
+    public int ScanIntervalSec { get; set; } = 3;
 }
 
 /// <summary>Sprachausgabe über Windows (nur HTTP-Modus mit Tray). Die Einstellungen aus dem Dashboard liegen in DataDirectory\speech.json.</summary>

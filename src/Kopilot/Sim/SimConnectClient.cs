@@ -22,7 +22,11 @@ public sealed class SimConnectClient : BackgroundService
     private const uint ClientEventBase = 10_000;
     private const uint StateRequestAircraft = 900_001;
     private const uint StateRequestSim = 900_002;
+    private const uint TrafficRequestBase = 3_000_000_000;
     private const string TitleKey = "title";
+
+    /// <summary>Größter Radius, den SimConnect bei RequestDataOnSimObjectType annimmt (200 km).</summary>
+    public const uint MaxScanRadiusMeters = 200_000;
 
     private readonly ILogger<SimConnectClient> _log;
     private readonly KopilotOptions _options;
@@ -35,6 +39,7 @@ public sealed class SimConnectClient : BackgroundService
     // Werte für andere Threads
     private readonly ConcurrentDictionary<string, SimValue> _values = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<uint, PendingRead> _pending = new();
+    private readonly ConcurrentDictionary<uint, PendingScan> _scans = new();
 
     // Nur auf dem SimConnect-Thread benutzt
     private SimConnect? _sc;
@@ -46,6 +51,8 @@ public sealed class SimConnectClient : BackgroundService
     private readonly Dictionary<string, uint> _writeDefIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, uint> _eventIds = new(StringComparer.OrdinalIgnoreCase);
     private uint _nextEventId;
+    private uint _trafficDefId;
+    private uint _nextTrafficRequest;
     private string? _lastTitle;
     private string? _lastPath;
     private string? _lastConnectError;
@@ -156,6 +163,93 @@ public sealed class SimConnectClient : BackgroundService
         catch (InvalidOperationException ex)
         {
             return ReadResult.Fail(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Fragt alle Flugzeuge (auf Wunsch auch Hubschrauber) im Umkreis einmalig ab: KI-Verkehr und Multiplayer,
+    /// das eigene Flugzeug eingeschlossen (<see cref="AircraftSample.IsUser"/>). Bleibt eine Antwort aus, kommt nach dem
+    /// Timeout zurück, was bis dahin da ist (<see cref="AircraftScan.Complete"/> = false).
+    /// </summary>
+    public async Task<AircraftScan> ScanAircraftAsync(uint radiusMeters, bool includeHelicopters, CancellationToken ct)
+    {
+        if (!_connection.IsConnected)
+        {
+            return AircraftScan.Fail("Keine Verbindung zu MSFS.");
+        }
+
+        var radius = Math.Min(radiusMeters, MaxScanRadiusMeters);
+        var aircraft = new PendingScan("aircraft");
+        var helicopters = includeHelicopters ? new PendingScan("helicopter") : null;
+        Enqueue(sc =>
+        {
+            try
+            {
+                if (_trafficDefId == 0)
+                {
+                    _trafficDefId = DefineTraffic(sc);
+                }
+
+                StartScan(sc, aircraft, radius, SIMCONNECT_SIMOBJECT_TYPE.AIRCRAFT);
+                if (helicopters is not null)
+                {
+                    StartScan(sc, helicopters, radius, SIMCONNECT_SIMOBJECT_TYPE.HELICOPTER);
+                }
+            }
+            catch (Exception ex)
+            {
+                aircraft.Fail(ex);
+                helicopters?.Fail(ex);
+                throw;
+            }
+        });
+
+        try
+        {
+            await WaitForScan(aircraft, TimeSpan.FromMilliseconds(Math.Max(1000, _options.ReadTimeoutMs)), ct);
+            if (helicopters is not null)
+            {
+                // Ohne Hubschrauber im Umkreis antwortet MSFS evtl. gar nicht – dann nicht den vollen Timeout abwarten
+                await WaitForScan(helicopters, aircraft.IsDone ? TimeSpan.FromMilliseconds(300) : TimeSpan.Zero, ct);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return AircraftScan.Fail(ex.Message);
+        }
+        finally
+        {
+            Abandon(aircraft);
+            Abandon(helicopters);
+        }
+
+        var samples = aircraft.Samples().Concat(helicopters?.Samples() ?? []).ToList();
+        return new AircraftScan(samples, aircraft.IsDone, null);
+    }
+
+    private static async Task WaitForScan(PendingScan scan, TimeSpan timeout, CancellationToken ct)
+    {
+        try
+        {
+            await scan.Completion.Task.WaitAsync(timeout, ct);
+        }
+        catch (TimeoutException)
+        {
+            // Was bis jetzt angekommen ist, zählt
+        }
+    }
+
+    private void Abandon(PendingScan? scan)
+    {
+        if (scan is null)
+        {
+            return;
+        }
+
+        scan.Abandoned = true;
+        if (scan.RequestId != 0)
+        {
+            _scans.TryRemove(scan.RequestId, out _);
         }
     }
 
@@ -344,6 +438,7 @@ public sealed class SimConnectClient : BackgroundService
             sc.OnRecvQuit += OnQuit;
             sc.OnRecvException += OnException;
             sc.OnRecvSimobjectData += OnData;
+            sc.OnRecvSimobjectDataBytype += OnDataByType;
             sc.OnRecvEvent += OnEvent;
             sc.OnRecvEventFilename += OnEventFilename;
             sc.OnRecvSystemState += OnSystemState;
@@ -403,6 +498,7 @@ public sealed class SimConnectClient : BackgroundService
         _writeDefIds.Clear();
         _eventIds.Clear();
         _nextEventId = 0;
+        _trafficDefId = 0;
         _values.Clear();
 
         foreach (var (id, pending) in _pending)
@@ -410,6 +506,14 @@ public sealed class SimConnectClient : BackgroundService
             if (_pending.TryRemove(id, out _))
             {
                 pending.Completion.TrySetException(new InvalidOperationException("Verbindung zu MSFS getrennt."));
+            }
+        }
+
+        foreach (var (id, scan) in _scans)
+        {
+            if (_scans.TryRemove(id, out _))
+            {
+                scan.Fail(new InvalidOperationException("Verbindung zu MSFS getrennt."));
             }
         }
 
@@ -478,6 +582,39 @@ public sealed class SimConnectClient : BackgroundService
         }
 
         return defId;
+    }
+
+    /// <summary>Eine gemeinsame Data Definition für die Verkehrsabfrage (Struktur <see cref="TrafficDatum"/>).</summary>
+    private uint DefineTraffic(SimConnect sc)
+    {
+        var defId = ++_nextDefId;
+        foreach (var (name, unit) in TrafficVariables.All)
+        {
+            if (unit is null)
+            {
+                sc.AddToDataDefinition((SimDefinitionId)defId, name, null, SIMCONNECT_DATATYPE.STRING64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
+            }
+            else
+            {
+                sc.AddToDataDefinition((SimDefinitionId)defId, name, unit, SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
+            }
+        }
+
+        sc.RegisterDataDefineStruct<TrafficDatum>((SimDefinitionId)defId);
+        return defId;
+    }
+
+    private void StartScan(SimConnect sc, PendingScan scan, uint radiusMeters, SIMCONNECT_SIMOBJECT_TYPE type)
+    {
+        if (scan.Abandoned)
+        {
+            return;
+        }
+
+        var requestId = TrafficRequestBase + ++_nextTrafficRequest;
+        scan.RequestId = requestId;
+        _scans[requestId] = scan;
+        sc.RequestDataOnSimObjectType((SimRequestId)requestId, (SimDefinitionId)_trafficDefId, radiusMeters, type);
     }
 
     private void Subscribe(SimConnect sc, SimVarSpec spec)
@@ -697,6 +834,49 @@ public sealed class SimConnectClient : BackgroundService
         }
     }
 
+    /// <summary>
+    /// Antwort auf RequestDataOnSimObjectType: ein Objekt pro Nachricht, dwentrynumber zählt ab 1 bis dwoutof.
+    /// dwoutof = 0 heißt: kein Objekt dieses Typs im Umkreis.
+    /// </summary>
+    private void OnDataByType(SimConnect sender, SIMCONNECT_RECV_SIMOBJECT_DATA_BYTYPE data)
+    {
+        if (!_scans.TryGetValue(data.dwRequestID, out var scan))
+        {
+            return;
+        }
+
+        var received = 0;
+        if (data.dwoutof > 0 && data.dwData is { Length: > 0 } && data.dwData[0] is TrafficDatum d)
+        {
+            received = scan.Add(ToSample(data.dwObjectID, scan.Category, d));
+        }
+
+        if (data.dwoutof == 0 || data.dwentrynumber >= data.dwoutof || received >= data.dwoutof)
+        {
+            _scans.TryRemove(data.dwRequestID, out _);
+            scan.Finish();
+        }
+    }
+
+    private static AircraftSample ToSample(uint objectId, string category, TrafficDatum d) => new(
+        objectId,
+        category,
+        CleanText(d.AtcId),
+        CleanText(d.AtcAirline),
+        CleanText(d.AtcFlightNumber),
+        CleanText(d.AtcModel),
+        d.Latitude,
+        d.Longitude,
+        d.AltitudeFt,
+        d.HeadingTrueDeg,
+        d.HeadingMagDeg,
+        d.GroundSpeedKt,
+        d.VerticalSpeedFpm,
+        d.OnGround != 0,
+        d.IsUser != 0);
+
+    private static string? CleanText(string? text) => text?.Trim('\0', ' ') is { Length: > 0 } t ? t : null;
+
     public override void Dispose()
     {
         base.Dispose();
@@ -707,6 +887,56 @@ public sealed class SimConnectClient : BackgroundService
     // ------------------------------------------------------------------ Hilfstypen
 
     private sealed record PendingRead(TaskCompletionSource<object?> Completion, DateTimeOffset ExpiresUtc);
+
+    /// <summary>Laufende Verkehrsabfrage. Wird auf dem SimConnect-Thread befüllt und von einem anderen Thread gelesen.</summary>
+    private sealed class PendingScan(string category)
+    {
+        private readonly List<AircraftSample> _samples = [];
+        private readonly object _gate = new();
+        private volatile uint _requestId;
+        private volatile bool _abandoned;
+
+        public string Category { get; } = category;
+
+        public uint RequestId
+        {
+            get => _requestId;
+            set => _requestId = value;
+        }
+
+        /// <summary>Der Aufrufer wartet nicht mehr – späte Antworten verwerfen.</summary>
+        public bool Abandoned
+        {
+            get => _abandoned;
+            set => _abandoned = value;
+        }
+
+        public TaskCompletionSource Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public bool IsDone => Completion.Task.IsCompletedSuccessfully;
+
+        /// <summary>Fügt ein Objekt hinzu und liefert die Anzahl bisher empfangener Objekte.</summary>
+        public int Add(AircraftSample sample)
+        {
+            lock (_gate)
+            {
+                _samples.Add(sample);
+                return _samples.Count;
+            }
+        }
+
+        public List<AircraftSample> Samples()
+        {
+            lock (_gate)
+            {
+                return [.. _samples];
+            }
+        }
+
+        public void Finish() => Completion.TrySetResult();
+
+        public void Fail(Exception ex) => Completion.TrySetException(ex);
+    }
 }
 
 public sealed record SimValue(object? Value, DateTimeOffset UpdatedUtc);

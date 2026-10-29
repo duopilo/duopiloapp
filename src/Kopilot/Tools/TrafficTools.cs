@@ -1,0 +1,153 @@
+using System.ComponentModel;
+using System.Globalization;
+using Kopilot.Monitoring;
+using Kopilot.Sim;
+using Kopilot.Traffic;
+using ModelContextProtocol.Server;
+
+namespace Kopilot.Tools;
+
+/// <summary>Verkehr um das eigene Flugzeug (KI-Verkehr und Multiplayer) über SimConnect.</summary>
+[McpServerToolType]
+public static class TrafficTools
+{
+    public const int DefaultLimit = 10;
+
+    public const int MaxLimit = 50;
+
+    [McpServerTool(Name = "get_traffic", ReadOnly = true)]
+    [Description(
+        "Other aircraft around the pilot's aircraft in MSFS 2024 (AI traffic and multiplayer, if enabled in the sim; helicopters included), " +
+        "sorted by distance. Per target: callsign/ATC ID, aircraft type (ATC MODEL), horizontal distance in NM, relative bearing as clock position " +
+        "(e.g. '2 o'clock') and true bearing, altitude and altitude difference in ft (positive = above), vertical trend (climbing/descending/level, " +
+        "±500 ft/min), ground speed in knots, heading, on ground. Altitudes are true MSL for both aircraft. The nearest target has 'closest': true, " +
+        "and 'callout' is a short traffic call for it, e.g. 'Traffic, 2 o'clock, 5 miles, 1000 feet above, descending'. " +
+        "If 'status' is 'no_traffic', no other aircraft are within the radius (or traffic is disabled in the sim).")]
+    public static async Task<string> GetTraffic(
+        SimConnectClient sim,
+        TrafficService traffic,
+        AlertBus alerts,
+        [Description("Search radius in nautical miles. Default 40, maximum 108 (200 km, the SimConnect limit).")] double radiusNm = TrafficService.DefaultRadiusNm,
+        [Description("Maximum number of targets returned, nearest first (1–50). Default 10.")] int limit = DefaultLimit,
+        [Description("Only airborne targets (skip aircraft on the ground, e.g. parked at the gate). Default false.")] bool airborneOnly = false,
+        CancellationToken cancellationToken = default)
+    {
+        if (!sim.Connection.IsConnected)
+        {
+            return KopilotTools.NotConnected(alerts);
+        }
+
+        var status = sim.Status;
+        var maxTargets = Math.Clamp(limit, 1, MaxLimit);
+        var radius = TrafficService.ClampRadius(radiusNm);
+        var radiusNote = double.IsFinite(radiusNm) && radiusNm > TrafficService.MaxRadiusNm
+            ? $"Radius auf {Nm(TrafficService.MaxRadiusNm)} NM (200 km) begrenzt – mehr nimmt SimConnect nicht an."
+            : null;
+
+        if (status.FlightRunning == false)
+        {
+            return Json.Serialize(new
+            {
+                connected = true,
+                status = "no_flight",
+                radiusNm = Fmt.Round(radius, 1),
+                totalInRadius = 0,
+                targets = Array.Empty<object>(),
+                callout = (string?)null,
+                message = "Kein Flug geladen (Hauptmenü oder Ladebildschirm).",
+                activeAlerts = AlertView.Active(alerts),
+            });
+        }
+
+        var result = await traffic.ScanAsync(radius, cancellationToken);
+        var picture = result.Picture;
+        var all = airborneOnly ? picture.Targets.Where(t => !t.OnGround).ToList() : picture.Targets.ToList();
+        var shown = all.Take(maxTargets).ToList();
+
+        var (state, message) = Describe(result, all.Count, airborneOnly);
+        return Json.Serialize(new
+        {
+            connected = true,
+            paused = status.Paused,
+            pauseKind = status.PauseKind,
+            status = state,
+            radiusNm = Fmt.Round(result.RadiusNm, 1),
+            limit = maxTargets,
+            airborneOnly,
+            totalInRadius = all.Count,
+            targets = shown.Select((t, i) => View(t, closest: i == 0)),
+            callout = shown.FirstOrDefault()?.Callout,
+            ownAircraft = picture.Own is { } own
+                ? new
+                {
+                    altitudeFt = Fmt.Int(own.AltitudeFt),
+                    headingTrueDeg = Fmt.Heading(own.HeadingTrueDeg),
+                    onGround = own.OnGround,
+                }
+                : null,
+            message = Join(message, radiusNote),
+            activeAlerts = AlertView.Active(alerts),
+        });
+    }
+
+    /// <summary>Status und Hinweis zum Ergebnis.</summary>
+    public static (string Status, string? Message) Describe(TrafficScanResult result, int targetCount, bool airborneOnly)
+    {
+        if (result.Error is { } error)
+        {
+            return ("error", $"Verkehrsabfrage fehlgeschlagen: {error}");
+        }
+
+        var picture = result.Picture;
+        if (picture.Own is null)
+        {
+            return result.Complete
+                ? ("no_position", "Eigene Position unbekannt – Verkehr kann nicht relativ zum Flugzeug berechnet werden.")
+                : ("no_response", "MSFS hat nicht auf die Verkehrsabfrage geantwortet. Läuft ein Flug? Sonst kopilot_status prüfen.");
+        }
+
+        if (targetCount > 0)
+        {
+            return ("ok", result.Complete ? null : "MSFS hat nicht vollständig geantwortet – evtl. fehlen Ziele.");
+        }
+
+        var radius = Nm(result.RadiusNm);
+        if (picture.OthersReceived == 0)
+        {
+            return ("no_traffic", $"Kein Verkehr im Umkreis von {radius} NM. Falls das nicht stimmen kann: KI-Verkehr bzw. Multiplayer ist im Sim vermutlich deaktiviert.");
+        }
+
+        return ("no_traffic", airborneOnly
+            ? $"Kein Verkehr in der Luft im Umkreis von {radius} NM (nur Flugzeuge am Boden)."
+            : $"Kein Verkehr im Umkreis von {radius} NM.");
+    }
+
+    public static object View(TrafficTarget t, bool closest) => new
+    {
+        ident = t.Ident,
+        callsign = t.Callsign,
+        atcId = t.AtcId,
+        type = t.Type,
+        category = t.Category,
+        distanceNm = Fmt.Round(t.DistanceNm, 1),
+        clock = t.ClockText,
+        relativeBearingDeg = Fmt.Heading(t.RelativeBearingDeg),
+        bearingTrueDeg = Fmt.Heading(t.BearingTrueDeg),
+        altitudeFt = Fmt.Int(t.AltitudeFt),
+        altitudeDiffFt = Fmt.Int(t.AltitudeDiffFt),
+        verticalTrend = t.VerticalTrend,
+        verticalSpeedFpm = Fmt.Int(t.VerticalSpeedFpm),
+        verticalSpeedSource = t.VerticalSpeedDerived ? "derived" : null,
+        groundSpeedKt = Fmt.Int(t.GroundSpeedKt),
+        headingTrueDeg = Fmt.Heading(t.HeadingTrueDeg),
+        headingMagDeg = Fmt.Heading(t.HeadingMagDeg),
+        onGround = t.OnGround,
+        closest,
+        callout = t.Callout,
+        objectId = t.ObjectId,
+    };
+
+    private static string Nm(double nm) => Math.Round(nm, 1).ToString("0.#", CultureInfo.InvariantCulture);
+
+    private static string? Join(string? a, string? b) => a is null ? b : b is null ? a : a + " " + b;
+}

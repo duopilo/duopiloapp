@@ -20,6 +20,21 @@ public sealed class MonitorSettings
 
     /// <summary>Ältere Werte gelten als eingefroren – dann wird nichts ausgewertet.</summary>
     public double MaxDataAgeSec { get; init; } = 3;
+
+    /// <summary>TRAFFIC_PROXIMITY: Ziel in der Luft näher als so viele NM …</summary>
+    public double TrafficRangeNm { get; init; } = 3;
+
+    /// <summary>… und höchstens so viele ft darüber oder darunter.</summary>
+    public double TrafficAltitudeBandFt { get; init; } = 1000;
+
+    /// <summary>Nach dem Ende einer Verkehrswarnung so lange keine neue.</summary>
+    public double TrafficCooldownSec { get; init; } = 60;
+
+    /// <summary>Unterhalb dieser Höhe über Grund keine Verkehrswarnung (wie beim TCAS, im Endanflug und beim Start störend).</summary>
+    public double TrafficMinHeightFt { get; init; } = 500;
+
+    /// <summary>Ältere Verkehrslagen werden nicht ausgewertet.</summary>
+    public double MaxTrafficAgeSec { get; init; } = 10;
 }
 
 /// <summary>
@@ -78,6 +93,7 @@ public sealed partial class MonitorEngine
             new(Rules.GearDownHigh, AlertSeverity.Caution, 15, 3, 120, CheckGearDownHigh),
             new(Rules.SpeedLimitFl100, AlertSeverity.Caution, 5, 3, 60, CheckSpeedLimit),
             new(Rules.SpeedDeviation, AlertSeverity.Caution, 4, 2, 30, CheckSpeedDeviation),
+            new(Rules.TrafficProximity, AlertSeverity.Caution, 1, 6, _settings.TrafficCooldownSec, CheckTrafficProximity),
         ];
     }
 
@@ -330,6 +346,50 @@ public sealed partial class MonitorEngine
         return new RuleCheck(
             "Speed",
             $"IAS {Kt(ias)}, Ziel {Kt(target)} ({(dev > 0 ? "+" : "−")}{Math.Abs(Math.Round(dev)):0} kt).");
+    }
+
+    /// <summary>Nächstes Ziel in der Luft innerhalb des Warnradius und des Höhenbands (Verkehrslage aus der Hintergrundabfrage).</summary>
+    private RuleCheck? CheckTrafficProximity(FlightSnapshot s)
+    {
+        if (!s.Airborne || s.Traffic is not { } picture || (s.TimeUtc - picture.TimeUtc).TotalSeconds > _settings.MaxTrafficAgeSec)
+        {
+            return null;
+        }
+
+        if ((s.RadioAltFt ?? s.AglFt) is { } height && height < _settings.TrafficMinHeightFt)
+        {
+            return null;
+        }
+
+        var target = picture.Targets.FirstOrDefault(t =>
+            !t.OnGround && t.DistanceNm <= _settings.TrafficRangeNm && Math.Abs(t.AltitudeDiffFt) <= _settings.TrafficAltitudeBandFt);
+        if (target is null)
+        {
+            return null;
+        }
+
+        var who = target.Ident ?? "unbekannt";
+        if (target.Type is not null)
+        {
+            who += $" ({target.Type})";
+        }
+
+        var diff = Math.Round(target.AltitudeDiffFt / 10) * 10;
+        var where = diff switch
+        {
+            > 0 => $"{diff.ToString("0", CultureInfo.InvariantCulture)} ft darüber",
+            < 0 => $"{(-diff).ToString("0", CultureInfo.InvariantCulture)} ft darunter",
+            _ => "gleiche Höhe",
+        };
+        var trend = target.VerticalTrend switch
+        {
+            "climbing" => "steigend",
+            "descending" => "sinkend",
+            _ => "im Horizontalflug",
+        };
+        return new RuleCheck(
+            target.Callout,
+            $"Verkehr {who} auf {target.Clock} Uhr, {target.DistanceNm.ToString("0.0", CultureInfo.InvariantCulture)} NM, {where}, {trend}.");
     }
 
     // ------------------------------------------------------------------ Ereignisse
