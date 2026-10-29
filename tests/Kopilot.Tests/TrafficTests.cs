@@ -113,7 +113,7 @@ public sealed class TrafficTests
     [InlineData(45, 0.5)]
     [InlineData(150, 5)]
     [InlineData(225, 12.3)]
-    [InlineData(330, 40)]
+    [InlineData(330, 39)]
     public void Ziel_landet_in_Peilung_und_Abstand_an_der_richtigen_Stelle(double bearingTrueDeg, double distanceNm)
     {
         var picture = Picture(T0, Own(headingTrueDeg: 0), Target(2, bearingTrueDeg, distanceNm, 5000));
