@@ -11,7 +11,7 @@ Kopilot verbindet **Microsoft Flight Simulator 2024** über SimConnect mit **Cla
 | `kopilot_status` | Verbindung, Pause, geladenes Flugzeug (Titel + Pfad), aktives Profil, Monitoring-, SimBrief- und ECAM-Status |
 | `get_flight_state` | Höhe (IND, FL, AGL, Radio), IAS/TAS/GS/VS in kt, Lage, Kurs, Position, Klappen, Fahrwerk, Spoiler, Parkbremse, Autobrake, AP/A-THR mit FMA, Speed- und Höhenziel, Warnungen |
 | `get_systems` | Triebwerke (N1, N2, EGT, Fuel Flow in kg/h), APU, Treibstoff, Gewicht, Lichter, Anschnallzeichen, Transponder, COM, Plausibilitätshinweise |
-| `get_warnings` | Master Warning/Caution, ECAM-Meldungen im Klartext (FBW A32NX), Stall/Overspeed |
+| `get_warnings` | Master Warning/Caution, ECAM-Meldungen im Klartext (FBW A32NX, Headwind A330-900neo), Stall/Overspeed |
 | `get_alerts` | Meldungen des Monitorings seit einer ID, mit Callout zum Vorlesen |
 | `wait_for_alerts` | Wartet bis zu 25 s auf die nächste Monitoring-Meldung (Dauerüberwachung in einer Schleife) |
 | `get_monitoring_status` | Flugphase, aktive/abgeschaltete Regeln, Ruhezeit |
@@ -194,11 +194,13 @@ Die Aktionen stehen im Flugzeugprofil unter `actions` (Events, Variablen, Readba
   - `confirmed`: Kopilot hat einen echten Flugzeugzustand gelesen (FCU-Anzeige, Klappenhebel, Licht, ENG ANTI ICE, Schütz …).
   - `unverified`: Kopilot konnte nur die Schalterstellung lesen, die Wirkung ist nicht nachgewiesen.
   - `failed`: Das Flugzeug hat den Wert nicht übernommen.
+- `stateAfter` ist der Rohwert der geprüften Variable – bei Wahlschaltern die Stellung (z. B. Seatbelts 0 = ON). `stateAfterText` nennt die passende Auswahl (`on`, `auto`, `off` …).
+- Es ist immer nur eine Aktion offen. Jedes neue `prepare_action` verwirft die offene – auch wenn es selbst abgelehnt wird. Ein älterer, langsamer Aufruf legt danach keine Aktion mehr an; der Token aus der Antwort gehört also immer zur offenen Aktion. Mit einem alten Token sagt `confirm_action`, was aus der Aktion geworden ist (ersetzt, abgelaufen, schon verwendet, andere Kopilot-Instanz).
 - Fehler kommen immer als `status: "error"` mit Grund zurück, Details im Log.
 
 **Geprüfte Aktionen merken:** Im Sim getestet sind fcu.heading, flaps, lights.beacon, antiice.engines und apu.bleed (`"verified": true` im Profil). Weitere merkt sich Kopilot in `%LOCALAPPDATA%\Kopilot\verified-actions.json` – das überschreibt `update.cmd` nicht:
 - automatisch, wenn eine Ausführung `confirmed` war;
-- per `mark_action_verified`, wenn du nach einer `unverified`-Ausführung im Cockpit siehst, dass es funktioniert hat.
+- per `mark_action_verified`, wenn du nach einer `unverified`-Ausführung im Cockpit siehst, dass es funktioniert hat. Dafür reicht ein Bestätigungs- oder Zustandswort („confirm“, „check“, „on“, „off“, „avail“, „läuft“), der ausgeführte Wert oder der Name der Aktion („Seatbelts on“, „APU avail“, „Confirm, no smoking, auto“) – solange nichts verneint wird. `confirm_action` bleibt streng.
 
 Ändert sich die Definition einer Aktion im Profil, gilt die gespeicherte Prüfung nicht mehr. `list_actions` zeigt je Aktion `verified`: `profile`, `sim`, `pilot` oder leer.
 
@@ -412,7 +414,7 @@ Kopilot speichert Tokens nur als SHA-256-Hash. Tokens in der URL (`?token=`) nim
 
 ## Flugzeugprofile und L:-Variablen
 
-Study-Level-Flugzeuge legen vieles (AP-Status, FMA, Autobrake, ECAM, Fuel Flow) nicht in Standard-SimVars ab, sondern in eigenen **L:-Variablen**. Ein Profil unter `profiles\*.json` sagt Kopilot, woher die Werte kommen. Mitgeliefert: FlyByWire A32NX, FlyByWire A380X, iniBuilds A321LR. Was bei welchem Flugzeug geht, steht in [docs/aircraft.md](docs/aircraft.md).
+Study-Level-Flugzeuge legen vieles (AP-Status, FMA, Autobrake, ECAM, Fuel Flow) nicht in Standard-SimVars ab, sondern in eigenen **L:-Variablen**. Ein Profil unter `profiles\*.json` sagt Kopilot, woher die Werte kommen. Mitgeliefert: FlyByWire A32NX, FlyByWire A380X, Headwind A330-900neo, iniBuilds A321LR. Was bei welchem Flugzeug geht, steht in [docs/aircraft.md](docs/aircraft.md).
 
 ```jsonc
 {
@@ -436,12 +438,13 @@ Study-Level-Flugzeuge legen vieles (AP-Status, FMA, Autobrake, ECAM, Fuel Flow) 
 ```
 
 - **Bindings** sind feste Schlüssel, die Tools und Monitoring verstehen: `ap1`, `ap2`, `flightDirector`, `athrStatus`, `athrMode`, `fmaLateral`, `fmaLateralArmed`, `fmaVertical`, `fmaVerticalArmed`, `fmgcDiscreteWord1`, `fmAltitudeConstraint`, `autobrake`, `masterWarning`, `masterCaution`, `speedTarget`, `speedManaged`, `selectedSpeed`, `machMode`, `selectedAltitude`, `selectedHeading`, `selectedHeadingDashes`, `vls`, `v1`, `vr`, `v2`, `flexTemp`, `tdReached`, `fmsToWptDistance`, `fmsToWptBearing`, `fuelFlowKgh`, `egtC`, `parkingBrake`, `spoilersArmed`, `flaps`. Typen: `number`, `bool`, `enum` (Wert → Text), `bitmask` (Bit → Text), `string`, `arinc429` (FBW-Datenwort, gilt nur bei Normal Operation). `scale` rechnet um (z. B. lbs/h → kg/h = 0.45359237). Achtung bei Geschwindigkeiten: Manche L:-Variablen speichern intern m/s – dann `"unit": "knots"` setzen, nicht umrechnen.
-- **electrical** listet Elektrik-Werte für `get_systems` (Spannung, Frequenz, Busse versorgt).
+- **electrical** listet Elektrik-Werte für `get_systems` (Spannung, Frequenz, Busse versorgt; `apuGenOn`/`apuGenVolt`/`apuGenHz`/`apuGenLoad` landen unter `apu.generator`).
+- **fuel** listet Treibstoffpumpen und -ventile für `get_systems` (`fuel.pumps`), gleiches Format wie `electrical`.
 - **limits.landingFlaps** sind die Klappenstellungen für den Landecheck, `vfeKt` gilt je Stellung (Klartext aus `flaps` oder Hebel-Index).
 - **variables** sind freie Zusatzwerte, die `get_aircraft_profile` roh ausgibt.
 - **limits** nutzt das Monitoring (Gear/Flap Speed, Overspeed, 250 kt unter FL100).
 
-**ECAM-Klartext:** Das A32NX schreibt nur Codes (z. B. `220000501`) in die EWD-Variablen. Die Texte stehen in der FlyByWire-Tabelle `EwdMessages.ts` (GPL-3.0). Kopilot lädt sie beim ersten Bedarf von GitHub, speichert sie unter `%LOCALAPPDATA%\Kopilot\ecam\` und erneuert sie alle 14 Tage. Ohne Internet bleibt der Cache gültig. Die Tabelle liegt bewusst nicht im Repo.
+**ECAM-Klartext:** Das A32NX schreibt nur Codes (z. B. `220000501`) in die EWD-Variablen. Die Texte stehen in der FlyByWire-Tabelle `EwdMessages.ts` (GPL-3.0), beim Headwind A330-900neo in dessen eigener Fassung (Format `hdw-a339x`). Kopilot lädt sie beim ersten Bedarf von GitHub, speichert sie unter `%LOCALAPPDATA%\Kopilot\ecam\` und erneuert sie alle 14 Tage. Ohne Internet bleibt der Cache gültig. Die Tabelle liegt bewusst nicht im Repo.
 
 So findest du neue L:-Variablen:
 

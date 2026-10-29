@@ -170,7 +170,8 @@ public static class KopilotTools
     [Description(
         "Aircraft systems in MSFS 2024: engines (running, N1, N2, EGT, fuel flow in kg/h), APU, fuel on board and gross weight, " +
         "exterior lights, seatbelt sign, transponder code/mode, COM radio frequencies and – with an aircraft profile – electrical values " +
-        "(generator voltage/frequency, battery voltage, buses powered). Fuel flow and EGT come from the aircraft profile when available " +
+        "(generator voltage/frequency, battery voltage, buses powered, APU GEN pushbutton) and fuel pumps ('fuel.pumps': switch position, running, transfer/crossfeed valves). " +
+        "Fuel flow and EGT come from the aircraft profile when available " +
         "('fuelFlowSource', 'egtSource'). 'plausibility' lists values that look implausible (e.g. extreme weather, air start).")]
     public static string GetSystems(SimConnectClient sim, AlertBus alerts)
     {
@@ -183,6 +184,7 @@ public static class KopilotTools
         var engineCount = Math.Clamp(Fmt.Int(sim.Num("engineCount")) ?? 2, 1, SimVarCatalog.MaxEngines);
         var notes = new List<string>();
         var electrical = signals.Electrical();
+        var fuelSystem = signals.Fuel();
         var engines = Enumerable.Range(1, engineCount).Select(i =>
         {
             var running = sim.Bool($"eng{i}Running");
@@ -231,6 +233,7 @@ public static class KopilotTools
                 generator = electrical.Any(e => e.Key.StartsWith("apuGen", StringComparison.OrdinalIgnoreCase))
                     ? new
                     {
+                        switchOn = electrical.FirstOrDefault(e => e.Key == "apuGenOn").Value is { } genOn ? Math.Abs(genOn) > 0.5 : (bool?)null,
                         volts = Fmt.Int(electrical.FirstOrDefault(e => e.Key == "apuGenVolt").Value),
                         hz = Fmt.Int(electrical.FirstOrDefault(e => e.Key == "apuGenHz").Value),
                         loadPct = Fmt.Int(electrical.FirstOrDefault(e => e.Key == "apuGenLoad").Value),
@@ -242,6 +245,9 @@ public static class KopilotTools
             {
                 totalKg = Fmt.Int(sim.Num("fuelTotalKg")),
                 grossWeightKg = Fmt.Int(sim.Num("grossWeightKg")),
+                pumps = fuelSystem.Count > 0
+                    ? fuelSystem.Select(f => new { key = f.Key, label = f.Description, value = Fmt.Round(f.Value, 1), text = f.Text })
+                    : null,
             },
             lights = new
             {

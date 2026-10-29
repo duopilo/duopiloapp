@@ -13,7 +13,7 @@ public static class MonitoringTools
     [McpServerTool(Name = "get_warnings", ReadOnly = true)]
     [Description(
         "Warnings and cautions: master warning/caution lights and the ECAM messages in plain text (left lower E/WD area: warnings with title and " +
-        "procedure lines; right area: memos), plus stall/overspeed. ECAM decoding is available for the FlyByWire A32NX. " +
+        "procedure lines; right area: memos), plus stall/overspeed. ECAM decoding is available for the FlyByWire A32NX and the Headwind A330-900neo. " +
         "Read titles as callouts, e.g. 'Master caution, AUTO FLT AP OFF'.")]
     public static string GetWarnings(SimConnectClient sim, EcamCatalog catalog, AlertBus alerts)
     {

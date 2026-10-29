@@ -216,7 +216,8 @@ public sealed record InputSettings
 }
 
 /// <summary>Offene Aktion für das Dashboard, auch wenn sie in einer anderen Kopilot-Instanz (stdio) vorbereitet wurde.</summary>
-public sealed record SharedPending(string Action, string? Value, string Readback, DateTimeOffset ExpiresUtc, int ProcessId);
+/// <param name="TokenHash">Kurzer Hash des Tokens – damit eine andere Instanz erkennt, dass ein Token zu dieser Aktion gehört (fehlt in älteren Dateien).</param>
+public sealed record SharedPending(string Action, string? Value, string Readback, DateTimeOffset ExpiresUtc, int ProcessId, string? TokenHash = null);
 
 /// <summary>
 /// Gemeinsamer Zustand aller Kopilot-Instanzen im Datenordner: input.json (Schalter, Epoch) und input-pending.json (offene Aktion).

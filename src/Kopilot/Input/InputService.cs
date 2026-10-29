@@ -36,7 +36,8 @@ public sealed record InputResult(
     double? StateAfter = null,
     int? Skipped = null,
     bool AlreadySet = false,
-    bool? CheckIndependent = null)
+    bool? CheckIndependent = null,
+    string? StateAfterText = null)
 {
     public const string AwaitingConfirmation = "awaiting_confirmation";
     public const string Executed = "executed";
@@ -58,6 +59,8 @@ public sealed partial class InputService
 {
     private const int MaxLog = 40;
 
+    private const int MaxRetiredTokens = 20;
+
     /// <summary>Höchstdauer einer Ausführung samt Prüfung – läuft nach der Bestätigung unabhängig vom MCP-Aufruf zu Ende.</summary>
     private static readonly TimeSpan ExecutionTimeout = TimeSpan.FromSeconds(20);
 
@@ -71,6 +74,24 @@ public sealed partial class InputService
     {
         "no", "not", "negative", "cancel", "disregard", "wrong", "stop", "abort", "wait",
         "nein", "nicht", "abbrechen", "abbruch", "falsch", "halt", "warte",
+    };
+
+    /// <summary>
+    /// Für mark_action_verified zusätzlich zu <see cref="YesWords"/>: Der Pilot meldet den Zustand, den er im Cockpit sieht
+    /// ("Seatbelts on", "APU avail", "läuft"). Gilt nur fürs Merken als geprüft, nie fürs Ausführen (confirm_action bleibt streng).
+    /// </summary>
+    private static readonly HashSet<string> StateWords = new(StringComparer.Ordinal)
+    {
+        "check", "checked", "checks", "on", "off", "auto", "avail", "available", "running", "runs", "works", "worked", "working",
+        "set", "armed", "engaged", "open", "closed", "good", "fine", "roger",
+        "läuft", "laeuft", "funktioniert", "geht", "an", "aus", "steht", "passt", "gut", "drin",
+    };
+
+    /// <summary>Für mark_action_verified zusätzlich zu <see cref="NoWords"/>: Der Pilot meldet, dass es nicht geklappt hat.</summary>
+    private static readonly HashSet<string> FailWords = new(StringComparer.Ordinal)
+    {
+        "didn", "doesn", "isn", "wasn", "won", "fail", "failed", "error", "broken", "nope", "never", "still",
+        "kaputt", "fehler", "nee", "nö", "noch",
     };
 
     private readonly IInputBackend _backend;
@@ -87,6 +108,14 @@ public sealed partial class InputService
     private string? _pendingInput;
     private AircraftProfile? _pendingProfile;
     private long _pendingEpoch;
+
+    /// <summary>Zählt prepare_action-Aufrufe. Nur der zuletzt begonnene darf eine Aktion anlegen.</summary>
+    private long _prepareSequence;
+
+    /// <summary>Zuletzt beendete Tokens (neueste zuerst) – nur für klare Fehlermeldungen bei confirm_action.</summary>
+    private readonly LinkedList<RetiredToken> _retired = new();
+
+    private sealed record RetiredToken(string Token, string Summary, string Fate);
 
     public InputService(IOptions<KopilotOptions> options, IInputBackend backend, ILogger<InputService> log, TimeProvider? time = null)
     {
@@ -161,14 +190,17 @@ public sealed partial class InputService
             return new InputResult(InputResult.Refused, $"Aktion \"{actionId}\" gibt es für dieses Flugzeug nicht.", Action: actionId);
         }
 
-        var words = Words(pilotConfirmation);
-        if (words.Overlaps(NoWords) || !words.Overlaps(YesWords))
-        {
-            return new InputResult(InputResult.Refused, "Nur speichern, wenn der Pilot klar bestätigt, dass es im Cockpit funktioniert hat.", Action: action.Id);
-        }
-
         var cutoff = _time.GetUtcNow() - TimeSpan.FromMinutes(15);
         var executed = History.FirstOrDefault(e => e.Action.Equals(action.Id, StringComparison.OrdinalIgnoreCase) && e.Outcome == "ausgeführt" && e.TimeUtc >= cutoff);
+
+        if (!PilotConfirmsWorked(action, pilotConfirmation, executed?.Value))
+        {
+            return new InputResult(
+                InputResult.Refused,
+                "Nur speichern, wenn der Pilot klar bestätigt, dass es im Cockpit funktioniert hat (z. B. \"check\", \"confirm\", \"on\", \"avail\", \"läuft\" oder der Name der Aktion) – ohne Verneinung.",
+                Action: action.Id);
+        }
+
         if (executed is null)
         {
             return new InputResult(InputResult.Refused, "Diese Aktion wurde in den letzten 15 Minuten nicht ausgeführt – erst ausführen, dann im Cockpit prüfen.", Action: action.Id);
@@ -212,6 +244,12 @@ public sealed partial class InputService
         {
             return await PrepareCoreAsync(actionId ?? "", value, ct);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Der MCP-Aufruf wurde beendet (z. B. Zeitüberschreitung beim Client) – dann darf auch keine Aktion offen bleiben
+            _log.LogWarning("Eingabe: prepare_action {Action} = {Value} vom Client abgebrochen", actionId, value);
+            return new InputResult(InputResult.Failed, "Aufruf abgebrochen – es wurde keine Aktion vorbereitet. Neu mit prepare_action.", Action: actionId, Value: value);
+        }
         catch (Exception ex)
         {
             _log.LogError(ex, "Eingabe: prepare_action {Action} = {Value} fehlgeschlagen", actionId, value);
@@ -224,6 +262,18 @@ public sealed partial class InputService
         if (!Enabled)
         {
             return new InputResult(InputResult.Disabled, "Eingaben sind gesperrt. Freigabe im Kopilot-Dashboard (Eingabe) oder Kopilot:Input:Enabled.");
+        }
+
+        // Jede neue Anfrage verwirft die offene Aktion – auch wenn sie selbst scheitert. Ihr Readback gilt dann nicht mehr,
+        // und ein älterer, langsamer Aufruf darf später keine Aktion mehr anlegen (siehe Nummer beim Anlegen).
+        var sequence = Interlocked.Increment(ref _prepareSequence);
+        lock (_lock)
+        {
+            ExpireLocked();
+            if (_pending is not null)
+            {
+                RetireLocked("ersetzt", "Neue Aktion angefordert");
+            }
         }
 
         var profile = _backend.Profile;
@@ -253,21 +303,44 @@ public sealed partial class InputService
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(3)).ToLowerInvariant();
         var pending = new PendingAction(token, plan, now, now + ConfirmWindow);
         var epoch = Epoch;
+        string? stale = null;
         lock (_lock)
         {
-            if (_pending is { } old)
+            // Nur die neueste Anfrage legt eine Aktion an: Der zurückgegebene Token gehört damit immer zur offenen Aktion.
+            if (sequence != Interlocked.Read(ref _prepareSequence))
             {
-                AddLogLocked(old.Plan.Action.Id, old.Plan.ValueText, "ersetzt", "Neue Aktion vorbereitet", null);
+                stale = "Inzwischen wurde eine neuere Aktion angefordert – diese Vorbereitung ist verworfen und hat keinen Token.";
+            }
+            else if (ct.IsCancellationRequested)
+            {
+                stale = "Aufruf abgebrochen – es wurde keine Aktion vorbereitet. Neu mit prepare_action.";
+            }
+            else
+            {
+                if (_pending is not null)
+                {
+                    RetireLocked("ersetzt", "Neue Aktion vorbereitet");
+                }
+
+                _pending = pending;
+                _pendingInput = value;
+                _pendingProfile = profile;
+                _pendingEpoch = epoch;
+                AddLogLocked(plan.Action.Id, plan.ValueText, "vorbereitet", plan.Readback, null);
+                Share(pending);
             }
 
-            _pending = pending;
-            _pendingInput = value;
-            _pendingProfile = profile;
-            _pendingEpoch = epoch;
-            AddLogLocked(plan.Action.Id, plan.ValueText, "vorbereitet", plan.Readback, null);
+            if (stale is not null)
+            {
+                AddLogLocked(plan.Action.Id, plan.ValueText, "verworfen", stale, null);
+            }
         }
 
-        Share(pending);
+        if (stale is not null)
+        {
+            return new InputResult(InputResult.Failed, stale, Action: plan.Action.Id, Value: plan.ValueText);
+        }
+
         return new InputResult(
             InputResult.AwaitingConfirmation,
             Token: token,
@@ -291,19 +364,24 @@ public sealed partial class InputService
             ExpireLocked();
             if (_pending is null)
             {
-                return new InputResult(InputResult.Failed, "Keine offene Aktion – abgelaufen oder schon ausgeführt. Neu mit prepare_action.");
+                return new InputResult(
+                    InputResult.Failed,
+                    TokenProblemLocked(token) ?? "Keine offene Aktion – abgelaufen oder schon ausgeführt. Neu mit prepare_action.");
             }
 
             if (!string.Equals(_pending.Token, token?.Trim(), StringComparison.OrdinalIgnoreCase))
             {
-                return new InputResult(InputResult.Failed, "Token passt nicht zur offenen Aktion.");
+                return new InputResult(
+                    InputResult.Failed,
+                    TokenProblemLocked(token)
+                    ?? $"Token passt nicht zur offenen Aktion ({_pending.Plan.Summary}). Den Token aus der letzten prepare_action-Antwort verwenden.",
+                    Action: _pending.Plan.Action.Id);
             }
 
             var words = Words(pilotConfirmation);
             if (words.Overlaps(NoWords))
             {
-                var cancelled = TakeLocked();
-                AddLogLocked(cancelled.Plan.Action.Id, cancelled.Plan.ValueText, "abgebrochen", $"Pilot: \"{pilotConfirmation}\"", null);
+                var cancelled = RetireLocked("abgebrochen", $"Pilot: \"{pilotConfirmation}\"");
                 return new InputResult(InputResult.Cancelled, "Pilot hat nicht bestätigt – Aktion verworfen.", Action: cancelled.Plan.Action.Id);
             }
 
@@ -320,7 +398,7 @@ public sealed partial class InputService
             input = _pendingInput;
             pendingProfile = _pendingProfile;
             pendingEpoch = _pendingEpoch;
-            pending = TakeLocked();
+            pending = TakeLocked("schon mit confirm_action verwendet");
         }
 
         // Ab hier läuft die Aktion zu Ende, auch wenn der MCP-Aufruf abgebrochen wird – sonst bliebe sie halb ausgeführt.
@@ -378,8 +456,7 @@ public sealed partial class InputService
                 return new InputResult(InputResult.Cancelled, "Keine passende offene Aktion.");
             }
 
-            var cancelled = TakeLocked();
-            AddLogLocked(cancelled.Plan.Action.Id, cancelled.Plan.ValueText, "abgebrochen", reason, null);
+            var cancelled = RetireLocked("abgebrochen", reason);
             return new InputResult(InputResult.Cancelled, Action: cancelled.Plan.Action.Id, Value: cancelled.Plan.ValueText);
         }
     }
@@ -483,12 +560,17 @@ public sealed partial class InputService
 
         var alreadySet = sent == 0 && skipped > 0;
         var inv = System.Globalization.CultureInfo.InvariantCulture;
+
+        // Rohwert der Prüfvariable mit Namen der Auswahl, z. B. Schalterstellung 0 = "on" – sonst liest sich 0 wie "aus"
+        var afterText = after is { } afterValue ? ActionPlanner.StateName(plan.Action, afterValue) : null;
+        var expectedText = plan.Action.Parameter?.IsChoice == true ? plan.ValueText : null;
+        string Shown(double? v, string? name) => v is not { } d ? "nichts" : name is null ? d.ToString(inv) : $"{d.ToString(inv)} ({name})";
         var detail = verified switch
         {
             true when alreadySet => "war schon so",
             true => plan.Check!.Independent ? "vom Flugzeug bestätigt" : "Wert steht (nur Schaltervariable geprüft)",
-            false when reverted => $"vom Flugzeug zurückgesetzt (zeigt {after?.ToString(inv) ?? "nichts"})",
-            false => $"Flugzeug zeigt {after?.ToString(inv) ?? "nichts"} statt {plan.Check!.Condition.Value.ToString(inv)}",
+            false when reverted => $"vom Flugzeug zurückgesetzt (zeigt {Shown(after, afterText)})",
+            false => $"Flugzeug zeigt {Shown(after, afterText)} statt {Shown(plan.Check!.Condition.Value, expectedText)}",
             null => alreadySet ? "war schon so" : null,
         };
 
@@ -530,7 +612,8 @@ public sealed partial class InputService
             StateAfter: after,
             Skipped: skipped,
             AlreadySet: alreadySet,
-            CheckIndependent: plan.Check?.Independent);
+            CheckIndependent: plan.Check?.Independent,
+            StateAfterText: afterText);
     }
 
     /// <summary>
@@ -632,14 +715,39 @@ public sealed partial class InputService
         return new InputResult(InputResult.Failed, text, Action: plan.Action.Id, Value: plan.ValueText);
     }
 
-    /// <summary>Offene Aktion entnehmen (einmalig) und die geteilte Anzeige löschen.</summary>
-    private PendingAction TakeLocked()
+    /// <summary>
+    /// Offene Aktion entnehmen (einmalig) und die geteilte Anzeige löschen. Der Token kommt in die Liste der beendeten Tokens,
+    /// damit confirm_action mit einem alten Token sagen kann, was aus der Aktion geworden ist.
+    /// </summary>
+    /// <param name="fate">Was mit der Aktion passiert ist, für die Fehlermeldung, z. B. "durch eine neuere Anfrage ersetzt".</param>
+    private PendingAction TakeLocked(string fate)
     {
         var taken = _pending!;
         _pending = null;
         _pendingInput = null;
         _pendingProfile = null;
         Share(null);
+
+        _retired.AddFirst(new RetiredToken(taken.Token, taken.Plan.Summary, fate));
+        while (_retired.Count > MaxRetiredTokens)
+        {
+            _retired.RemoveLast();
+        }
+
+        return taken;
+    }
+
+    /// <summary>Offene Aktion verwerfen und protokollieren ("ersetzt", "abgebrochen", "abgelaufen").</summary>
+    private PendingAction RetireLocked(string outcome, string? detail)
+    {
+        var fate = outcome switch
+        {
+            "ersetzt" => "durch eine neuere prepare_action-Anfrage ersetzt",
+            "abgelaufen" => "abgelaufen (keine Bestätigung im Zeitfenster)",
+            _ => outcome,
+        };
+        var taken = TakeLocked(fate);
+        AddLogLocked(taken.Plan.Action.Id, taken.Plan.ValueText, outcome, detail, null);
         return taken;
     }
 
@@ -647,10 +755,39 @@ public sealed partial class InputService
     {
         if (_pending is { } p && _time.GetUtcNow() > p.ExpiresUtc)
         {
-            TakeLocked();
-            AddLogLocked(p.Plan.Action.Id, p.Plan.ValueText, "abgelaufen", "Keine Bestätigung", null);
+            RetireLocked("abgelaufen", "Keine Bestätigung");
         }
     }
+
+    /// <summary>Genaue Meldung für einen Token, der nicht (mehr) zur offenen Aktion gehört, sonst null.</summary>
+    private string? TokenProblemLocked(string? token)
+    {
+        var t = token?.Trim();
+        if (string.IsNullOrEmpty(t))
+        {
+            return _pending is null ? null : "Kein Token angegeben – den Token aus der letzten prepare_action-Antwort verwenden.";
+        }
+
+        var open = _pending is { } p
+            ? $" Offen ist jetzt {p.Plan.Summary} – deren Readback dem Piloten vorlesen und seine Antwort abwarten."
+            : " Neu mit prepare_action.";
+
+        if (_retired.FirstOrDefault(r => string.Equals(r.Token, t, StringComparison.OrdinalIgnoreCase)) is { } retired)
+        {
+            return $"Token {t} gehört zu {retired.Summary} – {retired.Fate}.{open}";
+        }
+
+        if (ForeignPending is { TokenHash: { } hash } foreign && string.Equals(hash, TokenHash(t), StringComparison.Ordinal))
+        {
+            return $"Token {t} gehört zu {foreign.Action} in einer anderen Kopilot-Instanz – confirm_action über dieselbe Verbindung aufrufen wie prepare_action.";
+        }
+
+        return null;
+    }
+
+    /// <summary>Kurzer Hash des Tokens für die geteilte Anzeige – der Token selbst bleibt in der Instanz.</summary>
+    private static string TokenHash(string token) =>
+        Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(token.Trim().ToLowerInvariant())))[..16].ToLowerInvariant();
 
     private void Share(PendingAction? pending)
     {
@@ -658,7 +795,8 @@ public sealed partial class InputService
         {
             if (pending is not null)
             {
-                _store.SavePending(new SharedPending(pending.Plan.Action.Id, pending.Plan.ValueText, pending.Plan.Readback, pending.ExpiresUtc, Environment.ProcessId));
+                _store.SavePending(new SharedPending(
+                    pending.Plan.Action.Id, pending.Plan.ValueText, pending.Plan.Readback, pending.ExpiresUtc, Environment.ProcessId, TokenHash(pending.Token)));
             }
             else if (_store.LoadPending()?.ProcessId == Environment.ProcessId)
             {
@@ -686,8 +824,78 @@ public sealed partial class InputService
     [GeneratedRegex(@"\p{L}+")]
     private static partial Regex WordPattern();
 
-    private static HashSet<string> Words(string? text) =>
+    /// <summary>Großbuchstabe nach Kleinbuchstabe trennt Wörter: "noSmoking" → "no Smoking", "runwayTurnoff" → "runway Turnoff".</summary>
+    [GeneratedRegex(@"(?<=\p{Ll})(?=\p{Lu})")]
+    private static partial Regex CamelPattern();
+
+    private static HashSet<string> Words(string? text) => WordList(text).ToHashSet(StringComparer.Ordinal);
+
+    private static List<string> WordList(string? text) =>
         string.IsNullOrWhiteSpace(text)
             ? []
-            : WordPattern().Matches(text.ToLowerInvariant()).Select(m => m.Value).ToHashSet(StringComparer.Ordinal);
+            : WordPattern().Matches(text.ToLowerInvariant()).Select(m => m.Value).ToList();
+
+    /// <summary>
+    /// Bestätigt der Pilot, dass die Aktion im Cockpit funktioniert hat? Toleranter als confirm_action:
+    /// Es reicht ein Bestätigungs- oder Zustandswort ("confirm", "check", "on", "off", "avail", "läuft" …), der ausgeführte Wert
+    /// oder der Name der Aktion – solange nichts verneint wird. Der Name wird vor der Prüfung auf Verneinung herausgenommen,
+    /// damit "Confirm, no smoking, auto" nicht am "no" aus "no smoking" scheitert.
+    /// </summary>
+    public static bool PilotConfirmsWorked(ProfileAction action, string? pilotWords, string? executedValue = null)
+    {
+        var words = WordList(pilotWords);
+        if (words.Count == 0)
+        {
+            return false;
+        }
+
+        // Längste Namen zuerst, jedes Vorkommen als zusammenhängende Wortfolge entfernen
+        var named = false;
+        var rest = words.Select(w => (string?)w).ToList();
+        foreach (var phrase in NamePhrases(action).OrderByDescending(p => p.Count))
+        {
+            for (var i = 0; i + phrase.Count <= rest.Count; i++)
+            {
+                if (Enumerable.Range(0, phrase.Count).All(k => rest[i + k] == phrase[k]))
+                {
+                    for (var k = 0; k < phrase.Count; k++)
+                    {
+                        rest[i + k] = null;
+                    }
+
+                    named = true;
+                }
+            }
+        }
+
+        var remaining = rest.OfType<string>().ToList();
+        if (remaining.Any(w => NoWords.Contains(w) || FailWords.Contains(w)))
+        {
+            return false;
+        }
+
+        var valueWords = WordList(executedValue);
+        return named
+               || remaining.Any(w => YesWords.Contains(w) || StateWords.Contains(w))
+               || (valueWords.Count > 0 && remaining.Any(valueWords.Contains));
+    }
+
+    /// <summary>Namen einer Aktion als Wortfolgen: Label (ganz und je Teil um "/"), Readback ohne Wert, Id-Teile ("signs.noSmoking" → "no smoking").</summary>
+    private static IEnumerable<List<string>> NamePhrases(ProfileAction action)
+    {
+        var texts = new List<string> { action.Label, action.Readback.Replace("{value}", " ", StringComparison.OrdinalIgnoreCase) };
+        texts.AddRange(action.Label.Split(new[] { '/', '(', ')', '&', ',' }, StringSplitOptions.RemoveEmptyEntries));
+
+        var idParts = action.Id.Split('.', StringSplitOptions.RemoveEmptyEntries).Select(p => CamelPattern().Replace(p, " ")).ToList();
+        texts.Add(string.Join(' ', idParts));
+        if (idParts.Count > 1)
+        {
+            texts.Add(idParts[^1]);
+        }
+
+        return texts
+            .Select(WordList)
+            .Where(p => p.Count > 0)
+            .DistinctBy(p => string.Join(' ', p));
+    }
 }

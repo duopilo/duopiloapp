@@ -1,9 +1,11 @@
 {
   // Headwind A330-900neo (MSFS 2024, Community-Paket headwindsim-aircraft-a330-900). Basiert auf FlyByWire – Grundlage ist das A32NX-Profil.
   // Bindings: "verified": true = in der Testsession am 28.10.2026 im Sim geprüft. Alles andere stammt aus dem A32NX-Profil und ist ungeprüft.
+  // Fix A339 (29.10.2026): Variablen und Events gegen den Headwind-Quellcode (headwindsim/aircraft, hdw-a339x: A330_NEO_INTERIOR.xml,
+  //   aircraft_preset_procedures.xml, Systems-WASM) und die FBW-Basis geprüft; Lesewerte im Reiseflug mit read_simvar gegengelesen.
   //
   // Bewusst NICHT übernommen (beim A330 anders oder nicht gefunden – ein unbekanntes L: liest 0 und würde Fehlalarme auslösen):
-  //   athrMode (L:A32NX_AUTOTHRUST_MODE bleibt 0), ALT CRZ (fmgcDiscreteWord1), speedTarget, machMode, groundSpoilersOut, decelLight, ECAM-Zeilen.
+  //   athrMode (L:A32NX_AUTOTHRUST_MODE bleibt 0), ALT CRZ (fmgcDiscreteWord1), speedTarget, machMode, groundSpoilersOut, decelLight.
   // Unbrauchbar (generisch): BRAKE PARKING POSITION/INDICATOR, EXTERNAL POWER ON:1, AUTOPILOT MASTER, generischer Fuel Flow/EGT, AUTO BRAKE SWITCH CB.
   "name": "Headwind A330-900neo",
   "match": [
@@ -11,7 +13,7 @@
     { "path": [ "headwind_a330neo" ] },
     { "title": [ "A330-900neo" ] }
   ],
-  "notes": "Basiert auf FlyByWire. FCU-Werte kommen aus den älteren FBW-Variablen (AUTOPILOT_SPEED_SELECTED, FCU_HEADING_SELECTED, ALTITUDE LOCK VAR:3). Thrust-Modus (THR CLB, SPEED), ALT CRZ und ECAM sind noch offen. Eingaben wie beim A32NX; FCU, Lights, Anti-Ice, External Power und APU im Sim getestet, der Rest ungeprüft.",
+  "notes": "Basiert auf FlyByWire. FCU-Werte kommen aus den älteren FBW-Variablen (AUTOPILOT_SPEED_SELECTED, FCU_HEADING_SELECTED, ALTITUDE LOCK VAR:3). Thrust-Modus (THR CLB, SPEED) und ALT CRZ sind noch offen. ECAM mit der Headwind-Meldungstabelle, Elektrik und Treibstoffpumpen in get_systems. Eingaben wie beim A32NX plus Batterien und NAV & LOGO; FCU, Lights, Anti-Ice, External Power und APU im Sim getestet, der Rest ungeprüft.",
   "bindings": {
     "ap1": { "name": "L:A32NX_AUTOPILOT_1_ACTIVE", "type": "bool", "verified": true },
     "ap2": { "name": "L:A32NX_AUTOPILOT_2_ACTIVE", "type": "bool", "verified": true },
@@ -61,6 +63,9 @@
     "apuStart": { "name": "L:A32NX_OVHD_APU_START_PB_IS_ON", "type": "bool", "verified": true },
     "apuAvailable": { "name": "L:A32NX_OVHD_APU_START_PB_IS_AVAILABLE", "type": "bool", "verified": true },
     "apuN": { "name": "L:A32NX_APU_N", "type": "arinc429", "verified": true, "description": "APU N (%) aus dem ECB" },
+    "apuBleed": { "name": "L:A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", "type": "bool", "verified": false, "description": "APU BLEED Pushbutton (aus dem A330-Modell; im Flug mit APU aus 0 gelesen)" },
+    "apuEgt": { "name": "L:A32NX_APU_EGT", "type": "arinc429", "verified": false, "description": "APU EGT (°C) aus dem ECB – im Flug mit APU aus nur ungültiges Wort (SSM 0)" },
+    "apuFlapOpen": { "name": "L:A32NX_APU_FLAP_OPEN_PERCENTAGE", "unit": "percent", "type": "number", "verified": false, "description": "APU-Lufteinlassklappe offen (%)" },
     "spoilersArmed": { "name": "L:A32NX_SPOILERS_ARMED", "type": "bool", "verified": false },
     "vls": { "name": "L:A32NX_SPEEDS_VLS", "type": "number", "verified": false },
     "v1": { "name": "L:AIRLINER_V1_SPEED", "unit": "knots", "type": "number", "verified": false },
@@ -85,10 +90,59 @@
     "landingFlaps": [ "3", "FULL" ],
     "speedLimitBelowFl100Kt": 250
   },
+  // ECAM: Die Headwind-FWC (PseudoFWC.ts) schreibt dieselben EWD-Zeilen wie der A32NX. Im Flug gelesen: Memos 7001 IGNITION, 54001 PRED W/S OFF.
+  // Tabelle aus dem Headwind-Repo (hdw-a339x/src/systems/shared/src/EwdMessages.ts) – wie die FBW-Tabelle plus A330-Codes.
+  "ecam": {
+    "format": "hdw-a339x",
+    "leftLines": "L:A32NX_EWD_LOWER_LEFT_LINE_{n}",
+    "rightLines": "L:A32NX_EWD_LOWER_RIGHT_LINE_{n}",
+    "lines": 7
+  },
+  // Elektrik: Headwind nutzt das FBW-Elektriksystem (A32NX_ELEC_*). Im Flug gelesen: GEN 1 115 V, GEN 2 400 Hz, Last GEN 1 31 %, BAT 1 27 V,
+  // AC BUS 1 und DC BAT BUS versorgt, APU GEN 0 V (APU aus). Der APU-GEN-Pushbutton ist die SimVar APU GENERATOR SWITCH:1 (Modell: FBW_Airbus_APU_Generator_Switch).
+  "electrical": [
+    { "key": "gen1Volt", "name": "L:A32NX_ELEC_ENG_GEN_1_POTENTIAL", "description": "GEN 1 (V)" },
+    { "key": "gen1Hz", "name": "L:A32NX_ELEC_ENG_GEN_1_FREQUENCY", "description": "GEN 1 (Hz)" },
+    { "key": "gen1Load", "name": "L:A32NX_ELEC_ENG_GEN_1_LOAD", "unit": "percent", "description": "GEN 1 Last (%)" },
+    { "key": "gen2Volt", "name": "L:A32NX_ELEC_ENG_GEN_2_POTENTIAL", "description": "GEN 2 (V)" },
+    { "key": "gen2Hz", "name": "L:A32NX_ELEC_ENG_GEN_2_FREQUENCY", "description": "GEN 2 (Hz)" },
+    { "key": "gen2Load", "name": "L:A32NX_ELEC_ENG_GEN_2_LOAD", "unit": "percent", "description": "GEN 2 Last (%)" },
+    { "key": "apuGenOn", "name": "APU GENERATOR SWITCH:1", "unit": "Bool", "description": "APU GEN Pushbutton", "values": { "0": "OFF", "1": "ON" } },
+    { "key": "apuGenVolt", "name": "L:A32NX_ELEC_APU_GEN_1_POTENTIAL", "description": "APU GEN (V)" },
+    { "key": "apuGenHz", "name": "L:A32NX_ELEC_APU_GEN_1_FREQUENCY", "description": "APU GEN (Hz)" },
+    { "key": "apuGenLoad", "name": "L:A32NX_ELEC_APU_GEN_1_LOAD", "unit": "percent", "description": "APU GEN Last (%)" },
+    { "key": "extPwrVolt", "name": "L:A32NX_ELEC_EXT_PWR_POTENTIAL", "description": "EXT PWR (V)" },
+    { "key": "bat1Volt", "name": "L:A32NX_ELEC_BAT_1_POTENTIAL", "description": "BAT 1 (V)" },
+    { "key": "bat2Volt", "name": "L:A32NX_ELEC_BAT_2_POTENTIAL", "description": "BAT 2 (V)" },
+    { "key": "ac1Powered", "name": "L:A32NX_ELEC_AC_1_BUS_IS_POWERED", "description": "AC BUS 1", "values": { "0": "aus", "1": "versorgt" } },
+    { "key": "ac2Powered", "name": "L:A32NX_ELEC_AC_2_BUS_IS_POWERED", "description": "AC BUS 2", "values": { "0": "aus", "1": "versorgt" } },
+    { "key": "acEssPowered", "name": "L:A32NX_ELEC_AC_ESS_BUS_IS_POWERED", "description": "AC ESS BUS", "values": { "0": "aus", "1": "versorgt" } },
+    { "key": "dc1Powered", "name": "L:A32NX_ELEC_DC_1_BUS_IS_POWERED", "description": "DC BUS 1", "values": { "0": "aus", "1": "versorgt" } },
+    { "key": "dc2Powered", "name": "L:A32NX_ELEC_DC_2_BUS_IS_POWERED", "description": "DC BUS 2", "values": { "0": "aus", "1": "versorgt" } },
+    { "key": "dcEssPowered", "name": "L:A32NX_ELEC_DC_ESS_BUS_IS_POWERED", "description": "DC ESS BUS", "values": { "0": "aus", "1": "versorgt" } },
+    { "key": "dcBatPowered", "name": "L:A32NX_ELEC_DC_BAT_BUS_IS_POWERED", "description": "DC BAT BUS", "values": { "0": "aus", "1": "versorgt" } }
+  ],
+  // Treibstoffpumpen: keine L:-Variablen – das A330-Modell (FBW_Airbus_Fuel_Pump / FBW_Airbus_Fuel_Jet_Pump) nutzt die MSFS-Pumpen und -Ventile:
+  // L TK 1 = Pumpe 2, L TK 2 = 5, R TK 1 = 3, R TK 2 = 6; CTR TK XFR L/R = Ventil 9/10, X FEED = Ventil 3. Im Flug gelesen: Pumpen 2 und 6 an und aktiv, Ventil 9 offen.
+  "fuel": [
+    { "key": "pumpL1", "name": "FUELSYSTEM PUMP SWITCH:2", "unit": "Enum", "description": "L TK PUMP 1", "values": { "0": "OFF", "1": "ON", "2": "AUTO" } },
+    { "key": "pumpL2", "name": "FUELSYSTEM PUMP SWITCH:5", "unit": "Enum", "description": "L TK PUMP 2", "values": { "0": "OFF", "1": "ON", "2": "AUTO" } },
+    { "key": "pumpR1", "name": "FUELSYSTEM PUMP SWITCH:3", "unit": "Enum", "description": "R TK PUMP 1", "values": { "0": "OFF", "1": "ON", "2": "AUTO" } },
+    { "key": "pumpR2", "name": "FUELSYSTEM PUMP SWITCH:6", "unit": "Enum", "description": "R TK PUMP 2", "values": { "0": "OFF", "1": "ON", "2": "AUTO" } },
+    { "key": "pumpL1Running", "name": "FUELSYSTEM PUMP ACTIVE:2", "unit": "Bool", "description": "L TK PUMP 1 läuft", "values": { "0": "nein", "1": "ja" } },
+    { "key": "pumpL2Running", "name": "FUELSYSTEM PUMP ACTIVE:5", "unit": "Bool", "description": "L TK PUMP 2 läuft", "values": { "0": "nein", "1": "ja" } },
+    { "key": "pumpR1Running", "name": "FUELSYSTEM PUMP ACTIVE:3", "unit": "Bool", "description": "R TK PUMP 1 läuft", "values": { "0": "nein", "1": "ja" } },
+    { "key": "pumpR2Running", "name": "FUELSYSTEM PUMP ACTIVE:6", "unit": "Bool", "description": "R TK PUMP 2 läuft", "values": { "0": "nein", "1": "ja" } },
+    { "key": "ctrXfrL", "name": "FUELSYSTEM VALVE SWITCH:9", "unit": "Bool", "description": "CTR TK XFR L", "values": { "0": "OFF", "1": "ON" } },
+    { "key": "ctrXfrR", "name": "FUELSYSTEM VALVE SWITCH:10", "unit": "Bool", "description": "CTR TK XFR R", "values": { "0": "OFF", "1": "ON" } },
+    { "key": "xfeedOpen", "name": "FUELSYSTEM VALVE OPEN:3", "unit": "Bool", "description": "X FEED Ventil", "values": { "0": "zu", "1": "offen" } }
+  ],
   "variables": [
     { "key": "bat1Auto", "name": "L:A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO", "description": "BAT 1", "values": { "0": "OFF", "1": "AUTO" } },
     { "key": "bat2Auto", "name": "L:A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO", "description": "BAT 2", "values": { "0": "OFF", "1": "AUTO" } },
-    { "key": "gen1On", "name": "L:A32NX_OVHD_ELEC_ENG_GEN_1_PB_IS_ON", "description": "GEN 1", "values": { "0": "OFF", "1": "ON" } },
+    // GEN-Pushbutton: Das Modell (FBW_Airbus_Engine_Generator_Switch) nutzt GENERAL ENG MASTER ALTERNATOR – L:A32NX_OVHD_ELEC_ENG_GEN_1_PB_IS_ON las im Flug 0 bei laufendem GEN 1.
+    { "key": "gen1On", "name": "GENERAL ENG MASTER ALTERNATOR:1", "unit": "Bool", "description": "GEN 1", "values": { "0": "OFF", "1": "ON" } },
+    { "key": "gen2On", "name": "GENERAL ENG MASTER ALTERNATOR:2", "unit": "Bool", "description": "GEN 2", "values": { "0": "OFF", "1": "ON" } },
     { "key": "extPwrOn", "name": "L:A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON", "description": "EXT PWR", "values": { "0": "OFF", "1": "ON" } },
     { "key": "apuFault", "name": "L:A32NX_OVHD_APU_MASTER_SW_PB_HAS_FAULT", "description": "APU MASTER FAULT", "values": { "0": "–", "1": "FAULT" } },
     { "key": "adiru1State", "name": "L:A32NX_ADIRS_ADIRU_1_STATE", "description": "ADIRU 1", "values": { "0": "OFF", "1": "ALIGNING", "2": "ALIGNED" } }
@@ -679,21 +733,27 @@
       "id": "brakes.autobrake",
       "area": "Brakes",
       "label": "Autobrake",
+      // Eigene Events je Stellung statt A32NX.AUTOBRAKE_SET: Dessen Wert geht laut Systems-WASM (autobrakes.rs) 1:1 nach
+      // AUTOBRAKES_ARMED_MODE_SET (0 = aus, 1 = LO, 2 = MED, 3 = MAX) – die Doku nennt 1–4, MAX = 4 wurde als "aus" gelesen.
+      "description": "Autobrake LO, MED oder MAX bzw. aus. MAX nimmt das Flugzeug nur am Boden an (Start). Armen geht nur mit Druck an den normalen Bremsen (grünes Hydrauliksystem) und Anti-Skid – vorher bleibt die Anzeige auf aus.",
       "parameter": {
         "type": "choice",
-        "options": { "off": 1, "lo": 2, "med": 3, "max": 4 },
+        "options": { "off": 0, "lo": 1, "med": 2, "max": 3 },
         "spoken": { "lo": "low", "med": "medium" }
       },
       "steps": [
-        {
-          "event": "A32NX.AUTOBRAKE_SET",
-          "value": "{value}"
-        }
+        { "event": "A32NX.AUTOBRAKE_SET_DISARM", "only": [ "off" ] },
+        { "event": "A32NX.AUTOBRAKE_SET_LO", "only": [ "lo" ] },
+        { "event": "A32NX.AUTOBRAKE_SET_MED", "only": [ "med" ] },
+        { "event": "A32NX.AUTOBRAKE_SET_MAX", "only": [ "max" ] }
       ],
       "readback": "Autobrake {value}",
+      "requires": [
+        { "variable": "SIM ON GROUND", "unit": "Bool", "equalTo": 1, "only": [ "max" ], "message": "Autobrake MAX gibt es nur am Boden (Start) – in der Luft nimmt das Flugzeug MAX nicht an." }
+      ],
       "check": {
         "variable": "L:A32NX_AUTOBRAKES_ARMED_MODE",
-        "expect": { "off": 0, "lo": 1, "med": 2, "max": 3 }
+        "expect": "{value}"
       },
       "verified": false
     },
@@ -835,6 +895,9 @@
       "id": "lights.nose",
       "area": "Lights",
       "label": "Nose light",
+      // Stellung L:LIGHTING_LANDING_1 wie im A330-Modell (ASOBO_LIGHTING_Switch_Light_Landing_Template, Tooltips 0/1/2): 0 = T.O, 1 = TAXI, 2 = OFF.
+      // Im Flug gelesen: OFF = 2. Die Zuordnung ist also nicht vertauscht – stateAfter ist die rohe Stellung, stateAfterText der Name.
+      "description": "Nose light T.O, TAXI oder OFF. Die Schalterstellung zählt von oben: 0 = T.O, 1 = TAXI, 2 = OFF.",
       "parameter": {
         "type": "choice",
         "options": { "to": 0, "taxi": 1, "off": 2 },
@@ -901,10 +964,55 @@
       "verified": true
     },
     {
+      // Der A330 hat EINEN Schalter NAV & LOGO (Modell: SWITCH_OVHD_EXTLT_NAVLOGO). Er schickt LOGO_LIGHTS_SET und NAV_LIGHTS_SET,
+      // seine Stellung folgt LIGHT LOGO. Headwinds eigene Prozedur (aircraft_preset_procedures.xml) schaltet ebenfalls beide.
+      "id": "lights.nav",
+      "area": "Lights",
+      "label": "Nav & logo lights",
+      "description": "Schalter NAV & LOGO: schaltet Positionslichter und Logo-Licht zusammen, wie der Schalter im Cockpit. Im Flug mit eingefahrenen Klappen trennt das Flugzeug das Logo-Licht selbst vom Strom.",
+      "parameter": {
+        "type": "choice",
+        "options": { "on": 1, "off": 0 }
+      },
+      "steps": [
+        { "event": "LOGO_LIGHTS_SET", "value": "{value}", "delayMs": 100 },
+        { "event": "NAV_LIGHTS_SET", "value": "{value}" }
+      ],
+      "readback": "Nav and logo lights {value}",
+      "check": {
+        "variable": "LIGHT NAV",
+        "expect": "{value}",
+        "unit": "Bool"
+      },
+      "verified": false
+    },
+    {
+      "id": "lights.logo",
+      "area": "Lights",
+      "label": "Logo light",
+      "description": "Nur das Logo-Licht. Beim A330 sitzt es auf dem Schalter NAV & LOGO, dessen Stellung LIGHT LOGO folgt – logo off zeigt den Schalter also auf OFF, auch wenn die Positionslichter an bleiben. Für beide zusammen lights.nav.",
+      "parameter": {
+        "type": "choice",
+        "options": { "on": 1, "off": 0 }
+      },
+      "steps": [
+        { "event": "LOGO_LIGHTS_SET", "value": "{value}" }
+      ],
+      "readback": "Logo light {value}",
+      "check": {
+        "variable": "LIGHT LOGO",
+        "expect": "{value}",
+        "unit": "Bool"
+      },
+      "verified": false
+    },
+    {
       "id": "signs.seatbelts",
       "area": "Signs",
       "label": "Seat belts",
-      "description": "Schalter mit drei Stellungen (ON, AUTO, OFF). Bei ON und OFF schaltet Kopilot das Zeichen mit – wie der Schalter im Cockpit. In AUTO steuert das Flugzeug es (Slats oder Fahrwerk).",
+      // Stellung L:XMLVAR_SWITCH_OVHD_INTLT_SEATBELT_Position wie im A330-Modell (Tooltips 0/1/2): 0 = ON, 1 = AUTO, 2 = OFF.
+      // Im Flug gelesen: OFF = 2 bei ausgeschaltetem Zeichen (CABIN SEATBELTS ALERT SWITCH 0). stateAfter 0 bei "on" ist also richtig.
+      "description": "Schalter mit drei Stellungen (ON, AUTO, OFF; Stellung 0 = ON, 1 = AUTO, 2 = OFF). Bei ON und OFF schaltet Kopilot das Zeichen mit – wie der Schalter im Cockpit. In AUTO steuert das Flugzeug es (Slats oder Fahrwerk).",
       "parameter": {
         "type": "choice",
         "options": { "on": 0, "auto": 1, "off": 2 }
@@ -1165,6 +1273,25 @@
       "verified": false
     },
     {
+      // BAT 1/2: FBW_Airbus_Battery_Master_Switch (ID 1 und 2) im A330-Modell, Pushbutton L:A32NX_OVHD_ELEC_BAT_n_PB_IS_AUTO (1 = AUTO).
+      // Reihenfolge und Pause wie in Headwinds aircraft_preset_procedures.xml (erst BAT 1, dann BAT 2).
+      "id": "elec.battery",
+      "area": "Elec",
+      "label": "Batteries",
+      "description": "BAT 1 und BAT 2 zusammen (on = AUTO). Ausschalten nur am Boden. Geprüft wird die Schalterstellung von BAT 2; BAT 1 prüft APU master vor dem Start.",
+      "parameter": { "type": "choice", "options": { "on": 1, "off": 0 } },
+      "steps": [
+        { "set": "L:A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO", "value": "{value}", "delayMs": 1000 },
+        { "set": "L:A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO", "value": "{value}" }
+      ],
+      "readback": "Batteries {value}",
+      "requires": [
+        { "variable": "SIM ON GROUND", "unit": "Bool", "equalTo": 1, "only": [ "off" ], "message": "Batterien nur am Boden ausschalten." }
+      ],
+      "check": { "variable": "L:A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO", "expect": "{value}" },
+      "verified": false
+    },
+    {
       "id": "elec.extPwr",
       "area": "Elec",
       "label": "External power",
@@ -1238,6 +1365,9 @@
       "id": "tcas.mode",
       "area": "Transponder",
       "label": "TCAS mode",
+      // Der Drehschalter schreibt L:A32NX_SWITCH_TCAS_Position (Enum, 0 = STBY, 1 = TA, 2 = TA/RA). Der TCAS-Rechner übernimmt das nur,
+      // wenn der Transponder nicht auf STBY steht, ALT RPTG an ist und TCAS Strom hat – sonst bleibt L:A32NX_TCAS_MODE auf STBY.
+      "description": "TCAS-Schalter STBY, TA oder TA/RA. Geprüft wird der Modus des TCAS-Rechners (L:A32NX_TCAS_MODE), nicht nur die Schalterstellung. TA und TA/RA brauchen Transponder AUTO/ON und ALT RPTG an.",
       "parameter": {
         "type": "choice",
         "options": { "stby": 0, "ta": 1, "tara": 2 },
@@ -1246,13 +1376,26 @@
       "steps": [
         {
           "set": "L:A32NX_SWITCH_TCAS_Position",
+          "unit": "Enum",
           "value": "{value}"
         }
       ],
       "readback": "TCAS {value}",
+      "requires": [
+        {
+          "variable": "TRANSPONDER STATE:1", "equalTo": 4, "tolerance": 1.1, "only": [ "ta", "tara" ],
+          "message": "Transponder steht auf STBY – TCAS bliebe in STBY. Erst xpdr.mode auto oder on."
+        },
+        {
+          "variable": "L:A32NX_SWITCH_ATC_ALT", "equalTo": 1, "only": [ "ta", "tara" ],
+          "message": "ALT RPTG ist aus – TCAS bliebe in STBY. Erst xpdr.altReporting on."
+        }
+      ],
       "check": {
-        "variable": "L:A32NX_SWITCH_TCAS_Position",
-        "expect": "{value}"
+        "variable": "L:A32NX_TCAS_MODE",
+        "unit": "Enum",
+        "expect": "{value}",
+        "timeoutMs": 4000
       },
       "verified": false
     },

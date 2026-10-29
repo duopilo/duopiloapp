@@ -8,7 +8,7 @@ using Microsoft.Extensions.Options;
 namespace Kopilot.Tests;
 
 /// <summary>Eingabe-Modul (v0.7): Planung, Sperren, Sperrliste und der zweistufige Ablauf mit Bestätigung.</summary>
-public sealed class InputTests
+public sealed partial class InputTests
 {
     private static readonly AircraftLimits Limits = new()
     {
@@ -255,6 +255,10 @@ public sealed class InputTests
     [InlineData("A32NX.FCU_SPD_SET", 250u, true)]
     [InlineData("K:GEAR_DOWN", 0u, true)]
     [InlineData("XPNDR_SET", 0x7000u, true)]
+    [InlineData("NAV_LIGHTS_SET", 1u, true)]
+    [InlineData("LOGO_LIGHTS_SET", 0u, true)]
+    [InlineData("A32NX.AUTOBRAKE_SET_MAX", 0u, true)]
+    [InlineData("A32NX.AUTOBRAKE_SET_DISARM", 0u, true)]
     public void Erlaubte_Events(string name, uint data, bool allowed) => Assert.Equal(allowed, ActionSafety.EventProblem(name, data) is null);
 
     [Theory]
@@ -270,6 +274,8 @@ public sealed class InputTests
     [InlineData("L:A32NX_OVHD_COND_PACK_1_PB_IS_ON", true)]
     [InlineData("L:A32NX_BUTTON_OVHD_ANTI_ICE_ENG_1_POSITION", true)]
     [InlineData("L:A32NX_TRANSPONDER_MODE", true)]
+    [InlineData("L:A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO", true)]
+    [InlineData("L:A32NX_SWITCH_TCAS_Position", true)]
     public void Erlaubte_Variablen(string name, bool allowed) => Assert.Equal(allowed, ActionSafety.VariableProblem(name) is null);
 
     [Fact]
@@ -467,8 +473,10 @@ public sealed class InputTests
         var a32nx = store.All.Single(p => p.Name == "FlyByWire A32NX");
         var profile = store.All.Single(p => p.Name == "Headwind A330-900neo");
 
-        // Dieselben Aktionen in derselben Reihenfolge, keine doppelt
-        Assert.Equal(a32nx.Actions.Select(a => a.Id), profile.Actions.Select(a => a.Id));
+        // Alle A32NX-Aktionen in derselben Reihenfolge, dazu nur die A330-eigenen, keine doppelt
+        string[] a339Only = ["lights.nav", "lights.logo", "elec.battery"];
+        Assert.Equal(a32nx.Actions.Select(a => a.Id), profile.Actions.Select(a => a.Id).Where(id => !a339Only.Contains(id)));
+        Assert.Equal(a339Only.Order(), profile.Actions.Select(a => a.Id).Except(a32nx.Actions.Select(a => a.Id)).Order());
         Assert.Equal(profile.Actions.Count, profile.Actions.Select(a => a.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count());
         AssertAllPlannable(profile);
 
@@ -587,18 +595,30 @@ public sealed class InputTests
         /// <summary>Simuliertes Flugzeug, das bestimmte geschriebene Variablen nach dem ersten Lesen zurücksetzt.</summary>
         public Dictionary<string, double> RevertAfterRead { get; } = new(StringComparer.OrdinalIgnoreCase);
 
+        /// <summary>Lesen dieser Variablen wartet, bis der Test sie freigibt (langsame SimConnect-Antwort).</summary>
+        public Dictionary<string, TaskCompletionSource> Gates { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>Gelesene Variablen mit Einheit, in Reihenfolge.</summary>
+        public List<string> Reads { get; } = [];
+
         public FlightSnapshot Snapshot() => Current;
 
-        public Task<double?> ReadAsync(string name, string unit, CancellationToken ct)
+        public async Task<double?> ReadAsync(string name, string unit, CancellationToken ct)
         {
+            if (Gates.TryGetValue(name, out var gate))
+            {
+                await gate.Task.WaitAsync(ct);
+            }
+
             time.Now += TimeSpan.FromSeconds(1);
+            Reads.Add($"{name}|{unit}");
             var result = State.TryGetValue(name, out var v) ? v : (double?)null;
             if (RevertAfterRead.TryGetValue(name, out var revert))
             {
                 State[name] = revert;
             }
 
-            return Task.FromResult(result);
+            return result;
         }
 
         public Task SendEventAsync(string name, uint data, CancellationToken ct)
@@ -608,10 +628,14 @@ public sealed class InputTests
             return Task.CompletedTask;
         }
 
+        /// <summary>Was das Schreiben einer Variable sonst noch am Zustand ändert (z. B. TCAS-Rechner übernimmt die Schalterstellung).</summary>
+        public Action<string, double>? OnSet { get; set; }
+
         public Task SetAsync(string name, string unit, double value, CancellationToken ct)
         {
             Sent.Add($"{name}={value}");
             State[name] = value;
+            OnSet?.Invoke(name, value);
             return Task.CompletedTask;
         }
     }

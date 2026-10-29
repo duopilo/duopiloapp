@@ -91,12 +91,20 @@ Noch nicht eingebunden: **ECAM-Klartext.** Das A380X hat ein anderes Warnsystem 
 
 ## Headwind A330-900neo
 
-Profil `headwind-a339.json`, Testsession 28.10.2026. Basiert auf FlyByWire, viele `A32NX_`-Variablen gelten, die FCU-Werte kommen aber aus den älteren FBW-Variablen.
+Profil `headwind-a339.json`, Testsession 28.10.2026, Fixes nach dem Testflug vom 29.10.2026. Basiert auf FlyByWire, viele `A32NX_`-Variablen gelten, die FCU-Werte kommen aber aus den älteren FBW-Variablen.
+
+Quellen für die Fixes: Headwind-Quellcode (`headwindsim/aircraft`, Ordner `hdw-a339x`: Cockpitmodell `A330_NEO_INTERIOR.xml`, `aircraft_preset_procedures.xml`, Systems-WASM) und die FBW-Basis, auf der Headwind baut. Lesewerte im Reiseflug mit `read_simvar` gegengelesen („gelesen“).
 
 | Wert | Quelle | Status |
 |---|---|---|
 | Parkbremse | `L:A32NX_PARK_BRAKE_LEVER_POS` | geprüft |
-| EXT PWR, BAT 1/2, GEN 1 | `L:A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON`, `_BAT_1/2_PB_IS_AUTO`, `_ENG_GEN_1_PB_IS_ON` | geprüft |
+| EXT PWR, BAT 1/2 | `L:A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON`, `_BAT_1/2_PB_IS_AUTO` | geprüft |
+| GEN 1/2 Pushbutton | `GENERAL ENG MASTER ALTERNATOR:1/2` (Modell: `FBW_Airbus_Engine_Generator_Switch`) – `L:A32NX_OVHD_ELEC_ENG_GEN_1_PB_IS_ON` las im Flug 0 bei laufendem GEN 1 | gelesen |
+| Elektrik (get_systems) | `L:A32NX_ELEC_*_POTENTIAL`, `_FREQUENCY`, `_LOAD`, `_BUS_IS_POWERED` wie beim A32NX (Headwind nutzt das FBW-Elektriksystem) | gelesen: GEN 115 V/400 Hz, BAT 27 V |
+| APU GEN | Pushbutton `APU GENERATOR SWITCH:1`, Werte `L:A32NX_ELEC_APU_GEN_1_POTENTIAL`, `_FREQUENCY`, `_LOAD` | gelesen (APU aus) |
+| APU Bleed | `L:A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON` (dieselbe Variable wie `apu.bleed`) | Code, im Flug 0 |
+| APU EGT, Lufteinlass | `L:A32NX_APU_EGT` (ARINC 429), `L:A32NX_APU_FLAP_OPEN_PERCENTAGE` | Doku |
+| Treibstoffpumpen (get_systems → `fuel.pumps`) | keine L:-Variablen: `FUELSYSTEM PUMP SWITCH:2/5` (L TK 1/2), `:3/6` (R TK 1/2), `FUELSYSTEM PUMP ACTIVE:n`, CTR TK XFR `FUELSYSTEM VALVE SWITCH:9/10`, X FEED `FUELSYSTEM VALVE OPEN:3` | gelesen |
 | APU | `L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON`, `_START_PB_IS_ON`, `_START_PB_IS_AVAILABLE`, `_MASTER_SW_PB_HAS_FAULT`, `L:A32NX_APU_N` (ARINC 429) | geprüft |
 | ADIRU 1 | `L:A32NX_ADIRS_ADIRU_1_STATE` (1 aligning, 2 aligned) | geprüft |
 | AP 1 / AP 2 | `L:A32NX_AUTOPILOT_1_ACTIVE`, `_2_ACTIVE` | geprüft |
@@ -111,12 +119,14 @@ Profil `headwind-a339.json`, Testsession 28.10.2026. Basiert auf FlyByWire, viel
 | Fuel Flow / EGT | `L:A32NX_ENGINE_FF:n` (vermutlich kg/h), `L:A32NX_ENGINE_EGT:n` (°C) | geprüft |
 | Thrust-Modus | `L:A32NX_AUTOTHRUST_MODE`, `_MODE_MESSAGE` bleiben 0 | offen – nicht im Profil |
 | ALT CRZ | Vertical Mode 0, `L:A32NX_FMA_CRUISE_ALT_MODE` 0 | offen |
-| ECAM-Meldungen | – | offen – nicht im Profil |
+| ECAM (EWD unten links/rechts) | `L:A32NX_EWD_LOWER_LEFT_LINE_1..7`, `RIGHT_LINE_1..7` (schreibt die Headwind-FWC), Klartext aus der Headwind-Tabelle `hdw-a339x/src/systems/shared/src/EwdMessages.ts` (Format `hdw-a339x`) | gelesen: Memos IGNITION, PRED W/S OFF |
 | Grenzwerte | VFE 240/215/196/186/180, VLO/VLE 250 kt (A330) | für den -900neo prüfen |
 
 Unbrauchbar (generisch): `BRAKE PARKING POSITION/INDICATOR`, `EXTERNAL POWER ON:1`, `AUTOPILOT MASTER` (blitzt beim Start kurz auf), generischer Fuel Flow und EGT, `AUTO BRAKE SWITCH CB`.
 
-Eingaben: alle Aktionen des A32NX-Profils. External Power und APU sind eigene A330-Fassungen (Schalterstellung bzw. BAT 1 statt Schütz 3XG und DC BAT BUS).
+Eingaben: alle Aktionen des A32NX-Profils, dazu `elec.battery`, `lights.nav` und `lights.logo`. External Power und APU sind eigene A330-Fassungen (Schalterstellung bzw. BAT 1 statt Schütz 3XG und DC BAT BUS).
+
+`stateAfter` in der Antwort von `confirm_action` ist der Rohwert der geprüften Variable – bei Wahlschaltern die Stellung, gezählt von oben (Seatbelts: 0 = ON, 2 = OFF). `stateAfterText` nennt die passende Auswahl.
 
 | Bereich | Status |
 |---|---|
@@ -125,7 +135,12 @@ Eingaben: alle Aktionen des A32NX-Profils. External Power und APU sind eigene A3
 | No Smoking | angepasst, ungeprüft: Stellung wird mit der Einheit `Enum` gelesen (so liest sie auch die FWC) |
 | Landing Lights | angepasst, ungeprüft: Prüfung über das Licht `LIGHT LANDING:2` (Stromkreis 18). Der Schalter kennt nur ON/OFF. |
 | Managed NAV | angepasst, ungeprüft: Prüfung wartet bis zu 10 s |
-| Gear, Flaps, Speedbrake, Spoiler, Autobrake, EFIS, Packs, APU Bleed, Transponder/TCAS, COM 1 | aus dem A32NX übernommen, ungeprüft. Sperren wie beim A32NX mit den A330-Grenzwerten. |
+| Batterien (`elec.battery`) | neu, ungeprüft: `L:A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO`, 1 s Pause, dann `_BAT_2_` (wie Headwinds Preset). Aus nur am Boden. |
+| Autobrake | korrigiert, ungeprüft: `A32NX.AUTOBRAKE_SET_DISARM`/`_LO`/`_MED`/`_MAX`. `A32NX.AUTOBRAKE_SET` nimmt laut WASM 0–3 (nicht 1–4 wie in der Doku), MAX = 4 wurde als „aus“ gelesen. MAX nur am Boden; Armen braucht Druck an den normalen Bremsen (grüne Hydraulik) und Anti-Skid. |
+| TCAS | korrigiert, ungeprüft: schreibt `L:A32NX_SWITCH_TCAS_Position` (Enum), prüft `L:A32NX_TCAS_MODE` (Modus des TCAS-Rechners). TA und TA/RA nur mit Transponder AUTO/ON (`TRANSPONDER STATE:1` 3–5) und ALT RPTG an – sonst bleibt TCAS in STBY. |
+| NAV & LOGO (`lights.nav`, `lights.logo`) | neu, ungeprüft: Der A330 hat einen Schalter NAV & LOGO (`LOGO_LIGHTS_SET` + `NAV_LIGHTS_SET`, Stellung folgt `LIGHT LOGO`). `lights.nav` schaltet beide, `lights.logo` nur das Logo. |
+| Seatbelts, No Smoking, Nose Light | Zuordnung gegen das Cockpitmodell geprüft (0 ON/T.O, 1 AUTO/TAXI, 2 OFF) und im Flug gelesen – nicht vertauscht |
+| Gear, Flaps, Speedbrake, Spoiler, EFIS, Packs, APU Bleed, Transponder, COM 1 | aus dem A32NX übernommen, ungeprüft. Sperren wie beim A32NX mit den A330-Grenzwerten. |
 
 ## iniBuilds A321LR
 
