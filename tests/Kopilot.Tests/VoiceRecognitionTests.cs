@@ -213,7 +213,9 @@ public sealed class VoiceRecognitionTests
     [InlineData("Lufthansa four alpha bravo, request descent", "Lufthansa 4AB")]
     [InlineData("Lufthansa 4AB, wilco", "Lufthansa 4AB")]
     [InlineData("DLH4AB request descent", "DLH4AB")]
-    public void Eigenes_Rufzeichen_am_Anfang_geht_ans_ATC_Modul(string raw, string callsign)
+    [InlineData("Request descent, Lufthansa 4AB", "Lufthansa 4AB")]
+    [InlineData("Descending flight level one two zero, Lufthansa four alpha bravo", "Lufthansa 4AB")]
+    public void Eigenes_Rufzeichen_am_Anfang_oder_hinten_geht_ans_ATC_Modul(string raw, string callsign)
     {
         var route = Route(raw);
 
@@ -226,7 +228,6 @@ public sealed class VoiceRecognitionTests
     [InlineData("Approach on")]
     [InlineData("Arm approach")]
     [InlineData("Ground spoilers arm")]
-    [InlineData("Request descent, Lufthansa 4AB")]
     [InlineData("Kopilot, Frankfurt Tower frequency check")]
     [InlineData("Speed check")]
     [InlineData("Fahrwerk ausfahren")]

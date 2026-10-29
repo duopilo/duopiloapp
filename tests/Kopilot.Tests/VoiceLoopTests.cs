@@ -319,7 +319,7 @@ public sealed class VoiceLoopTests
               "enabled": true,
               "microphone": { "device": " Headset ", "threshold": 3, "silenceMs": 50 },
               "recognition": { "model": "Small-Q5_1", "device": "Vulkan", "language": "DE", "threads": 99 },
-              "voices": { "kopilot": "bm_george", "atc": [ "am_michael", "../hack", "" ], "atcVolume": 7 },
+              "voices": { "kopilot": "bm_george", "kopilotVolume": -1, "atcVolume": 7 },
               "commands": { "wakeWords": [ "Co-Pilot" ], "confirmTimeoutSec": 1 },
               "callouts": { "active": [ "pm_v1" ], "taxiSpeed": { "thresholdKt": "30" } },
             }
@@ -334,7 +334,7 @@ public sealed class VoiceLoopTests
         Assert.Equal("de", s.Recognition.Language);
         Assert.Equal(16, s.Recognition.Threads);
         Assert.Equal("bm_george", s.Voices.Kopilot);
-        Assert.Equal(new[] { "am_michael" }, s.Voices.Atc);
+        Assert.Equal(0, s.Voices.KopilotVolume);
         Assert.Equal(1, s.Voices.AtcVolume);
         Assert.Equal(new[] { "kopilot" }, s.Commands.WakeWords);
         Assert.Equal(10, s.Commands.ConfirmTimeoutSec);
@@ -405,17 +405,7 @@ public sealed class VoiceLoopTests
         Assert.Equal("base-q5_1", s.Recognition.Model);
         Assert.Equal(25, s.Callouts.TaxiSpeed.ThresholdKt);
         Assert.Equal(60, s.Commands.ConfirmTimeoutSec);
-        Assert.NotEmpty(s.Voices.Atc);
-    }
-
-    [Fact]
-    public void ATC_Stimme_je_Station_fest()
-    {
-        var voices = new VoicesSettings { Atc = ["am_michael", "bf_emma", "am_adam"] }.Normalized();
-
-        var tower = voices.AtcVoiceFor("Frankfurt Tower");
-        Assert.Equal(tower, voices.AtcVoiceFor("frankfurt tower"));
-        Assert.Contains(tower, voices.Atc);
+        Assert.Equal(1, s.Voices.AtcVolume);
     }
 
     // ------------------------------------------------------------------ Tastenkürzel, Halluzinationen

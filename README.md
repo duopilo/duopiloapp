@@ -211,7 +211,7 @@ Die Aktionen stehen im Flugzeugprofil unter `actions` (Events, Variablen, Readba
 
 ## ATC
 
-Kopilot bringt ein eigenes ATC mit: eine Zustandsmaschine mit festen Textvorlagen, **kein Sprachmodell**. Du funkst wie gewohnt, Claude gibt deinen Spruch mit `atc_transmit` weiter, Kopilot antwortet als die zuständige Stelle und spricht die Antwort selbst – jede Station mit eigener Kokoro-Stimme. Phraseologie auf Englisch im ICAO-Stil, Zahlen Ziffer für Ziffer („squawk two two zero five“), Geschwindigkeiten immer in Knoten, nie Mach.
+Kopilot bringt ein eigenes ATC mit: eine Zustandsmaschine mit festen Textvorlagen, **kein Sprachmodell**. Du funkst wie gewohnt, Claude gibt deinen Spruch mit `atc_transmit` weiter (oder die Sprachschleife direkt, siehe unten), Kopilot antwortet als die zuständige Stelle und spricht die Antwort selbst – jede Station mit eigener Kokoro-Stimme. Phraseologie auf Englisch im ICAO-Stil, Zahlen Ziffer für Ziffer („squawk two two zero five“), Geschwindigkeiten immer in Knoten, nie Mach.
 
 **Ablauf** (Übergänge kommen aus deinen Sprüchen und aus dem Flugzustand):
 
@@ -281,7 +281,7 @@ Mikrofon → Silero VAD (Satzgrenzen) → Whisper (Abschrift) → Router ─┬�
 - Das Mikrofon ist dauerhaft offen. Silero VAD erkennt, wann du sprichst; nach 0,7 s Stille geht der Satz an Whisper.
 - Halbduplex: Solange Kopilot spricht (und 350 ms danach), ist das Mikrofon stumm – Kopilot hört sich nicht selbst. Während du sprichst, warten Callouts und Antworten kurz; nur Warnungen fallen dir ins Wort.
 - Whisper erkennt je Satz Deutsch oder Englisch. Zahlen werden vereinheitlicht: „Flaps one“, „Flaps 1“, „Flaps won“, „Klappen eins“ ergeben dasselbe.
-- **Router:** Enthält der Satz ein Stationsrufzeichen („Frankfurt Tower“, „Langen Radar“, „Shanwick“) oder beginnt er mit dem eigenen Rufzeichen (aus `voice-settings.json` oder MSFS), geht er ans ATC-Modul. Alles andere ist ein Kopilot-Befehl. Mit „Kopilot, …“ immer Kopilot.
+- **Router:** Enthält der Satz ein Stationsrufzeichen („Frankfurt Delivery“, „Langen Radar“, „Shanwick“) oder das eigene Rufzeichen – am Anfang beim Anruf oder hinten beim Readback („…, squawk two two zero five, Lufthansa four alpha bravo“) –, geht er ans ATC-Modul. Alles andere ist ein Kopilot-Befehl („Squawk two two zero five“ ohne Rufzeichen setzt den Transponder). Mit „Kopilot, …“ immer Kopilot.
 - Sim pausiert → Kopilot sagt nichts und verarbeitet nichts.
 
 **Befehle** (feste Muster, deutsch und englisch, Beispiele):
@@ -308,9 +308,9 @@ Jeder Befehl läuft über den bestehenden Zwei-Schritt-Ablauf: Kopilot ruft `pre
 
 **Steuerung:** „Kopilot Pause“ / „Kopilot weiter“ oder das Tastenkürzel (Standard `Ctrl+Alt+K`, systemweit) schalten die Spracheingabe stumm und wieder an – Callouts laufen weiter. „Say again“ wiederholt die letzte Antwort.
 
-**Sprachausgabe:** Kokoro mit fester Stimme für Kopilot (`voices.kopilot`, leer = Dashboard-Stimme), ATC-Stationen mit eigenen Stimmen (je Station fest). Zahlen, NATO-Alphabet und Funk-Phraseologie auf Englisch: Speed, Heading, Squawk und QNH Ziffer für Ziffer, Höhen in Tausendern, 9 als „niner“. Eine unterbrochene Antwort oder ATC-Meldung kommt nach der Warnung einmal erneut.
+**Sprachausgabe:** Kokoro mit fester Stimme für Kopilot (`voices.kopilot`, leer = Dashboard-Stimme); die ATC-Stationen sprechen mit den Stimmen, die das ATC-Modul vergibt. Alles läuft durch eine Warteschlange: Warnungen > Callouts > Antworten > ATC – auch ATC-Funksprüche halten das Mikrofon stumm. Zahlen, NATO-Alphabet und Funk-Phraseologie auf Englisch: Speed, Heading, Squawk und QNH Ziffer für Ziffer, Höhen in Tausendern, 9 als „niner“. Eine unterbrochene Antwort oder ATC-Meldung kommt nach der Warnung einmal erneut.
 
-**ATC-Modul** (`feature/atc-templates`): implementiert `IAtcVoiceModule` (`src/Kopilot/Voice/AtcVoice.cs`) und registriert sich vor `AddKopilotVoice()`. Es bekommt jeden Funkspruch als `PilotTransmission` (Text, erkannte Station, Rufzeichen), gibt Antworten als `AtcTransmission` zurück und meldet sich über `IAtcRadio` auch von selbst. Ohne ATC-Modul bleiben Funksprüche unbeantwortet (nur im Log).
+**ATC:** Funksprüche gehen direkt an das ATC-Modul (`AtcService.TransmitAsync`, wie `atc_transmit` – nur ohne Claude). Stationsnamen und eigenes Rufzeichen (Code und Sprechform, z. B. „Lufthansa four alpha bravo“) liefert das ATC-Modul aus SimBrief-Plan und `atc-templates.json`; die Antwort der Station kommt über die Warteschlange. „Say again“ ohne Station wiederholt, wer zuletzt gesprochen hat – ATC oder Kopilot. Ist ATC aus oder fehlt der SimBrief-Plan, sagt Kopilot „ATC unavailable“.
 
 **Einstellungen** (`voice-settings.json`, Kommentare erlaubt):
 
@@ -318,10 +318,10 @@ Jeder Befehl läuft über den bestehenden Zwei-Schritt-Ablauf: Kopilot ruft `pre
 |---|---|
 | `microphone` | Gerät (Teil des Namens, leer = Standard), VAD-Schwelle, Mindestlänge, Stille bis Satzende, Nachlauf nach Ansagen |
 | `recognition` | Whisper-Modell (`tiny`/`base`/`small`, auch `-q5_1`/`-q8_0`), `cpu`/`gpu`, Threads, Sprache `auto`/`de`/`en`, Wortschatz-Hinweis |
-| `voices` | Kokoro-Stimme für Kopilot, Stimmen für ATC, Lautstärke je Seite |
+| `voices` | Kokoro-Stimme für Kopilot, Lautstärke für Kopilot und ATC |
 | `hotkeys` | Tastenkürzel für stumm/an |
 | `commands` | Anrede, Pflicht zur Anrede (`requireWakeWord`), Timeout für die Bestätigung |
-| `atc` | eigene Rufzeichen, weitere Stationen, Rufzeichen aus MSFS |
+| `atc` | zusätzliche Rufzeichen und Stationen (die des Flugs kommen vom ATC-Modul), Rufzeichen aus MSFS |
 | `callouts` | aktive und stumme Regeln, Stille bei Pause, Taxi-Speed-Warnung |
 
 **Ressourcen** (MSFS hat Vorrang): Standard ist Whisper auf der CPU mit 4 Threads – gerechnet wird nur, wenn du gesprochen hast. `gpu` versucht CUDA, dann Vulkan, und fällt sonst auf die CPU zurück; neben MSFS in VR kann das Ruckler kosten. Schneller wird es mit fester Sprache (`"language": "de"`), `"audioContext": 768` oder dem Modell `tiny-q5_1`; besser Deutsch versteht `small-q5_1` (~190 MB).

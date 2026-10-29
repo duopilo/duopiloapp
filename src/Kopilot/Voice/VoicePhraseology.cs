@@ -9,7 +9,7 @@ namespace Kopilot.Voice;
 /// Speed, Heading, Squawk, QNH Ziffer für Ziffer ("two five zero"), Höhen in Tausendern ("five thousand", "one zero thousand"),
 /// Flugflächen als "flight level three five zero", Frequenzen mit "decimal", 9 als "niner".
 /// </summary>
-public static partial class Phraseology
+public static partial class VoicePhraseology
 {
     private static readonly string[] Digits = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "niner"];
 

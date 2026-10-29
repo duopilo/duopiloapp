@@ -25,7 +25,7 @@ public sealed class InputActionGateway(InputService input) : IVoiceActionGateway
 /// <summary>Antwort von Kopilot: Anzeigetext und Text für die Sprachsynthese.</summary>
 public sealed record VoiceReply(string Text, string Spoken)
 {
-    public static VoiceReply Of(string text) => new(text, Phraseology.ForSpeech(text));
+    public static VoiceReply Of(string text) => new(text, VoicePhraseology.ForSpeech(text));
 }
 
 /// <summary>Vorbereitete Aktion, die auf "Confirm" wartet.</summary>
@@ -65,6 +65,9 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
 
     /// <summary>Letzte Antwort (für "Say again" des Piloten).</summary>
     public VoiceReply? LastReply { get; private set; }
+
+    /// <summary>Wann Kopilot zuletzt geantwortet hat (für "Say again": Kopilot oder ATC?).</summary>
+    public DateTimeOffset? LastReplyUtc { get; private set; }
 
     /// <summary>Letztes Ergebnis des Eingabe-Moduls (Status, Grund) – für Log und Status.</summary>
     public InputResult? LastResult { get; private set; }
@@ -193,6 +196,7 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
     private VoiceReply Remember(VoiceReply reply)
     {
         LastReply = reply;
+        LastReplyUtc = _time.GetUtcNow();
         return reply;
     }
 }

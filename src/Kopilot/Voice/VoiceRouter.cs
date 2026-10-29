@@ -16,8 +16,8 @@ public sealed record VoiceRoute(VoiceTarget Target, string? Station = null, stri
 
 /// <summary>
 /// Ordnet einen normalisierten Satz zu:
-/// enthält er ein Stationsrufzeichen ("Frankfurt Tower", "Langen Radar", "Shanwick") oder beginnt er mit dem eigenen Rufzeichen
-/// → ATC-Modul, sonst → Kopilot. Mit Anrede ("Kopilot, …") immer Kopilot.
+/// enthält er ein Stationsrufzeichen ("Frankfurt Tower", "Langen Radar", "Shanwick") oder das eigene Rufzeichen
+/// (am Anfang beim Anruf, hinten beim Readback) → ATC-Modul, sonst → Kopilot. Mit Anrede ("Kopilot, …") immer Kopilot.
 /// </summary>
 public sealed partial class VoiceRouter
 {
@@ -28,6 +28,8 @@ public sealed partial class VoiceRouter
         "to", "auf", "flaps", "gear", "speed", "heading", "altitude", "fl", "loc", "lights", "landing", "fuel", "tank", "engine", "my",
         "your", "our", "final", "missed", "visual", "ils", "rnav", "rnp", "kopilot", "check", "request", "for", "with", "of", "in",
         "der", "die", "das", "den", "dem", "mit", "zum", "zur", "vom", "im",
+        // Funk: "contact ground", "monitor tower", "cleared ILS approach", "expect vectors approach"
+        "contact", "monitor", "call", "switching", "cleared", "expect", "via", "taxi", "established", "vectors", "leaving", "join",
     };
 
     // Ozeanische und andere Stationen, die ohne Zusatz gerufen werden
@@ -44,12 +46,13 @@ public sealed partial class VoiceRouter
     public VoiceRouter(IEnumerable<string>? wakeWords = null, IEnumerable<string>? extraStations = null)
     {
         _wakeWords = (wakeWords ?? ["kopilot"]).Select(VoiceText.Normalize).Where(w => w.Length > 0).Distinct().ToList();
-        _extraStations = (extraStations ?? []).Select(VoiceText.Normalize).Where(s => s.Length > 0).Distinct().OrderByDescending(s => s.Length).ToList();
+        _extraStations = Normalized(extraStations ?? []).Distinct().OrderByDescending(s => s.Length).ToList();
     }
 
     /// <param name="normalized">Satz in der Form von <see cref="VoiceText.Normalize"/>.</param>
-    /// <param name="ownCallsigns">Eigene Rufzeichen (beliebige Schreibweise, z. B. "Lufthansa 4AB", "DLH4AB", "D-AIAB").</param>
-    public VoiceRoute Route(string normalized, IEnumerable<string>? ownCallsigns = null)
+    /// <param name="ownCallsigns">Eigene Rufzeichen (beliebige Schreibweise, z. B. "Lufthansa four alpha bravo", "DLH4AB", "D-AIAB").</param>
+    /// <param name="stations">Stationen des Flugs vom ATC-Modul (z. B. "Frankfurt Delivery", "Langen Radar").</param>
+    public VoiceRoute Route(string normalized, IEnumerable<string>? ownCallsigns = null, IEnumerable<string>? stations = null)
     {
         var words = VoiceText.Words(normalized);
         if (words.Length == 0)
@@ -62,13 +65,17 @@ public sealed partial class VoiceRouter
             return new VoiceRoute(VoiceTarget.Kopilot, Reason: "Anrede");
         }
 
-        // Eigenes Rufzeichen am Anfang
-        if (MatchCallsignAtStart(normalized, ownCallsigns) is { } callsign)
+        var known = stations is null ? _extraStations : Normalized(stations).Concat(_extraStations).Distinct().OrderByDescending(x => x.Length).ToList();
+        var station = FindStation(normalized, known);
+
+        // Eigenes Rufzeichen: am Anfang (Erstanruf, Meldung) oder dahinter (Readback "…, Lufthansa four alpha bravo")
+        if (MatchCallsign(normalized, ownCallsigns) is { } match)
         {
-            return new VoiceRoute(VoiceTarget.Atc, FindStation(normalized), callsign, "Rufzeichen am Anfang");
+            var reason = match.AtStart ? "Rufzeichen am Anfang" : station is not null ? "Station" : "Rufzeichen im Readback";
+            return new VoiceRoute(VoiceTarget.Atc, station, match.Callsign, reason);
         }
 
-        if (FindStation(normalized) is { } station)
+        if (station is not null)
         {
             return new VoiceRoute(VoiceTarget.Atc, station, Reason: "Station");
         }
@@ -77,10 +84,12 @@ public sealed partial class VoiceRouter
     }
 
     /// <summary>Stationsrufzeichen im Satz, z. B. "frankfurt tower" – oder null.</summary>
-    public string? FindStation(string normalized)
+    public string? FindStation(string normalized) => FindStation(normalized, _extraStations);
+
+    private static string? FindStation(string normalized, IReadOnlyList<string> known)
     {
         var padded = " " + normalized + " ";
-        foreach (var extra in _extraStations)
+        foreach (var extra in known)
         {
             if (padded.Contains(" " + extra + " ", StringComparison.Ordinal))
             {
@@ -99,7 +108,7 @@ public sealed partial class VoiceRouter
         foreach (Match m in StationPattern().Matches(normalized))
         {
             var name = m.Groups["name"].Value;
-            if (NotAStationName.Contains(name) || name.All(char.IsDigit))
+            if (name.Length < 3 || NotAStationName.Contains(name))
             {
                 continue;
             }
@@ -111,8 +120,11 @@ public sealed partial class VoiceRouter
         return null;
     }
 
-    /// <summary>Beginnt der Satz mit einem der eigenen Rufzeichen? Vergleich in kompakter Form ("lufthansa4ab").</summary>
-    public static string? MatchCallsignAtStart(string normalized, IEnumerable<string>? ownCallsigns)
+    /// <summary>
+    /// Kommt eines der eigenen Rufzeichen im Satz vor? Vergleich in kompakter Form ("lufthansa4ab").
+    /// Am Anfang reichen 3 Zeichen, sonst mindestens 5 – ein Kopilot-Befehl enthält nie das eigene Rufzeichen.
+    /// </summary>
+    public static (string Callsign, bool AtStart)? MatchCallsign(string normalized, IEnumerable<string>? ownCallsigns)
     {
         if (ownCallsigns is null)
         {
@@ -120,17 +132,26 @@ public sealed partial class VoiceRouter
         }
 
         var compact = VoiceText.Compact(normalized);
+        (string, bool)? inside = null;
         foreach (var callsign in ownCallsigns)
         {
             var c = VoiceText.Compact(callsign);
             if (c.Length >= 3 && compact.StartsWith(c, StringComparison.Ordinal))
             {
-                return callsign.Trim();
+                return (callsign.Trim(), true);
+            }
+
+            if (inside is null && c.Length >= 5 && compact.Contains(c, StringComparison.Ordinal))
+            {
+                inside = (callsign.Trim(), false);
             }
         }
 
-        return null;
+        return inside;
     }
+
+    private static IEnumerable<string> Normalized(IEnumerable<string> names) =>
+        names.Select(VoiceText.Normalize).Where(n => n.Length > 0);
 
     // Name (ein Wort, bei "New York"/"Santa Maria"/"San Francisco" zwei) + Stationsart
     [GeneratedRegex(@"(?<![\p{L}\p{N}])(?:(?<prefix>new|san|santa|st|saint|bad|sankt|la|le|los|las|el|al|port|porto|rio|sao|são|hong) )?(?<name>[\p{L}]+) (?<unit>tower|turm|ground|rollkontrolle|delivery|clearance|apron|vorfeld|approach|anflug|departure|abflug|director|radar|control|kontrolle|center|centre|information|radio|arrival|oceanic|platz)(?![\p{L}\p{N}])")]

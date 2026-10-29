@@ -43,11 +43,9 @@
   "voices": {
     // Kokoro-Stimme für Kopilot (Callouts und Antworten), z. B. "bm_george". Leer = Stimme aus dem Dashboard.
     "kopilot": "",
-    // Stimmen für ATC-Stationen, falls das ATC-Modul keine vorgibt (je Station fest zugeordnet).
-    "atc": [ "am_michael", "bf_isabella", "am_adam", "bf_emma" ],
-    // Lautstärke (Faktor auf die Lautstärke im Dashboard).
+    // Lautstärke (Faktor auf die Lautstärke im Dashboard). Die Stimmen der ATC-Stationen vergibt das ATC-Modul (atc-templates.json).
     "kopilotVolume": 1.0,
-    "atcVolume": 0.85
+    "atcVolume": 1.0
   },
 
   "hotkeys": {
@@ -68,9 +66,10 @@
   },
 
   "atc": {
-    // Eigene Rufzeichen in gesprochener Form – Funksprüche, die damit beginnen, gehen ans ATC-Modul.
+    // Rufzeichen und Stationen des Flugs kennt das ATC-Modul schon (SimBrief-Plan, atc-templates.json). Hier nur Ergänzungen:
+    // weitere eigene Rufzeichen in gesprochener Form, z. B. [ "Lufthansa 4AB" ].
     "callsigns": [ ],
-    // Weitere Stationsnamen (zusätzlich zu "<Ort> Tower/Ground/Radar/…" und Shanwick, Gander …).
+    // Weitere Stationsnamen (zusätzlich zu "<Ort> Tower/Ground/Radar/…", den FIRs aus atc-templates.json und Shanwick, Gander …).
     "stations": [ ],
     // Rufzeichen auch aus MSFS (ATC AIRLINE + ATC FLIGHT NUMBER, ATC ID).
     "useSimCallsign": true

@@ -52,13 +52,13 @@ public sealed record VoiceStatus
 /// gemeinsame Sprachausgabe. Halbduplex: Solange Kopilot spricht, ist das Mikrofon stumm.
 /// Kein Sprachmodell, kein Push-to-Talk, alles lokal. Läuft nur in der Tray-Instanz (HTTP-Modus).
 /// </summary>
-public sealed class VoiceLoop : BackgroundService, IAtcRadio
+public sealed class VoiceLoop : BackgroundService
 {
     private readonly KopilotOptions _options;
     private readonly IVoiceOutput _output;
     private readonly MonitoringService _monitoring;
     private readonly SimConnectClient _sim;
-    private readonly IAtcVoiceModule _atc;
+    private readonly IAtcLink _atc;
     private readonly ILogger<VoiceLoop> _log;
     private readonly VoiceSettingsStore _store;
     private readonly VoiceDialog _dialog;
@@ -76,7 +76,7 @@ public sealed class VoiceLoop : BackgroundService, IAtcRadio
     });
 
     private VoiceSettings _settings = new VoiceSettings().Normalized();
-    private VoiceRouter _router = new();
+    private VoiceDispatcher? _dispatcher;
     private volatile VoiceStatus _status = new();
 
     public VoiceLoop(
@@ -85,7 +85,7 @@ public sealed class VoiceLoop : BackgroundService, IAtcRadio
         MonitoringService monitoring,
         SimConnectClient sim,
         InputService input,
-        IAtcVoiceModule atc,
+        IAtcLink atc,
         ILogger<VoiceLoop> log)
     {
         _options = options.Value;
@@ -104,26 +104,6 @@ public sealed class VoiceLoop : BackgroundService, IAtcRadio
         State = _status.State is "listening" or "muted" ? (_dialog.Muted ? "muted" : "listening") : _status.State,
     };
 
-    /// <summary>Funkspruch des ATC-Moduls (unaufgefordert) mit der Stimme der Station.</summary>
-    public bool Transmit(AtcTransmission transmission)
-    {
-        if (string.IsNullOrWhiteSpace(transmission.Text))
-        {
-            return false;
-        }
-
-        var voices = _settings.Voices;
-        var accepted = _output.Say(new SpeechRequest(transmission.Text, SpeechPriority.Atc)
-        {
-            Spoken = transmission.Spoken,
-            Voice = KokoroSpeechEngine.IsEnglishVoice(transmission.Voice) ? transmission.Voice : voices.AtcVoiceFor(transmission.Station),
-            Volume = voices.AtcVolume,
-            Source = "atc:" + (transmission.Station ?? "?"),
-        });
-        _log.LogInformation("ATC {Station}: {Text}{Dropped}", transmission.Station ?? "?", transmission.Text, accepted ? "" : " (nicht gesprochen)");
-        return accepted;
-    }
-
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var (settings, error) = _store.Load();
@@ -134,7 +114,7 @@ public sealed class VoiceLoop : BackgroundService, IAtcRadio
         }
 
         ApplyOutputSettings(settings);
-        _status = new VoiceStatus { SettingsFile = _store.FilePath, AtcModule = _atc.IsAvailable, Error = error };
+        _status = new VoiceStatus { SettingsFile = _store.FilePath, AtcModule = _atc.Enabled, Error = error };
 
         if (!settings.Enabled)
         {
@@ -145,11 +125,14 @@ public sealed class VoiceLoop : BackgroundService, IAtcRadio
         // Auf einem eigenen Thread weiter, damit der Start der anderen Dienste nicht wartet
         await Task.Yield();
 
-        _router = new VoiceRouter(settings.Commands.WakeWords, settings.Atc.Stations.Concat(_atc.KnownStations));
         _dialog.ConfirmTimeout = TimeSpan.FromSeconds(settings.Commands.ConfirmTimeoutSec);
         _dialog.SayAgainMaxWords = settings.Commands.SayAgainMaxWords;
         _dialog.RequireWakeWord = settings.Commands.RequireWakeWord;
-        _atc.Attach(this);
+        _dispatcher = new VoiceDispatcher(_dialog, _atc, new VoiceRouter(settings.Commands.WakeWords), settings.Commands.WakeWords)
+        {
+            ExtraCallsigns = ExtraCallsigns,
+            ExtraStations = settings.Atc.Stations,
+        };
 
         IVoiceActivityDetector? vad = null;
         WhisperRecognizer? recognizer = null;
@@ -168,7 +151,7 @@ public sealed class VoiceLoop : BackgroundService, IAtcRadio
                 loadedRecognizer.Runtime ?? "?",
                 settings.Recognition.Language,
                 settings.Microphone.Threshold,
-                _atc.IsAvailable ? "aktiv" : "nicht installiert");
+                _atc.Enabled ? "an" : "aus");
 
             var audio = AudioLoopAsync(loadedVad, settings, stoppingToken);
             var recognition = RecognitionLoopAsync(loadedRecognizer, stoppingToken);
@@ -202,6 +185,7 @@ public sealed class VoiceLoop : BackgroundService, IAtcRadio
         {
             KopilotVoice = s.Voices.Kopilot.Length > 0 ? s.Voices.Kopilot : null,
             KopilotVolume = s.Voices.KopilotVolume,
+            AtcVolume = s.Voices.AtcVolume,
             SilentWhenPaused = s.Callouts.SilentWhenPaused,
             CalloutsEnabled = s.Callouts.Enabled,
             ActiveRules = s.Callouts.Active,
@@ -459,53 +443,43 @@ public sealed class VoiceLoop : BackgroundService, IAtcRadio
             return;
         }
 
-        var normalized = VoiceText.Normalize(text);
-        var route = _router.Route(normalized, OwnCallsigns());
-        _status = _status with { LastTranscript = text, LastRoute = route.Target == VoiceTarget.Atc ? $"ATC {route.Station ?? route.Callsign}" : "Kopilot" };
-
-        if (route.Target == VoiceTarget.Atc && !_dialog.Muted)
-        {
-            await HandleAtcAsync(text, normalized, route, u.EndUtc, ct);
-            return;
-        }
-
-        var intent = VoiceIntents.Recognize(normalized, _settings.Commands.WakeWords);
-        var addressed = VoiceText.Words(normalized) is { Length: > 0 } w && _settings.Commands.WakeWords.Contains(w[0]);
-        var reply = await _dialog.HandleAsync(intent, normalized, addressed, ct);
+        var outcome = await _dispatcher!.HandleAsync(text, ct);
+        var route = outcome.Route;
         _status = _status with
         {
-            LastIntent = intent.ToString(),
-            LastReply = reply?.Text,
-            LastInputResult = _dialog.LastResult is { } r ? r.Reason is null ? r.Status : $"{r.Status}: {r.Reason}" : null,
+            LastTranscript = text,
+            LastRoute = route.Target == VoiceTarget.Atc ? $"ATC {route.Station ?? route.Callsign} ({route.Reason})" : "Kopilot",
+            LastIntent = outcome.Intent?.ToString(),
+            LastReply = outcome.Reply?.Text,
+            LastInputResult = outcome.Atc is { } atc
+                ? atc.Ok ? $"ATC: {atc.Responses.Count(r => r.From == "atc")} Antwort(en)" : $"ATC: {atc.Error}"
+                : _dialog.LastResult is { } r ? r.Reason is null ? r.Status : $"{r.Status}: {r.Reason}" : null,
         };
 
-        _log.LogInformation(
-            "Pilot ({Language}, {Ms} ms): \"{Text}\" → {Intent}{Reply}",
-            transcript.Language ?? "?",
-            transcript.ElapsedMs,
-            text,
-            intent,
-            reply is null ? "" : $" → \"{reply.Text}\"");
-
-        if (reply is not null)
+        if (outcome.Atc is { } result)
         {
-            Speak(reply);
+            _log.LogInformation(
+                "Funk an {Station} ({Reason}, {Ms} ms): \"{Text}\"{Error}",
+                route.Station ?? route.Callsign ?? "ATC",
+                route.Reason,
+                transcript.ElapsedMs,
+                text,
+                result.Ok ? "" : $" – {result.Error}");
         }
-    }
-
-    private async Task HandleAtcAsync(string text, string normalized, VoiceRoute route, DateTimeOffset time, CancellationToken ct)
-    {
-        _log.LogInformation("Funk an {Station}: \"{Text}\"", route.Station ?? route.Callsign ?? "ATC", text);
-        if (!_atc.IsAvailable)
+        else
         {
-            _log.LogInformation("Kein ATC-Modul installiert – Funkspruch bleibt unbeantwortet.");
-            return;
+            _log.LogInformation(
+                "Pilot ({Language}, {Ms} ms): \"{Text}\" → {Intent}{Reply}",
+                transcript.Language ?? "?",
+                transcript.ElapsedMs,
+                text,
+                outcome.Intent,
+                outcome.Reply is null ? "" : $" → \"{outcome.Reply.Text}\"");
         }
 
-        var replies = await _atc.HandleAsync(new PilotTransmission(text, normalized, route.Station, route.Callsign, time), ct);
-        foreach (var reply in replies)
+        if (outcome.Reply is not null)
         {
-            Transmit(reply.Station is null && route.Station is not null ? reply with { Station = route.Station } : reply);
+            Speak(outcome.Reply);
         }
     }
 
@@ -523,11 +497,10 @@ public sealed class VoiceLoop : BackgroundService, IAtcRadio
         }
     }
 
-    /// <summary>Eigene Rufzeichen: Einstellungen, ATC-Modul und (wenn erlaubt) MSFS.</summary>
-    private List<string> OwnCallsigns()
+    /// <summary>Eigene Rufzeichen aus den Einstellungen und (wenn erlaubt) aus MSFS – zusätzlich zu denen des ATC-Moduls.</summary>
+    private IEnumerable<string> ExtraCallsigns()
     {
         var list = new List<string>(_settings.Atc.Callsigns);
-        list.AddRange(_atc.OwnCallsigns);
         if (_settings.Atc.UseSimCallsign && _sim.Connection.IsConnected)
         {
             var airline = _sim.Str("atcAirline");

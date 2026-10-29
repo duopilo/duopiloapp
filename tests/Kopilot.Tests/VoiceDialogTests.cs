@@ -307,7 +307,7 @@ public sealed class VoiceDialogTests
     [InlineData("Speedbrake retracted", "Speedbrake retracted")]
     public void Zahlen_wie_im_Funk(string text, string spoken)
     {
-        Assert.Equal(spoken, Phraseology.ForSpeech(text));
+        Assert.Equal(spoken, VoicePhraseology.ForSpeech(text));
     }
 
     [Theory]
@@ -316,6 +316,6 @@ public sealed class VoiceDialogTests
     [InlineData("EDDL", "echo delta delta lima")]
     public void Buchstabieren_nach_NATO_Alphabet(string text, string spoken)
     {
-        Assert.Equal(spoken, Phraseology.Spell(text));
+        Assert.Equal(spoken, VoicePhraseology.Spell(text));
     }
 }

@@ -135,40 +135,18 @@ public sealed record VoicesSettings
     /// <summary>Kokoro-Stimme für Kopilot (Callouts und Antworten). Leer = Stimme aus dem Dashboard.</summary>
     public string Kopilot { get; init; } = "";
 
-    /// <summary>Kokoro-Stimmen für ATC-Stationen, wenn das ATC-Modul keine eigene vorgibt (je Station fest zugeordnet).</summary>
-    public List<string> Atc { get; init; } = ["am_michael", "bf_isabella", "am_adam", "bf_emma"];
-
     /// <summary>Lautstärke von Kopilot (Faktor auf die Lautstärke im Dashboard).</summary>
     public double KopilotVolume { get; init; } = 1.0;
 
-    /// <summary>Lautstärke der ATC-Stationen (Faktor auf die Lautstärke im Dashboard).</summary>
-    public double AtcVolume { get; init; } = 0.85;
+    /// <summary>Lautstärke der ATC-Stationen (Faktor auf die Lautstärke im Dashboard). Die Stimmen vergibt das ATC-Modul.</summary>
+    public double AtcVolume { get; init; } = 1.0;
 
     public VoicesSettings Normalized() => this with
     {
         Kopilot = KokoroSpeechEngine.IsEnglishVoice(Kopilot?.Trim()) ? Kopilot!.Trim() : "",
-        Atc = VoiceSettings.CleanList(Atc).Where(KokoroSpeechEngine.IsEnglishVoice).ToList() is { Count: > 0 } atc ? atc : ["am_michael"],
         KopilotVolume = VoiceSettings.Clamp(KopilotVolume, 0, 1, 1),
-        AtcVolume = VoiceSettings.Clamp(AtcVolume, 0, 1, 0.85),
+        AtcVolume = VoiceSettings.Clamp(AtcVolume, 0, 1, 1),
     };
-
-    /// <summary>Feste Stimme je Station (gleicher Name → gleiche Stimme).</summary>
-    public string AtcVoiceFor(string? station)
-    {
-        if (Atc.Count == 0)
-        {
-            return "am_michael";
-        }
-
-        var key = (station ?? "").Trim().ToLowerInvariant();
-        var hash = 17;
-        foreach (var c in key)
-        {
-            hash = unchecked((hash * 31) + c);
-        }
-
-        return Atc[(int)((uint)hash % (uint)Atc.Count)];
-    }
 }
 
 /// <summary>Tastenkürzel (systemweit, auch wenn MSFS im Vordergrund ist).</summary>
@@ -203,10 +181,13 @@ public sealed record CommandSettings
     };
 }
 
-/// <summary>Zuordnung zum ATC-Modul.</summary>
+/// <summary>
+/// Zuordnung zum ATC-Modul. Rufzeichen und Stationen des Flugs kommen schon vom ATC-Modul (SimBrief-Plan, atc-templates.json) –
+/// hier nur Ergänzungen.
+/// </summary>
 public sealed record AtcSettings
 {
-    /// <summary>Eigene Rufzeichen in gesprochener Form, z. B. "Lufthansa 4AB" oder "DLH4AB".</summary>
+    /// <summary>Weitere eigene Rufzeichen in gesprochener Form, z. B. "Lufthansa 4AB" oder "DLH4AB".</summary>
     public List<string> Callsigns { get; init; } = [];
 
     /// <summary>Weitere Stationsnamen, die der Router als ATC erkennen soll (z. B. "Langen Information").</summary>
