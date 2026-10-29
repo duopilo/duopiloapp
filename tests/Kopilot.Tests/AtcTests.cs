@@ -49,7 +49,7 @@ public sealed class AtcTests
     /// <summary>Kurzstrecke EDDF → EDDB mit FIR-Wechsel Langen → Bremen, ohne Oceanic-Teil.</summary>
     private static Ofp ShortHaul()
     {
-        Fix At(string ident, double f, string? type = "wpt", bool sidStar = false, string? fir = "EDGG")
+        OfpFix At(string ident, double f, string? type = "wpt", bool sidStar = false, string? fir = "EDGG")
         {
             var (lat, lon) = Along(f);
             return Fix(ident, lat, lon, type, sidStar, fir);
