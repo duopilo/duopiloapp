@@ -1037,7 +1037,11 @@ public sealed partial class AtcSession
         }
     }
 
-    /// <summary>Gilt der Funkspruch der Oceanic-Freigabe (Anfrage oder Readback)?</summary>
+    /// <summary>
+    /// Gilt der Funkspruch der Oceanic-Freigabe (Anfrage oder Readback)? Die Anfrage muss "oceanic" oder den Namen der
+    /// Stelle enthalten. Während das Readback der Freigabe offen ist, gilt jeder Spruch ihr – außer es wartet zugleich ein
+    /// Readback der aktuellen Station und der Spruch nennt weder Oceanic noch den Eintrittspunkt.
+    /// </summary>
     private bool IsForOceanic(HeardText heard)
     {
         if (Oceanic is not (OceanicClearanceState.Due or OceanicClearanceState.ReadbackPending) || Plan.Oceanic is not { } oceanic)
@@ -1045,18 +1049,15 @@ public sealed partial class AtcSession
             return false;
         }
 
-        if (heard.Compact.Contains("OCEANIC", StringComparison.Ordinal))
-        {
-            return true;
-        }
-
         var name = OceanicStation().Name.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
-        if (name is { Length: >= 4 } && heard.Compact.Contains(AtcSpeech.Compact(name), StringComparison.Ordinal))
+        var mentionsOceanic = heard.Compact.Contains("OCEANIC", StringComparison.Ordinal)
+            || (name is { Length: >= 4 } && heard.Compact.Contains(AtcSpeech.Compact(name), StringComparison.Ordinal));
+        if (Oceanic == OceanicClearanceState.Due)
         {
-            return true;
+            return mentionsOceanic;
         }
 
-        return Oceanic == OceanicClearanceState.ReadbackPending && heard.ContainsCode(Plan.Ofp.Fixes[oceanic.EntryFix].Ident);
+        return PendingReadback is null || mentionsOceanic || heard.ContainsCode(Plan.Ofp.Fixes[oceanic.EntryFix].Ident);
     }
 
     /// <summary>Neuer Anruf (Anfrage, Erstkontakt) statt Quittung der letzten Anweisung?</summary>
