@@ -89,10 +89,11 @@ public sealed class AtcFlightTestFixesTests
             {
                 if (plan.PointDistanceNm[i] >= nm)
                 {
+                    // Auf dem Großkreis – die Strecken über Kanada sind zu lang für eine lineare Interpolation
                     var a = plan.Points[i - 1];
                     var b = plan.Points[i];
-                    var f = (nm - plan.PointDistanceNm[i - 1]) / (plan.PointDistanceNm[i] - plan.PointDistanceNm[i - 1]);
-                    (lat, lon) = (a.Lat + ((b.Lat - a.Lat) * f), a.Lon + ((b.Lon - a.Lon) * f));
+                    var bearing = RouteMath.BearingDeg(a.Lat, a.Lon, b.Lat, b.Lon);
+                    (lat, lon) = RouteMath.Destination(a.Lat, a.Lon, bearing, Math.Max(0, nm - plan.PointDistanceNm[i - 1]));
                     break;
                 }
             }
@@ -262,13 +263,13 @@ public sealed class AtcFlightTestFixesTests
         flight.Tick(etari - 200);
         Assert.Equal(OceanicClearanceState.Due, session.Oceanic);
 
-        // Ohne Anfrage an ETARI: Übergabe an Shanwick, Freigabe gilt als erteilt
-        Assert.Equal("CFG2205, contact Shanwick Oceanic 127.65", Assert.Single(flight.Tick(etari - 0.5)).Text);
+        // Ohne Anfrage an ETARI (laut OFP noch Scottish, die Grenze liegt also auf ETARI): Übergabe an Shanwick, Freigabe gilt als erteilt
+        Assert.Equal("CFG2205, contact Shanwick Oceanic 127.65", Assert.Single(flight.Tick(etari + 0.5)).Text);
         Assert.Equal(AtcPhase.Oceanic, session.Phase);
         Assert.Equal(OceanicClearanceState.Cleared, session.Oceanic);
 
-        flight.Tick(etari);
-        var roger = Assert.Single(flight.Say("Shanwick Oceanic, Condor 2205, position ETARI at 1845, flight level 370, estimating 56N020W at 1910", etari));
+        flight.Tick(etari + 1);
+        var roger = Assert.Single(flight.Say("Shanwick Oceanic, Condor 2205, position ETARI at 1845, flight level 370, estimating 56N020W at 1910", etari + 1));
         Assert.Equal(AtcMessageIds.OceanicRoger, roger.MessageId);
         Assert.Equal("CFG2205, roger", roger.Text);
     }
