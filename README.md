@@ -17,7 +17,7 @@ Kopilot verbindet **Microsoft Flight Simulator 2024** über SimConnect mit **Cla
 | `get_monitoring_status` | Flugphase, aktive/abgeschaltete Regeln, Ruhezeit |
 | `get_fma_log` | Verlauf der FMA-Wechsel mit Uhrzeit, IAS und Radiohöhe – z. B. ob nach dem Autoland ROLL OUT aktiv war |
 | `get_flight_plan` | SimBrief-OFP: Route, Bahnen, Reiseflughöhe, Cost Index, Fuel, Gewichte, Zeiten, Navlog |
-| `get_progress` | Fortschritt gegen den Plan: nächster Fix (beim A32NX der aktive FMS-Wegpunkt, z. B. nach DIR TO), Distanz/ETA, TOD, Querablage, Fuel gegen Plan |
+| `get_progress` | Fortschritt gegen den Plan: nächster Fix (beim A32NX der aktive FMS-Wegpunkt, z. B. nach DIR TO), Distanz/ETA, TOD, Querablage, Fuel gegen Plan. ETA aus den Navlog-Zeiten (geplante Winde), korrigiert um die Abweichung am letzten überflogenen Fix; ohne Navlog-Zeiten aus der Groundspeed (`etaSource`) |
 | `get_atc` | Ingame-ATC: Callsign, Freigaben, zugewiesene Bahn (inkl. L/C/R aus SimBrief) |
 | `get_traffic` | Verkehr im Umkreis (KI und Multiplayer): Callsign, Typ, Abstand, Uhrzeit-Peilung, Höhendifferenz, Trend, GS, Callout fürs nächste Ziel |
 | `get_navigation` | GPS-Flugplanvariablen des Sims (bei Airliner-FMS meist leer – dann `get_progress`) |

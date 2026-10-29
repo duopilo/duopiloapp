@@ -11,6 +11,7 @@ public sealed class SimBriefService
     private readonly ILogger<SimBriefService> _log;
     private readonly HttpClient _http;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly FixPassageTracker _passages = new();
 
     private volatile Ofp? _current;
     private DateTimeOffset _fetchedUtc;
@@ -98,6 +99,11 @@ public sealed class SimBriefService
 
         return progress;
     }
+
+    /// <summary>Überflug der Fixes mitschreiben und den letzten überflogenen Fix liefern (für die ETA nach Plan).</summary>
+    /// <param name="zuluSec">Sim-Uhrzeit in Sekunden seit Mitternacht.</param>
+    public FixPassage? ObservePassage(Ofp ofp, IReadOnlyList<RoutePoint> points, RouteProgress progress, double? zuluSec, double? groundSpeedKt) =>
+        ReferenceEquals(ofp, _current) ? _passages.Observe(ofp, points, progress, zuluSec, groundSpeedKt) : null;
 
     private static string? ExtractStatus(string body)
     {

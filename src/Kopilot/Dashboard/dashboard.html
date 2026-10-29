@@ -624,15 +624,15 @@ function renderCallouts(d) {
   ui.spokenId = Math.max(ui.spokenId, a.lastId);
   ui.lastId = a.lastId;
 
+  // Großanzeige kommt vom Server: aktiver Zustand oder letzte Ansage – beendete Zustände (z. B. Sim paused) nicht mehr
   const hero = $("hero");
-  const top = a.active.find((e) => e.callout) || null;
-  const latest = ui.events.find((e) => e.kind !== "Clear" && e.callout) || null;
-  const show = top || latest;
-  if (show && (top || Date.now() - (show._seen || (show._seen = Date.now())) < 60000)) {
+  const head = a.headline;
+  if (head) {
+    const show = head.alert;
     if (hero.className !== "hero") hero.className = "hero";
     setText("heroCallout", show.callout, SEV[show.severity] || "w");
     setText("heroMsg", show.message || "");
-    setText("heroWhen", timeOf(show.timeUtc) + " UTC" + (top ? "  aktiv" : ""));
+    setText("heroWhen", timeOf(show.timeUtc) + " UTC" + (head.active ? "  aktiv" : ""));
   } else {
     if (hero.className !== "hero quiet") hero.className = "hero quiet";
     const phase = PHASES[d.monitoring.phase] || d.monitoring.phase;
