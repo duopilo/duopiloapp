@@ -67,6 +67,12 @@ public sealed class AtcFrequencyBook
 /// <summary>Baut die Stationen eines Flugs: Name aus den Vorlagen bzw. dem OFP, Frequenz aus Facilities-API, Vorlagen oder Platzhalter.</summary>
 public sealed partial class AtcStations
 {
+    /// <summary>Eintrag unter "firs" für Oceanic-Gebiete ohne eigenen Eintrag (Koordinaten außerhalb des Nordatlantiks).</summary>
+    public const string GenericOceanicFir = "OCEANIC";
+
+    /// <summary>Eintrag unter "firs" für Land-FIRs ohne eigenen Eintrag (z. B. KZMP): Name und Frequenz einer generischen Center-Station.</summary>
+    public const string GenericCenterFir = "CENTER";
+
     private readonly AtcTemplates _templates;
     private readonly Func<string, IReadOnlyList<AirportFrequency>?> _facilityFrequencies;
     private readonly AtcVoiceAssigner _voices;
@@ -135,7 +141,9 @@ public sealed partial class AtcStations
             return cached;
         }
 
-        var config = _templates.Fir(code);
+        // FIR ohne eigenen Eintrag: generische Station aus "OCEANIC" bzw. "CENTER" (der Schlüssel bleibt je FIR, damit
+        // Übergaben zwischen zwei unbekannten FIRs und eigene Stimmen erhalten bleiben)
+        var config = _templates.Fir(code) ?? _templates.Fir(oceanic ? GenericOceanicFir : GenericCenterFir);
         var typeConfig = _templates.StationType(type);
         var name = config?.Name is { Length: > 0 } n ? n.Trim() : typeConfig.Name;
         AtcValue frequency;

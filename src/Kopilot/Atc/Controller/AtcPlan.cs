@@ -19,7 +19,7 @@ public sealed partial class AtcPlan
     // Ohne FIR-Angaben im OFP: Nordatlantik westlich von 30°W ist Gander, östlich Shanwick.
     private const string ShanwickFir = "EGGX";
     private const string GanderFir = "CZQX";
-    private const string GenericOceanicFir = "OCEANIC";
+    private const string GenericOceanicFir = AtcStations.GenericOceanicFir;
 
     public required Ofp Ofp { get; init; }
 
@@ -104,7 +104,7 @@ public sealed partial class AtcPlan
             distances.Add(total);
         }
 
-        var callsign = FirstNonEmpty(ofp.Callsign, ofp.FlightNumber, simCallsign) ?? "KOPILOT";
+        var callsign = CallsignCode(ofp, simCallsign) ?? "KOPILOT";
         var cruise = ofp.InitialAltitudeFt ?? ofp.Fixes.Select(f => f.AltitudeFt ?? 0).DefaultIfEmpty(0).Max();
         if (cruise <= 0)
         {
@@ -132,6 +132,24 @@ public sealed partial class AtcPlan
             TodNm = TodDistance(points, distances),
             FlightKey = ofp.RequestId ?? $"{ofp.Origin.Icao}-{ofp.Destination.Icao}-{ofp.GeneratedUtc?.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture)}",
         };
+    }
+
+    /// <summary>
+    /// Rufzeichen für den Funk als Code ("CFG2205"). Die Flugnummer des OFP (ICAO-Airline + Nummer) hat Vorrang vor
+    /// atc.callsign – dort kann der IATA-Code stehen ("DE2205"), aus dem kein Telephony-Rufzeichen wird. atc.callsign gilt
+    /// nur, wenn es mit derselben ICAO-Kennung beginnt (alphanumerisches Rufzeichen wie "DLH4AB" zur Flugnummer DLH400)
+    /// oder die Flugnummer keine ICAO-Kennung hat. Danach das Rufzeichen aus MSFS.
+    /// </summary>
+    public static string? CallsignCode(Ofp? ofp, string? simCallsign)
+    {
+        var callsign = ofp?.Callsign is { } c ? AtcSpeech.Compact(c) : "";
+        var flightNumber = ofp?.FlightNumber is { } f ? AtcSpeech.Compact(f) : "";
+        if (IcaoFlightRegex().IsMatch(flightNumber))
+        {
+            return callsign.Length > 3 && callsign.StartsWith(flightNumber[..3], StringComparison.Ordinal) ? callsign : flightNumber;
+        }
+
+        return FirstNonEmpty(callsign, flightNumber, simCallsign is null ? null : AtcSpeech.Compact(simCallsign));
     }
 
     /// <summary>Gültige SID/STAR-Kennung wie "MARUN7G", sonst null.</summary>
@@ -394,4 +412,8 @@ public sealed partial class AtcPlan
 
     [GeneratedRegex(@"^[A-Z]{2,6}\d[A-Z]?$")]
     private static partial Regex ProcedureRegex();
+
+    // ICAO-Airline (3 Buchstaben) + Flugnummer, die mit einer Ziffer beginnt: "CFG2205", "DLH400"
+    [GeneratedRegex(@"^[A-Z]{3}\d[A-Z0-9]*$")]
+    private static partial Regex IcaoFlightRegex();
 }
