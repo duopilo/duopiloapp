@@ -1,6 +1,6 @@
 {
   // Headwind A330-900neo (MSFS 2024, Community-Paket headwindsim-aircraft-a330-900). Basiert auf FlyByWire – Grundlage ist das A32NX-Profil.
-  // "verified": true = in der Testsession am 28.10.2026 im Sim geprüft. Alles andere stammt aus dem A32NX-Profil und ist ungeprüft.
+  // Bindings: "verified": true = in der Testsession am 28.10.2026 im Sim geprüft. Alles andere stammt aus dem A32NX-Profil und ist ungeprüft.
   //
   // Bewusst NICHT übernommen (beim A330 anders oder nicht gefunden – ein unbekanntes L: liest 0 und würde Fehlalarme auslösen):
   //   athrMode (L:A32NX_AUTOTHRUST_MODE bleibt 0), ALT CRZ (fmgcDiscreteWord1), speedTarget, machMode, groundSpoilersOut, decelLight, ECAM-Zeilen.
@@ -11,7 +11,7 @@
     { "path": [ "headwind_a330neo" ] },
     { "title": [ "A330-900neo" ] }
   ],
-  "notes": "Basiert auf FlyByWire. FCU-Werte kommen aus den älteren FBW-Variablen (AUTOPILOT_SPEED_SELECTED, FCU_HEADING_SELECTED, ALTITUDE LOCK VAR:3). Thrust-Modus (THR CLB, SPEED), ALT CRZ und ECAM sind noch offen. Eingaben: nur External Power und APU, alles ungeprüft.",
+  "notes": "Basiert auf FlyByWire. FCU-Werte kommen aus den älteren FBW-Variablen (AUTOPILOT_SPEED_SELECTED, FCU_HEADING_SELECTED, ALTITUDE LOCK VAR:3). Thrust-Modus (THR CLB, SPEED), ALT CRZ und ECAM sind noch offen. Eingaben wie beim A32NX; FCU, Lights, Anti-Ice, External Power und APU im Sim getestet, der Rest ungeprüft.",
   "bindings": {
     "ap1": { "name": "L:A32NX_AUTOPILOT_1_ACTIVE", "type": "bool", "verified": true },
     "ap2": { "name": "L:A32NX_AUTOPILOT_2_ACTIVE", "type": "bool", "verified": true },
@@ -93,18 +93,1026 @@
     { "key": "apuFault", "name": "L:A32NX_OVHD_APU_MASTER_SW_PB_HAS_FAULT", "description": "APU MASTER FAULT", "values": { "0": "–", "1": "FAULT" } },
     { "key": "adiru1State", "name": "L:A32NX_ADIRS_ADIRU_1_STATE", "description": "ADIRU 1", "values": { "0": "OFF", "1": "ALIGNING", "2": "ALIGNED" } }
   ],
-  // Eingaben: nur, was die Testsession als Variable bestätigt hat. Ausführen ist noch ungetestet.
+  // Eingaben: 1:1 aus dem A32NX-Profil, dazu die eigenen A330-Fassungen von External Power und APU.
+  // "verified": true = im Sim mit der A339 getestet (FCU, Lights, Anti-Ice, External Power, APU).
+  // Angepasst für die A339 (noch ungeprüft): signs.seatbelts (3 Stellungen), signs.noSmoking (Enum), lights.landing (LIGHT LANDING:2),
+  // fcu.headingManaged (Prüfung wartet länger). Alle übrigen Bereiche sind ungeprüft übernommen.
   "actions": [
     {
-      "id": "elec.extPwr",
-      "area": "Elec",
-      "label": "External power",
-      "description": "EXT PWR Pushbutton, nur am Boden. Geprüft wird nur die Schalterstellung (Schütz-Variable beim A330 unbekannt).",
+      "id": "fcu.speed",
+      "area": "FCU",
+      "label": "FCU speed",
+      "description": "Setzt die Speed (kt) und zieht den Knopf (selected). Im Mach-Modus wird vorher auf Knoten umgeschaltet.",
+      "parameter": { "min": 100, "max": 399, "step": 1, "unit": "kt" },
+      "steps": [
+        {
+          "event": "A32NX.FCU_SPD_MACH_TOGGLE_PUSH",
+          "skipIf": { "variable": "L:A32NX_FCU_AFS_DISPLAY_MACH_MODE", "equalTo": 0 },
+          "delayMs": 150
+        },
+        {
+          "event": "A32NX.FCU_SPD_SET",
+          "value": "{value}",
+          "delayMs": 150
+        },
+        { "event": "A32NX.FCU_SPD_PULL" }
+      ],
+      "readback": "Speed {value} selected",
+      "check": {
+        "variable": "L:A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE",
+        "expect": "{value}"
+      },
+      "verified": true
+    },
+    {
+      "id": "fcu.speedManaged",
+      "area": "FCU",
+      "label": "Managed speed",
+      "steps": [
+        { "event": "A32NX.FCU_SPD_PUSH" }
+      ],
+      "readback": "Managed speed",
+      "check": { "variable": "L:A32NX_FCU_AFS_DISPLAY_SPD_MACH_MANAGED", "expect": 1 },
+      "verified": true
+    },
+    {
+      "id": "fcu.heading",
+      "area": "FCU",
+      "label": "FCU heading",
+      "parameter": { "min": 0, "max": 360, "step": 1, "unit": "°", "format": "heading" },
+      "steps": [
+        {
+          "event": "A32NX.FCU_HDG_SET",
+          "value": "{value}",
+          "delayMs": 150
+        },
+        { "event": "A32NX.FCU_HDG_PULL" }
+      ],
+      "readback": "Heading {value} selected",
+      "check": { "variable": "L:A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE", "expect": "{value}", "modulo": 360 },
+      "requires": [
+        { "variable": "L:A32NX_FCU_AFS_DISPLAY_TRK_FPA_MODE", "equalTo": 0, "message": "FCU steht auf TRK/FPA – erst auf HDG/VS umschalten." }
+      ],
+      "verified": true
+    },
+    {
+      "id": "fcu.headingManaged",
+      "area": "FCU",
+      "label": "Managed NAV",
+      "steps": [
+        { "event": "A32NX.FCU_HDG_PUSH" }
+      ],
+      "readback": "Heading managed",
+      "description": "HDG-Knopf drücken. NAV braucht beim A330 einige Sekunden – deshalb wartet die Prüfung bis zu 10 s.",
+      "check": { "variable": "L:A32NX_FCU_AFS_DISPLAY_HDG_TRK_MANAGED", "expect": 1, "timeoutMs": 10000 },
+      "verified": false
+    },
+    {
+      "id": "fcu.altitude",
+      "area": "FCU",
+      "label": "FCU altitude",
+      "description": "Stellt nur die Höhe am FCU ein – für Steig-/Sinkflug danach fcu.altitudePull oder fcu.altitudePush.",
+      "parameter": { "min": 100, "max": 49000, "step": 100, "unit": "ft", "format": "altitude" },
+      "steps": [
+        {
+          "event": "A32NX.FCU_ALT_SET",
+          "value": "{value}"
+        }
+      ],
+      "readback": "Altitude {value} set",
+      "check": {
+        "variable": "L:A32NX_FCU_AFS_DISPLAY_ALT_VALUE",
+        "expect": "{value}"
+      },
+      "verified": true
+    },
+    {
+      "id": "fcu.altitudePull",
+      "area": "FCU",
+      "label": "Altitude pull",
+      "steps": [
+        { "event": "A32NX.FCU_ALT_PULL" }
+      ],
+      "readback": "Altitude pull, open climb or descent",
+      "verified": true
+    },
+    {
+      "id": "fcu.altitudePush",
+      "area": "FCU",
+      "label": "Altitude push",
+      "steps": [
+        { "event": "A32NX.FCU_ALT_PUSH" }
+      ],
+      "readback": "Altitude push, managed",
+      "check": { "variable": "L:A32NX_FCU_AFS_DISPLAY_LVL_CH_MANAGED", "expect": 1 },
+      "verified": true
+    },
+    {
+      "id": "fcu.altIncrement",
+      "area": "FCU",
+      "label": "Altitude increment",
+      "parameter": {
+        "type": "choice",
+        "options": { "100": 100, "1000": 1000 }
+      },
+      "steps": [
+        {
+          "event": "A32NX.FCU_ALT_INCREMENT_SET",
+          "value": "{value}"
+        }
+      ],
+      "readback": "Altitude increment {value}",
+      "check": {
+        "variable": "L:A32NX_FCU_ALT_INCREMENT_1000",
+        "expect": { "100": 0, "1000": 1 }
+      },
+      "verified": true
+    },
+    {
+      "id": "fcu.vs",
+      "area": "FCU",
+      "label": "Vertical speed",
+      "parameter": { "min": -6000, "max": 6000, "step": 100, "unit": "ft/min" },
+      "steps": [
+        {
+          "event": "A32NX.FCU_VS_SET",
+          "value": "{value}",
+          "delayMs": 150
+        },
+        { "event": "A32NX.FCU_VS_PULL" }
+      ],
+      "readback": "Vertical speed {value}",
+      "check": {
+        "variable": "L:A32NX_FCU_AFS_DISPLAY_VS_FPA_VALUE",
+        "expect": "{value}",
+        "tolerance": 50
+      },
+      "requires": [
+        { "variable": "L:A32NX_FCU_AFS_DISPLAY_TRK_FPA_MODE", "equalTo": 0, "message": "FCU steht auf TRK/FPA – erst auf HDG/VS umschalten." }
+      ],
+      "verified": true
+    },
+    {
+      "id": "fcu.loc",
+      "area": "FCU",
+      "label": "LOC",
+      "parameter": {
+        "type": "choice",
+        "options": { "on": 1, "off": 0 }
+      },
+      "steps": [
+        {
+          "event": "A32NX.FCU_LOC_PUSH",
+          "skipIf": {
+            "variable": "L:A32NX_FCU_LOC_LIGHT_ON",
+            "equalTo": "{value}"
+          }
+        }
+      ],
+      "readback": "LOC {value}",
+      "check": {
+        "variable": "L:A32NX_FCU_LOC_LIGHT_ON",
+        "expect": "{value}"
+      },
+      "verified": true
+    },
+    {
+      "id": "fcu.appr",
+      "area": "FCU",
+      "label": "Approach",
+      "parameter": {
+        "type": "choice",
+        "options": { "on": 1, "off": 0 }
+      },
+      "steps": [
+        {
+          "event": "A32NX.FCU_APPR_PUSH",
+          "skipIf": {
+            "variable": "L:A32NX_FCU_APPR_LIGHT_ON",
+            "equalTo": "{value}"
+          }
+        }
+      ],
+      "readback": "Approach {value}",
+      "check": {
+        "variable": "L:A32NX_FCU_APPR_LIGHT_ON",
+        "expect": "{value}"
+      },
+      "verified": true
+    },
+    {
+      "id": "fcu.exped",
+      "area": "FCU",
+      "label": "Expedite",
+      "parameter": {
+        "type": "choice",
+        "options": { "on": 1, "off": 0 }
+      },
+      "steps": [
+        {
+          "event": "A32NX.FCU_EXPED_PUSH",
+          "skipIf": {
+            "variable": "L:A32NX_FCU_EXPED_LIGHT_ON",
+            "equalTo": "{value}"
+          }
+        }
+      ],
+      "readback": "Expedite {value}",
+      "check": {
+        "variable": "L:A32NX_FCU_EXPED_LIGHT_ON",
+        "expect": "{value}"
+      },
+      "verified": true
+    },
+    {
+      "id": "fcu.ap1",
+      "area": "FCU",
+      "label": "Autopilot 1",
+      "parameter": {
+        "type": "choice",
+        "options": { "on": 1, "off": 0 }
+      },
+      "steps": [
+        {
+          "event": "A32NX.FCU_AP_1_PUSH",
+          "skipIf": {
+            "variable": "L:A32NX_FCU_AP_1_LIGHT_ON",
+            "equalTo": "{value}"
+          }
+        }
+      ],
+      "readback": "Autopilot one {value}",
+      "check": {
+        "variable": "L:A32NX_FCU_AP_1_LIGHT_ON",
+        "expect": "{value}"
+      },
+      "verified": true
+    },
+    {
+      "id": "fcu.ap2",
+      "area": "FCU",
+      "label": "Autopilot 2",
+      "parameter": {
+        "type": "choice",
+        "options": { "on": 1, "off": 0 }
+      },
+      "steps": [
+        {
+          "event": "A32NX.FCU_AP_2_PUSH",
+          "skipIf": {
+            "variable": "L:A32NX_FCU_AP_2_LIGHT_ON",
+            "equalTo": "{value}"
+          }
+        }
+      ],
+      "readback": "Autopilot two {value}",
+      "check": {
+        "variable": "L:A32NX_FCU_AP_2_LIGHT_ON",
+        "expect": "{value}"
+      },
+      "verified": true
+    },
+    {
+      "id": "fcu.athr",
+      "area": "FCU",
+      "label": "Autothrust",
+      "parameter": {
+        "type": "choice",
+        "options": { "on": 1, "off": 0 }
+      },
+      "steps": [
+        {
+          "event": "A32NX.FCU_ATHR_PUSH",
+          "skipIf": {
+            "variable": "L:A32NX_FCU_ATHR_LIGHT_ON",
+            "equalTo": "{value}"
+          }
+        }
+      ],
+      "readback": "Autothrust {value}",
+      "check": {
+        "variable": "L:A32NX_FCU_ATHR_LIGHT_ON",
+        "expect": "{value}"
+      },
+      "verified": true
+    },
+    {
+      "id": "efis.baro",
+      "area": "EFIS",
+      "label": "QNH",
+      "description": "QNH in hPa auf beiden Seiten. Nur im QNH-Modus – aus STD erst efis.baroMode QNH.",
+      "parameter": { "min": 900, "max": 1100, "step": 1, "unit": "hPa" },
+      "steps": [
+        {
+          "event": "A32NX.FCU_EFIS_L_BARO_SET",
+          "value": "{value}",
+          "scale": 16
+        },
+        {
+          "event": "A32NX.FCU_EFIS_R_BARO_SET",
+          "value": "{value}",
+          "scale": 16
+        }
+      ],
+      "readback": "QNH {value} set",
+    "requires": [ { "variable": "L:A32NX_FCU_EFIS_L_DISPLAY_BARO_MODE", "equalTo": 1, "message": "Höhenmesser steht auf STD (oder QFE) – erst efis.baroMode QNH." } ],
+      "check": {
+        "variable": "L:A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE",
+        "expect": "{value}",
+        "tolerance": 0.6
+      },
+      "verified": false
+    },
+    {
+      "id": "efis.baroMode",
+      "area": "EFIS",
+      "label": "Baro STD/QNH",
+      "parameter": {
+        "type": "choice",
+        "options": { "STD": 0, "QNH": 1 },
+        "spoken": { "STD": "standard" }
+      },
+      "steps": [
+        {
+          "event": "A32NX.FCU_EFIS_L_BARO_PULL",
+          "only": [ "STD" ],
+          "skipIf": { "variable": "L:A32NX_FCU_EFIS_L_DISPLAY_BARO_MODE", "equalTo": 0 }
+        },
+        {
+          "event": "A32NX.FCU_EFIS_R_BARO_PULL",
+          "only": [ "STD" ],
+          "skipIf": { "variable": "L:A32NX_FCU_EFIS_R_DISPLAY_BARO_MODE", "equalTo": 0 }
+        },
+        {
+          "event": "A32NX.FCU_EFIS_L_BARO_PUSH",
+          "only": [ "QNH" ],
+          "skipIf": { "variable": "L:A32NX_FCU_EFIS_L_DISPLAY_BARO_MODE", "equalTo": 1 }
+        },
+        {
+          "event": "A32NX.FCU_EFIS_R_BARO_PUSH",
+          "only": [ "QNH" ],
+          "skipIf": { "variable": "L:A32NX_FCU_EFIS_R_DISPLAY_BARO_MODE", "equalTo": 1 }
+        }
+      ],
+      "readback": "Baro {value}",
+      "check": {
+        "variable": "L:A32NX_FCU_EFIS_L_DISPLAY_BARO_MODE",
+        "expect": "{value}"
+      },
+      "verified": false
+    },
+    {
+      "id": "efis.ls",
+      "area": "EFIS",
+      "label": "LS",
+      "parameter": {
+        "type": "choice",
+        "options": { "on": 1, "off": 0 }
+      },
+      "steps": [
+        {
+          "event": "A32NX.FCU_EFIS_L_LS_PUSH",
+          "skipIf": {
+            "variable": "L:A32NX_FCU_EFIS_L_LS_LIGHT_ON",
+            "equalTo": "{value}"
+          }
+        },
+        {
+          "event": "A32NX.FCU_EFIS_R_LS_PUSH",
+          "skipIf": {
+            "variable": "L:A32NX_FCU_EFIS_R_LS_LIGHT_ON",
+            "equalTo": "{value}"
+          }
+        }
+      ],
+      "readback": "LS {value}",
+      "check": {
+        "variable": "L:A32NX_FCU_EFIS_L_LS_LIGHT_ON",
+        "expect": "{value}"
+      },
+      "verified": false
+    },
+    {
+      "id": "efis.fd",
+      "area": "EFIS",
+      "label": "Flight directors",
+      "parameter": {
+        "type": "choice",
+        "options": { "on": 1, "off": 0 }
+      },
+      "steps": [
+        {
+          "event": "A32NX.FCU_EFIS_L_FD_PUSH",
+          "skipIf": {
+            "variable": "L:A32NX_FCU_EFIS_L_FD_LIGHT_ON",
+            "equalTo": "{value}"
+          }
+        },
+        {
+          "event": "A32NX.FCU_EFIS_R_FD_PUSH",
+          "skipIf": {
+            "variable": "L:A32NX_FCU_EFIS_R_FD_LIGHT_ON",
+            "equalTo": "{value}"
+          }
+        }
+      ],
+      "readback": "Flight directors {value}",
+      "check": {
+        "variable": "L:A32NX_FCU_EFIS_L_FD_LIGHT_ON",
+        "expect": "{value}"
+      },
+      "verified": false
+    },
+    {
+      "id": "efis.ndMode",
+      "area": "EFIS",
+      "label": "ND mode (captain)",
+      "parameter": {
+        "type": "choice",
+        "options": { "ls": 0, "vor": 1, "nav": 2, "arc": 3, "plan": 4 },
+        "spoken": { "ls": "rose LS", "vor": "rose VOR", "nav": "rose NAV" }
+      },
+      "steps": [
+        {
+          "set": "L:A32NX_FCU_EFIS_L_EFIS_MODE",
+          "value": "{value}"
+        }
+      ],
+      "readback": "ND mode {value}",
+      "check": {
+        "variable": "L:A32NX_FCU_EFIS_L_EFIS_MODE",
+        "expect": "{value}"
+      },
+      "verified": false
+    },
+    {
+      "id": "efis.ndRange",
+      "area": "EFIS",
+      "label": "ND range (captain)",
+      "parameter": {
+        "type": "choice",
+        "options": { "10": 0, "20": 1, "40": 2, "80": 3, "160": 4, "320": 5 }
+      },
+      "steps": [
+        {
+          "set": "L:A32NX_FCU_EFIS_L_EFIS_RANGE",
+          "value": "{value}"
+        }
+      ],
+      "readback": "ND range {value}",
+      "check": {
+        "variable": "L:A32NX_FCU_EFIS_L_EFIS_RANGE",
+        "expect": "{value}"
+      },
+      "verified": false
+    },
+    {
+      "id": "gear.down",
+      "area": "Config",
+      "label": "Gear down",
+      "steps": [
+        { "event": "GEAR_DOWN" }
+      ],
+      "readback": "Gear down",
+      "check": { "variable": "L:A32NX_GEAR_HANDLE_POSITION", "expect": 1, "tolerance": 0.05, "timeoutMs": 4000 },
+      "interlocks": [ "gearSpeed" ],
+      "verified": false
+    },
+    {
+      "id": "gear.up",
+      "area": "Config",
+      "label": "Gear up",
+      "steps": [
+        { "event": "GEAR_UP" }
+      ],
+      "readback": "Gear up",
+      "check": { "variable": "L:A32NX_GEAR_HANDLE_POSITION", "expect": 0, "tolerance": 0.05, "timeoutMs": 4000 },
+      "interlocks": [ "notOnGround" ],
+      "verified": false
+    },
+    {
+      "id": "flaps",
+      "area": "Config",
+      "label": "Flaps lever",
+      "description": "Klappenhebel. Am Boden ist 1 die Startstellung 1+F.",
+      "parameter": {
+        "type": "choice",
+        "options": { "0": 0, "1": 1, "2": 2, "3": 3, "FULL": 4 },
+        "spoken": { "0": "zero", "1": "one", "2": "two", "3": "three", "FULL": "full" }
+      },
+      "steps": [
+        {
+          "event": "FLAPS_UP",
+          "only": [ "0" ]
+        },
+        {
+          "event": "FLAPS_1",
+          "only": [ "1" ]
+        },
+        {
+          "event": "FLAPS_2",
+          "only": [ "2" ]
+        },
+        {
+          "event": "FLAPS_3",
+          "only": [ "3" ]
+        },
+        {
+          "event": "FLAPS_DOWN",
+          "only": [ "FULL" ]
+        }
+      ],
+      "readback": "Flaps {value}",
+      "check": {
+        "variable": "L:A32NX_FLAPS_HANDLE_INDEX",
+        "expect": "{value}"
+      },
+      "interlocks": [ "flapsSpeed" ],
+      "verified": false
+    },
+    {
+      "id": "speedbrake",
+      "area": "Config",
+      "label": "Speedbrake lever",
+      "parameter": {
+        "type": "choice",
+        "options": { "retract": 0, "half": 0.5, "full": 1 }
+      },
+      "steps": [
+        {
+          "event": "SPOILERS_SET",
+          "value": "{value}",
+          "scale": 16384
+        }
+      ],
+      "readback": "Speedbrake {value}",
+      "check": {
+        "variable": "L:A32NX_SPOILERS_HANDLE_POSITION",
+        "expect": "{value}",
+        "tolerance": 0.1
+      },
+      "verified": false
+    },
+    {
+      "id": "spoilers.arm",
+      "area": "Config",
+      "label": "Ground spoilers",
+      "parameter": {
+        "type": "choice",
+        "options": { "arm": 1, "disarm": 0 },
+        "spoken": { "arm": "armed", "disarm": "disarmed" }
+      },
+      "steps": [
+        {
+          "event": "SPOILERS_ARM_SET",
+          "value": "{value}"
+        }
+      ],
+      "readback": "Ground spoilers {value}",
+      "check": {
+        "variable": "L:A32NX_SPOILERS_ARMED",
+        "expect": "{value}"
+      },
+      "verified": false
+    },
+    {
+      "id": "brakes.autobrake",
+      "area": "Brakes",
+      "label": "Autobrake",
+      "parameter": {
+        "type": "choice",
+        "options": { "off": 1, "lo": 2, "med": 3, "max": 4 },
+        "spoken": { "lo": "low", "med": "medium" }
+      },
+      "steps": [
+        {
+          "event": "A32NX.AUTOBRAKE_SET",
+          "value": "{value}"
+        }
+      ],
+      "readback": "Autobrake {value}",
+      "check": {
+        "variable": "L:A32NX_AUTOBRAKES_ARMED_MODE",
+        "expect": { "off": 0, "lo": 1, "med": 2, "max": 3 }
+      },
+      "verified": false
+    },
+    {
+      "id": "lights.beacon",
+      "area": "Lights",
+      "label": "Beacon",
+      "parameter": {
+        "type": "choice",
+        "options": { "on": 1, "off": 0 }
+      },
+      "steps": [
+        {
+          "event": "BEACON_LIGHTS_SET",
+          "value": "{value}"
+        }
+      ],
+      "readback": "Beacon {value}",
+      "check": {
+        "variable": "LIGHT BEACON",
+        "expect": "{value}",
+        "unit": "Bool"
+      },
+      "verified": true
+    },
+    {
+      "id": "lights.wing",
+      "area": "Lights",
+      "label": "Wing lights",
+      "parameter": {
+        "type": "choice",
+        "options": { "on": 1, "off": 0 }
+      },
+      "steps": [
+        {
+          "event": "WING_LIGHTS_SET",
+          "value": "{value}"
+        }
+      ],
+      "readback": "Wing lights {value}",
+      "check": {
+        "variable": "LIGHT WING",
+        "expect": "{value}",
+        "unit": "Bool"
+      },
+      "verified": true
+    },
+    {
+      "id": "lights.runwayTurnoff",
+      "area": "Lights",
+      "label": "Runway turn-off lights",
+      "parameter": {
+        "type": "choice",
+        "options": { "on": 1, "off": 0 }
+      },
+      "steps": [
+        {
+          "event": "ELECTRICAL_CIRCUIT_TOGGLE",
+          "value": 21,
+          "skipIf": {
+            "variable": "CIRCUIT SWITCH ON:21",
+            "equalTo": "{value}",
+            "unit": "Bool"
+          }
+        },
+        {
+          "event": "ELECTRICAL_CIRCUIT_TOGGLE",
+          "value": 22,
+          "skipIf": {
+            "variable": "CIRCUIT SWITCH ON:22",
+            "equalTo": "{value}",
+            "unit": "Bool"
+          }
+        }
+      ],
+      "readback": "Runway turn off lights {value}",
+      "check": {
+        "variable": "CIRCUIT SWITCH ON:21",
+        "expect": "{value}",
+        "unit": "Bool"
+      },
+      "verified": true
+    },
+    {
+      "id": "lights.landing",
+      "area": "Lights",
+      "label": "Landing lights",
+      "description": "Beide Landescheinwerfer. Der A330-Schalter kennt nur ON und OFF – retract wirkt wie off. Geprüft wird das Licht selbst (LIGHT LANDING:2, Stromkreis 18).",
+      "parameter": {
+        "type": "choice",
+        "options": { "on": 0, "off": 1, "retract": 2 },
+        "spoken": { "retract": "retracted" }
+      },
+      "steps": [
+        {
+          "set": "L:LIGHTING_LANDING_2",
+          "value": "{value}"
+        },
+        {
+          "set": "L:LANDING_2_RETRACTED",
+          "value": { "on": 0, "off": 0, "retract": 1 }
+        },
+        {
+          "event": "ELECTRICAL_CIRCUIT_TOGGLE",
+          "value": 18,
+          "skipIf": {
+            "variable": "CIRCUIT SWITCH ON:18",
+            "equalTo": { "on": 1, "off": 0, "retract": 0 },
+            "unit": "Bool"
+          }
+        },
+        {
+          "set": "L:LIGHTING_LANDING_3",
+          "value": "{value}"
+        },
+        {
+          "set": "L:LANDING_3_RETRACTED",
+          "value": { "on": 0, "off": 0, "retract": 1 }
+        },
+        {
+          "event": "ELECTRICAL_CIRCUIT_TOGGLE",
+          "value": 19,
+          "skipIf": {
+            "variable": "CIRCUIT SWITCH ON:19",
+            "equalTo": { "on": 1, "off": 0, "retract": 0 },
+            "unit": "Bool"
+          }
+        }
+      ],
+      "readback": "Landing lights {value}",
+      "check": {
+        "variable": "LIGHT LANDING:2",
+        "expect": { "on": 1, "off": 0, "retract": 0 },
+        "unit": "Bool"
+      },
+      "verified": false
+    },
+    {
+      "id": "lights.nose",
+      "area": "Lights",
+      "label": "Nose light",
+      "parameter": {
+        "type": "choice",
+        "options": { "to": 0, "taxi": 1, "off": 2 },
+        "spoken": { "to": "takeoff" }
+      },
+      "steps": [
+        {
+          "set": "L:LIGHTING_LANDING_1",
+          "value": "{value}"
+        },
+        {
+          "event": "ELECTRICAL_CIRCUIT_TOGGLE",
+          "value": 17,
+          "skipIf": {
+            "variable": "CIRCUIT SWITCH ON:17",
+            "equalTo": { "to": 1, "taxi": 0, "off": 0 },
+            "unit": "Bool"
+          }
+        },
+        {
+          "event": "ELECTRICAL_CIRCUIT_TOGGLE",
+          "value": 20,
+          "skipIf": {
+            "variable": "CIRCUIT SWITCH ON:20",
+            "equalTo": { "to": 1, "taxi": 1, "off": 0 },
+            "unit": "Bool"
+          }
+        }
+      ],
+      "readback": "Nose light {value}",
+      "check": {
+        "variable": "L:LIGHTING_LANDING_1",
+        "expect": "{value}"
+      },
+      "verified": true
+    },
+    {
+      "id": "lights.strobe",
+      "area": "Lights",
+      "label": "Strobe",
+      "parameter": {
+        "type": "choice",
+        "options": { "on": 0, "auto": 1, "off": 2 }
+      },
+      "steps": [
+        { "set": "L:STROBE_0_AUTO", "value": 0, "delayMs": 100 },
+        { "event": "STROBES_OFF", "delayMs": 100 },
+        {
+          "set": "L:STROBE_0_AUTO",
+          "value": { "on": 0, "auto": 1 },
+          "only": [ "on", "auto" ],
+          "delayMs": 100
+        },
+        {
+          "event": "STROBES_ON",
+          "only": [ "on", "auto" ]
+        }
+      ],
+      "readback": "Strobe {value}",
+      "check": {
+        "variable": "L:LIGHTING_STROBE_0",
+        "expect": "{value}"
+      },
+      "verified": true
+    },
+    {
+      "id": "signs.seatbelts",
+      "area": "Signs",
+      "label": "Seat belts",
+      "description": "Schalter mit drei Stellungen (ON, AUTO, OFF). Bei ON und OFF schaltet Kopilot das Zeichen mit – wie der Schalter im Cockpit. In AUTO steuert das Flugzeug es (Slats oder Fahrwerk).",
+      "parameter": {
+        "type": "choice",
+        "options": { "on": 0, "auto": 1, "off": 2 }
+      },
+      "steps": [
+        {
+          "set": "L:XMLVAR_SWITCH_OVHD_INTLT_SEATBELT_Position",
+          "value": "{value}",
+          "skipIf": {
+            "variable": "L:XMLVAR_SWITCH_OVHD_INTLT_SEATBELT_Position",
+            "equalTo": "{value}",
+            "unit": "Enum"
+          },
+          "delayMs": 300
+        },
+        {
+          "event": "CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE",
+          "only": [ "on" ],
+          "skipIf": {
+            "variable": "CABIN SEATBELTS ALERT SWITCH",
+            "equalTo": 1,
+            "unit": "Bool"
+          }
+        },
+        {
+          "event": "CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE",
+          "only": [ "off" ],
+          "skipIf": {
+            "variable": "CABIN SEATBELTS ALERT SWITCH",
+            "equalTo": 0,
+            "unit": "Bool"
+          }
+        }
+      ],
+      "readback": "Seat belts {value}",
+      "check": {
+        "variable": "L:XMLVAR_SWITCH_OVHD_INTLT_SEATBELT_Position",
+        "expect": "{value}",
+        "unit": "Enum"
+      },
+      "verified": false
+    },
+    {
+      "id": "signs.noSmoking",
+      "area": "Signs",
+      "label": "No smoking / no portable devices",
+      "description": "Schalterstellung wird als Enum gelesen – so liest sie auch die Headwind-FWC (als number kam immer 0).",
+      "parameter": {
+        "type": "choice",
+        "options": { "on": 0, "auto": 1, "off": 2 }
+      },
+      "steps": [
+        {
+          "set": "L:XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position",
+          "value": "{value}",
+          "skipIf": {
+            "variable": "L:XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position",
+            "equalTo": "{value}",
+            "unit": "Enum"
+          }
+        }
+      ],
+      "readback": "No smoking {value}",
+      "check": {
+        "variable": "L:XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position",
+        "expect": "{value}",
+        "unit": "Enum"
+      },
+      "verified": false
+    },
+    {
+      "id": "antiice.engines",
+      "area": "AntiIce",
+      "label": "Engine anti-ice (both)",
+      "parameter": {
+        "type": "choice",
+        "options": { "on": 1, "off": 0 }
+      },
+      "steps": [
+        {
+          "set": "L:A32NX_BUTTON_OVHD_ANTI_ICE_ENG_1_POSITION",
+          "value": "{value}",
+          "unit": "Bool"
+        },
+        {
+          "set": "L:A32NX_BUTTON_OVHD_ANTI_ICE_ENG_2_POSITION",
+          "value": "{value}",
+          "unit": "Bool"
+        }
+      ],
+      "readback": "Engine anti ice {value}",
+      "check": {
+        "variable": "L:A32NX_BUTTON_OVHD_ANTI_ICE_ENG_1_POSITION",
+        "expect": "{value}",
+        "unit": "Bool"
+      },
+      "verified": true
+    },
+    {
+      "id": "antiice.eng1",
+      "area": "AntiIce",
+      "label": "Engine 1 anti-ice",
       "parameter": { "type": "choice", "options": { "on": 1, "off": 0 } },
-      "steps": [ { "set": "L:A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON", "value": "{value}" } ],
-      "readback": "External power {value}",
-      "interlocks": [ "onGround" ],
-      "check": { "variable": "L:A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON", "expect": "{value}" },
+      "steps": [
+        { "set": "L:A32NX_BUTTON_OVHD_ANTI_ICE_ENG_1_POSITION", "value": "{value}", "unit": "Bool" }
+      ],
+      "readback": "Engine one anti ice {value}",
+      "check": { "variable": "ENG ANTI ICE:1", "expect": "{value}", "unit": "Bool" },
+      "verified": true
+    },
+    {
+      "id": "antiice.eng2",
+      "area": "AntiIce",
+      "label": "Engine 2 anti-ice",
+      "parameter": { "type": "choice", "options": { "on": 1, "off": 0 } },
+      "steps": [
+        { "set": "L:A32NX_BUTTON_OVHD_ANTI_ICE_ENG_2_POSITION", "value": "{value}", "unit": "Bool" }
+      ],
+      "readback": "Engine two anti ice {value}",
+      "check": { "variable": "ENG ANTI ICE:2", "expect": "{value}", "unit": "Bool" },
+      "verified": true
+    },
+    {
+      "id": "antiice.wing",
+      "area": "AntiIce",
+      "label": "Wing anti-ice",
+      "parameter": {
+        "type": "choice",
+        "options": { "on": 1, "off": 0 }
+      },
+      "steps": [
+        {
+          "set": "L:A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION",
+          "value": "{value}",
+          "unit": "Bool"
+        }
+      ],
+      "readback": "Wing anti ice {value}",
+      "check": {
+        "variable": "L:A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION",
+        "expect": "{value}",
+        "unit": "Bool"
+      },
+      "verified": true
+    },
+    {
+      "id": "antiice.probeHeat",
+      "area": "AntiIce",
+      "label": "Probe/window heat",
+      "parameter": {
+        "type": "choice",
+        "options": { "on": 1, "auto": 0 }
+      },
+      "steps": [
+        {
+          "set": "L:A32NX_MAN_PITOT_HEAT",
+          "value": "{value}",
+          "unit": "Bool"
+        }
+      ],
+      "readback": "Probe and window heat {value}",
+      "check": {
+        "variable": "L:A32NX_MAN_PITOT_HEAT",
+        "expect": "{value}",
+        "unit": "Bool"
+      },
+      "verified": true
+    },
+    {
+      "id": "air.pack1",
+      "area": "Air",
+      "label": "Pack 1",
+      "parameter": {
+        "type": "choice",
+        "options": { "on": 1, "off": 0 }
+      },
+      "steps": [
+        {
+          "set": "L:A32NX_OVHD_COND_PACK_1_PB_IS_ON",
+          "value": "{value}"
+        }
+      ],
+      "readback": "Pack one {value}",
+      "check": {
+        "variable": "L:A32NX_OVHD_COND_PACK_1_PB_IS_ON",
+        "expect": "{value}"
+      },
+      "verified": false
+    },
+    {
+      "id": "air.pack2",
+      "area": "Air",
+      "label": "Pack 2",
+      "parameter": {
+        "type": "choice",
+        "options": { "on": 1, "off": 0 }
+      },
+      "steps": [
+        {
+          "set": "L:A32NX_OVHD_COND_PACK_2_PB_IS_ON",
+          "value": "{value}"
+        }
+      ],
+      "readback": "Pack two {value}",
+      "check": {
+        "variable": "L:A32NX_OVHD_COND_PACK_2_PB_IS_ON",
+        "expect": "{value}"
+      },
       "verified": false
     },
     {
@@ -118,7 +1126,7 @@
         { "variable": "L:A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO", "equalTo": 1, "only": [ "on" ], "message": "BAT 1 ist aus – erst die Batterien einschalten." }
       ],
       "check": { "variable": "L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", "expect": "{value}" },
-      "verified": false
+      "verified": true
     },
     {
       "id": "apu.start",
@@ -133,6 +1141,174 @@
         { "variable": "L:A32NX_OVHD_APU_START_PB_IS_AVAILABLE", "equalTo": 0, "message": "APU läuft schon (AVAIL)." }
       ],
       "check": { "variable": "L:A32NX_OVHD_APU_START_PB_IS_ON", "expect": 1, "holdMs": 2500 },
+      "verified": true
+    },
+    {
+      "id": "apu.bleed",
+      "area": "APU",
+      "label": "APU bleed",
+      "parameter": {
+        "type": "choice",
+        "options": { "on": 1, "off": 0 }
+      },
+      "steps": [
+        {
+          "set": "L:A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON",
+          "value": "{value}"
+        }
+      ],
+      "readback": "APU bleed {value}",
+      "check": {
+        "variable": "L:A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON",
+        "expect": "{value}"
+      },
+      "verified": false
+    },
+    {
+      "id": "elec.extPwr",
+      "area": "Elec",
+      "label": "External power",
+      "description": "EXT PWR Pushbutton, nur am Boden. Geprüft wird nur die Schalterstellung (Schütz-Variable beim A330 unbekannt).",
+      "parameter": { "type": "choice", "options": { "on": 1, "off": 0 } },
+      "steps": [ { "set": "L:A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON", "value": "{value}" } ],
+      "readback": "External power {value}",
+      "interlocks": [ "onGround" ],
+      "check": { "variable": "L:A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON", "expect": "{value}" },
+      "verified": true
+    },
+    {
+      "id": "xpdr.code",
+      "area": "Transponder",
+      "label": "Squawk",
+      "parameter": { "format": "squawk" },
+      "steps": [
+        {
+          "event": "XPNDR_SET",
+          "value": "{value}",
+          "encode": "bcd16"
+        }
+      ],
+      "readback": "Squawk {value}",
+      "verified": false
+    },
+    {
+      "id": "xpdr.mode",
+      "area": "Transponder",
+      "label": "Transponder mode",
+      "parameter": {
+        "type": "choice",
+        "options": { "stby": 0, "auto": 1, "on": 2 },
+        "spoken": { "stby": "standby" }
+      },
+      "steps": [
+        {
+          "set": "L:A32NX_TRANSPONDER_MODE",
+          "value": "{value}"
+        }
+      ],
+      "readback": "Transponder {value}",
+      "check": {
+        "variable": "L:A32NX_TRANSPONDER_MODE",
+        "expect": "{value}"
+      },
+      "verified": false
+    },
+    {
+      "id": "xpdr.altReporting",
+      "area": "Transponder",
+      "label": "Altitude reporting",
+      "parameter": {
+        "type": "choice",
+        "options": { "on": 1, "off": 0 }
+      },
+      "steps": [
+        {
+          "set": "L:A32NX_SWITCH_ATC_ALT",
+          "value": "{value}"
+        }
+      ],
+      "readback": "Altitude reporting {value}",
+      "check": {
+        "variable": "L:A32NX_SWITCH_ATC_ALT",
+        "expect": "{value}"
+      },
+      "verified": false
+    },
+    {
+      "id": "tcas.mode",
+      "area": "Transponder",
+      "label": "TCAS mode",
+      "parameter": {
+        "type": "choice",
+        "options": { "stby": 0, "ta": 1, "tara": 2 },
+        "spoken": { "stby": "standby", "ta": "TA only", "tara": "TA RA" }
+      },
+      "steps": [
+        {
+          "set": "L:A32NX_SWITCH_TCAS_Position",
+          "value": "{value}"
+        }
+      ],
+      "readback": "TCAS {value}",
+      "check": {
+        "variable": "L:A32NX_SWITCH_TCAS_Position",
+        "expect": "{value}"
+      },
+      "verified": false
+    },
+    {
+      "id": "tcas.traffic",
+      "area": "Transponder",
+      "label": "TCAS traffic",
+      "parameter": {
+        "type": "choice",
+        "options": { "thrt": 0, "all": 1, "abv": 2, "blw": 3 },
+        "spoken": { "thrt": "threat", "abv": "above", "blw": "below" }
+      },
+      "steps": [
+        {
+          "set": "L:A32NX_SWITCH_TCAS_Traffic_Position",
+          "value": "{value}"
+        }
+      ],
+      "readback": "Traffic {value}",
+      "check": {
+        "variable": "L:A32NX_SWITCH_TCAS_Traffic_Position",
+        "expect": "{value}"
+      },
+      "verified": false
+    },
+    {
+      "id": "com1.standby",
+      "area": "Radio",
+      "label": "COM 1 standby",
+      "description": "Standby-Frequenz COM 1 (RMP 1 auf VHF 1).",
+      "parameter": { "min": 118, "max": 136.99, "step": 0.005, "unit": "MHz", "format": "frequency" },
+      "steps": [
+        {
+          "event": "COM_STBY_RADIO_SET_HZ",
+          "value": "{value}",
+          "scale": 1000000
+        }
+      ],
+      "readback": "COM one standby {value}",
+      "check": {
+        "variable": "COM STANDBY FREQUENCY:1",
+        "expect": "{value}",
+        "tolerance": 0.002,
+        "unit": "MHz"
+      },
+      "verified": false
+    },
+    {
+      "id": "com1.swap",
+      "area": "Radio",
+      "label": "COM 1 swap",
+      "description": "Tauscht aktive und Standby-Frequenz von COM 1.",
+      "steps": [
+        { "event": "COM1_RADIO_SWAP" }
+      ],
+      "readback": "COM one swap",
       "verified": false
     }
   ]
