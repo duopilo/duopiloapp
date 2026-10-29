@@ -30,6 +30,11 @@ public sealed partial class VoiceRouter
         "der", "die", "das", "den", "dem", "mit", "zum", "zur", "vom", "im",
         // Funk: "contact ground", "monitor tower", "cleared ILS approach", "expect vectors approach"
         "contact", "monitor", "call", "switching", "cleared", "expect", "via", "taxi", "established", "vectors", "leaving", "join",
+        // Abfragen und Befehle mit "Kontrolle"/"Control"/"Anflug": "Fahrwerk Kontrolle", "Bitte Anflug an"
+        "fahrwerk", "klappen", "geschwindigkeit", "fahrt", "höhe", "hoehe", "alt", "level", "treibstoff", "sprit", "kraftstoff",
+        "engines", "eng", "triebwerk", "triebwerke", "kurs", "hdg", "spd", "apu", "speedbrake", "bremsklappen", "luftbremse", "spoilers",
+        "seatbelts", "anschnallzeichen", "baro", "qnh", "altimeter", "höhenmesser", "autopilot", "ap", "autobrake", "status", "system",
+        "bitte", "please", "jetzt", "now", "mal", "noch", "dann", "then", "ok", "okay",
     };
 
     // Ozeanische und andere Stationen, die ohne Zusatz gerufen werden

@@ -11,8 +11,10 @@ namespace Kopilot.Voice;
 public sealed record VoiceOutcome(string Normalized, VoiceRoute Route, VoiceIntent? Intent, VoiceReply? Reply, AtcTransmitResult? Atc);
 
 /// <summary>
-/// Ein abgeschriebener Satz → Router → ATC-Modul oder Kopilot-Dialog. "Say again" ohne Stationsnamen geht an die Seite,
-/// die zuletzt gesprochen hat (ATC oder Kopilot). Ohne Sim, Mikrofon und Audio – damit testbar.
+/// Ein abgeschriebener Satz → Router → ATC-Modul oder Kopilot-Dialog. Kurze Antworten ohne Station und ohne Anrede
+/// ("Say again", "Affirm", "Negative") gehen an die Seite, die zuletzt gesprochen hat (ATC oder Kopilot).
+/// Spricht ATC nach einem Readback von Kopilot, verfällt die offene Aktion – ein "Affirm" danach gilt ATC.
+/// Ohne Sim, Mikrofon und Audio – damit testbar.
 /// </summary>
 public sealed class VoiceDispatcher(VoiceDialog dialog, IAtcLink atc, VoiceRouter router, IReadOnlyCollection<string> wakeWords)
 {
@@ -24,7 +26,15 @@ public sealed class VoiceDispatcher(VoiceDialog dialog, IAtcLink atc, VoiceRoute
     /// <summary>Weitere Stationsnamen aus den Einstellungen.</summary>
     public IReadOnlyList<string> ExtraStations { get; init; } = [];
 
-    public async Task<VoiceOutcome> HandleAsync(string text, CancellationToken ct)
+    /// <summary>Ende des zuletzt gesprochenen ATC-Funkspruchs (Sprachausgabe) – genauer als die Zeit im Protokoll des ATC-Moduls.</summary>
+    public Func<DateTimeOffset?> AtcHeardUtc { get; init; } = () => null;
+
+    public Task<VoiceOutcome> HandleAsync(string text, CancellationToken ct) => HandleAsync(text, null, ct);
+
+    /// <param name="text">Abschrift.</param>
+    /// <param name="startUtc">Wann der Pilot zu sprechen begann (null = jetzt).</param>
+    /// <param name="ct">Abbruch.</param>
+    public async Task<VoiceOutcome> HandleAsync(string text, DateTimeOffset? startUtc, CancellationToken ct)
     {
         var normalized = VoiceText.Normalize(text);
         var info = atc.Enabled ? atc.RoutingInfo() : AtcRoutingInfo.Empty;
@@ -39,14 +49,23 @@ public sealed class VoiceDispatcher(VoiceDialog dialog, IAtcLink atc, VoiceRoute
         var intent = VoiceIntents.Recognize(normalized, wakeWords);
         var addressed = VoiceText.Words(normalized) is { Length: > 0 } w && wakeWords.Contains(w[0]);
 
-        // "Say again" ohne Station: ATC wiederholt, wenn ATC zuletzt gesprochen hat
-        if (intent.Kind == IntentKind.SayAgain && !dialog.Muted && !addressed && atc.Enabled
-            && info.LastAtcUtc is { } lastAtc && (dialog.LastReplyUtc is not { } lastReply || lastAtc > lastReply))
+        if (atc.Enabled && !dialog.Muted && Latest(info.LastAtcUtc, AtcHeardUtc()) is { } lastAtc)
         {
-            return await ToAtcAsync(text, normalized, route with { Target = VoiceTarget.Atc, Reason = "say again an ATC" }, ct);
+            // ATC hat nach dem Readback gesprochen: Ein "Confirm" ist jetzt nicht mehr eindeutig – Aktion verwerfen
+            if (dialog.Pending is { HeardUtc: { } heard } && lastAtc > heard)
+            {
+                dialog.CancelPending("ATC hat nach dem Readback gesprochen");
+            }
+
+            // "Say again", "Affirm", "Negative" ohne Station und Anrede: an ATC, wenn ATC zuletzt gesprochen hat
+            if (!addressed && intent.Kind is (IntentKind.SayAgain or IntentKind.Confirm or IntentKind.Negative)
+                && (dialog.LastSpokeUtc is not { } lastKopilot || lastAtc > lastKopilot))
+            {
+                return await ToAtcAsync(text, normalized, route with { Target = VoiceTarget.Atc, Reason = $"{intent} an ATC" }, ct);
+            }
         }
 
-        var reply = await dialog.HandleAsync(intent, normalized, addressed, ct);
+        var reply = await dialog.HandleAsync(intent, normalized, addressed, startUtc, ct);
         return new VoiceOutcome(normalized, route, intent, reply, null);
     }
 
@@ -60,4 +79,7 @@ public sealed class VoiceDispatcher(VoiceDialog dialog, IAtcLink atc, VoiceRoute
         var result = await atc.TransmitAsync(text, ct);
         return new VoiceOutcome(normalized, route, null, result.Ok ? null : VoiceReply.Of(AtcUnavailable), result);
     }
+
+    private static DateTimeOffset? Latest(DateTimeOffset? a, DateTimeOffset? b) =>
+        a is null ? b : b is null ? a : a > b ? a : b;
 }

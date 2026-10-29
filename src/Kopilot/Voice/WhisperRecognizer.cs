@@ -24,11 +24,14 @@ public sealed class WhisperRecognizer : ISpeechRecognizer
     /// <summary>Whisper verarbeitet Sätze unter einer Sekunde nicht – kürzere werden mit Stille aufgefüllt.</summary>
     private const int MinSamples = SegmenterOptions.SampleRate * 12 / 10;
 
-    /// <summary>Eingebauter Wortschatz-Hinweis: Funk- und Cockpit-Begriffe, deutsch und englisch.</summary>
+    /// <summary>
+    /// Eingebauter Wortschatz-Hinweis: Funk- und Cockpit-Begriffe, deutsch und englisch. Ohne "confirm"/"correct"/"affirm" –
+    /// sonst schreibt Whisper aus einem Räuspern gern genau das ab, und das würde eine Aktion bestätigen.
+    /// </summary>
     public const string DefaultPrompt =
         "Kopilot. Gear up, gear down, flaps one, flaps full, speedbrake retract, arm spoilers, autobrake medium, landing lights on, " +
         "seat belts on, APU start, QNH 1013, standard, altitude 5000, flight level 120, speed 250, heading 090, squawk 7000, TCAS TA/RA, " +
-        "speed check, confirm, correct, affirm, negative, say again. Frankfurt Tower, Langen Radar, Shanwick, Lufthansa. " +
+        "speed check, say again. Frankfurt Tower, Langen Radar, Shanwick, Lufthansa. " +
         "Fahrwerk einfahren, Klappen eins, Anschnallzeichen an.";
 
     private readonly WhisperFactory _factory;

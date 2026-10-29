@@ -15,8 +15,12 @@ public interface IVoiceOutput
     /// <summary>Ende der letzten Ansage (für die Nachlaufzeit, in der das Mikrofon noch stumm bleibt).</summary>
     DateTimeOffset LastSpeechEndUtc { get; }
 
+    /// <summary>Ende des letzten ganz gesprochenen ATC-Funkspruchs (null = noch keiner) – wer hat zuletzt gesprochen, ATC oder Kopilot?</summary>
+    DateTimeOffset? LastAtcSpeechEndUtc { get; }
+
     /// <summary>
-    /// Der Pilot spricht gerade (Sprache erkannt). Callouts, Antworten und ATC warten dann kurz – nur Warnungen fallen ins Wort.
+    /// Der Pilot spricht gerade (Sprache erkannt). Callouts, Antworten und ATC warten dann kurz – nur Warnungen und die
+    /// zeitkritischen PM-Callouts (V1, Rotate …) fallen ins Wort. Bleibt der Wert hängen, gilt er nach einigen Sekunden als false.
     /// </summary>
     bool PilotSpeaking { get; set; }
 

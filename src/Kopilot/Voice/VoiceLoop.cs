@@ -62,22 +62,23 @@ public sealed class VoiceLoop : BackgroundService
     private readonly ILogger<VoiceLoop> _log;
     private readonly VoiceSettingsStore _store;
     private readonly VoiceDialog _dialog;
-    private readonly Channel<VoiceEvent> _events = Channel.CreateBounded<VoiceEvent>(new BoundedChannelOptions(8)
-    {
-        FullMode = BoundedChannelFullMode.DropOldest,
-        SingleReader = true,
-    });
+    /// <summary>So viele Sätze dürfen höchstens auf Whisper warten – mehr wären ohnehin veraltet.</summary>
+    private const int MaxQueuedUtterances = 3;
+
+    // Ungebunden, damit Stummschalten und "Readback gesprochen" nie verloren gehen. Ticks und Sätze sind begrenzt (siehe unten).
+    private readonly Channel<VoiceEvent> _events = Channel.CreateUnbounded<VoiceEvent>(new UnboundedChannelOptions { SingleReader = true });
 
     private readonly Channel<float[]> _audio = Channel.CreateBounded<float[]>(new BoundedChannelOptions(256)
     {
         FullMode = BoundedChannelFullMode.DropOldest,
         SingleReader = true,
-        SingleWriter = true,
     });
 
     private VoiceSettings _settings = new VoiceSettings().Normalized();
     private VoiceDispatcher? _dispatcher;
     private volatile VoiceStatus _status = new();
+    private int _tickQueued;
+    private int _queuedUtterances;
 
     public VoiceLoop(
         IOptions<KopilotOptions> options,
@@ -113,14 +114,16 @@ public sealed class VoiceLoop : BackgroundService
             _log.LogWarning("Sprachschleife: {Error} – es gelten die Standardwerte.", error);
         }
 
-        ApplyOutputSettings(settings);
         _status = new VoiceStatus { SettingsFile = _store.FilePath, AtcModule = _atc.Enabled, Error = error };
 
+        // Ohne Sprachschleife bleibt alles wie bisher (auch "Sim paused" und die Taxi-Speed-Werte aus appsettings.json)
         if (!settings.Enabled)
         {
             _log.LogInformation("Sprachschleife aus ({File}: \"enabled\": false).", _store.FilePath);
             return;
         }
+
+        ApplyOutputSettings(settings);
 
         // Auf einem eigenen Thread weiter, damit der Start der anderen Dienste nicht wartet
         await Task.Yield();
@@ -132,6 +135,7 @@ public sealed class VoiceLoop : BackgroundService
         {
             ExtraCallsigns = ExtraCallsigns,
             ExtraStations = settings.Atc.Stations,
+            AtcHeardUtc = () => _output.LastAtcSpeechEndUtc,
         };
 
         IVoiceActivityDetector? vad = null;
@@ -305,6 +309,10 @@ public sealed class VoiceLoop : BackgroundService
             finally
             {
                 capture?.Dispose();
+
+                // Mitten im Satz weg: angefangenen Satz verwerfen, "Pilot spricht" zurücksetzen (leerer Block = Reset)
+                _audio.Writer.TryWrite([]);
+                _output.PilotSpeaking = false;
             }
 
             if (!ct.IsCancellationRequested)
@@ -325,6 +333,16 @@ public sealed class VoiceLoop : BackgroundService
 
         await foreach (var chunk in _audio.Reader.ReadAllAsync(ct))
         {
+            if (chunk.Length == 0)
+            {
+                // Mikrofon getrennt
+                segmenter.Reset();
+                vad.Reset();
+                filled = 0;
+                _output.PilotSpeaking = false;
+                continue;
+            }
+
             var offset = 0;
             while (offset < chunk.Length)
             {
@@ -366,11 +384,21 @@ public sealed class VoiceLoop : BackgroundService
                 }
 
                 var utterance = segmenter.Push(frame, probability);
-                _output.PilotSpeaking = segmenter.InSpeech;
+
+                // Stumm (z. B. Funk über VATSIM): Ansagen nicht aufhalten
+                _output.PilotSpeaking = segmenter.InSpeech && !_dialog.Muted;
                 if (utterance is not null)
                 {
                     _output.PilotSpeaking = false;
-                    _events.Writer.TryWrite(new VoiceEvent.Utterance(utterance, DateTimeOffset.UtcNow));
+                    if (Interlocked.Increment(ref _queuedUtterances) > MaxQueuedUtterances)
+                    {
+                        Interlocked.Decrement(ref _queuedUtterances);
+                        _log.LogDebug("Satz verworfen – Whisper kommt nicht hinterher.");
+                    }
+                    else
+                    {
+                        _events.Writer.TryWrite(new VoiceEvent.Utterance(utterance, DateTimeOffset.UtcNow));
+                    }
                 }
             }
         }
@@ -381,7 +409,11 @@ public sealed class VoiceLoop : BackgroundService
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
         while (await timer.WaitForNextTickAsync(ct))
         {
-            _events.Writer.TryWrite(new VoiceEvent.Tick());
+            // Höchstens ein Tick wartet – ein langsamer Satz staut sonst Ticks auf
+            if (Interlocked.Exchange(ref _tickQueued, 1) == 0)
+            {
+                _events.Writer.TryWrite(new VoiceEvent.Tick());
+            }
         }
     }
 
@@ -396,6 +428,7 @@ public sealed class VoiceLoop : BackgroundService
                 switch (e)
                 {
                     case VoiceEvent.Tick _:
+                        Volatile.Write(ref _tickQueued, 0);
                         _dialog.Expire();
                         break;
                     case VoiceEvent.ToggleMute _:
@@ -403,7 +436,11 @@ public sealed class VoiceLoop : BackgroundService
                         _log.LogInformation("Spracheingabe {State} (Tastenkürzel).", _dialog.Muted ? "stumm" : "an");
                         Speak(reply);
                         break;
+                    case VoiceEvent.ReplySpoken spoken:
+                        _dialog.Spoken(spoken.Reply, spoken.EndUtc);
+                        break;
                     case VoiceEvent.Utterance u:
+                        Interlocked.Decrement(ref _queuedUtterances);
                         await HandleUtteranceAsync(recognizer, u, ct);
                         break;
                 }
@@ -443,7 +480,8 @@ public sealed class VoiceLoop : BackgroundService
             return;
         }
 
-        var outcome = await _dispatcher!.HandleAsync(text, ct);
+        var startUtc = u.EndUtc - TimeSpan.FromSeconds((double)u.Samples.Length / SegmenterOptions.SampleRate);
+        var outcome = await _dispatcher!.HandleAsync(text, startUtc, ct);
         var route = outcome.Route;
         _status = _status with
         {
@@ -490,9 +528,13 @@ public sealed class VoiceLoop : BackgroundService
             Spoken = reply.Spoken,
             Volume = _settings.Voices.KopilotVolume,
             Source = "kopilot",
+
+            // Erst wenn der Readback ganz gesprochen ist, zählt "Confirm" (Rückmeldung kommt auf dem Sprach-Thread)
+            OnSpoken = end => _events.Writer.TryWrite(new VoiceEvent.ReplySpoken(reply, end)),
         });
         if (!accepted)
         {
+            _dialog.NotSpoken(reply);
             _log.LogDebug("Antwort \"{Text}\" nicht gesprochen (keine Stimme oder Sim pausiert).", reply.Text);
         }
     }
@@ -524,6 +566,8 @@ public sealed class VoiceLoop : BackgroundService
         public sealed record Utterance(float[] Samples, DateTimeOffset EndUtc) : VoiceEvent;
 
         public sealed record ToggleMute : VoiceEvent;
+
+        public sealed record ReplySpoken(VoiceReply Reply, DateTimeOffset EndUtc) : VoiceEvent;
 
         public sealed record Tick : VoiceEvent;
     }

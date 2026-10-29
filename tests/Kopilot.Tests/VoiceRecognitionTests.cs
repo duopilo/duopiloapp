@@ -163,6 +163,9 @@ public sealed class VoiceRecognitionTests
     [InlineData("Speedbrake check", QueryKind.Speedbrake)]
     [InlineData("Check gear", QueryKind.Gear)]
     [InlineData("Kopilot, flaps check", QueryKind.Flaps)]
+    [InlineData("Fahrwerk Kontrolle", QueryKind.Gear)]
+    [InlineData("Treibstoff Kontrolle", QueryKind.Fuel)]
+    [InlineData("Altitude control", QueryKind.Altitude)]
     public void Abfragen_werden_erkannt(string raw, QueryKind query)
     {
         var intent = Intent(raw);
@@ -177,6 +180,13 @@ public sealed class VoiceRecognitionTests
     [InlineData("Affirm", IntentKind.Confirm)]
     [InlineData("That's correct", IntentKind.Confirm)]
     [InlineData("Ja, korrekt", IntentKind.Confirm)]
+    [InlineData("OK, confirm", IntentKind.Confirm)]
+    [InlineData("Yes", IntentKind.Acknowledge)]
+    [InlineData("Ja", IntentKind.Acknowledge)]
+    [InlineData("Okay", IntentKind.Acknowledge)]
+    [InlineData("Richtig", IntentKind.Acknowledge)]
+    [InlineData("Roger", IntentKind.Acknowledge)]
+    [InlineData("Klappen ein", IntentKind.Unknown)]
     [InlineData("Negative", IntentKind.Negative)]
     [InlineData("Cancel", IntentKind.Negative)]
     [InlineData("Nein", IntentKind.Negative)]
@@ -231,6 +241,19 @@ public sealed class VoiceRecognitionTests
     [InlineData("Kopilot, Frankfurt Tower frequency check")]
     [InlineData("Speed check")]
     [InlineData("Fahrwerk ausfahren")]
+    [InlineData("Fahrwerk Kontrolle")]
+    [InlineData("Klappen Kontrolle")]
+    [InlineData("Geschwindigkeit Kontrolle")]
+    [InlineData("Höhe Kontrolle")]
+    [InlineData("Treibstoff Kontrolle")]
+    [InlineData("Kurs Kontrolle")]
+    [InlineData("APU Kontrolle")]
+    [InlineData("Triebwerke Kontrolle")]
+    [InlineData("Anschnallzeichen Kontrolle")]
+    [InlineData("Bremsklappen Kontrolle")]
+    [InlineData("Altitude control")]
+    [InlineData("Bitte Anflug an")]
+    [InlineData("Jetzt Anflug an")]
     public void Alles_andere_geht_an_Kopilot(string raw)
     {
         Assert.Equal(VoiceTarget.Kopilot, Route(raw).Target);

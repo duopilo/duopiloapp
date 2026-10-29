@@ -279,7 +279,7 @@ Mikrofon → Silero VAD (Satzgrenzen) → Whisper (Abschrift) → Router ─┬�
 
 **So läuft es:**
 - Das Mikrofon ist dauerhaft offen. Silero VAD erkennt, wann du sprichst; nach 0,7 s Stille geht der Satz an Whisper.
-- Halbduplex: Solange Kopilot spricht (und 350 ms danach), ist das Mikrofon stumm – Kopilot hört sich nicht selbst. Während du sprichst, warten Callouts und Antworten kurz; nur Warnungen fallen dir ins Wort.
+- Halbduplex: Solange Kopilot spricht (und 350 ms danach), ist das Mikrofon stumm – Kopilot hört sich nicht selbst. Während du sprichst, warten Callouts und Antworten kurz; nur Warnungen und die zeitkritischen PM-Callouts (100 knots, V1, Rotate, Positive climb, Spoilers, Reverse, Decel, 70 knots, Radiohöhe, Minimum, Retard) fallen dir ins Wort. Ist die Spracheingabe stumm, wartet nichts.
 - Whisper erkennt je Satz Deutsch oder Englisch. Zahlen werden vereinheitlicht: „Flaps one“, „Flaps 1“, „Flaps won“, „Klappen eins“ ergeben dasselbe.
 - **Router:** Enthält der Satz ein Stationsrufzeichen („Frankfurt Delivery“, „Langen Radar“, „Shanwick“) oder das eigene Rufzeichen – am Anfang beim Anruf oder hinten beim Readback („…, squawk two two zero five, Lufthansa four alpha bravo“) –, geht er ans ATC-Modul. Alles andere ist ein Kopilot-Befehl („Squawk two two zero five“ ohne Rufzeichen setzt den Transponder). Mit „Kopilot, …“ immer Kopilot.
 - Sim pausiert → Kopilot sagt nichts und verarbeitet nichts.
@@ -288,13 +288,13 @@ Mikrofon → Silero VAD (Satzgrenzen) → Whisper (Abschrift) → Router ─┬�
 
 | Bereich | Sätze |
 |---|---|
-| Konfiguration | Gear up/down, Fahrwerk ein/aus · Flaps 0/1/2/3/Full, Klappen eins/voll · Speedbrake retract/half/full · Arm/Disarm spoilers, Spoiler armen |
+| Konfiguration | Gear up/down, Fahrwerk ein/aus · Flaps 0/1/2/3/Full, Klappen null/eins/voll/einfahren (nicht „Klappen ein“ – zu nah an „eins“) · Speedbrake retract/half/full · Arm/Disarm spoilers, Spoiler armen |
 | Bremsen, Licht, Schilder | Autobrake low/medium/max/off · Landing lights on/off, Landelichter an · Strobe on/auto/off · Beacon on · Taxi light on · Seat belts on/off, Anschnallzeichen an |
 | APU | APU start · APU master on/off · APU bleed on/off |
 | EFIS, FCU | QNH 1013 / QNH one zero one three · Baro standard · Altitude five thousand · Flight level one two zero · Speed two five zero · Heading zero niner zero · Managed speed · Vertical speed minus one thousand · Autopilot one on · Approach on |
 | Transponder | Squawk seven thousand / Squawk 1 2 3 4 · TCAS TA/RA · TCAS TA only |
 
-Jeder Befehl läuft über den bestehenden Zwei-Schritt-Ablauf: Kopilot ruft `prepare_action` auf und spricht den Readback („Flaps one“). Erst auf **„Confirm“**, **„Correct“** oder **„Affirm“** (auch „Ja“, „Korrekt“) folgt `confirm_action`; **„Negative“** oder **„Cancel“** verwirft die Aktion („Cancelled“). Ohne Antwort verfällt sie nach 60 Sekunden still. Ausgeführt sagt Kopilot nichts – nur „Not confirmed“, wenn das Flugzeug den Wert nicht übernommen hat, „Unable“ bei einer Sperre und „Input disabled“, wenn die Eingabe gesperrt ist. Zwei Befehle in einem Satz oder Unbekanntes → „Say again“ (längeres Gespräch im Raum wird still verworfen).
+Jeder Befehl läuft über den bestehenden Zwei-Schritt-Ablauf: Kopilot ruft `prepare_action` auf und spricht den Readback („Flaps one“). Erst auf **„Confirm“**, **„Correct“** oder **„Affirm“** (auch „Korrekt“) folgt `confirm_action`; **„Negative“** oder **„Cancel“** verwirft die Aktion („Cancelled“). „Ja“, „OK“ oder „Roger“ allein bestätigen nichts – nach einem Readback fragt Kopilot dann „Say again“. Bestätigt wird nur, was du gehört hast: „Confirm“ zählt erst, wenn der Readback ganz gesprochen ist, und nur in einem Satz, den du danach begonnen hast. Ohne Antwort verfällt die Aktion 60 Sekunden nach dem Readback still; wird der Readback gar nicht gesprochen (keine Stimme, Pause), sofort. Ausgeführt sagt Kopilot nichts – nur „Not confirmed“, wenn das Flugzeug den Wert nicht übernommen hat, „Unable“ bei einer Sperre und „Input disabled“, wenn die Eingabe gesperrt ist. Zwei Befehle in einem Satz oder Unbekanntes → „Say again“ (längeres Gespräch im Raum wird still verworfen).
 
 **Abfragen** – Antwort nur als reiner Callout, Geschwindigkeiten immer in Knoten:
 
@@ -310,9 +310,9 @@ Jeder Befehl läuft über den bestehenden Zwei-Schritt-Ablauf: Kopilot ruft `pre
 
 **Sprachausgabe:** Kokoro mit fester Stimme für Kopilot (`voices.kopilot`, leer = Dashboard-Stimme); die ATC-Stationen sprechen mit den Stimmen, die das ATC-Modul vergibt. Alles läuft durch eine Warteschlange: Warnungen > Callouts > Antworten > ATC – auch ATC-Funksprüche halten das Mikrofon stumm. Zahlen, NATO-Alphabet und Funk-Phraseologie auf Englisch: Speed, Heading, Squawk und QNH Ziffer für Ziffer, Höhen in Tausendern, 9 als „niner“. Eine unterbrochene Antwort oder ATC-Meldung kommt nach der Warnung einmal erneut.
 
-**ATC:** Funksprüche gehen direkt an das ATC-Modul (`AtcService.TransmitAsync`, wie `atc_transmit` – nur ohne Claude). Stationsnamen und eigenes Rufzeichen (Code und Sprechform, z. B. „Lufthansa four alpha bravo“) liefert das ATC-Modul aus SimBrief-Plan und `atc-templates.json`; die Antwort der Station kommt über die Warteschlange. „Say again“ ohne Station wiederholt, wer zuletzt gesprochen hat – ATC oder Kopilot. Ist ATC aus oder fehlt der SimBrief-Plan, sagt Kopilot „ATC unavailable“.
+**ATC:** Funksprüche gehen direkt an das ATC-Modul (`AtcService.TransmitAsync`, wie `atc_transmit` – nur ohne Claude). Stationsnamen und eigenes Rufzeichen (Code und Sprechform, z. B. „Lufthansa four alpha bravo“) liefert das ATC-Modul aus SimBrief-Plan und `atc-templates.json`; die Antwort der Station kommt über die Warteschlange. „Say again“, „Affirm“ und „Negative“ ohne Station gehen an den, der zuletzt gesprochen hat – ATC oder Kopilot. Funkt ATC nach einem Readback von Kopilot, verfällt die offene Aktion, damit ein „Affirm“ an ATC nichts im Cockpit auslöst. Ist ATC aus oder fehlt der SimBrief-Plan, sagt Kopilot „ATC unavailable“.
 
-**Einstellungen** (`voice-settings.json`, Kommentare erlaubt):
+**Einstellungen** (`voice-settings.json`, Kommentare erlaubt; alles gilt nur mit `"enabled": true` – sonst verhalten sich die Callouts wie ohne Sprachschleife):
 
 | Abschnitt | Was |
 |---|---|

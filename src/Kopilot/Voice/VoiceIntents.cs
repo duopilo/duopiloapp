@@ -25,6 +25,9 @@ public enum IntentKind
     /// <summary>"Say again" – letzte Antwort wiederholen.</summary>
     SayAgain,
 
+    /// <summary>"Ja", "OK", "Roger" – bestätigt nichts (dafür braucht es "Confirm", "Correct" oder "Affirm").</summary>
+    Acknowledge,
+
     Unknown,
 }
 
@@ -64,11 +67,17 @@ public sealed record VoiceIntent(IntentKind Kind, string? ActionId = null, strin
 /// </summary>
 public static partial class VoiceIntents
 {
+    // Nur die Funkwörter bestätigen – "ja", "ok" fallen im Cockpit zu leicht (alle auch in InputService.ConfirmAsync erlaubt).
+    // "korrekt": So schreibt Whisper ein deutsch klingendes "correct".
     private static readonly HashSet<string> YesWords = new(StringComparer.Ordinal)
     {
-        // Gleiche Wörter wie InputService.ConfirmAsync – sonst würde die Bestätigung dort abgelehnt
-        "confirm", "confirmed", "correct", "affirm", "affirmative", "yes", "ja", "jawohl", "korrekt", "richtig", "bestätigt", "bestätige",
-        "ok", "okay",
+        "confirm", "confirmed", "correct", "korrekt", "affirm", "affirmative",
+    };
+
+    // Allein bestätigen sie nichts, neben einem Bestätigungswort stören sie nicht ("Ja, korrekt")
+    private static readonly HashSet<string> AckWords = new(StringComparer.Ordinal)
+    {
+        "yes", "ja", "jawohl", "richtig", "ok", "okay", "roger", "wilco", "verstanden",
     };
 
     private static readonly HashSet<string> NoWords = new(StringComparer.Ordinal)
@@ -146,18 +155,21 @@ public static partial class VoiceIntents
         }
 
         // Bestätigung / Ablehnung: der ganze Satz besteht daraus
-        if (words.All(w => YesWords.Contains(w) || NoWords.Contains(w) || ConfirmFiller.Contains(w)))
+        if (words.All(w => YesWords.Contains(w) || NoWords.Contains(w) || AckWords.Contains(w) || ConfirmFiller.Contains(w)))
         {
-            var yes = words.Any(YesWords.Contains);
-            var no = words.Any(NoWords.Contains);
-            if (no)
+            if (words.Any(NoWords.Contains))
             {
                 return new VoiceIntent(IntentKind.Negative);
             }
 
-            if (yes)
+            if (words.Any(YesWords.Contains))
             {
                 return new VoiceIntent(IntentKind.Confirm);
+            }
+
+            if (words.Any(AckWords.Contains))
+            {
+                return new VoiceIntent(IntentKind.Acknowledge);
             }
         }
 
@@ -223,7 +235,7 @@ public static partial class VoiceIntents
     ];
 
     private static readonly (Regex Pattern, QueryKind Kind)[] QueryRules = QueryItems
-        .Select(q => (new Regex($@"^(?:(?:{q.Pattern}) (?:check|checks|prüfen|pruefen|kontrolle|status)|(?:check|prüfe|pruefe|kontrolle) (?:{q.Pattern}))$", RegexOptions.CultureInvariant | RegexOptions.Compiled), q.Kind))
+        .Select(q => (new Regex($@"^(?:(?:{q.Pattern}) (?:check|checks|control|prüfen|pruefen|kontrolle|status)|(?:check|prüfe|pruefe|kontrolle) (?:{q.Pattern}))$", RegexOptions.CultureInvariant | RegexOptions.Compiled), q.Kind))
         .ToArray();
 
     private static QueryKind? Query(string text)
@@ -257,13 +269,13 @@ public static partial class VoiceIntents
         Fixed(@"(?:retract (?:the )?gear|fahrwerk einziehen)", "gear.up");
         Fixed(@"(?:gear|fahrwerk) (?:down|runter|raus|aus|ausfahren)", "gear.down");
 
-        // ---------------- Klappen
+        // ---------------- Klappen ("Klappen ein" absichtlich nicht: Whisper verschluckt gern das s von "eins")
         var flaps = new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            ["0"] = "0", ["up"] = "0", ["zero"] = "0", ["retract"] = "0", ["einfahren"] = "0", ["ein"] = "0",
+            ["0"] = "0", ["up"] = "0", ["zero"] = "0", ["retract"] = "0", ["einfahren"] = "0",
             ["1"] = "1", ["2"] = "2", ["3"] = "3", ["full"] = "FULL", ["voll"] = "FULL",
         };
-        Add(@"(?:flaps|klappen)(?: to| auf)? (?<v>0|1|2|3|up|zero|retract|einfahren|ein|full|voll)", "flaps", m => Map(m, flaps));
+        Add(@"(?:flaps|klappen)(?: to| auf)? (?<v>0|1|2|3|up|zero|retract|einfahren|full|voll)", "flaps", m => Map(m, flaps));
         Add(@"config(?:uration)? (?<v>1|2|3|full)", "flaps", m => Map(m, flaps));
 
         // ---------------- Speedbrake und Ground Spoiler

@@ -61,11 +61,18 @@ public sealed class VoiceDialogTests
         return (new VoiceDialog(gateway, new FixedState(state ?? Cruise), time), gateway, time);
     }
 
-    private static Task<VoiceReply?> Say(VoiceDialog dialog, string raw)
+    /// <summary>Ein Satz des Piloten. Ein Readback gilt sofort als gesprochen (wie nach der Sprachausgabe), außer <paramref name="hear"/> ist false.</summary>
+    private static async Task<VoiceReply?> Say(VoiceDialog dialog, string raw, bool hear = true, DateTimeOffset? startUtc = null)
     {
         var normalized = VoiceText.Normalize(raw);
         var addressed = VoiceText.Words(normalized) is { Length: > 0 } w && w[0] == "kopilot";
-        return dialog.HandleAsync(VoiceIntents.Recognize(normalized, ["kopilot"]), normalized, addressed, CancellationToken.None);
+        var reply = await dialog.HandleAsync(VoiceIntents.Recognize(normalized, ["kopilot"]), normalized, addressed, startUtc, CancellationToken.None);
+        if (hear && reply?.ReadbackToken is not null)
+        {
+            dialog.Spoken(reply, dialog.Pending?.ExpiresUtc - dialog.ConfirmTimeout ?? T0);
+        }
+
+        return reply;
     }
 
     // ------------------------------------------------------------------ Zwei Schritte
@@ -98,6 +105,113 @@ public sealed class VoiceDialogTests
         await Say(dialog, words);
 
         Assert.StartsWith("confirm t1", gateway.Calls[^1]);
+    }
+
+    // ------------------------------------------------------------------ Nur bestätigen, was gehört wurde
+
+    [Fact]
+    public async Task Confirm_zaehlt_erst_nach_dem_gesprochenen_Readback()
+    {
+        var (dialog, gateway, time) = Create();
+        var readback = await Say(dialog, "Flaps one", hear: false);
+        Assert.Equal("t1", readback?.ReadbackToken);
+
+        // Readback wartet noch in der Warteschlange (der Pilot hat gleich weitergesprochen) – "Confirm" zählt nicht
+        Assert.Null(await Say(dialog, "Confirm"));
+        Assert.NotNull(dialog.Pending);
+        Assert.DoesNotContain(gateway.Calls, c => c.StartsWith("confirm", StringComparison.Ordinal));
+
+        // Readback gesprochen bis T0+3 s; ein "Confirm", das schon vorher begann, zählt auch nicht
+        dialog.Spoken(readback!, T0.AddSeconds(3));
+        time.Now = T0.AddSeconds(4);
+        Assert.Null(await Say(dialog, "Confirm", startUtc: T0.AddSeconds(2)));
+        Assert.NotNull(dialog.Pending);
+
+        Assert.Null(await Say(dialog, "Confirm", startUtc: T0.AddSeconds(4)));
+        Assert.Null(dialog.Pending);
+        Assert.Equal("confirm t1 confirm", gateway.Calls[^1]);
+    }
+
+    [Fact]
+    public async Task Nicht_gesprochener_Readback_wird_verworfen()
+    {
+        var (dialog, gateway, _) = Create();
+        var readback = await Say(dialog, "Gear up", hear: false);
+
+        dialog.NotSpoken(readback!);
+
+        Assert.Null(dialog.Pending);
+        Assert.Equal("cancel t1", gateway.Calls[^1]);
+    }
+
+    [Fact]
+    public async Task Say_again_spricht_den_Readback_noch_einmal_und_macht_ihn_bestaetigbar()
+    {
+        var (dialog, gateway, time) = Create();
+        await Say(dialog, "Gear up", hear: false);
+
+        time.Now = T0.AddSeconds(8);
+        var again = await Say(dialog, "Say again", hear: false);
+        Assert.Equal("t1", again?.ReadbackToken);
+        dialog.Spoken(again!, T0.AddSeconds(9));
+
+        time.Now = T0.AddSeconds(10);
+        await Say(dialog, "Correct");
+        Assert.StartsWith("confirm t1", gateway.Calls[^1]);
+    }
+
+    [Fact]
+    public async Task Zeitfenster_beginnt_mit_dem_Ende_des_Readbacks()
+    {
+        var (dialog, gateway, time) = Create();
+        var readback = await Say(dialog, "Gear up", hear: false);
+        dialog.Spoken(readback!, T0.AddSeconds(10));
+
+        time.Now = T0.AddSeconds(65);
+        dialog.Expire();
+        Assert.NotNull(dialog.Pending);
+
+        time.Now = T0.AddSeconds(71);
+        dialog.Expire();
+        Assert.Null(dialog.Pending);
+        Assert.Equal("cancel t1", gateway.Calls[^1]);
+    }
+
+    [Theory]
+    [InlineData("Yes")]
+    [InlineData("Ja")]
+    [InlineData("OK")]
+    [InlineData("Okay")]
+    [InlineData("Richtig")]
+    [InlineData("Roger")]
+    public async Task Ja_und_OK_bestaetigen_nichts(string words)
+    {
+        var (dialog, gateway, _) = Create();
+
+        // Ohne offene Aktion: still
+        Assert.Null(await Say(dialog, words));
+
+        // Nach dem Readback: nachfragen, die Aktion bleibt offen
+        await Say(dialog, "Flaps one");
+        Assert.Equal(VoiceDialog.SayAgain, (await Say(dialog, words))?.Text);
+        Assert.NotNull(dialog.Pending);
+        Assert.DoesNotContain(gateway.Calls, c => c.StartsWith("confirm", StringComparison.Ordinal));
+
+        // "Say again" wiederholt danach den Readback, nicht das "Say again"
+        Assert.Equal("Flaps 1", (await Say(dialog, "Say again"))?.Text);
+    }
+
+    [Fact]
+    public async Task Neuer_Befehl_verwirft_die_offene_Aktion_auch_wenn_er_abgelehnt_wird()
+    {
+        var (dialog, gateway, _) = Create();
+        await Say(dialog, "Gear up");
+
+        gateway.NextPrepare = new InputResult(InputResult.Refused, "Klappen nur bis VFE.");
+        Assert.Equal(VoiceDialog.Unable, (await Say(dialog, "Flaps full"))?.Text);
+
+        Assert.Null(dialog.Pending);
+        Assert.Equal(new[] { "prepare gear.up ", "cancel t1", "prepare flaps FULL" }, gateway.Calls);
     }
 
     [Theory]

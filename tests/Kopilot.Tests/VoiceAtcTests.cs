@@ -127,10 +127,17 @@ public sealed class VoiceAtcTests
             return Task.FromResult(new InputResult(InputResult.AwaitingConfirmation, Token: "t1", Action: actionId, Value: value, Readback: $"Squawk {value}"));
         }
 
-        public Task<InputResult> ConfirmAsync(string token, string pilotWords, CancellationToken ct) =>
-            Task.FromResult(new InputResult(InputResult.Executed, Confirmed: true));
+        public Task<InputResult> ConfirmAsync(string token, string pilotWords, CancellationToken ct)
+        {
+            Calls.Add($"confirm {token}");
+            return Task.FromResult(new InputResult(InputResult.Executed, Confirmed: true));
+        }
 
-        public InputResult Cancel(string token, string reason) => new(InputResult.Cancelled);
+        public InputResult Cancel(string token, string reason)
+        {
+            Calls.Add($"cancel {token}");
+            return new(InputResult.Cancelled);
+        }
     }
 
     private sealed class NoState : IVoiceFlightStateSource
@@ -277,6 +284,50 @@ public sealed class VoiceAtcTests
         Assert.Equal(VoiceTarget.Kopilot, kopilot.Route.Target);
         Assert.Equal("Speed 250", kopilot.Reply?.Text);
         Assert.NotNull(dialog.LastReplyUtc);
+    }
+
+    [Fact]
+    public async Task Spricht_ATC_nach_dem_Readback_verfaellt_die_Aktion_und_Affirm_gilt_ATC()
+    {
+        var templates = Templates();
+        var link = new SessionLink(templates, Session(templates));
+        var gateway = new RecordingGateway();
+        var t = T0.AddMinutes(5);
+        var dialog = new VoiceDialog(gateway, new NoState(), new ManualTime(t));
+        DateTimeOffset? atcHeard = null;
+        var dispatcher = new VoiceDispatcher(dialog, link, new VoiceRouter(["kopilot"]), ["kopilot"]) { AtcHeardUtc = () => atcHeard };
+
+        var readback = await dispatcher.HandleAsync("Squawk one zero zero zero", t, CancellationToken.None);
+        dialog.Spoken(readback.Reply!, t.AddSeconds(2));
+
+        // Danach funkt ATC (z. B. ein Frequenzwechsel), dann sagt der Pilot "Affirm"
+        atcHeard = t.AddSeconds(4);
+        var affirm = await dispatcher.HandleAsync("Affirm", t.AddSeconds(6), CancellationToken.None);
+
+        Assert.Equal(VoiceTarget.Atc, affirm.Route.Target);
+        Assert.Equal("Affirm", Assert.Single(link.Sent));
+        Assert.Null(dialog.Pending);
+        Assert.Equal(new[] { "prepare xpdr.code 1000", "cancel t1" }, gateway.Calls);
+    }
+
+    [Fact]
+    public async Task Readback_nach_ATC_wird_bei_Kopilot_bestaetigt()
+    {
+        var templates = Templates();
+        var link = new SessionLink(templates, Session(templates));
+        var gateway = new RecordingGateway();
+        var t = T0.AddMinutes(5);
+        var dialog = new VoiceDialog(gateway, new NoState(), new ManualTime(t));
+        var dispatcher = new VoiceDispatcher(dialog, link, new VoiceRouter(["kopilot"]), ["kopilot"]) { AtcHeardUtc = () => t.AddSeconds(-10) };
+        await dispatcher.HandleAsync("Frankfurt Delivery, Lufthansa four alpha bravo, request IFR clearance to Berlin", t.AddSeconds(-20), CancellationToken.None);
+
+        var readback = await dispatcher.HandleAsync("Squawk one zero zero zero", t, CancellationToken.None);
+        dialog.Spoken(readback.Reply!, t.AddSeconds(2));
+        var confirm = await dispatcher.HandleAsync("Confirm", t.AddSeconds(3), CancellationToken.None);
+
+        Assert.Equal(VoiceTarget.Kopilot, confirm.Route.Target);
+        Assert.Equal("confirm t1", gateway.Calls[^1]);
+        Assert.Single(link.Sent);
     }
 
     [Fact]

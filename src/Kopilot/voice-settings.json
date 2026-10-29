@@ -3,6 +3,7 @@
   // Diese Datei ist die Vorlage. Kopilot kopiert sie beim ersten Start nach %LOCALAPPDATA%\Kopilot\voice-settings.json –
   // dort bearbeiten (update.cmd überschreibt sie nicht). Änderungen gelten nach einem Neustart von Kopilot.
   // Status zur Laufzeit: http://127.0.0.1:5155/voice
+  // Alles hier gilt nur mit "enabled": true – sonst verhalten sich die Callouts wie ohne Sprachschleife.
 
   // Mikrofon dauerhaft offen, Befehle per Sprache. Standard: aus.
   "enabled": false,
@@ -57,9 +58,9 @@
   "commands": {
     // Anrede, z. B. "Kopilot, Gear up". Optional – außer requireWakeWord ist true.
     "wakeWords": [ "kopilot", "copilot" ],
-    // Befehle nur mit Anrede – hilft, wenn im Raum geredet wird.
+    // Befehle nur mit Anrede – hilft, wenn im Raum geredet wird. "Confirm" nach dem Readback braucht keine Anrede.
     "requireWakeWord": false,
-    // So lange wartet ein Readback auf "Confirm" / "Correct" / "Affirm" (s).
+    // So lange wartet ein Readback auf "Confirm" / "Correct" / "Affirm" (s), ab dem Ende des Readbacks. "Ja" / "OK" bestätigen nicht.
     "confirmTimeoutSec": 60,
     // Unbekannte Sätze bis zu so vielen Wörtern bekommen "Say again", längere werden still verworfen.
     "sayAgainMaxWords": 8

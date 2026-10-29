@@ -25,15 +25,21 @@ public sealed class InputActionGateway(InputService input) : IVoiceActionGateway
 /// <summary>Antwort von Kopilot: Anzeigetext und Text für die Sprachsynthese.</summary>
 public sealed record VoiceReply(string Text, string Spoken)
 {
+    /// <summary>Readback einer vorbereiteten Aktion: Erst wenn er ganz gesprochen ist, zählt "Confirm" (siehe <see cref="VoiceDialog.Spoken"/>).</summary>
+    public string? ReadbackToken { get; init; }
+
     public static VoiceReply Of(string text) => new(text, VoicePhraseology.ForSpeech(text));
 }
 
 /// <summary>Vorbereitete Aktion, die auf "Confirm" wartet.</summary>
-public sealed record PendingVoiceAction(string Token, string ActionId, string? Value, string Readback, DateTimeOffset ExpiresUtc);
+/// <param name="HeardUtc">Ende des gesprochenen Readbacks – erst danach zählt "Confirm". null = noch nicht gehört.</param>
+public sealed record PendingVoiceAction(string Token, string ActionId, string? Value, string Readback, DateTimeOffset ExpiresUtc, DateTimeOffset? HeardUtc = null);
 
 /// <summary>
 /// Gesprächsablauf mit Kopilot (ohne Sprachmodell): Befehl → prepare_action → Readback → "Confirm"/"Correct"/"Affirm" →
 /// confirm_action; "Negative"/"Cancel" → cancel_action; nach dem Timeout verfällt die Aktion still.
+/// Bestätigt wird nur, was der Pilot gehört hat: "Confirm" zählt erst, wenn der Readback ganz gesprochen ist
+/// (<see cref="VoiceDialog.Spoken"/>), und nur, wenn der Pilot danach zu sprechen begonnen hat.
 /// Abfragen werden mit dem reinen Callout beantwortet, Unbekanntes mit "Say again".
 /// Nicht threadsicher – die Sprachschleife ruft alles nacheinander auf.
 /// </summary>
@@ -48,6 +54,7 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
     public const string Resumed = "Voice control active";
 
     private readonly TimeProvider _time = time ?? TimeProvider.System;
+    private volatile bool _muted;
 
     /// <summary>So lange wartet ein Readback auf die Bestätigung.</summary>
     public TimeSpan ConfirmTimeout { get; set; } = TimeSpan.FromSeconds(60);
@@ -59,7 +66,7 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
     public bool RequireWakeWord { get; set; }
 
     /// <summary>Spracheingabe stumm ("Kopilot Pause" oder Tastenkürzel). Dann zählt nur noch "Kopilot weiter".</summary>
-    public bool Muted { get; private set; }
+    public bool Muted => _muted;
 
     public PendingVoiceAction? Pending { get; private set; }
 
@@ -69,13 +76,19 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
     /// <summary>Wann Kopilot zuletzt geantwortet hat (für "Say again": Kopilot oder ATC?).</summary>
     public DateTimeOffset? LastReplyUtc { get; private set; }
 
+    /// <summary>Ende der zuletzt ganz gesprochenen Antwort von Kopilot.</summary>
+    public DateTimeOffset? LastReplyHeardUtc { get; private set; }
+
+    /// <summary>Wann Kopilot zuletzt gesprochen hat (Antwort erzeugt oder zu Ende gesprochen, das Spätere).</summary>
+    public DateTimeOffset? LastSpokeUtc => Latest(LastReplyUtc, LastReplyHeardUtc);
+
     /// <summary>Letztes Ergebnis des Eingabe-Moduls (Status, Grund) – für Log und Status.</summary>
     public InputResult? LastResult { get; private set; }
 
     /// <summary>Stumm schalten oder wieder an (Tastenkürzel). Antwort zum Sprechen.</summary>
     public VoiceReply SetMuted(bool muted)
     {
-        Muted = muted;
+        _muted = muted;
         if (muted)
         {
             CancelPending("Spracheingabe stumm");
@@ -88,7 +101,12 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
     /// <param name="intent">Erkannter Befehl.</param>
     /// <param name="normalized">Der Satz in normalisierter Form (für "Confirm" und die Wortzahl).</param>
     /// <param name="addressed">Mit Anrede ("Kopilot, …").</param>
-    public async Task<VoiceReply?> HandleAsync(VoiceIntent intent, string normalized, bool addressed, CancellationToken ct)
+    public Task<VoiceReply?> HandleAsync(VoiceIntent intent, string normalized, bool addressed, CancellationToken ct) =>
+        HandleAsync(intent, normalized, addressed, null, ct);
+
+    /// <inheritdoc cref="HandleAsync(VoiceIntent, string, bool, CancellationToken)"/>
+    /// <param name="startUtc">Wann der Pilot den Satz zu sprechen begonnen hat (null = jetzt). Ein "Confirm", das vor dem Ende des Readbacks begann, zählt nicht.</param>
+    public async Task<VoiceReply?> HandleAsync(VoiceIntent intent, string normalized, bool addressed, DateTimeOffset? startUtc, CancellationToken ct)
     {
         Expire();
         if (Muted)
@@ -108,7 +126,11 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
                 return LastReply;
 
             case IntentKind.Confirm:
-                return await ConfirmAsync(normalized, ct);
+                return await ConfirmAsync(normalized, startUtc ?? _time.GetUtcNow(), ct);
+
+            case IntentKind.Acknowledge:
+                // "Ja", "OK", "Roger" bestätigen nichts – nach einem Readback nachfragen, sonst still
+                return Pending is { HeardUtc: not null } ? VoiceReply.Of(SayAgain) : null;
 
             case IntentKind.Negative:
                 return Pending is null ? null : Remember(CancelPending("Pilot: negative") ? VoiceReply.Of(Cancelled) : VoiceReply.Of(Unable));
@@ -134,6 +156,41 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
         }
     }
 
+    /// <summary>
+    /// Eine Antwort ist ganz gesprochen (Rückmeldung der Sprachausgabe). Ist es der Readback der offenen Aktion, zählt ab jetzt
+    /// "Confirm" – das Zeitfenster beginnt neu.
+    /// </summary>
+    public void Spoken(VoiceReply reply, DateTimeOffset endUtc)
+    {
+        LastReplyHeardUtc = Latest(LastReplyHeardUtc, endUtc);
+        if (reply.ReadbackToken is { } token && Pending is { } p && p.Token == token)
+        {
+            Pending = p with { HeardUtc = endUtc, ExpiresUtc = endUtc + ConfirmTimeout };
+        }
+    }
+
+    /// <summary>Eine Antwort wurde nicht angenommen (keine Stimme, Sim pausiert). Ein nie gehörter Readback ist nicht bestätigbar.</summary>
+    public void NotSpoken(VoiceReply reply)
+    {
+        if (reply.ReadbackToken is { } token && Pending is { HeardUtc: null } p && p.Token == token)
+        {
+            CancelPending("Readback nicht gesprochen");
+        }
+    }
+
+    /// <summary>Offene Aktion verwerfen (z. B. weil ATC nach dem Readback gesprochen hat). true = es gab eine.</summary>
+    public bool CancelPending(string reason)
+    {
+        if (Pending is not { } pending)
+        {
+            return false;
+        }
+
+        Pending = null;
+        LastResult = gateway.Cancel(pending.Token, reason);
+        return LastResult.Status == InputResult.Cancelled;
+    }
+
     /// <summary>Timeout prüfen (regelmäßig aufrufen). Eine abgelaufene Aktion wird still verworfen.</summary>
     public void Expire()
     {
@@ -145,25 +202,32 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
 
     private async Task<VoiceReply?> PrepareAsync(VoiceIntent intent, CancellationToken ct)
     {
+        // Eine neue Aktion ersetzt die offene – auch im Eingabe-Modul, falls die neue abgelehnt wird
+        CancelPending("Neuer Befehl (Sprache)");
+
         var result = await gateway.PrepareAsync(intent.ActionId!, intent.Value, ct);
         LastResult = result;
         if (result.Status == InputResult.AwaitingConfirmation && result.Token is { } token)
         {
             var readback = string.IsNullOrWhiteSpace(result.Readback) ? intent.ToString() : result.Readback;
             Pending = new PendingVoiceAction(token, result.Action ?? intent.ActionId!, result.Value, readback, _time.GetUtcNow() + ConfirmTimeout);
-            return Remember(VoiceReply.Of(readback));
+            return Remember(VoiceReply.Of(readback) with { ReadbackToken = token });
         }
 
-        // Eine neue Aktion ersetzt eine offene – ist sie abgelehnt, gibt es keine offene mehr
-        Pending = null;
         return Remember(VoiceReply.Of(result.Status == InputResult.Disabled ? InputDisabled : Unable));
     }
 
-    private async Task<VoiceReply?> ConfirmAsync(string normalized, CancellationToken ct)
+    private async Task<VoiceReply?> ConfirmAsync(string normalized, DateTimeOffset startUtc, CancellationToken ct)
     {
         if (Pending is not { } pending)
         {
             // Nichts offen – "Confirm" ohne Readback wird ignoriert
+            return null;
+        }
+
+        // Readback noch nicht (ganz) gehört, oder das "Confirm" begann schon vorher – zählt nicht, die Aktion bleibt offen
+        if (pending.HeardUtc is not { } heard || startUtc < heard)
+        {
             return null;
         }
 
@@ -181,22 +245,13 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
         };
     }
 
-    private bool CancelPending(string reason)
-    {
-        if (Pending is not { } pending)
-        {
-            return false;
-        }
-
-        Pending = null;
-        LastResult = gateway.Cancel(pending.Token, reason);
-        return LastResult.Status == InputResult.Cancelled;
-    }
-
     private VoiceReply Remember(VoiceReply reply)
     {
         LastReply = reply;
         LastReplyUtc = _time.GetUtcNow();
         return reply;
     }
+
+    private static DateTimeOffset? Latest(DateTimeOffset? a, DateTimeOffset? b) =>
+        a is null ? b : b is null ? a : a > b ? a : b;
 }

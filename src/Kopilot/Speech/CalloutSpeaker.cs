@@ -27,6 +27,16 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
     /// <summary>So lange warten Ansagen (außer Warnungen) höchstens, solange der Pilot spricht.</summary>
     private static readonly TimeSpan MaxHoldForPilot = TimeSpan.FromSeconds(6);
 
+    /// <summary>Länger spricht der Pilot nicht am Stück (Sätze enden spätestens nach 12 s) – sonst hängt der Zustand.</summary>
+    private static readonly TimeSpan MaxPilotSpeaking = TimeSpan.FromSeconds(15);
+
+    /// <summary>Zeitkritische Callouts warten nicht, auch wenn der Pilot gerade spricht.</summary>
+    private static readonly HashSet<string> TimeCritical = new(StringComparer.Ordinal)
+    {
+        Rules.Pm100Knots, Rules.PmV1, Rules.PmRotate, Rules.PmPositiveClimb, Rules.PmSpoilers, Rules.PmReverse, Rules.PmDecel,
+        Rules.Pm70Knots, Rules.AutoRadioAltitude, Rules.AutoMinimum, Rules.AutoRetard,
+    };
+
     private const int CacheLimit = 160;
 
     private readonly AlertBus _bus;
@@ -52,6 +62,9 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
     private volatile VoiceOutputOptions _voice = VoiceOutputOptions.Default;
     private volatile bool _pilotSpeaking;
     private long _lastSpeechEndTicks;
+    private long _lastAtcSpeechEndTicks;
+    private long _pilotSpeakingSinceTicks;
+    private int _speakingNow;
     private DateTimeOffset? _holdSinceUtc;
     private CancellationTokenSource? _currentCts;
     private volatile bool _atcWantsKokoro;
@@ -101,16 +114,30 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
 
     public bool Available => ActiveEngine is not null;
 
-    public bool IsSpeaking => _current is not null;
+    public bool IsSpeaking => _current is not null || Volatile.Read(ref _speakingNow) > 0;
 
     public DateTimeOffset LastSpeechEndUtc => new(Interlocked.Read(ref _lastSpeechEndTicks), TimeSpan.Zero);
 
+    public DateTimeOffset? LastAtcSpeechEndUtc
+    {
+        get
+        {
+            var ticks = Interlocked.Read(ref _lastAtcSpeechEndTicks);
+            return ticks > 0 ? new DateTimeOffset(ticks, TimeSpan.Zero) : null;
+        }
+    }
+
     public bool PilotSpeaking
     {
-        get => _pilotSpeaking;
+        get => _pilotSpeaking && !PilotSpeakingStale(DateTimeOffset.UtcNow);
         set
         {
             var changed = _pilotSpeaking != value;
+            if (changed && value)
+            {
+                Interlocked.Exchange(ref _pilotSpeakingSinceTicks, DateTimeOffset.UtcNow.UtcTicks);
+            }
+
             _pilotSpeaking = value;
             if (changed && !value)
             {
@@ -119,6 +146,10 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
             }
         }
     }
+
+    /// <summary>"Pilot spricht" hängt schon zu lange (z. B. Mikrofon mitten im Satz weg) – nicht mehr darauf warten.</summary>
+    private bool PilotSpeakingStale(DateTimeOffset now) =>
+        now - new DateTimeOffset(Interlocked.Read(ref _pilotSpeakingSinceTicks), TimeSpan.Zero) > MaxPilotSpeaking;
 
     /// <summary>Sim pausiert (laut letztem Monitoring-Takt).</summary>
     private bool SimPaused => _monitoring.LastSnapshot?.Paused == true;
@@ -155,6 +186,7 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
             Voice = request.Voice,
             Volume = Math.Clamp(double.IsFinite(request.Volume) ? request.Volume : 1, 0, 1),
             Source = request.Source,
+            OnSpoken = request.OnSpoken,
         };
 
         var (accepted, preempt) = _queue.Offer(item, now, _current?.Priority);
@@ -238,7 +270,17 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
             throw new InvalidOperationException(StatusError() ?? "Sprachausgabe ist nicht verfügbar.");
         }
 
-        await SpeakAsync(text, ct);
+        // Wie eine Ansage aus der Warteschlange: Mikrofon der Sprachschleife stumm, danach die Nachlaufzeit
+        Interlocked.Increment(ref _speakingNow);
+        try
+        {
+            await SpeakAsync(text, ct);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _speakingNow);
+            Interlocked.Exchange(ref _lastSpeechEndTicks, DateTimeOffset.UtcNow.UtcTicks);
+        }
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -664,8 +706,8 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
             return true;
         }
 
-        // Der Pilot spricht: kurz warten (nur Warnungen fallen ins Wort)
-        if (next.Priority < SpeechPriority.Warning && _pilotSpeaking)
+        // Der Pilot spricht: kurz warten (nur Warnungen und zeitkritische Callouts fallen ins Wort)
+        if (next.Priority < SpeechPriority.Warning && PilotSpeaking && !(next.Rule is not null && TimeCritical.Contains(next.Rule)))
         {
             _holdSinceUtc ??= now;
             if (now - _holdSinceUtc < MaxHoldForPilot)
@@ -689,6 +731,10 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
         {
             await SpeakAsync(item, cts.Token);
             _lastSpoken = item.Text;
+            if (!cts.IsCancellationRequested)
+            {
+                Spoken(item, DateTimeOffset.UtcNow);
+            }
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
@@ -710,6 +756,24 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
         }
 
         return true;
+    }
+
+    /// <summary>Ansage ganz gesprochen: ATC-Zeit merken, Rückmeldung an die Sprachschleife (Readback gehört).</summary>
+    private void Spoken(SpeechItem item, DateTimeOffset end)
+    {
+        if (item.Priority == SpeechPriority.Atc)
+        {
+            Interlocked.Exchange(ref _lastAtcSpeechEndTicks, end.UtcTicks);
+        }
+
+        try
+        {
+            item.OnSpoken?.Invoke(end);
+        }
+        catch (Exception ex)
+        {
+            _log.LogDebug("Rückmeldung nach \"{Text}\" fehlgeschlagen: {Message}", item.Text, ex.Message);
+        }
     }
 
     /// <summary>Eine Warnung unterbricht die laufende Ansage.</summary>
