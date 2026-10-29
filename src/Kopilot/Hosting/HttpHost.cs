@@ -74,6 +74,7 @@ public static class HttpHost
         app.MapGet("/alerts", (AlertBus alerts, long? sinceId) => JsonText(MonitoringTools.GetAlerts(alerts, sinceId ?? 0))).LocalOnly();
         app.MapGet("/monitoring", (MonitoringService monitoring, AlertBus alerts) => JsonText(MonitoringTools.GetMonitoringStatus(monitoring, alerts))).LocalOnly();
         app.MapGet("/atc", (SimConnectClient sim, SimBriefService simBrief, AlertBus alerts) => JsonText(AtcTools.GetAtc(sim, simBrief, alerts))).LocalOnly();
+        app.MapGet("/atc/controller", (Kopilot.Atc.AtcService atc, AlertBus alerts) => JsonText(AtcControllerTools.GetAtcController(atc, alerts))).LocalOnly();
         app.MapGet("/plan", async (SimBriefService simBrief, AlertBus alerts, bool? refresh, CancellationToken ct) =>
             JsonText(await FlightPlanTools.GetFlightPlan(simBrief, alerts, refresh ?? false, ct))).LocalOnly();
         app.MapGet("/progress", async (SimConnectClient sim, SimBriefService simBrief, AlertBus alerts, CancellationToken ct) =>

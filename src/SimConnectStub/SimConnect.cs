@@ -152,6 +152,53 @@ namespace Microsoft.FlightSimulator.SimConnect
         public string szString;
     }
 
+    public enum SIMCONNECT_FACILITY_DATA_TYPE
+    {
+        AIRPORT,
+        RUNWAY,
+        START,
+        FREQUENCY,
+        HELIPAD,
+        APPROACH,
+        APPROACH_TRANSITION,
+        APPROACH_LEG,
+        FINAL_APPROACH_LEG,
+        MISSED_APPROACH_LEG,
+        DEPARTURE,
+        ARRIVAL,
+        RUNWAY_TRANSITION,
+        ENROUTE_TRANSITION,
+        TAXI_POINT,
+        TAXI_PARKING,
+        TAXI_PATH,
+        TAXI_NAME,
+        JETWAY,
+        VOR,
+        NDB,
+        WAYPOINT,
+        ROUTE,
+        PAVEMENT,
+        APPROACH_LIGHTS,
+        VASI,
+    }
+
+    public class SIMCONNECT_RECV_FACILITY_DATA : SIMCONNECT_RECV
+    {
+        public uint UserRequestId;
+        public uint UniqueRequestId;
+        public uint ParentUniqueRequestId;
+        public uint Type;
+        public uint IsListItem;
+        public uint ItemIndex;
+        public uint ListSize;
+        public object[] Data;
+    }
+
+    public class SIMCONNECT_RECV_FACILITY_DATA_END : SIMCONNECT_RECV
+    {
+        public uint RequestId;
+    }
+
     public class SimConnect : IDisposable
     {
         public const uint SIMCONNECT_OBJECT_ID_USER = 0;
@@ -173,6 +220,10 @@ namespace Microsoft.FlightSimulator.SimConnect
         public delegate void RecvEventFilenameEventHandler(SimConnect sender, SIMCONNECT_RECV_EVENT_FILENAME data);
 
         public delegate void RecvSystemStateEventHandler(SimConnect sender, SIMCONNECT_RECV_SYSTEM_STATE data);
+
+        public delegate void RecvFacilityDataEventHandler(SimConnect sender, SIMCONNECT_RECV_FACILITY_DATA data);
+
+        public delegate void RecvFacilityDataEndEventHandler(SimConnect sender, SIMCONNECT_RECV_FACILITY_DATA_END data);
 
         public SimConnect(string szName, IntPtr hWnd, uint UserEventWin32, WaitHandle hEventHandle, uint ConfigIndex)
         {
@@ -196,6 +247,10 @@ namespace Microsoft.FlightSimulator.SimConnect
         public event RecvEventFilenameEventHandler OnRecvEventFilename;
 
         public event RecvSystemStateEventHandler OnRecvSystemState;
+
+        public event RecvFacilityDataEventHandler OnRecvFacilityData;
+
+        public event RecvFacilityDataEndEventHandler OnRecvFacilityDataEnd;
 
         public void SubscribeToSystemEvent(Enum EventID, string SystemEventName)
         {
@@ -230,6 +285,18 @@ namespace Microsoft.FlightSimulator.SimConnect
         }
 
         public void SetDataOnSimObject(Enum DefineID, uint ObjectID, SIMCONNECT_DATA_SET_FLAG Flags, object pDataSet)
+        {
+        }
+
+        public void AddToFacilityDefinition(Enum DefineID, string FieldName)
+        {
+        }
+
+        public void RegisterFacilityDataDefineStruct<T>(SIMCONNECT_FACILITY_DATA_TYPE dwType)
+        {
+        }
+
+        public void RequestFacilityData(Enum DefineID, Enum RequestID, string ICAO, string Region)
         {
         }
 

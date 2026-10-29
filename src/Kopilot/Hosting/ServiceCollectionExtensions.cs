@@ -1,4 +1,5 @@
 using Kopilot.Aircraft;
+using Kopilot.Atc;
 using Kopilot.Ecam;
 using Kopilot.FlightPlan;
 using Kopilot.Input;
@@ -34,6 +35,11 @@ public static class ServiceCollectionExtensions
         // Eingabe-Modul (standardmäßig gesperrt)
         services.AddSingleton<IInputBackend, SimInputBackend>();
         services.AddSingleton<InputService>();
+
+        // ATC-Modul (Zustandsmaschine mit Vorlagen). Die Rollroute ist eine Schnittstelle – bis zur Routenberechnung ohne Route.
+        services.AddSingleton<ITaxiRouteProvider, NoTaxiRouteProvider>();
+        services.AddSingleton<AtcService>();
+        services.AddHostedService(sp => sp.GetRequiredService<AtcService>());
         return services;
     }
 }

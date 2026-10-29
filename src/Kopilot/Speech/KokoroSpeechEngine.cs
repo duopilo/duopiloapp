@@ -31,6 +31,9 @@ public sealed partial class KokoroSpeechEngine : IDisposable
     private readonly string _voicesDirectory;
     private readonly ILogger<KokoroSpeechEngine> _log;
     private readonly object _voiceLock = new();
+
+    // Callouts und ATC-Funksprüche rechnen aus verschiedenen Tasks – das Modell immer nur einmal gleichzeitig benutzen
+    private readonly object _inferLock = new();
     private readonly Dictionary<string, KokoroVoice> _voices = new(StringComparer.OrdinalIgnoreCase);
     private OnnxSessionOptions? _sessionOptions;
     private KokoroModel? _model;
@@ -106,19 +109,22 @@ public sealed partial class KokoroSpeechEngine : IDisposable
     {
         var model = _model ?? throw new InvalidOperationException("Das Sprachmodell ist noch nicht geladen.");
         var v = Voice(voice);
-        var tokens = Tokenizer.Tokenize(text.Trim(), v.GetLangCode(), true);
-        if (tokens.Length == 0)
+        lock (_inferLock)
         {
-            return new SpeechClip([], SampleRate);
-        }
+            var tokens = Tokenizer.Tokenize(text.Trim(), v.GetLangCode(), true);
+            if (tokens.Length == 0)
+            {
+                return new SpeechClip([], SampleRate);
+            }
 
-        if (tokens.Length > KokoroModel.maxTokens)
-        {
-            tokens = tokens[..KokoroModel.maxTokens];
-        }
+            if (tokens.Length > KokoroModel.maxTokens)
+            {
+                tokens = tokens[..KokoroModel.maxTokens];
+            }
 
-        var samples = model.Infer(tokens, v.Features, (float)Math.Clamp(speed, 0.5, 2.0));
-        return new SpeechClip(TrimSilence(samples), SampleRate);
+            var samples = model.Infer(tokens, v.Features, (float)Math.Clamp(speed, 0.5, 2.0));
+            return new SpeechClip(TrimSilence(samples), SampleRate);
+        }
     }
 
     /// <summary>Stille am Anfang und Ende abschneiden – sonst kommt jeder Callout spürbar verzögert.</summary>
