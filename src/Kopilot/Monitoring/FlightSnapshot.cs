@@ -1,5 +1,6 @@
 using Kopilot.Aircraft;
 using Kopilot.Atc;
+using Kopilot.Traffic;
 
 namespace Kopilot.Monitoring;
 
@@ -109,6 +110,9 @@ public sealed record FlightSnapshot
     public AircraftLimits Limits { get; init; } = new();
 
     public AssignedRunway? AssignedRunway { get; init; }
+
+    /// <summary>Verkehrslage der letzten Hintergrundabfrage (null = keine, z. B. am Boden oder Regel aus).</summary>
+    public TrafficPicture? Traffic { get; init; }
 
     public bool Airborne => OnGround == false;
 

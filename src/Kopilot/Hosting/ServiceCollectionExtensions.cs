@@ -4,6 +4,7 @@ using Kopilot.FlightPlan;
 using Kopilot.Input;
 using Kopilot.Monitoring;
 using Kopilot.Sim;
+using Kopilot.Traffic;
 using Microsoft.Extensions.Options;
 
 namespace Kopilot.Hosting;
@@ -20,6 +21,10 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton<EcamCatalog>();
         services.AddSingleton<SimBriefService>();
+        // Verkehr (get_traffic, Hintergrundabfrage für TRAFFIC_PROXIMITY)
+        services.AddSingleton<TrafficService>();
+        services.AddHostedService(sp => sp.GetRequiredService<TrafficService>());
+
         services.AddSingleton(sp => new AlertBus(sp.GetRequiredService<IOptions<KopilotOptions>>().Value.Monitoring.HistorySize));
         services.AddSingleton<SnapshotFactory>();
         services.AddSingleton(new FmaLog());

@@ -58,6 +58,7 @@ public static class Rules
     public const string EcamMessage = "ECAM_MESSAGE";
     public const string TopOfDescent = "TOP_OF_DESCENT";
     public const string LandingCheck = "LANDING_CHECK";
+    public const string TrafficProximity = "TRAFFIC_PROXIMITY";
 
     // Pilot-Monitoring-Callouts (Startlauf, Landung, Höhenmarken, Konfiguration)
     public const string Pm100Knots = "PM_100_KNOTS";
@@ -84,6 +85,7 @@ public static class Rules
     [
         SimPaused, GearSpeed, FlapSpeed, GearDownHigh, SpeedLimitFl100, SpeedDeviation, SinkRate, BankAngle,
         ApDisconnect, MasterWarning, MasterCaution, EcamMessage, Alt1000ToGo, TopOfDescent, LandingCheck, RunwayAssigned, Stall, Overspeed,
+        TrafficProximity,
         Pm100Knots, PmV1, PmRotate, PmPositiveClimb, PmSpoilers, PmReverse, PmDecel, Pm70Knots, PmTenThousand, PmTransition, PmFlaps, PmGear,
         AutoRadioAltitude, AutoMinimum, AutoRetard,
     ];

@@ -34,6 +34,86 @@ public struct SimString256
     public string Value;
 }
 
+/// <summary>
+/// Ein Flugzeug aus RequestDataOnSimObjectType (Verkehrsabfrage). Reihenfolge und Typen müssen exakt zur
+/// Data Definition in <see cref="SimConnectClient"/> passen (<see cref="TrafficVariables"/>).
+/// </summary>
+[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+public struct TrafficDatum
+{
+    public double Latitude;
+    public double Longitude;
+    public double AltitudeFt;
+    public double HeadingTrueDeg;
+    public double HeadingMagDeg;
+    public double GroundSpeedKt;
+    public double VerticalSpeedFpm;
+    public double OnGround;
+    public double IsUser;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
+    public string AtcId;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
+    public string AtcAirline;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
+    public string AtcFlightNumber;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
+    public string AtcModel;
+}
+
+/// <summary>SimVars der Verkehrsabfrage in der Reihenfolge von <see cref="TrafficDatum"/>. Unit null = Text (STRING64).</summary>
+public static class TrafficVariables
+{
+    public static readonly IReadOnlyList<(string Name, string? Unit)> All =
+    [
+        ("PLANE LATITUDE", "degrees"),
+        ("PLANE LONGITUDE", "degrees"),
+        ("PLANE ALTITUDE", "feet"),
+        ("PLANE HEADING DEGREES TRUE", "degrees"),
+        ("PLANE HEADING DEGREES MAGNETIC", "degrees"),
+        ("GROUND VELOCITY", "knots"),
+        ("VERTICAL SPEED", "feet per minute"),
+        ("SIM ON GROUND", "Bool"),
+        ("IS USER SIM", "Bool"),
+        ("ATC ID", null),
+        ("ATC AIRLINE", null),
+        ("ATC FLIGHT NUMBER", null),
+        ("ATC MODEL", null),
+    ];
+}
+
+/// <summary>Rohdaten eines Flugzeugs aus der Verkehrsabfrage (eigenes Flugzeug eingeschlossen, siehe <see cref="IsUser"/>).</summary>
+/// <param name="ObjectId">SimConnect-Objekt-ID.</param>
+/// <param name="Category">"aircraft" oder "helicopter".</param>
+/// <param name="AltitudeFt">Wahre Höhe über MSL (PLANE ALTITUDE).</param>
+public sealed record AircraftSample(
+    uint ObjectId,
+    string Category,
+    string? AtcId,
+    string? AtcAirline,
+    string? AtcFlightNumber,
+    string? AtcModel,
+    double Latitude,
+    double Longitude,
+    double AltitudeFt,
+    double HeadingTrueDeg,
+    double HeadingMagDeg,
+    double GroundSpeedKt,
+    double VerticalSpeedFpm,
+    bool OnGround,
+    bool IsUser);
+
+/// <summary>Ergebnis einer Verkehrsabfrage.</summary>
+/// <param name="Complete">Alle Antworten von MSFS sind eingetroffen.</param>
+/// <param name="Error">Fehlertext, wenn die Abfrage nicht ausgeführt werden konnte.</param>
+public sealed record AircraftScan(IReadOnlyList<AircraftSample> Samples, bool Complete, string? Error)
+{
+    public static AircraftScan Fail(string error) => new([], false, error);
+}
+
 /// <summary>IDs für abonnierte SimConnect-Systemereignisse.</summary>
 public enum SimEventId : uint
 {

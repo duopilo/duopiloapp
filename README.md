@@ -19,6 +19,7 @@ Kopilot verbindet **Microsoft Flight Simulator 2024** über SimConnect mit **Cla
 | `get_flight_plan` | SimBrief-OFP: Route, Bahnen, Reiseflughöhe, Cost Index, Fuel, Gewichte, Zeiten, Navlog |
 | `get_progress` | Fortschritt gegen den Plan: nächster Fix (beim A32NX der aktive FMS-Wegpunkt, z. B. nach DIR TO), Distanz/ETA, TOD, Querablage, Fuel gegen Plan |
 | `get_atc` | Ingame-ATC: Callsign, Freigaben, zugewiesene Bahn (inkl. L/C/R aus SimBrief) |
+| `get_traffic` | Verkehr im Umkreis (KI und Multiplayer): Callsign, Typ, Abstand, Uhrzeit-Peilung, Höhendifferenz, Trend, GS, Callout fürs nächste Ziel |
 | `get_navigation` | GPS-Flugplanvariablen des Sims (bei Airliner-FMS meist leer – dann `get_progress`) |
 | `get_environment` | Wind, OAT, QNH, eingestellter Höhenmesser, Sicht, UTC-/Ortszeit |
 | `get_aircraft_profile` | Bindings des Profils mit Rohwert, Klartext und „geprüft“-Status, Zusatzvariablen, Grenzwerte |
@@ -54,6 +55,7 @@ Kopilot prüft alle 200 ms ein paar Regeln und legt Meldungen mit einem kurzen e
 | `TOP_OF_DESCENT` | Top of descent | A32NX: FMS-Meldung T/D REACHED; sonst TOD laut SimBrief-Plan |
 | `LANDING_CHECK` | Landing checklist complete / Spoilers not armed | bei 2000 ft RA im Sinkflug: Fahrwerk, Landeklappen, Ground Spoiler; bei 1000 ft RA erneut, falls noch etwas fehlt |
 | `RUNWAY_ASSIGNED` | Runway two three left assigned | Ingame-ATC hat eine Bahn zugewiesen |
+| `TRAFFIC_PROXIMITY` | Traffic, 2 o'clock, 2 miles, 500 feet above, climbing | Ziel in der Luft näher als 3 NM und innerhalb ±1000 ft, eigenes Flugzeug über 500 ft AGL; danach 60 s Ruhe (siehe [Verkehr](#verkehr)) |
 | `SIM_PAUSED` | Sim paused | Sim pausiert – alle anderen Regeln ruhen |
 
 Dazu kommen die Callouts, die ein Pilot Monitoring macht:
@@ -80,6 +82,35 @@ Nach dem Laden eines Flugs, einem Flugzeugwechsel oder einem Air-Start schweigt 
 ```
 
 **Push:** Claude.ai und der Sprachmodus können keine Nachrichten vom Server empfangen. Deshalb spricht Kopilot die Callouts selbst (siehe unten). Claude sieht die Meldungen zusätzlich über `activeAlerts` in jeder Antwort oder über `wait_for_alerts`.
+
+## Verkehr
+
+`get_traffic` fragt per SimConnect (`RequestDataOnSimObjectType`) alle Flugzeuge und Hubschrauber im Umkreis ab – KI-Verkehr und Multiplayer, soweit im Sim eingeschaltet. Das eigene Flugzeug ist ausgeschlossen.
+
+| Parameter | Standard | Bedeutung |
+|---|---|---|
+| `radiusNm` | 40 | Suchradius, höchstens 108 NM (200 km, Grenze von SimConnect) |
+| `limit` | 10 | höchstens so viele Ziele, nächstes zuerst (1–50) |
+| `airborneOnly` | false | Flugzeuge am Boden (Gate, Rollweg) weglassen |
+
+Pro Ziel: `ident` (Callsign, sonst ATC-ID), `type` (ATC MODEL, z. B. `A320`), `distanceNm`, `clock` („2 o'clock“), `relativeBearingDeg`, `bearingTrueDeg`, `altitudeFt`, `altitudeDiffFt` (+ = darüber), `verticalTrend` (climbing/descending/level ab ±500 ft/min), `groundSpeedKt`, `headingTrueDeg`/`headingMagDeg`, `onGround`. Das nächste Ziel hat `closest: true`; `callout` ist die Verkehrsmeldung dazu:
+
+```
+Traffic, 2 o'clock, 5 miles, 1000 feet above, descending
+```
+
+- **Uhrzeit:** relativ zum eigenen Steuerkurs, je 30°: 12 Uhr = 345° bis unter 15°.
+- **Abstand:** horizontal (Großkreis). Höhen sind bei beiden Flugzeugen wahre Höhe über MSL (`PLANE ALTITUDE`), deshalb weicht die eigene Höhe leicht von `get_flight_state` (indicated) ab.
+- **Trend:** aus `VERTICAL SPEED`. Liefert ein Ziel dort 0 (oft bei Multiplayer), rechnet Kopilot die V/S aus der Höhenänderung zwischen zwei Abfragen (`verticalSpeedSource: "derived"`).
+- **Keine Daten:** `status: "no_traffic"` mit Hinweis, wenn MSFS kein fremdes Flugzeug liefert – meist ist dann KI-Verkehr bzw. Multiplayer im Sim aus. `no_response`, wenn MSFS gar nicht antwortet.
+
+**Verkehrswarnung `TRAFFIC_PROXIMITY`:** Solange die Regel an ist und das Flugzeug fliegt, fragt Kopilot alle 3 s den Verkehr im Umkreis von 6 NM ab. Unter 500 ft über Grund, in der Pause und am Boden ruht sie. Abschalten mit `"DisabledRules": [ "TRAFFIC_PROXIMITY" ]`, Grenzen anpassen:
+
+```jsonc
+"Kopilot": { "Monitoring": { "Traffic": { "ProximityRangeNm": 3, "ProximityAltitudeFt": 1000, "ProximityCooldownSec": 60, "ScanIntervalSec": 3 } } }
+```
+
+Das ist kein TCAS: keine Ausweichempfehlung, keine Vorhersage des Annäherungspunkts – nur Abstand und Höhe im Moment.
 
 ## Sprachausgabe
 
@@ -440,10 +471,11 @@ src/Kopilot/
   FlightPlan/             SimBrief-OFP, Routen- und Fortschrittsrechnung
   Atc/                    Ingame-ATC, Bahnnummer/-bezeichner, Phraseologie
   Monitoring/             Regeln (MonitorEngine), Alert-Bus, Hintergrunddienst
+  Traffic/                Verkehrsabfrage, Peilung/Uhrzeit/Callout, Hintergrundabfrage für TRAFFIC_PROXIMITY
   Tools/                  MCP-Tools
   profiles/               Flugzeugprofile (JSON)
 src/SimConnectStub/       Platzhalter-API für CI-Builds ohne MSFS-SDK
-tests/Kopilot.Tests/      Tests (OAuth, Zugriffsschutz, Monitoring-Regeln, ECAM, SimBrief, Profile) – laufen ohne MSFS
+tests/Kopilot.Tests/      Tests (OAuth, Zugriffsschutz, Monitoring-Regeln, ECAM, SimBrief, Profile, Verkehr) – laufen ohne MSFS
 docs/cloudflared.md       Anleitung Cloudflare Tunnel
 ```
 
@@ -459,6 +491,7 @@ Jede Variable hat eine eigene SimConnect-Data-Definition. Ist ein Name in MSFS u
 - [x] v0.6: Lokale Sprachausgabe (Windows, Stimme und Ausgabegerät wählbar) und PM-Callouts (Startlauf, Landung, Höhenmarken, Konfiguration)
 - [x] v0.7: Eingabe-Modul mit Readback und Bestätigung (FCU, EFIS, Konfiguration, Licht, Schilder, Anti-Ice, Packs, APU, Transponder, Funk) – zuerst A32NX
 - [x] v0.8: Kokoro als zweite Stimme (neuronal, ohne Windows-Sprachpaket), ECAM-Titel ausgeschrieben, Tray-Schalter
+- [x] Verkehr: `get_traffic` (KI und Multiplayer) und Verkehrswarnung `TRAFFIC_PROXIMITY` – im Sim noch zu prüfen
 - [ ] Eingabe-Modul: im Sim prüfen, NAV & LOGO über Input Events, weitere Flugzeuge
 - [ ] WASimCommander-Anbindung (L:-Variablen auflisten, Events)
 - [x] Remote-Betrieb: Streamable HTTP mit Bearer-Token und OAuth, Cloudflare Tunnel
