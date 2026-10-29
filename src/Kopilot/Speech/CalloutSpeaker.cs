@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Kopilot.Atc;
 using Kopilot.Monitoring;
 using Microsoft.Extensions.Options;
 
@@ -14,8 +15,12 @@ namespace Kopilot.Speech;
 /// (Ausgabegerät wählbar).
 /// </para>
 /// Läuft nur im HTTP-Modus (Tray-Instanz), damit die stdio-Instanz von Claude Desktop nicht doppelt spricht.
+/// <para>
+/// Spricht auch die ATC-Funksprüche (<see cref="IAtcRadio"/>), jede Station mit ihrer eigenen Kokoro-Stimme. Dafür wird
+/// Kokoro auch dann geladen, wenn die Callouts die Windows-Stimme nehmen. Eine Warning unterbricht einen Funkspruch.
+/// </para>
 /// </summary>
-public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput
+public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IAtcRadio
 {
     private const int CacheLimit = 160;
 
@@ -39,6 +44,8 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput
     private IReadOnlyList<AudioDeviceInfo> _devices = [];
     private AlertSeverity? _speaking;
     private CancellationTokenSource? _currentCts;
+    private CancellationTokenSource? _atcCts;
+    private volatile bool _atcWantsKokoro;
     private string? _lastSpoken;
     private bool _windowsHasEnglish;
 
@@ -189,7 +196,7 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput
     /// <summary>Lädt Kokoro im Hintergrund, wenn die Einstellung es braucht (einmalig; nach einem Fehler erst nach Neustart).</summary>
     private void EnsureKokoroIfNeeded()
     {
-        if (_speech is null || !SpeechEngines.NeedsKokoro(_settings.Engine, _windowsHasEnglish))
+        if (_speech is null || !(SpeechEngines.NeedsKokoro(_settings.Engine, _windowsHasEnglish) || _atcWantsKokoro))
         {
             return;
         }
@@ -322,6 +329,87 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput
         _signal.Release();
     }
 
+    // ------------------------------------------------------------------ ATC
+
+    /// <summary>
+    /// ATC-Funkspruch mit der Kokoro-Stimme der Station. Solange Kokoro lädt, spricht die Windows-Stimme (falls englisch),
+    /// sonst bleibt es beim Text im Verlauf. Nicht im Cache – Funksprüche wiederholen sich selten.
+    /// </summary>
+    public async Task TransmitAsync(AtcTransmission transmission, CancellationToken ct)
+    {
+        var speech = _speech;
+        if (speech is null || !_settings.Enabled || string.IsNullOrWhiteSpace(transmission.Spoken))
+        {
+            return;
+        }
+
+        if (!_atcWantsKokoro)
+        {
+            _atcWantsKokoro = true;
+            EnsureKokoroIfNeeded();
+        }
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct, _stopping);
+        _atcCts = cts;
+        try
+        {
+            var settings = _settings;
+            if (_kokoroState == KokoroState.Ready && KokoroSpeechEngine.IsEnglishVoice(transmission.Voice))
+            {
+                var clip = await Task.Run(() => _kokoro.Synthesize(transmission.Spoken, transmission.Voice, settings.Rate), cts.Token);
+                if (clip.Samples.Length == 0)
+                {
+                    return;
+                }
+
+                var wav = WavEncoder.Encode(clip.Samples, clip.SampleRate, settings.Volume);
+                await _engineLock.WaitAsync(cts.Token);
+                try
+                {
+                    await speech.PlayWavAsync(wav, cts.Token);
+                }
+                finally
+                {
+                    _engineLock.Release();
+                }
+            }
+            else if (_windowsHasEnglish)
+            {
+                await _engineLock.WaitAsync(cts.Token);
+                try
+                {
+                    await speech.SpeakAsync(transmission.Spoken, cts.Token);
+                }
+                finally
+                {
+                    _engineLock.Release();
+                }
+            }
+
+            _lastSpoken = transmission.Text;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested && !_stopping.IsCancellationRequested)
+        {
+            // Von einer Warning unterbrochen
+        }
+        finally
+        {
+            _atcCts = null;
+        }
+    }
+
+    private void CancelAtc()
+    {
+        try
+        {
+            _atcCts?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Funkspruch war gerade fertig
+        }
+    }
+
     // ------------------------------------------------------------------ Abspielen
 
     private async Task SpeakAsync(string callout, CancellationToken ct)
@@ -401,6 +489,11 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput
                 if (preempt)
                 {
                     CancelCurrent();
+                }
+
+                if (accepted && e.Severity == AlertSeverity.Warning)
+                {
+                    CancelAtc();
                 }
 
                 if (accepted)

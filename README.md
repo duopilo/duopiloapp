@@ -30,6 +30,10 @@ Kopilot verbindet **Microsoft Flight Simulator 2024** über SimConnect mit **Cla
 | `confirm_action` | Eingabe ausführen, nachdem der Pilot den Readback bestätigt hat; danach wird der Zustand im Flugzeug geprüft |
 | `cancel_action` | Vorbereitete Eingabe verwerfen |
 | `mark_action_verified` | Aktion als geprüft merken, nachdem du im Cockpit gesehen hast, dass sie funktioniert |
+| `atc_transmit` | Kopilot-ATC: Funkspruch des Piloten weitergeben, Antwort der Station kommt zurück (und wird gesprochen) |
+| `get_atc_controller` | Kopilot-ATC: aktuelle Station mit Frequenz und Stimme, erwarteter nächster Pilotenspruch, offenes Readback, Squawk, Verlauf |
+| `atc_control` | Kopilot-ATC: Sitzung starten/beenden/neu starten, Vorlagen neu laden, letzten Funkspruch wiederholen |
+| `atc_set_value` | Kopilot-ATC: Gate, Rollhalt, Rollroute, Pushback-Richtung, Anflugart oder Bahn von Hand setzen |
 
 Jede Antwort enthält `activeAlerts`: die gerade aktiven Monitoring-Meldungen. So bekommt Claude Warnungen auch mit, wenn es eigentlich etwas anderes abfragt.
 
@@ -203,6 +207,62 @@ Die Aktionen stehen im Flugzeugprofil unter `actions` (Events, Variablen, Readba
 - per `mark_action_verified`, wenn du nach einer `unverified`-Ausführung im Cockpit siehst, dass es funktioniert hat. Dafür reicht ein Bestätigungs- oder Zustandswort („confirm“, „check“, „on“, „off“, „avail“, „läuft“), der ausgeführte Wert oder der Name der Aktion („Seatbelts on“, „APU avail“, „Confirm, no smoking, auto“) – solange nichts verneint wird. `confirm_action` bleibt streng.
 
 Ändert sich die Definition einer Aktion im Profil, gilt die gespeicherte Prüfung nicht mehr. `list_actions` zeigt je Aktion `verified`: `profile`, `sim`, `pilot` oder leer.
+
+## ATC
+
+Kopilot bringt ein eigenes ATC mit: eine Zustandsmaschine mit festen Textvorlagen, **kein Sprachmodell**. Du funkst wie gewohnt, Claude gibt deinen Spruch mit `atc_transmit` weiter, Kopilot antwortet als die zuständige Stelle und spricht die Antwort selbst – jede Station mit eigener Kokoro-Stimme. Phraseologie auf Englisch im ICAO-Stil, Zahlen Ziffer für Ziffer („squawk two two zero five“), Geschwindigkeiten immer in Knoten, nie Mach.
+
+**Ablauf** (Übergänge kommen aus deinen Sprüchen und aus dem Flugzustand):
+
+| Station | Was passiert | Weiter zur nächsten Station |
+|---|---|---|
+| Delivery | IFR-Freigabe mit SID, Bahn, Steigflughöhe und Squawk; Readback wird geprüft | nach korrektem Readback: „readback correct, contact Ground“ |
+| Ground | Push and start, Rollfreigabe zum Rollhalt (Readback Rollhalt/Bahn) | am Rollhalt stehen geblieben (8 s), oder du rufst „ready“ |
+| Tower | Line up and wait, Startfreigabe mit Wind (automatisch, sobald du auf der Bahn stehst, spätestens nach 60 s) | ab 1500 ft AGL: „contact Departure“ |
+| Departure | „identified, climb FL150“, optional „proceed direct“ zum ersten Fix nach der SID | 2000 ft unter der freigegebenen Höhe → Center der FIR |
+| Center | Steigflug auf Reiseflughöhe, am Top of Descent Sinkflug auf FL110 | an jeder FIR-Grenze ans nächste Center |
+| Oceanic | Freigabe ca. 30 Minuten vor dem Eintrittspunkt, danach Positionsmeldungen an jedem Oceanic-Fix („roger“) | am Austritt ans nächste Center |
+| Approach | Sinkflug, STAR, erwarteter Anflug und Bahn, QNH; ab 20 nm Anflugfreigabe | ab 12 nm: „contact Tower“ |
+| Tower | Landefreigabe mit Wind (spätestens 4 nm vor der Schwelle) | nach der Landung unter 40 kt: „vacate via next exit, contact Ground“ |
+| Ground | Rollen zum Gate | Ende, wenn das Flugzeug mit Parkbremse steht |
+
+Auf Kurzstrecken ohne Oceanic-Fixes (Koordinaten wie `55N020W` oder eine FIR, die in den Vorlagen als `oceanic` markiert ist) entfällt Oceanic. Startest du ohne Freigaben, springt das ATC beim Startlauf zum Tower nach. Startest du die Sitzung in der Luft, beginnt sie bei der Stelle, die dort zuständig ist.
+
+**Readback:** Bei Freigaben prüft Kopilot die Werte aus der Vorlage (`readback`), z. B. SID, Höhe und Squawk bei der Streckenfreigabe. Kopilot versteht Ziffern („2205“, „FL110“) wie gesprochene Zahlen („two two zero five“, „five thousand feet“, „one two one decimal eight“) und das NATO-Alphabet. Ist ein Wert falsch oder fehlt, kommt „negative“ mit dem richtigen Wert, z. B. „Lufthansa four alpha bravo, negative, squawk two two zero five“ – danach musst du nur diesen Wert noch einmal zurücklesen. Quittungen ohne Freigabe („contact Ground one two one decimal eight“) beantwortet ATC nicht. „Say again“ wiederholt den letzten Funkspruch.
+
+**Daten:**
+- Rufzeichen, Ziel, SID/STAR, Bahnen, Reiseflughöhe, FIRs und Oceanic-Teil aus dem SimBrief-OFP (SimBrief muss eingerichtet sein). Ohne FIR-Angaben im OFP teilt Kopilot den Nordatlantik bei 30°W in Shanwick und Gander.
+- Höhe, Position, Speed, Wind, QNH und Zeit aus SimConnect. QNH am Ziel aus dem METAR des OFP, in der Nähe des Flughafens aus dem Sim. Nordamerika: „altimeter“ in inHg.
+- Frequenzen aus der Facilities-API von MSFS (Clearance, Ground, Tower, Departure, Approach). Fehlen sie, nimmt Kopilot die Frequenz aus der Vorlage oder einen Platzhalter. `get_atc_controller` zeigt die Quelle (`frequencySource`).
+- Squawk: pro Flug fest, ohne Sondercodes.
+- Rollroute (`{taxiRoute}`), Rollhalt, Gate und Pushback-Richtung kommen über die Schnittstelle `ITaxiRouteProvider`. Die Routenberechnung kommt in einem eigenen Schritt; bis dahin nehmen die Vorlagen eine Variante ohne diese Angaben („taxi to holding point runway two five center“). Gate oder Rollhalt kannst du mit `atc_set_value` von Hand setzen („wir stehen an A26“).
+
+**Stimmen:** Jede Station (z. B. Frankfurt Delivery, Langen Radar, Shanwick Oceanic) bekommt pro Flug zufällig eine Stimme aus `voices.pool` – möglichst jede eine andere, nie die Stimme der Callouts. Nach einem Neustart von Kopilot bleiben die Stimmen im selben Flug gleich. Feste Stimmen unter `voices.stations`, z. B. `"EDDF/tower": "bf_emma"`, `"FIR/EGGX": "bm_daniel"` oder `"delivery": "af_heart"` für alle Delivery-Stationen. Für ATC lädt Kopilot Kokoro auch dann, wenn die Callouts die Windows-Stimme nehmen; solange Kokoro lädt, spricht die englische Windows-Stimme. Eine Warning unterbricht einen laufenden Funkspruch. Gesprochen wird nur von der Tray-Instanz (HTTP-Modus); über die stdio-Instanz von Claude Desktop gibt es die Antwort nur als Text.
+
+**Vorlagen bearbeiten:** Alle Texte stehen in `atc-templates.json` neben der `Kopilot.exe`. Eigene Änderungen am besten in einer Kopie unter `%LOCALAPPDATA%\Kopilot\atc-templates.json` – die hat Vorrang und überschreibt `update.cmd` nicht. Danach `atc_control` mit `reload` (oder Kopilot neu starten).
+
+```jsonc
+"delivery.clearance": {
+  "variants": [
+    "{callsign}, cleared to {dest}, {sid} departure, runway {runway}, climb {initialAlt}, squawk {squawk}",
+    "{callsign}, cleared to {dest}, runway {runway}, climb {initialAlt}, squawk {squawk}"   // ohne SID
+  ],
+  "readback": [ "sid", "initialAlt", "squawk" ]
+}
+```
+
+- Mehrere Varianten: Die erste, deren Variablen alle bekannt sind, gewinnt.
+- `"from": "pilot"` sind die erwarteten Pilotensprüche – Hinweise für dich und Claude, keine Pflicht.
+- `corrections`: was nach „negative“ je Readback-Punkt gesagt wird.
+- `telephony`: ICAO-Kennung → Rufzeichen („DLH“ → „Lufthansa“).
+- `airports`: Rufname, Höhe der ersten Steigflugfreigabe, abweichende Stationsnamen (`"stations": { "departure": "Langen Radar" }`) und feste Frequenzen (`"frequencies": { "tower": "119.900" }`, Vorrang vor der Facilities-API).
+- `firs`: Name und Frequenz der Kontrollstelle je FIR, `"oceanic": true` für Oceanic-Gebiete.
+- `stationTypes`: Namen der Stationsarten und Platzhalter-Frequenzen.
+- `rules`: Schwellwerte der Zustandsmaschine (Höhen, Entfernungen, Zeiten).
+
+Variablen: `{callsign}` `{station}` `{dest}` `{sid}` `{star}` `{approach}` `{runway}` `{initialAlt}` `{squawk}` `{freq}` `{taxiRoute}` `{holdingPoint}` `{gate}` `{level}` `{speedKt}` `{entryFix}` `{heading}` `{wind}` `{qnh}` `{fix}` `{eta}` `{nextFix}`, dazu `{direction}` (Pushback), `{altitude}` (aktuelle Höhe), `{nextCenter}` (nächste Stelle bei Übergaben), `{route}` (Oceanic-Route), `{time}` (UTC), `{corrections}` und `{levelVerb}` (climb/descend/maintain). Kopilot prüft die Datei beim Laden: fehlende Funksprüche, unbekannte Variablen, Readback-Punkte ohne Korrektur und jede Erwähnung von Mach werden gemeldet (`get_atc_controller` → `templateErrors`, Log).
+
+Einstellungen in `appsettings.Local.json` unter `Kopilot:Atc`: `Enabled` (Standard an), `TemplatesFile`, `Speak` (Funksprüche sprechen). Im Browser zeigt `http://127.0.0.1:5155/atc/controller` den Zustand.
 
 ## SimBrief
 
@@ -473,12 +533,14 @@ src/Kopilot/
   Ecam/                   ECAM-Codes → Klartext (FBW-Tabelle, zur Laufzeit geladen)
   FlightPlan/             SimBrief-OFP, Routen- und Fortschrittsrechnung
   Atc/                    Ingame-ATC, Bahnnummer/-bezeichner, Phraseologie
+  Atc/Controller/         Kopilot-ATC: Zustandsmaschine, Vorlagen, Sprechweise, Readback-Prüfung, Stationen und Stimmen
+  atc-templates.json      Textvorlagen des Kopilot-ATC
   Monitoring/             Regeln (MonitorEngine), Alert-Bus, Hintergrunddienst
   Traffic/                Verkehrsabfrage, Peilung/Uhrzeit/Callout, Hintergrundabfrage für TRAFFIC_PROXIMITY
   Tools/                  MCP-Tools
   profiles/               Flugzeugprofile (JSON)
 src/SimConnectStub/       Platzhalter-API für CI-Builds ohne MSFS-SDK
-tests/Kopilot.Tests/      Tests (OAuth, Zugriffsschutz, Monitoring-Regeln, ECAM, SimBrief, Profile, Verkehr) – laufen ohne MSFS
+tests/Kopilot.Tests/      Tests (OAuth, Zugriffsschutz, Monitoring-Regeln, ECAM, SimBrief, Profile, Verkehr, ATC) – laufen ohne MSFS
 docs/cloudflared.md       Anleitung Cloudflare Tunnel
 ```
 
@@ -495,6 +557,8 @@ Jede Variable hat eine eigene SimConnect-Data-Definition. Ist ein Name in MSFS u
 - [x] v0.7: Eingabe-Modul mit Readback und Bestätigung (FCU, EFIS, Konfiguration, Licht, Schilder, Anti-Ice, Packs, APU, Transponder, Funk) – zuerst A32NX
 - [x] v0.8: Kokoro als zweite Stimme (neuronal, ohne Windows-Sprachpaket), ECAM-Titel ausgeschrieben, Tray-Schalter
 - [x] Verkehr: `get_traffic` (KI und Multiplayer) und Verkehrswarnung `TRAFFIC_PROXIMITY` – im Sim noch zu prüfen
+- [x] ATC-Modul: Zustandsmaschine mit Textvorlagen (Delivery bis Ground, Oceanic), Readback-Prüfung, Stimme je Station
+- [ ] ATC: Rollroutenberechnung aus dem Taxiway-Graphen der Facilities-API (`ITaxiRouteProvider`), Gate aus der Parkposition
 - [ ] Eingabe-Modul: im Sim prüfen, NAV & LOGO über Input Events, weitere Flugzeuge
 - [ ] WASimCommander-Anbindung (L:-Variablen auflisten, Events)
 - [x] Remote-Betrieb: Streamable HTTP mit Bearer-Token und OAuth, Cloudflare Tunnel

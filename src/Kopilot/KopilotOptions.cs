@@ -44,6 +44,9 @@ public sealed class KopilotOptions
     /// <summary>Eingabe-Modul: Schalter und Knöpfe im Cockpit nach Bestätigung durch den Piloten.</summary>
     public InputOptions Input { get; set; } = new();
 
+    /// <summary>ATC-Modul: Zustandsmaschine mit festen Textvorlagen (atc-templates.json).</summary>
+    public AtcOptions Atc { get; set; } = new();
+
     /// <summary>Ordner für Caches (ECAM-Tabellen). Leer = %LOCALAPPDATA%\Kopilot.</summary>
     public string DataDirectory { get; set; } = "";
 
@@ -193,6 +196,20 @@ public sealed class RemoteOptions
         string.IsNullOrWhiteSpace(StateFile)
             ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Kopilot", "oauth-state.json")
             : StateFile;
+}
+
+public sealed class AtcOptions
+{
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// Vorlagendatei. Ein relativer Name wird zuerst in DataDirectory (%LOCALAPPDATA%\Kopilot) gesucht – dort überlebt eine
+    /// eigene Kopie jedes Update –, dann neben der Kopilot.exe.
+    /// </summary>
+    public string TemplatesFile { get; set; } = "atc-templates.json";
+
+    /// <summary>Funksprüche mit den Kokoro-Stimmen der Stationen sprechen (nur Tray-Instanz).</summary>
+    public bool Speak { get; set; } = true;
 }
 
 public sealed class InputOptions

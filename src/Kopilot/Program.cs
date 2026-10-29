@@ -86,6 +86,7 @@ else
     builder.Services.AddSingleton<Kopilot.Speech.KokoroSpeechEngine>();
     builder.Services.AddSingleton<Kopilot.Speech.CalloutSpeaker>();
     builder.Services.AddSingleton<Kopilot.Speech.ISpeechOutput>(sp => sp.GetRequiredService<Kopilot.Speech.CalloutSpeaker>());
+    builder.Services.AddSingleton<Kopilot.Atc.IAtcRadio>(sp => sp.GetRequiredService<Kopilot.Speech.CalloutSpeaker>());
     builder.Services.AddHostedService(sp => sp.GetRequiredService<Kopilot.Speech.CalloutSpeaker>());
 
     if (OperatingSystem.IsWindows() && !Has(args, "--no-tray"))

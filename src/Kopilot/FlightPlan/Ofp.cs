@@ -31,6 +31,12 @@ public sealed record Ofp
 
     public int? InitialAltitudeFt { get; init; }
 
+    /// <summary>SID laut SimBrief (general.sid_ident), falls geliefert.</summary>
+    public string? SidIdent { get; init; }
+
+    /// <summary>STAR laut SimBrief (general.star_ident), falls geliefert.</summary>
+    public string? StarIdent { get; init; }
+
     public int? CostIndex { get; init; }
 
     public int? AirDistanceNm { get; init; }
@@ -92,6 +98,9 @@ public sealed record OfpFix
     public string? Stage { get; init; }
 
     public bool IsSidStar { get; init; }
+
+    /// <summary>FIR, in der der Fix liegt (z. B. "EDGG"), falls SimBrief sie liefert.</summary>
+    public string? Fir { get; init; }
 
     public double? Lat { get; init; }
 
@@ -209,6 +218,7 @@ public static class OfpParser
                 Airway = Str(f, "via_airway"),
                 Stage = Str(f, "stage"),
                 IsSidStar = Str(f, "is_sid_star") == "1",
+                Fir = Str(f, "fir")?.ToUpperInvariant(),
                 Lat = Dbl(f, "pos_lat"),
                 Lon = Dbl(f, "pos_long"),
                 AltitudeFt = Int(f, "altitude_feet"),
@@ -236,6 +246,8 @@ public static class OfpParser
             Alternate = Obj(root, "alternate") is { } alt && Str(alt, "icao_code") is not null ? Airport(alt) : null,
             Route = Str(general, "route"),
             InitialAltitudeFt = Int(general, "initial_altitude"),
+            SidIdent = Str(general, "sid_ident")?.ToUpperInvariant(),
+            StarIdent = Str(general, "star_ident")?.ToUpperInvariant(),
             CostIndex = Int(general, "costindex"),
             AirDistanceNm = Int(general, "air_distance"),
             AvgWindComponentKt = Int(general, "avg_wind_comp"),

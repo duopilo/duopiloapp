@@ -16,7 +16,7 @@ namespace Kopilot.Sim;
 ///
 /// Jede Variable bekommt eine eigene Data Definition. Ist ein Name unbekannt, fehlt nur dieser Wert.
 /// </summary>
-public sealed class SimConnectClient : BackgroundService
+public sealed partial class SimConnectClient : BackgroundService
 {
     private const uint AdHocRequestBase = 1_000_000;
     private const uint ClientEventBase = 10_000;
@@ -424,6 +424,7 @@ public sealed class SimConnectClient : BackgroundService
             }
 
             ExpirePendingReads();
+            ExpireFacilityRequest();
         }
 
         Disconnect();
@@ -442,6 +443,8 @@ public sealed class SimConnectClient : BackgroundService
             sc.OnRecvEvent += OnEvent;
             sc.OnRecvEventFilename += OnEventFilename;
             sc.OnRecvSystemState += OnSystemState;
+            sc.OnRecvFacilityData += OnFacilityData;
+            sc.OnRecvFacilityDataEnd += OnFacilityDataEnd;
             _sc = sc;
             _lastConnectError = null;
             return true;
@@ -521,6 +524,8 @@ public sealed class SimConnectClient : BackgroundService
         {
             // Befehle für die alte Verbindung verwerfen
         }
+
+        ResetFacilities();
     }
 
     private void Enqueue(Action<SimConnect> command)
