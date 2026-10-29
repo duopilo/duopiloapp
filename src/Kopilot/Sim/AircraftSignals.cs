@@ -291,14 +291,19 @@ public sealed class AircraftSignals(SimConnectClient sim)
     // ------------------------------------------------------------------ Elektrik
 
     /// <summary>Elektrik-Werte aus dem Profil (Spannung, Frequenz, Busse versorgt).</summary>
-    public IReadOnlyList<(string Key, string? Description, double? Value, string? Text)> Electrical()
+    public IReadOnlyList<(string Key, string? Description, double? Value, string? Text)> Electrical() => Values(Profile?.Electrical);
+
+    /// <summary>Treibstoffsystem aus dem Profil (Pumpenschalter, Pumpe läuft, Ventile).</summary>
+    public IReadOnlyList<(string Key, string? Description, double? Value, string? Text)> Fuel() => Values(Profile?.Fuel);
+
+    private IReadOnlyList<(string Key, string? Description, double? Value, string? Text)> Values(List<ProfileVariable>? variables)
     {
-        if (Profile is null || Profile.Electrical.Count == 0)
+        if (variables is not { Count: > 0 })
         {
             return [];
         }
 
-        return Profile.Electrical.Select(v =>
+        return variables.Select(v =>
         {
             var unit = string.IsNullOrWhiteSpace(v.Unit) ? "number" : v.Unit;
             var value = Sim.Num(SimConnectClient.VarKey(v.Name, unit));

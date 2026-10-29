@@ -41,6 +41,9 @@ public sealed partial class EcamCatalog
     private static readonly IReadOnlyDictionary<string, string> Sources = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
         ["fbw-a32nx"] = "https://raw.githubusercontent.com/flybywiresim/aircraft/master/fbw-a32nx/src/systems/shared/src/EwdMessages.ts",
+
+        // Headwind A330-900neo: dieselbe Struktur wie die FBW-Tabelle, dazu A330-eigene Codes (z. B. 000019002 ELEC EXT PWR)
+        ["hdw-a339x"] = "https://raw.githubusercontent.com/headwindsim/aircraft/main/hdw-a339x/src/systems/shared/src/EwdMessages.ts",
     };
 
     private static readonly TimeSpan RefreshAfter = TimeSpan.FromDays(14);

@@ -162,6 +162,31 @@ public static class ActionPlanner
         return PlanResult.Ok(new ActionPlan(action, valueText, readback.Trim(), steps, check, requires));
     }
 
+    /// <summary>
+    /// Welche Auswahl passt zu einem gelesenen Prüfwert? Damit "stateAfter 0" bei einem Schalter, dessen Stellung 0 "on" heißt,
+    /// nicht als "aus" gelesen wird. Mehrere Treffer (z. B. Landing lights off/retract = 0) werden mit "/" verbunden.
+    /// Null bei Aktionen ohne Auswahl oder Prüfung und wenn keine Auswahl passt.
+    /// </summary>
+    public static string? StateName(ProfileAction action, double state)
+    {
+        if (action.Parameter is not { IsChoice: true, Options: { Count: > 0 } options } || action.Check is not { } check || string.IsNullOrWhiteSpace(check.Variable))
+        {
+            return null;
+        }
+
+        var names = new List<string>();
+        foreach (var (key, optionValue) in options)
+        {
+            if (Resolve(check.Expect, optionValue, key, fallback: optionValue) is { } expected
+                && new ResolvedCondition(check.Variable.Trim(), Unit(check.Unit), expected, check.Tolerance, Modulo: check.Modulo).Matches(state))
+            {
+                names.Add(key);
+            }
+        }
+
+        return names.Count > 0 ? string.Join("/", names) : null;
+    }
+
     /// <summary>Kurzbeschreibung des erwarteten Werts, z. B. "100–399 kt" oder "on | off".</summary>
     public static string Describe(ActionParameter p)
     {

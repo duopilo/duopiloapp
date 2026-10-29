@@ -688,7 +688,7 @@ public sealed class SimConnectClient : BackgroundService
             }
         }
 
-        foreach (var variable in profile.Variables.Concat(profile.Electrical))
+        foreach (var variable in profile.Variables.Concat(profile.Electrical).Concat(profile.Fuel))
         {
             var unit = string.IsNullOrWhiteSpace(variable.Unit) ? "number" : variable.Unit;
             Subscribe(sc, new SimVarSpec(VarKey(variable.Name, unit), variable.Name.Trim(), unit, SimVarSpec.KindFromUnit(unit)));

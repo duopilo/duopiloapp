@@ -48,7 +48,9 @@ public static class InputTools
     [McpServerTool(Name = "prepare_action", Destructive = false, Idempotent = false)]
     [Description(
         "Step 1 of a cockpit input: checks the action, its value and the interlocks (no gear up on ground, no flaps above VFE, gear only below VLO) " +
-        "and returns a readback plus a token valid for about 60 s. Nothing is changed in the aircraft yet. " + Rules)]
+        "and returns a readback plus a token valid for about 60 s. Nothing is changed in the aircraft yet. " +
+        "Only one action is open at a time: every new prepare_action discards the open one (even if the new one is refused), " +
+        "so always confirm with the token of the latest successful prepare_action, through the same Kopilot connection. " + Rules)]
     public static async Task<string> PrepareAction(
         InputService input,
         ILogger<InputService> log,
@@ -73,7 +75,9 @@ public static class InputTools
     [McpServerTool(Name = "confirm_action", Destructive = true, Idempotent = false)]
     [Description(
         "Step 2: executes the prepared action after the pilot confirmed the readback. Interlocks are checked again with the current state. " +
-        "Afterwards Kopilot reads the aircraft state back ('confirmed': true = aircraft shows the new value). " + Rules)]
+        "Afterwards Kopilot reads the aircraft state back ('verification': confirmed/unverified/failed). 'stateAfter' is the raw value of the checked variable – " +
+        "for selector switches the position number (e.g. 0 = ON on a 3-position ON/AUTO/OFF switch), so never read it as on/off; " +
+        "'stateAfterText' names the matching option. " + Rules)]
     public static async Task<string> ConfirmAction(
         InputService input,
         ILogger<InputService> log,
@@ -93,7 +97,8 @@ public static class InputTools
         InputService input,
         ILogger<InputService> log,
         [Description("Action id, e.g. 'apu.bleed'.")] string? action = null,
-        [Description("The pilot's words confirming it worked, e.g. 'confirm, APU bleed is on'.")] string? pilotConfirmation = null)
+        [Description("The pilot's words confirming it worked, word for word, e.g. 'confirm, APU bleed is on', 'seatbelts on', 'APU avail', 'check'. " +
+                     "A confirmation or state word (confirm, check, on, off, avail, läuft) or the action's name is enough, as long as nothing is negated.")] string? pilotConfirmation = null)
     {
         return await Guard(log, "mark_action_verified", () => Task.FromResult(View(input.MarkVerified(action, pilotConfirmation), null)));
     }
@@ -141,7 +146,10 @@ public static class InputTools
                 _ => "unverified",
             },
         aircraftConfirmed = r.Confirmed == false ? false : r.CheckIndependent == true ? r.Confirmed : null,
+
+        // Rohwert der geprüften Variable (bei Wahlschaltern die Stellung, z. B. 0 = ON) und der Name der passenden Auswahl
         stateAfter = r.StateAfter,
+        stateAfterText = r.StateAfterText,
         alreadySet = r.AlreadySet ? true : (bool?)null,
         skippedSteps = r.Skipped is > 0 ? r.Skipped : null,
         checkedBy = r.CheckIndependent switch

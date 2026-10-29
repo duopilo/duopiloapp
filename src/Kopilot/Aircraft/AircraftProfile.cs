@@ -35,6 +35,9 @@ public sealed class AircraftProfile
     /// <summary>Elektrik-Werte für get_systems (z. B. Generatorspannung, Busse versorgt). Leer = kein Elektrik-Block.</summary>
     public List<ProfileVariable> Electrical { get; set; } = [];
 
+    /// <summary>Treibstoffsystem für get_systems (z. B. Pumpenschalter, Pumpe läuft, Transferventile). Leer = keine Pumpenliste.</summary>
+    public List<ProfileVariable> Fuel { get; set; } = [];
+
     /// <summary>Erlaubte Eingaben (Eingabe-Modul). Nur was hier steht, kann Kopilot im Cockpit bedienen.</summary>
     public List<Kopilot.Input.ProfileAction> Actions { get; set; } = [];
 
@@ -141,7 +144,7 @@ public sealed class ProfileBinding
 /// <summary>Wie das ECAM gelesen wird.</summary>
 public sealed class EcamConfig
 {
-    /// <summary>Codeformat/Tabelle, derzeit "fbw-a32nx".</summary>
+    /// <summary>Codeformat/Tabelle: "fbw-a32nx" (FlyByWire) oder "hdw-a339x" (Headwind A330-900neo).</summary>
     public string Format { get; set; } = "fbw-a32nx";
 
     /// <summary>Linker unterer EWD-Bereich (Warnungen/Verfahren), "{n}" = Zeilennummer.</summary>
