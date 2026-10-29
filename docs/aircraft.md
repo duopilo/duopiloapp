@@ -116,7 +116,16 @@ Profil `headwind-a339.json`, Testsession 28.10.2026. Basiert auf FlyByWire, viel
 
 Unbrauchbar (generisch): `BRAKE PARKING POSITION/INDICATOR`, `EXTERNAL POWER ON:1`, `AUTOPILOT MASTER` (blitzt beim Start kurz auf), generischer Fuel Flow und EGT, `AUTO BRAKE SWITCH CB`.
 
-Eingaben: nur External Power, APU Master und APU Start – alle ungeprüft.
+Eingaben: alle Aktionen des A32NX-Profils. External Power und APU sind eigene A330-Fassungen (Schalterstellung bzw. BAT 1 statt Schütz 3XG und DC BAT BUS).
+
+| Bereich | Status |
+|---|---|
+| FCU, Lights, Anti-Ice, External Power, APU Master/Start | im Sim getestet |
+| Seatbelts | angepasst, ungeprüft: Schalter mit drei Stellungen `L:XMLVAR_SWITCH_OVHD_INTLT_SEATBELT_Position` (0 ON, 1 AUTO, 2 OFF). Bei ON/OFF schaltet Kopilot `CABIN SEATBELTS ALERT SWITCH` mit, in AUTO das Flugzeug. |
+| No Smoking | angepasst, ungeprüft: Stellung wird mit der Einheit `Enum` gelesen (so liest sie auch die FWC) |
+| Landing Lights | angepasst, ungeprüft: Prüfung über das Licht `LIGHT LANDING:2` (Stromkreis 18). Der Schalter kennt nur ON/OFF. |
+| Managed NAV | angepasst, ungeprüft: Prüfung wartet bis zu 10 s |
+| Gear, Flaps, Speedbrake, Spoiler, Autobrake, EFIS, Packs, APU Bleed, Transponder/TCAS, COM 1 | aus dem A32NX übernommen, ungeprüft. Sperren wie beim A32NX mit den A330-Grenzwerten. |
 
 ## iniBuilds A321LR
 

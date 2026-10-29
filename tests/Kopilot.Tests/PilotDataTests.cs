@@ -266,7 +266,8 @@ public sealed class PilotDataTests
         Assert.Equal("arinc429", profile.Bindings[BindingKeys.ApuN].Type);
         Assert.False(profile.Bindings.ContainsKey(BindingKeys.AthrMode)); // bleibt beim A330 0 – lieber leer als falsch
         Assert.Equal(180, profile.Limits.VfeFor(null, "FULL"));
-        Assert.Equal(new[] { "elec.extPwr", "apu.master", "apu.start" }, profile.Actions.Select(a => a.Id));
+        Assert.Contains(profile.Actions, a => a.Id == "apu.start");
+        Assert.Contains(profile.Actions, a => a.Id == "signs.seatbelts");
 
         // Der A32NX bleibt beim A32NX
         Assert.Equal("FlyByWire A32NX", store.Match("FlyByWire A320neo", @"...\flybywire-aircraft-a320-neo\SimObjects\AirPlanes\FlyByWire_A320_NEO\aircraft.cfg")!.Name);

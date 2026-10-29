@@ -378,8 +378,7 @@ public sealed class InputTests
         Assert.Throws<InvalidOperationException>(() => ActionSafety.EnsureVariableAllowed("GENERAL ENG COMBUSTION:1"));
     }
 
-    [Fact]
-    public void A32NX_Aktionen_lassen_sich_alle_planen()
+    private static ProfileStore RepoStore()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null && !Directory.Exists(Path.Combine(dir.FullName, "src", "Kopilot", "profiles")))
@@ -391,12 +390,12 @@ public sealed class InputTests
         var options = Options.Create(new KopilotOptions { ProfilesDirectory = Path.Combine(dir.FullName, "src", "Kopilot", "profiles") });
         var store = new ProfileStore(options, NullLogger<ProfileStore>.Instance);
         Assert.Empty(store.Errors);
+        return store;
+    }
 
-        var profile = store.All.Single(p => p.Name == "FlyByWire A32NX");
-        Assert.True(profile.Actions.Count >= 40);
-        Assert.Contains(profile.Actions, a => a.Id == "gear.up" && a.Interlocks.Contains(Interlocks.NotOnGround));
-        Assert.Contains(profile.Actions, a => a.Id == "flaps" && a.Interlocks.Contains(Interlocks.FlapsSpeed));
-
+    /// <summary>Jede Aktion mit jedem Wert planen (onGround-Aktionen am Boden, alles andere bei 150 kt in der Luft).</summary>
+    private static void AssertAllPlannable(AircraftProfile profile)
+    {
         foreach (var action in profile.Actions)
         {
             string?[] values = action.Parameter switch
@@ -412,11 +411,23 @@ public sealed class InputTests
             {
                 var state = action.Interlocks.Contains(Interlocks.OnGround) ? Ground() : Air(150);
                 var result = ActionPlanner.Plan(action, value, profile.Limits, state);
-                Assert.True(result.Plan is not null, $"{action.Id} = {value}: {result.Refusal}");
+                Assert.True(result.Plan is not null, $"{profile.Name}: {action.Id} = {value}: {result.Refusal}");
                 Assert.DoesNotContain("{", result.Plan!.Readback);
                 Assert.NotEmpty(result.Plan.Steps);
             }
         }
+    }
+
+    [Fact]
+    public void A32NX_Aktionen_lassen_sich_alle_planen()
+    {
+        var store = RepoStore();
+        var profile = store.All.Single(p => p.Name == "FlyByWire A32NX");
+        Assert.True(profile.Actions.Count >= 40);
+        Assert.Contains(profile.Actions, a => a.Id == "gear.up" && a.Interlocks.Contains(Interlocks.NotOnGround));
+        Assert.Contains(profile.Actions, a => a.Id == "flaps" && a.Interlocks.Contains(Interlocks.FlapsSpeed));
+
+        AssertAllPlannable(profile);
 
         // APU-Werte für get_systems: dieselben Variablen wie die Eingaben, N aus dem ECB (ARINC 429)
         Assert.Equal("arinc429", profile.Bindings[BindingKeys.ApuN].Type);
@@ -447,6 +458,71 @@ public sealed class InputTests
         Assert.Equal("Landing lights retracted", landing.Readback);
         Assert.Equal(2, landing.Steps.Count(s => s.Event == "ELECTRICAL_CIRCUIT_TOGGLE"));
         Assert.All(landing.Steps.Where(s => s.Event is not null), s => Assert.Equal(0, s.SkipIf!.Value));
+    }
+
+    [Fact]
+    public void A339_hat_alle_A32NX_Aktionen_mit_eigenen_Anpassungen()
+    {
+        var store = RepoStore();
+        var a32nx = store.All.Single(p => p.Name == "FlyByWire A32NX");
+        var profile = store.All.Single(p => p.Name == "Headwind A330-900neo");
+
+        // Dieselben Aktionen in derselben Reihenfolge, keine doppelt
+        Assert.Equal(a32nx.Actions.Select(a => a.Id), profile.Actions.Select(a => a.Id));
+        Assert.Equal(profile.Actions.Count, profile.Actions.Select(a => a.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        AssertAllPlannable(profile);
+
+        ProfileAction Get(string id) => profile.Actions.Single(a => a.Id == id);
+        ActionPlan Plan(string id, string? value) => ActionPlanner.Plan(Get(id), value, profile.Limits, Air(150)).Plan!;
+
+        // Sperren wie beim A32NX
+        Assert.Contains(Interlocks.NotOnGround, Get("gear.up").Interlocks);
+        Assert.Contains(Interlocks.GearSpeed, Get("gear.down").Interlocks);
+        Assert.Contains(Interlocks.FlapsSpeed, Get("flaps").Interlocks);
+        Assert.Contains("VFE 180", ActionPlanner.Plan(Get("flaps"), "FULL", profile.Limits, Air(190)).Refusal);
+        Assert.Contains("VLO 250", ActionPlanner.Plan(Get("gear.down"), null, profile.Limits, Air(260)).Refusal);
+
+        // Im Sim getestet: FCU, Lights, Anti-Ice, External Power, APU – angepasste und neue Aktionen ungeprüft
+        Assert.True(Get("fcu.heading").Verified);
+        Assert.True(Get("lights.beacon").Verified);
+        Assert.True(Get("antiice.engines").Verified);
+        Assert.True(Get("apu.start").Verified);
+        Assert.All(new[] { "fcu.headingManaged", "lights.landing", "signs.seatbelts", "signs.noSmoking", "flaps", "gear.up", "apu.bleed", "xpdr.code" },
+            id => Assert.False(Get(id).Verified, id));
+
+        // External Power und APU: die A330-Fassungen bleiben (Schalter statt Schütz 3XG, BAT 1 statt DC BAT BUS)
+        Assert.Equal("L:A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON", Get("elec.extPwr").Check!.Variable);
+        Assert.Contains(Get("apu.master").Requires, r => r.Variable == "L:A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO");
+
+        // Seatbelts: Schalter mit drei Stellungen, Zeichen bei ON/OFF selbst mitschalten, AUTO macht das Flugzeug
+        var auto = Plan("signs.seatbelts", "auto");
+        var set = Assert.Single(auto.Steps);
+        Assert.Equal("L:XMLVAR_SWITCH_OVHD_INTLT_SEATBELT_Position", set.Set);
+        Assert.Equal(1, set.SetValue);
+        Assert.Equal("Enum", set.SkipIf!.Unit);
+        Assert.Equal("Enum", auto.Check!.Condition.Unit);
+        var on = Plan("signs.seatbelts", "on");
+        Assert.Equal(0, on.Steps[0].SetValue);
+        Assert.Equal("CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE", on.Steps[1].Event);
+        Assert.Equal(1, on.Steps[1].SkipIf!.Value);
+        var off = Plan("signs.seatbelts", "off");
+        Assert.Equal(2, off.Steps[0].SetValue);
+        Assert.Equal(0, off.Steps[1].SkipIf!.Value);
+
+        // No smoking: Stellung als Enum lesen (vor dem Schreiben und in der Prüfung)
+        var noSmoking = Plan("signs.noSmoking", "on");
+        Assert.Equal("Enum", Assert.Single(noSmoking.Steps).SkipIf!.Unit);
+        Assert.Equal("Enum", noSmoking.Check!.Condition.Unit);
+
+        // Landescheinwerfer: geprüft wird das Licht selbst
+        var landing = Plan("lights.landing", "on");
+        Assert.Equal("LIGHT LANDING:2", landing.Check!.Condition.Variable);
+        Assert.Equal(1, landing.Check.Condition.Value);
+        Assert.True(landing.Check.Independent);
+        Assert.Equal(0, Plan("lights.landing", "off").Check!.Condition.Value);
+
+        // Managed NAV: NAV braucht ein paar Sekunden
+        Assert.True(Plan("fcu.headingManaged", null).Check!.TimeoutMs >= 8000);
     }
 
     [Fact]
