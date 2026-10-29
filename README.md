@@ -227,12 +227,12 @@ Kopilot bringt ein eigenes ATC mit: eine Zustandsmaschine mit festen Textvorlage
 | Tower | Landefreigabe mit Wind (spätestens 4 nm vor der Schwelle) | nach der Landung unter 40 kt: „vacate via next exit, contact Ground“ |
 | Ground | Rollen zum Gate | Ende, wenn das Flugzeug mit Parkbremse steht |
 
-Auf Kurzstrecken ohne Oceanic-Fixes (Koordinaten wie `55N020W` oder eine FIR, die in den Vorlagen als `oceanic` markiert ist) entfällt Oceanic. Startest du ohne Freigaben, springt das ATC beim Startlauf zum Tower nach. Startest du die Sitzung in der Luft, beginnt sie bei der Stelle, die dort zuständig ist.
+Auf Kurzstrecken ohne Oceanic-Fixes (Koordinaten wie `55N020W` oder eine FIR, die in den Vorlagen als `oceanic` markiert ist) entfällt Oceanic. Startest du ohne Freigaben, springt das ATC beim Startlauf zum Tower nach. Startest du die Sitzung in der Luft, beginnt sie bei der Stelle, die dort zuständig ist. Startest du sie erst im Oceanic-Luftraum oder hinter dem Eintrittspunkt (z. B. nach einem Neustart von Kopilot), gilt die Oceanic-Freigabe als erteilt – ebenso, wenn du den Eintrittspunkt ohne Anfrage erreichst.
 
-**Readback:** Bei Freigaben prüft Kopilot die Werte aus der Vorlage (`readback`), z. B. SID, Höhe und Squawk bei der Streckenfreigabe. Kopilot versteht Ziffern („2205“, „FL110“) wie gesprochene Zahlen („two two zero five“, „five thousand feet“, „one two one decimal eight“) und das NATO-Alphabet. Ist ein Wert falsch oder fehlt, kommt „negative“ mit dem richtigen Wert, z. B. „Lufthansa four alpha bravo, negative, squawk two two zero five“ – danach musst du nur diesen Wert noch einmal zurücklesen. Quittungen ohne Freigabe („contact Ground one two one decimal eight“) beantwortet ATC nicht. „Say again“ wiederholt den letzten Funkspruch.
+**Readback:** Bei Freigaben prüft Kopilot die Werte aus der Vorlage (`readback`), z. B. SID, Höhe und Squawk bei der Streckenfreigabe. Kopilot versteht Ziffern („2205“, „FL110“) wie gesprochene Zahlen („two two zero five“, „five thousand feet“, „one two one decimal eight“) und das NATO-Alphabet. Ist ein Wert falsch oder fehlt, kommt „negative“ mit dem richtigen Wert, z. B. „Lufthansa four alpha bravo, negative, squawk two two zero five“ – danach musst du nur diesen Wert noch einmal zurücklesen. Quittungen ohne Freigabe („contact Ground one two one decimal eight“) beantwortet ATC nicht. „Say again“ wiederholt den letzten Funkspruch. Einen „radio check“ (oder „how do you read“) beantwortet die Station mit „read you five“ (`common.radioCheck`), ohne dass sich am Ablauf oder an einem offenen Readback etwas ändert.
 
 **Daten:**
-- Rufzeichen, Ziel, SID/STAR, Bahnen, Reiseflughöhe, FIRs und Oceanic-Teil aus dem SimBrief-OFP (SimBrief muss eingerichtet sein). Ohne FIR-Angaben im OFP teilt Kopilot den Nordatlantik bei 30°W in Shanwick und Gander.
+- Rufzeichen, Ziel, SID/STAR, Bahnen, Reiseflughöhe, FIRs und Oceanic-Teil aus dem SimBrief-OFP (SimBrief muss eingerichtet sein). Das Rufzeichen kommt aus der Flugnummer mit ICAO-Airline-Kennung (`CFG2205` → „Condor two two zero five“ über `telephony`) – das Feld `callsign` kann den IATA-Code tragen (`DE2205`) und zählt nur, wenn es mit derselben ICAO-Kennung beginnt (z. B. `DLH4AB` zur Flugnummer `DLH400`). Steht die Airline nicht in `telephony`, wird die ICAO-Kennung buchstabiert. Ohne FIR-Angaben im OFP teilt Kopilot den Nordatlantik bei 30°W in Shanwick und Gander.
 - Höhe, Position, Speed, Wind, QNH und Zeit aus SimConnect. QNH am Ziel aus dem METAR des OFP, in der Nähe des Flughafens aus dem Sim. Nordamerika: „altimeter“ in inHg.
 - Frequenzen aus der Facilities-API von MSFS (Clearance, Ground, Tower, Departure, Approach). Fehlen sie, nimmt Kopilot die Frequenz aus der Vorlage oder einen Platzhalter. `get_atc_controller` zeigt die Quelle (`frequencySource`).
 - Squawk: pro Flug fest, ohne Sondercodes.
@@ -257,7 +257,7 @@ Auf Kurzstrecken ohne Oceanic-Fixes (Koordinaten wie `55N020W` oder eine FIR, di
 - `corrections`: was nach „negative“ je Readback-Punkt gesagt wird.
 - `telephony`: ICAO-Kennung → Rufzeichen („DLH“ → „Lufthansa“).
 - `airports`: Rufname, Höhe der ersten Steigflugfreigabe, abweichende Stationsnamen (`"stations": { "departure": "Langen Radar" }`) und feste Frequenzen (`"frequencies": { "tower": "119.900" }`, Vorrang vor der Facilities-API).
-- `firs`: Name und Frequenz der Kontrollstelle je FIR, `"oceanic": true` für Oceanic-Gebiete.
+- `firs`: Name und Frequenz der Kontrollstelle je FIR, `"oceanic": true` für Oceanic-Gebiete. FIRs ohne eigenen Eintrag nehmen `OCEANIC` bzw. `CENTER` (generische Station „Center“; ohne eigene `frequency` gilt der Platzhalter aus `stationTypes`).
 - `stationTypes`: Namen der Stationsarten und Platzhalter-Frequenzen.
 - `rules`: Schwellwerte der Zustandsmaschine (Höhen, Entfernungen, Zeiten).
 

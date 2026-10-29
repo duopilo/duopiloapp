@@ -56,9 +56,9 @@ public sealed record AtcRoutingInfo(IReadOnlyList<string> Stations, IReadOnlyLis
 
         var callsigns = new List<string>();
         var code = session?.Plan.Callsign;
-        if (string.IsNullOrWhiteSpace(code) && FirstNonEmpty(plan?.Callsign, plan?.FlightNumber, simCallsign) is { } raw)
+        if (string.IsNullOrWhiteSpace(code))
         {
-            code = AtcSpeech.Compact(raw);
+            code = AtcPlan.CallsignCode(plan, simCallsign);
         }
 
         if (!string.IsNullOrWhiteSpace(code))
@@ -78,11 +78,23 @@ public sealed record AtcRoutingInfo(IReadOnlyList<string> Stations, IReadOnlyLis
             lastAtc);
     }
 
-    // Nur die Stationsart ("Oceanic", "Tower") ist zu allgemein, um daran einen Funkspruch zu erkennen
-    private static bool IsUsableStation(string? name, AtcTemplates? templates) =>
-        !string.IsNullOrWhiteSpace(name)
-        && (name.Contains(' ', StringComparison.Ordinal)
-            || templates?.StationTypes.Values.Any(t => string.Equals(t.Name, name.Trim(), StringComparison.OrdinalIgnoreCase)) != true);
+    // Nur die Stationsart ("Oceanic", "Tower") oder der Name einer generischen Station ("Center") ist zu allgemein, um
+    // daran einen Funkspruch zu erkennen – "runway two five center" ist kein Anruf
+    private static bool IsUsableStation(string? name, AtcTemplates? templates)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return false;
+        }
 
-    private static string? FirstNonEmpty(params string?[] values) => values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
+        var trimmed = name.Trim();
+        if (trimmed.Contains(' ', StringComparison.Ordinal) || templates is null)
+        {
+            return true;
+        }
+
+        return !templates.StationTypes.Values.Any(t => string.Equals(t.Name, trimmed, StringComparison.OrdinalIgnoreCase))
+            && !new[] { AtcStations.GenericOceanicFir, AtcStations.GenericCenterFir }
+                .Any(g => string.Equals(templates.Fir(g)?.Name?.Trim(), trimmed, StringComparison.OrdinalIgnoreCase));
+    }
 }

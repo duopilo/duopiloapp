@@ -352,6 +352,7 @@ public static class AtcMessageIds
     public const string CommonNegative = "common.negative";
     public const string CommonRoger = "common.roger";
     public const string CommonSayAgain = "common.sayAgain";
+    public const string CommonRadioCheck = "common.radioCheck";
 
     public static readonly IReadOnlyList<string> All =
     [
@@ -364,7 +365,7 @@ public static class AtcMessageIds
         ApproachContact, ApproachDescend, ApproachCleared, ApproachHandoff,
         TowerLandingContact, TowerLanding, TowerVacate,
         GroundArrivalContact, GroundTaxiToGate,
-        CommonNegative, CommonRoger, CommonSayAgain,
+        CommonNegative, CommonRoger, CommonSayAgain, CommonRadioCheck,
     ];
 }
 

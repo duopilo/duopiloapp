@@ -3,7 +3,7 @@
   "_hinweise": {
     "voices": "Jede Station bekommt pro Flug zufällig eine Stimme aus pool. Feste Stimmen unter stations, z. B. \"EDDF/tower\": \"bf_emma\", \"FIR/EGGX\": \"bm_daniel\" oder für eine ganze Art \"delivery\": \"af_heart\".",
     "airports": "Rufname, Steigflughöhe der Streckenfreigabe ({initialAlt}), abweichende Stationsnamen und feste Frequenzen (\"frequencies\": { \"tower\": \"118.775\" } – haben Vorrang vor der Facilities-API).",
-    "firs": "FIR (ICAO) → Name der Kontrollstelle und Frequenz. oceanic: true = Positionsmeldungen, vorher Oceanic-Freigabe. Ohne FIR-Angaben im OFP gilt auf dem Nordatlantik: östlich 30°W EGGX, westlich CZQX.",
+    "firs": "FIR (ICAO) → Name der Kontrollstelle und Frequenz. oceanic: true = Positionsmeldungen, vorher Oceanic-Freigabe. Ohne FIR-Angaben im OFP gilt auf dem Nordatlantik: östlich 30°W EGGX, westlich CZQX. FIRs ohne eigenen Eintrag nehmen OCEANIC bzw. CENTER (generische Station).",
     "rules": "Schwellwerte der Zustandsmaschine: Höhen in ft, Strecken in nm, Zeiten in Sekunden bzw. Minuten.",
     "messages": "from: atc = Kopilot spricht, pilot = erwarteter Pilotenspruch (Hinweis). readback: Variablen, die der Pilot zurücklesen muss.",
     "corrections": "Was nach \"negative\" gesagt wird, je Readback-Punkt."
@@ -114,6 +114,7 @@
     "KZWY": { "name": "New York Oceanic", "oceanic": true },
     "LPPO": { "name": "Santa Maria Oceanic", "oceanic": true },
     "OCEANIC": { "name": "Oceanic", "oceanic": true },
+    "CENTER": { "name": "Center" },
     "CZQM": { "name": "Moncton Center" },
     "CZUL": { "name": "Montreal Center" },
     "CZYZ": { "name": "Toronto Center" },
@@ -328,6 +329,9 @@
     },
     "common.sayAgain": {
       "variants": [ "{callsign}, say again" ]
+    },
+    "common.radioCheck": {
+      "variants": [ "{callsign}, read you five" ]
     }
   },
 

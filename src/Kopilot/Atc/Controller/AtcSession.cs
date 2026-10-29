@@ -111,6 +111,7 @@ public sealed partial class AtcSession
         _input = input;
         UpdateRoute(input);
         Place(input);
+        UpdateOceanicClearance(input);
         return [];
     }
 
@@ -169,6 +170,7 @@ public sealed partial class AtcSession
         if (Phase == AtcPhase.Inactive)
         {
             Place(input);
+            UpdateOceanicClearance(input);
         }
 
         var heard = HeardText.Parse(text);
@@ -185,6 +187,17 @@ public sealed partial class AtcSession
         if (heard.Compact.Contains("SAYAGAIN", StringComparison.Ordinal) && _lastAtc is { } last)
         {
             Record(output, "atc", _lastAtcStation ?? Station, last.MessageId, last.Text, last.Spoken);
+            return output;
+        }
+
+        if (IsRadioCheck(heard))
+        {
+            // Nur die Lesbarkeit – kein Readback, keine Anfrage, der Ablauf bleibt, wo er ist. Ohne Vorlage (alte eigene Kopie): "roger".
+            if (Say(output, AtcMessageIds.CommonRadioCheck, null, target) is null)
+            {
+                Say(output, AtcMessageIds.CommonRoger, null, target);
+            }
+
             return output;
         }
 
@@ -874,18 +887,31 @@ public sealed partial class AtcSession
 
     private void UpdateOceanicClearance(AtcInput input)
     {
-        if (Oceanic != OceanicClearanceState.NotYetDue || Plan.Oceanic is not { } oceanic || Phase is not (AtcPhase.Departure or AtcPhase.Center))
+        if (Oceanic is not (OceanicClearanceState.NotYetDue or OceanicClearanceState.Due) || Plan.Oceanic is not { } oceanic)
         {
             return;
         }
 
-        if (Plan.FixDistanceNm(oceanic.EntryFix) is not { } entryNm || _alongNm is not { } along)
+        var entryNm = Plan.FixDistanceNm(oceanic.EntryFix);
+        var along = _alongNm;
+
+        // Schon im Oceanic-Luftraum oder am Eintrittspunkt vorbei (z. B. Sitzung erst über dem Atlantik bzw. nach einem
+        // Neustart von Kopilot gestartet, oder nie angefordert): die Freigabe gilt als erteilt. Sonst bliebe sie auf
+        // NotYetDue stehen, und mit Due ginge eine Positionsmeldung an Shanwick als Freigabe-Anfrage durch.
+        if (Phase == AtcPhase.Oceanic || (entryNm is { } passedNm && along is { } a && a >= passedNm))
+        {
+            Oceanic = OceanicClearanceState.Cleared;
+            return;
+        }
+
+        if (Oceanic != OceanicClearanceState.NotYetDue || Phase is not (AtcPhase.Departure or AtcPhase.Center)
+            || entryNm is not { } nm || along is not { } alongNm)
         {
             return;
         }
 
         var gs = input.GroundSpeedKt is > 100 ? input.GroundSpeedKt.Value : 450;
-        var minutes = (entryNm - along) / gs * 60;
+        var minutes = (nm - alongNm) / gs * 60;
         if (minutes <= Rules.OceanicRequestMinutes)
         {
             Oceanic = OceanicClearanceState.Due;
@@ -913,6 +939,26 @@ public sealed partial class AtcSession
         }
 
         return PendingReadback is null || mentionsOceanic || heard.ContainsCode(Plan.Ofp.Fixes[oceanic.EntryFix].Ident);
+    }
+
+    /// <summary>Radio Check ("…, radio check on one two seven decimal six five", "how do you read")?</summary>
+    private static bool IsRadioCheck(HeardText heard)
+    {
+        var t = heard.Tokens;
+        for (var i = 0; i + 1 < t.Count; i++)
+        {
+            if (t[i].IsWord("radio") && t[i + 1].IsWord("check"))
+            {
+                return true;
+            }
+
+            if (i + 3 < t.Count && t[i].IsWord("how") && t[i + 1].IsWord("do") && t[i + 2].IsWord("you") && t[i + 3].IsWord("read"))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>Neuer Anruf (Anfrage, Erstkontakt) statt Quittung der letzten Anweisung?</summary>
@@ -956,7 +1002,7 @@ public sealed partial class AtcSession
         Record(output, "atc", speaker, messageId, rendered.Text, rendered.Spoken);
 
         // Auf Anweisungen folgt meist eine Quittung des Piloten, auf die ATC nicht antwortet
-        if (messageId is not (AtcMessageIds.CommonRoger or AtcMessageIds.CommonSayAgain or AtcMessageIds.CommonNegative or AtcMessageIds.OceanicRoger))
+        if (messageId is not (AtcMessageIds.CommonRoger or AtcMessageIds.CommonSayAgain or AtcMessageIds.CommonNegative or AtcMessageIds.CommonRadioCheck or AtcMessageIds.OceanicRoger))
         {
             _ackPending = true;
         }
