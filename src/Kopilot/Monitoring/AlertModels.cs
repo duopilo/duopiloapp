@@ -74,6 +74,9 @@ public static class Rules
     public const string PmFlaps = "PM_FLAPS";
     public const string PmGear = "PM_GEAR";
 
+    // Am Boden: zu schnell gerollt (v0.9, Sprachschleife)
+    public const string TaxiSpeed = "TAXI_SPEED";
+
     // Ansagen, die viele Airliner selbst machen (FWC) – nur mit Monitoring:AircraftAutoCallouts
     public const string AutoRadioAltitude = "AUTO_RA";
     public const string AutoMinimum = "AUTO_MINIMUM";
@@ -87,6 +90,7 @@ public static class Rules
         ApDisconnect, MasterWarning, MasterCaution, EcamMessage, Alt1000ToGo, TopOfDescent, LandingCheck, RunwayAssigned, Stall, Overspeed,
         TrafficProximity,
         Pm100Knots, PmV1, PmRotate, PmPositiveClimb, PmSpoilers, PmReverse, PmDecel, Pm70Knots, PmTenThousand, PmTransition, PmFlaps, PmGear,
+        TaxiSpeed,
         AutoRadioAltitude, AutoMinimum, AutoRetard,
     ];
 }

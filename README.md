@@ -76,6 +76,7 @@ Dazu kommen die Callouts, die ein Pilot Monitoring macht:
 | `PM_TRANSITION` | Transition altitude / Transition level | TA im Steigflug, TL im Sinkflug (aus dem FMS, sonst SimBrief) |
 | `PM_FLAPS` | Speed checked, flaps two / Flaps zero | Klappenhebel steht 1,5 s in neuer Stellung; beim Ausfahren mit Speed-Check gegen VFE |
 | `PM_GEAR` | Gear down / Gear up | Fahrwerkshebel in der Luft |
+| `TAXI_SPEED` | Taxi speed | am Boden länger als 2 s über 25 kt Groundspeed (nicht im Start- und Landerollen), höchstens alle 30 s – einstellbar in `voice-settings.json` |
 
 Radiohöhen (2500, 1000, 500 …), „Hundred above“, „Minimum“ und „Retard“ sagt der A32NX selbst an. Kopilot kann sie zusätzlich sprechen – für Flugzeuge ohne eigene Ansagen: Dashboard → Ansagen → Stimme, oder `Kopilot:Monitoring:AircraftAutoCallouts`.
 
@@ -263,6 +264,69 @@ Auf Kurzstrecken ohne Oceanic-Fixes (Koordinaten wie `55N020W` oder eine FIR, di
 Variablen: `{callsign}` `{station}` `{dest}` `{sid}` `{star}` `{approach}` `{runway}` `{initialAlt}` `{squawk}` `{freq}` `{taxiRoute}` `{holdingPoint}` `{gate}` `{level}` `{speedKt}` `{entryFix}` `{heading}` `{wind}` `{qnh}` `{fix}` `{eta}` `{nextFix}`, dazu `{direction}` (Pushback), `{altitude}` (aktuelle Höhe), `{nextCenter}` (nächste Stelle bei Übergaben), `{route}` (Oceanic-Route), `{time}` (UTC), `{corrections}` und `{levelVerb}` (climb/descend/maintain). Kopilot prüft die Datei beim Laden: fehlende Funksprüche, unbekannte Variablen, Readback-Punkte ohne Korrektur und jede Erwähnung von Mach werden gemeldet (`get_atc_controller` → `templateErrors`, Log).
 
 Einstellungen in `appsettings.Local.json` unter `Kopilot:Atc`: `Enabled` (Standard an), `TemplatesFile`, `Speak` (Funksprüche sprechen). Im Browser zeigt `http://127.0.0.1:5155/atc/controller` den Zustand.
+
+## Sprachschleife
+
+Du sprichst direkt mit Kopilot – ohne Claude, ohne Push-to-Talk (VR-tauglich), komplett lokal und ohne Sprachmodell:
+
+```
+Mikrofon → Silero VAD (Satzgrenzen) → Whisper (Abschrift) → Router ─┬→ Kopilot-Befehle → Eingabe-Modul
+                                                                    └→ ATC-Modul
+                                     Sprachausgabe (Kokoro) ←───────┘   Warnungen > Callouts > Antworten > ATC
+```
+
+**Einschalten:** in `%LOCALAPPDATA%\Kopilot\voice-settings.json` (legt Kopilot beim ersten Start aus der Vorlage an) `"enabled": true` setzen und Kopilot neu starten. Beim ersten Start lädt Kopilot das Whisper-Modell (`base-q5_1`, ~60 MB) und Silero VAD (~2 MB) nach `%LOCALAPPDATA%\Kopilot\models`. Für Befehle muss außerdem die Eingabe im Dashboard freigegeben sein. Status: `http://127.0.0.1:5155/voice` (zuletzt erkannter Satz, Zuordnung, Antwort, Rechenzeit).
+
+**So läuft es:**
+- Das Mikrofon ist dauerhaft offen. Silero VAD erkennt, wann du sprichst; nach 0,7 s Stille geht der Satz an Whisper.
+- Halbduplex: Solange Kopilot spricht (und 350 ms danach), ist das Mikrofon stumm – Kopilot hört sich nicht selbst. Während du sprichst, warten Callouts und Antworten kurz; nur Warnungen fallen dir ins Wort.
+- Whisper erkennt je Satz Deutsch oder Englisch. Zahlen werden vereinheitlicht: „Flaps one“, „Flaps 1“, „Flaps won“, „Klappen eins“ ergeben dasselbe.
+- **Router:** Enthält der Satz ein Stationsrufzeichen („Frankfurt Tower“, „Langen Radar“, „Shanwick“) oder beginnt er mit dem eigenen Rufzeichen (aus `voice-settings.json` oder MSFS), geht er ans ATC-Modul. Alles andere ist ein Kopilot-Befehl. Mit „Kopilot, …“ immer Kopilot.
+- Sim pausiert → Kopilot sagt nichts und verarbeitet nichts.
+
+**Befehle** (feste Muster, deutsch und englisch, Beispiele):
+
+| Bereich | Sätze |
+|---|---|
+| Konfiguration | Gear up/down, Fahrwerk ein/aus · Flaps 0/1/2/3/Full, Klappen eins/voll · Speedbrake retract/half/full · Arm/Disarm spoilers, Spoiler armen |
+| Bremsen, Licht, Schilder | Autobrake low/medium/max/off · Landing lights on/off, Landelichter an · Strobe on/auto/off · Beacon on · Taxi light on · Seat belts on/off, Anschnallzeichen an |
+| APU | APU start · APU master on/off · APU bleed on/off |
+| EFIS, FCU | QNH 1013 / QNH one zero one three · Baro standard · Altitude five thousand · Flight level one two zero · Speed two five zero · Heading zero niner zero · Managed speed · Vertical speed minus one thousand · Autopilot one on · Approach on |
+| Transponder | Squawk seven thousand / Squawk 1 2 3 4 · TCAS TA/RA · TCAS TA only |
+
+Jeder Befehl läuft über den bestehenden Zwei-Schritt-Ablauf: Kopilot ruft `prepare_action` auf und spricht den Readback („Flaps one“). Erst auf **„Confirm“**, **„Correct“** oder **„Affirm“** (auch „Ja“, „Korrekt“) folgt `confirm_action`; **„Negative“** oder **„Cancel“** verwirft die Aktion („Cancelled“). Ohne Antwort verfällt sie nach 60 Sekunden still. Ausgeführt sagt Kopilot nichts – nur „Not confirmed“, wenn das Flugzeug den Wert nicht übernommen hat, „Unable“ bei einer Sperre und „Input disabled“, wenn die Eingabe gesperrt ist. Zwei Befehle in einem Satz oder Unbekanntes → „Say again“ (längeres Gespräch im Raum wird still verworfen).
+
+**Abfragen** – Antwort nur als reiner Callout, Geschwindigkeiten immer in Knoten:
+
+| Frage | Antwort (Beispiel) |
+|---|---|
+| Speed check | Speed two five zero (am Boden: Ground speed one two) |
+| Altitude check | Altitude five thousand / Flight level three five zero (bei STD) |
+| Fuel check | Fuel twelve point four tons |
+| Engine check | Engines normal / Engine two not running / N1 split |
+| Gear, Flaps, Speedbrake, Spoilers, Seat belts, APU, Baro, Heading check | Gear down · Flaps one · Speedbrake retracted · Spoilers armed · … |
+
+**Steuerung:** „Kopilot Pause“ / „Kopilot weiter“ oder das Tastenkürzel (Standard `Ctrl+Alt+K`, systemweit) schalten die Spracheingabe stumm und wieder an – Callouts laufen weiter. „Say again“ wiederholt die letzte Antwort.
+
+**Sprachausgabe:** Kokoro mit fester Stimme für Kopilot (`voices.kopilot`, leer = Dashboard-Stimme), ATC-Stationen mit eigenen Stimmen (je Station fest). Zahlen, NATO-Alphabet und Funk-Phraseologie auf Englisch: Speed, Heading, Squawk und QNH Ziffer für Ziffer, Höhen in Tausendern, 9 als „niner“. Eine unterbrochene Antwort oder ATC-Meldung kommt nach der Warnung einmal erneut.
+
+**ATC-Modul** (`feature/atc-templates`): implementiert `IAtcVoiceModule` (`src/Kopilot/Voice/AtcVoice.cs`) und registriert sich vor `AddKopilotVoice()`. Es bekommt jeden Funkspruch als `PilotTransmission` (Text, erkannte Station, Rufzeichen), gibt Antworten als `AtcTransmission` zurück und meldet sich über `IAtcRadio` auch von selbst. Ohne ATC-Modul bleiben Funksprüche unbeantwortet (nur im Log).
+
+**Einstellungen** (`voice-settings.json`, Kommentare erlaubt):
+
+| Abschnitt | Was |
+|---|---|
+| `microphone` | Gerät (Teil des Namens, leer = Standard), VAD-Schwelle, Mindestlänge, Stille bis Satzende, Nachlauf nach Ansagen |
+| `recognition` | Whisper-Modell (`tiny`/`base`/`small`, auch `-q5_1`/`-q8_0`), `cpu`/`gpu`, Threads, Sprache `auto`/`de`/`en`, Wortschatz-Hinweis |
+| `voices` | Kokoro-Stimme für Kopilot, Stimmen für ATC, Lautstärke je Seite |
+| `hotkeys` | Tastenkürzel für stumm/an |
+| `commands` | Anrede, Pflicht zur Anrede (`requireWakeWord`), Timeout für die Bestätigung |
+| `atc` | eigene Rufzeichen, weitere Stationen, Rufzeichen aus MSFS |
+| `callouts` | aktive und stumme Regeln, Stille bei Pause, Taxi-Speed-Warnung |
+
+**Ressourcen** (MSFS hat Vorrang): Standard ist Whisper auf der CPU mit 4 Threads – gerechnet wird nur, wenn du gesprochen hast. `gpu` versucht CUDA, dann Vulkan, und fällt sonst auf die CPU zurück; neben MSFS in VR kann das Ruckler kosten. Schneller wird es mit fester Sprache (`"language": "de"`), `"audioContext": 768` oder dem Modell `tiny-q5_1`; besser Deutsch versteht `small-q5_1` (~190 MB).
+
+Lizenzen: Whisper.net und whisper.cpp (MIT), Silero VAD (MIT), NAudio (MIT).
 
 ## SimBrief
 
@@ -522,7 +586,8 @@ src/Kopilot/
   Program.cs              Start: --stdio (Claude Desktop) oder HTTP mit Tray, --console, --generate-secret
   Dashboard/              Dashboard im Browser (HTML, eingebettete Schrift B612), Daten-API
   Desktop/                Tray-Symbol, Autostart
-  Speech/                 Sprachausgabe: Windows-Stimme oder Kokoro, Warteschlange, Ausgabegerät, ECAM-Text zum Sprechen
+  Speech/                 Sprachausgabe: Windows-Stimme oder Kokoro, Warteschlange mit Prioritäten, Ausgabegerät, ECAM-Text zum Sprechen
+  Voice/                  Sprachschleife: Mikrofon, Silero VAD, Whisper, Normalisierung, Router, Befehle, Dialog, ATC-Schnittstelle
   Input/                  Eingabe-Modul: Aktionen planen, Sperren, Bestätigung, Ausführung über SimConnect
   Hosting/                Transport-Auswahl, Konfiguration, HTTP-Host
   Remote/                 Bearer-Token, OAuth-Server, Freigabeseite, Token-Speicher
@@ -540,7 +605,7 @@ src/Kopilot/
   Tools/                  MCP-Tools
   profiles/               Flugzeugprofile (JSON)
 src/SimConnectStub/       Platzhalter-API für CI-Builds ohne MSFS-SDK
-tests/Kopilot.Tests/      Tests (OAuth, Zugriffsschutz, Monitoring-Regeln, ECAM, SimBrief, Profile, Verkehr, ATC) – laufen ohne MSFS
+tests/Kopilot.Tests/      Tests (OAuth, Zugriffsschutz, Monitoring-Regeln, ECAM, SimBrief, Profile, Verkehr, ATC, Sprachschleife) – laufen ohne MSFS
 docs/cloudflared.md       Anleitung Cloudflare Tunnel
 ```
 
@@ -559,6 +624,8 @@ Jede Variable hat eine eigene SimConnect-Data-Definition. Ist ein Name in MSFS u
 - [x] Verkehr: `get_traffic` (KI und Multiplayer) und Verkehrswarnung `TRAFFIC_PROXIMITY` – im Sim noch zu prüfen
 - [x] ATC-Modul: Zustandsmaschine mit Textvorlagen (Delivery bis Ground, Oceanic), Readback-Prüfung, Stimme je Station
 - [ ] ATC: Rollroutenberechnung aus dem Taxiway-Graphen der Facilities-API (`ITaxiRouteProvider`), Gate aus der Parkposition
+- [x] v0.9: Lokale Sprachschleife (Silero VAD, Whisper, feste Befehlsmuster, Readback und Bestätigung per Sprache), Prioritäts-Warteschlange, Taxi-Speed-Warnung, Funk an das ATC-Modul
+- [ ] Sprachschleife: Testflug in VR, Aktionen für den iniBuilds A321LR
 - [ ] Eingabe-Modul: im Sim prüfen, NAV & LOGO über Input Events, weitere Flugzeuge
 - [ ] WASimCommander-Anbindung (L:-Variablen auflisten, Events)
 - [x] Remote-Betrieb: Streamable HTTP mit Bearer-Token und OAuth, Cloudflare Tunnel

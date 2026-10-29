@@ -8,7 +8,7 @@
     <ApplicationIcon>Assets\kopilot.ico</ApplicationIcon>
     <AssemblyName>Kopilot</AssemblyName>
     <RootNamespace>Kopilot</RootNamespace>
-    <Version>0.8.1</Version>
+    <Version>0.9.0</Version>
     <!-- SimConnect.dll ist eine native x64-Bibliothek -->
     <PlatformTarget>x64</PlatformTarget>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -22,6 +22,15 @@
     <!-- Kokoro-82M (Apache 2.0) über KokoroSharp (MIT), ONNX Runtime auf der CPU. Wiedergabe über den Windows-Player wie die Windows-Stimmen. -->
     <PackageReference Include="KokoroSharp" Version="0.8.4" GeneratePathProperty="true" />
     <PackageReference Include="KokoroSharp.CPU" Version="0.8.4" />
+    <!--
+      Sprachschleife (v0.9): Whisper über Whisper.net (MIT, whisper.cpp), CPU-Laufzeit plus Vulkan für die GPU-Option.
+      Mikrofon über NAudio (MIT, WinMM). Silero VAD (MIT) läuft über die ONNX Runtime, die KokoroSharp schon mitbringt.
+      Modelle lädt Kopilot erst, wenn die Sprachschleife eingeschaltet ist, nach %LOCALAPPDATA%\Kopilot\models.
+    -->
+    <PackageReference Include="Whisper.net" Version="1.9.1" />
+    <PackageReference Include="Whisper.net.Runtime" Version="1.9.1" />
+    <PackageReference Include="Whisper.net.Runtime.Vulkan" Version="1.9.1" />
+    <PackageReference Include="NAudio.WinMM" Version="2.2.1" />
   </ItemGroup>
 
   <!--
@@ -57,6 +66,8 @@
     <Content Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Update="appsettings.Local.example.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Update="atc-templates.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <!-- Vorlage – beim ersten Start nach %LOCALAPPDATA%\Kopilot\voice-settings.json kopiert (update.cmd überschreibt die nicht) -->
+    <Content Update="voice-settings.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <!-- Lokale Geheimnisse nie mitkopieren, falls die Datei versehentlich im Projektordner liegt -->
     <Content Remove="appsettings.Local.json" />
     <Content Update="profiles\**\*.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

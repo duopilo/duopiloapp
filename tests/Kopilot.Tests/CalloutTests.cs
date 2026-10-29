@@ -220,8 +220,8 @@ public sealed class CalloutTests
         Assert.True(queue.Offer(Alert(4, AlertSeverity.Info, "Ten thousand"), settings, T0, null).Accepted);
         Assert.True(queue.Offer(Alert(5, AlertSeverity.Caution, "Speed limit"), settings, T0, null).Accepted);
 
-        Assert.Equal("Speed limit", queue.Take(T0)?.Callout);
-        Assert.Equal("Ten thousand", queue.Take(T0)?.Callout);
+        Assert.Equal("Speed limit", queue.Take(T0)?.Text);
+        Assert.Equal("Ten thousand", queue.Take(T0)?.Text);
         Assert.Null(queue.Take(T0));
     }
 
@@ -237,7 +237,7 @@ public sealed class CalloutTests
         Assert.True(accepted);
         Assert.True(preempt);
         Assert.Equal(1, queue.Count);
-        Assert.Equal("Master warning, ENG 1 FIRE", queue.Take(T0)?.Callout);
+        Assert.Equal("Master warning, ENG 1 FIRE", queue.Take(T0)?.Text);
     }
 
     [Fact]

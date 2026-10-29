@@ -2,22 +2,105 @@ using Kopilot.Monitoring;
 
 namespace Kopilot.Speech;
 
+/// <summary>Rangfolge der Sprachausgabe: Warnungen vor Callouts vor Antworten vor ATC.</summary>
+public enum SpeechPriority
+{
+    /// <summary>Funkspruch einer ATC-Station (vom ATC-Modul).</summary>
+    Atc = 0,
+
+    /// <summary>Antwort von Kopilot auf den Piloten (Readback, Abfrage, "Say again").</summary>
+    Response = 1,
+
+    /// <summary>Callout des Monitorings (Info und Caution).</summary>
+    Callout = 2,
+
+    /// <summary>Warning des Monitorings – unterbricht alles andere.</summary>
+    Warning = 3,
+}
+
+/// <summary>Etwas, das gesprochen werden soll (nicht vom Monitoring, z. B. eine Antwort oder ein ATC-Funkspruch).</summary>
+/// <param name="Text">Anzeigetext, z. B. "Speed 250".</param>
+/// <param name="Priority">Rang in der Warteschlange.</param>
+public sealed record SpeechRequest(string Text, SpeechPriority Priority)
+{
+    /// <summary>Text für die Sprachsynthese, z. B. "Speed two five zero". Leer = <see cref="Text"/>.</summary>
+    public string? Spoken { get; init; }
+
+    /// <summary>Kokoro-Stimme (z. B. "am_michael"). Leer = Stimme von Kopilot.</summary>
+    public string? Voice { get; init; }
+
+    /// <summary>Faktor auf die eingestellte Lautstärke (0–1).</summary>
+    public double Volume { get; init; } = 1;
+
+    /// <summary>So lange darf die Ansage warten. Leer = Standard je Rang.</summary>
+    public TimeSpan? MaxAge { get; init; }
+
+    /// <summary>Herkunft für Log und Status, z. B. "kopilot" oder "atc:frankfurt tower".</summary>
+    public string? Source { get; init; }
+}
+
+/// <summary>Eine Ansage in der Warteschlange.</summary>
+public sealed record SpeechItem
+{
+    public required string Text { get; init; }
+
+    /// <summary>Text für die Synthese (null = <see cref="Text"/>).</summary>
+    public string? Spoken { get; init; }
+
+    public SpeechPriority Priority { get; init; }
+
+    /// <summary>Reihenfolge innerhalb desselben Rangs, höher zuerst (bei Callouts: Caution vor Info).</summary>
+    public int Rank { get; init; }
+
+    public DateTimeOffset TimeUtc { get; init; }
+
+    public DateTimeOffset ExpiresUtc { get; init; }
+
+    /// <summary>Fortlaufende Nummer – bei gleichem Rang kommt die ältere zuerst.</summary>
+    public long Seq { get; init; }
+
+    /// <summary>Gleiche Ansage innerhalb von <see cref="CalloutQueue.RepeatWindow"/> nur einmal (null = keine Prüfung).</summary>
+    public string? DedupeKey { get; init; }
+
+    public string? Voice { get; init; }
+
+    public double Volume { get; init; } = 1;
+
+    /// <summary>Regel-ID bei Callouts des Monitorings.</summary>
+    public string? Rule { get; init; }
+
+    public string? Source { get; init; }
+
+    /// <summary>Schon einmal von einer Warnung unterbrochen und neu eingereiht.</summary>
+    public bool Requeued { get; init; }
+
+    public bool IsAlert => Priority >= SpeechPriority.Callout;
+}
+
 /// <summary>
-/// Entscheidet, welche Meldungen gesprochen werden und in welcher Reihenfolge:
-/// Warnings zuerst und unterbrechen alles andere, alte Meldungen verfallen, dieselbe Ansage kommt nicht doppelt kurz hintereinander.
+/// Entscheidet, was gesprochen wird und in welcher Reihenfolge: Warnungen &gt; Callouts &gt; Antworten &gt; ATC.
+/// Warnungen unterbrechen alles andere und verdrängen wartende Callouts (Antworten und ATC bleiben stehen),
+/// alte Ansagen verfallen, dieselbe Ansage kommt nicht doppelt kurz hintereinander.
 /// Threadsicher, ohne Abhängigkeit von Windows – damit testbar.
 /// </summary>
 public sealed class CalloutQueue
 {
-    /// <summary>Ältere Meldungen werden nicht mehr gesprochen.</summary>
+    /// <summary>Ältere Callouts werden nicht mehr gesprochen.</summary>
     public static readonly TimeSpan MaxAge = TimeSpan.FromSeconds(8);
+
+    /// <summary>Antworten von Kopilot warten höchstens so lange.</summary>
+    public static readonly TimeSpan ResponseMaxAge = TimeSpan.FromSeconds(20);
+
+    /// <summary>ATC-Funksprüche warten höchstens so lange (z. B. hinter einer Warnung oder während einer Pause).</summary>
+    public static readonly TimeSpan AtcMaxAge = TimeSpan.FromSeconds(60);
 
     /// <summary>Dieselbe Ansage innerhalb dieser Zeit nur einmal.</summary>
     public static readonly TimeSpan RepeatWindow = TimeSpan.FromSeconds(4);
 
     private readonly object _lock = new();
-    private readonly List<AlertEvent> _items = [];
+    private readonly List<SpeechItem> _items = [];
     private readonly Dictionary<string, DateTimeOffset> _recent = new(StringComparer.OrdinalIgnoreCase);
+    private long _seq;
 
     public int Count
     {
@@ -30,15 +113,54 @@ public sealed class CalloutQueue
         }
     }
 
+    public static TimeSpan DefaultMaxAge(SpeechPriority priority) => priority switch
+    {
+        SpeechPriority.Atc => AtcMaxAge,
+        SpeechPriority.Response => ResponseMaxAge,
+        _ => MaxAge,
+    };
+
+    /// <summary>Rang eines Callouts aus dem Monitoring: Warning → Warnung, alles andere → Callout.</summary>
+    public static SpeechPriority PriorityOf(AlertSeverity severity) =>
+        severity == AlertSeverity.Warning ? SpeechPriority.Warning : SpeechPriority.Callout;
+
     /// <summary>
-    /// Nimmt eine Meldung an, wenn sie gesprochen werden soll. Rückgabe: angenommen, und ob eine laufende,
+    /// Nimmt eine Meldung des Monitorings an, wenn sie gesprochen werden soll. Rückgabe: angenommen, und ob eine laufende,
     /// weniger wichtige Ansage abgebrochen werden soll.
     /// </summary>
-    public (bool Accepted, bool Preempt) Offer(AlertEvent e, SpeechSettings settings, DateTimeOffset now, AlertSeverity? speaking)
+    public (bool Accepted, bool Preempt) Offer(AlertEvent e, SpeechSettings settings, DateTimeOffset now, AlertSeverity? speaking) =>
+        OfferAlert(e, settings, now, speaking is { } s ? PriorityOf(s) : null);
+
+    /// <inheritdoc cref="Offer(AlertEvent, SpeechSettings, DateTimeOffset, AlertSeverity?)"/>
+    public (bool Accepted, bool Preempt) OfferAlert(AlertEvent e, SpeechSettings settings, DateTimeOffset now, SpeechPriority? speaking, double volume = 1)
     {
         if (!settings.Enabled || e.Kind == AlertKind.Clear || string.IsNullOrWhiteSpace(e.Callout)
-            || e.Severity < settings.MinSeverity || settings.MutedRules.Contains(e.Rule, StringComparer.OrdinalIgnoreCase)
-            || now - e.TimeUtc > MaxAge)
+            || e.Severity < settings.MinSeverity || settings.MutedRules.Contains(e.Rule, StringComparer.OrdinalIgnoreCase))
+        {
+            return (false, false);
+        }
+
+        return Offer(
+            new SpeechItem
+            {
+                Text = e.Callout,
+                Priority = PriorityOf(e.Severity),
+                Rank = (int)e.Severity,
+                TimeUtc = e.TimeUtc,
+                ExpiresUtc = e.TimeUtc + MaxAge,
+                DedupeKey = e.Callout,
+                Rule = e.Rule,
+                Volume = volume,
+                Source = "monitoring",
+            },
+            now,
+            speaking);
+    }
+
+    /// <summary>Nimmt eine Ansage an. Rückgabe: angenommen, und ob die laufende Ansage unterbrochen werden soll.</summary>
+    public (bool Accepted, bool Preempt) Offer(SpeechItem item, DateTimeOffset now, SpeechPriority? speaking)
+    {
+        if (string.IsNullOrWhiteSpace(item.Text) || now > item.ExpiresUtc)
         {
             return (false, false);
         }
@@ -46,38 +168,73 @@ public sealed class CalloutQueue
         lock (_lock)
         {
             Prune(now);
-            if (_recent.TryGetValue(e.Callout, out var last) && now - last < RepeatWindow)
+            if (item.DedupeKey is { } key)
             {
-                return (false, false);
+                if (_recent.TryGetValue(key, out var last) && now - last < RepeatWindow)
+                {
+                    return (false, false);
+                }
+
+                _recent[key] = now;
             }
 
-            _recent[e.Callout] = now;
-
-            if (e.Severity == AlertSeverity.Warning)
+            if (item.Priority == SpeechPriority.Warning)
             {
-                // Eine Warning verdrängt alles Unwichtigere, was noch wartet
-                _items.RemoveAll(i => i.Severity < AlertSeverity.Warning);
+                // Eine Warnung verdrängt wartende Callouts – Antworten und ATC bleiben stehen
+                _items.RemoveAll(i => i.Priority == SpeechPriority.Callout);
             }
 
-            _items.Add(e);
-            return (true, e.Severity == AlertSeverity.Warning && speaking is { } current && current < AlertSeverity.Warning);
+            _items.Add(item with { Seq = ++_seq });
+            return (true, item.Priority == SpeechPriority.Warning && speaking is { } current && current < SpeechPriority.Warning);
         }
     }
 
-    /// <summary>Nächste Ansage: wichtigste zuerst, bei gleicher Stufe die älteste. Verfallene werden verworfen.</summary>
-    public AlertEvent? Take(DateTimeOffset now)
+    /// <summary>Unterbrochene Antwort oder ATC-Meldung einmal neu einreihen (mit frischer Wartezeit).</summary>
+    public bool Requeue(SpeechItem item, DateTimeOffset now)
+    {
+        if (item.Requeued || item.IsAlert)
+        {
+            return false;
+        }
+
+        var age = item.ExpiresUtc - item.TimeUtc;
+        lock (_lock)
+        {
+            _items.Add(item with { Requeued = true, TimeUtc = now, ExpiresUtc = now + age, Seq = ++_seq });
+            return true;
+        }
+    }
+
+    /// <summary>Nächste Ansage, ohne sie zu entnehmen. Verfallene werden verworfen.</summary>
+    public SpeechItem? Peek(DateTimeOffset now)
     {
         lock (_lock)
         {
-            _items.RemoveAll(i => now - i.TimeUtc > MaxAge);
-            if (_items.Count == 0)
+            return NextLocked(now);
+        }
+    }
+
+    /// <summary>Nächste Ansage: wichtigste zuerst, bei gleichem Rang die ältere. Verfallene werden verworfen.</summary>
+    public SpeechItem? Take(DateTimeOffset now)
+    {
+        lock (_lock)
+        {
+            var next = NextLocked(now);
+            if (next is not null)
             {
-                return null;
+                _items.Remove(next);
             }
 
-            var next = _items.OrderByDescending(i => i.Severity).ThenBy(i => i.Id).First();
-            _items.Remove(next);
             return next;
+        }
+    }
+
+    /// <summary>Wirft alle wartenden Ansagen weg, auf die die Bedingung zutrifft.</summary>
+    public int Drop(Func<SpeechItem, bool> predicate)
+    {
+        lock (_lock)
+        {
+            return _items.RemoveAll(i => predicate(i));
         }
     }
 
@@ -87,6 +244,21 @@ public sealed class CalloutQueue
         {
             _items.Clear();
         }
+    }
+
+    private SpeechItem? NextLocked(DateTimeOffset now)
+    {
+        _items.RemoveAll(i => now > i.ExpiresUtc);
+        if (_items.Count == 0)
+        {
+            return null;
+        }
+
+        return _items
+            .OrderByDescending(i => i.Priority)
+            .ThenByDescending(i => i.Rank)
+            .ThenBy(i => i.Seq)
+            .First();
     }
 
     private void Prune(DateTimeOffset now)

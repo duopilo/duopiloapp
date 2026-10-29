@@ -81,6 +81,8 @@ public static class HttpHost
             JsonText(await FlightPlanTools.GetProgress(sim, simBrief, alerts, ct))).LocalOnly();
         app.MapGet("/read", async (SimConnectClient sim, string name, string? unit, CancellationToken ct) =>
             JsonText(await KopilotTools.ReadSimVar(sim, name, unit ?? "number", ct))).LocalOnly();
+        app.MapGet("/voice", (IServiceProvider services) =>
+            JsonText(Json.Serialize(services.GetService<Kopilot.Voice.VoiceLoop>()?.Status ?? (object)new { state = "unavailable" }))).LocalOnly();
 
         if (remote.OAuthEnabled)
         {
