@@ -89,6 +89,12 @@ public sealed class MonitoringOptions
     /// </summary>
     public bool AircraftAutoCallouts { get; set; }
 
+    /// <summary>Taxi-Speed-Warnung (TAXI_SPEED) ab dieser Groundspeed am Boden. voice-settings.json hat Vorrang.</summary>
+    public double TaxiSpeedKt { get; set; } = 25;
+
+    /// <summary>Taxi-Speed-Warnung frühestens nach so vielen Sekunden erneut.</summary>
+    public double TaxiSpeedCooldownSec { get; set; } = 30;
+
     /// <summary>Regel TRAFFIC_PROXIMITY (abschalten über <see cref="DisabledRules"/>).</summary>
     public TrafficMonitoringOptions Traffic { get; set; } = new();
 }

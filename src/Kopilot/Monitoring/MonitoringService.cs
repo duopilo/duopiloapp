@@ -32,6 +32,8 @@ public sealed class MonitoringService : BackgroundService
             TrafficRangeNm = _options.Traffic.ProximityRangeNm,
             TrafficAltitudeBandFt = _options.Traffic.ProximityAltitudeFt,
             TrafficCooldownSec = Math.Max(0, _options.Traffic.ProximityCooldownSec),
+            TaxiSpeedKt = _options.TaxiSpeedKt,
+            TaxiSpeedCooldownSec = _options.TaxiSpeedCooldownSec,
         });
     }
 
@@ -49,6 +51,10 @@ public sealed class MonitoringService : BackgroundService
     }
 
     public DateTimeOffset SuppressedUntilUtc => _engine.SuppressedUntilUtc;
+
+    /// <summary>Taxi-Speed-Warnung einstellen (aus voice-settings.json).</summary>
+    public void ConfigureTaxiSpeed(bool enabled, double thresholdKt, double cooldownSec) =>
+        _engine.ConfigureTaxiSpeed(enabled, thresholdKt, cooldownSec);
 
     public IReadOnlyList<string> EnabledRules => _engine.EnabledRules.ToList();
 

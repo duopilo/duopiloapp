@@ -68,6 +68,19 @@ public sealed class AtcService : BackgroundService
         }
     }
 
+    /// <summary>
+    /// Für die Sprachschleife: Stationsnamen und eigenes Rufzeichen (Code und Sprechform) des laufenden bzw. geplanten Flugs,
+    /// damit sie Funksprüche an ATC vom Kopilot-Befehl unterscheiden kann.
+    /// </summary>
+    public AtcRoutingInfo RoutingInfo()
+    {
+        var simCallsign = SimCallsign();
+        lock (_lock)
+        {
+            return AtcRoutingInfo.From(_templates, _session, _simBrief.Current, simCallsign);
+        }
+    }
+
     /// <summary>Vorlagen neu laden. Die Datei in DataDirectory hat Vorrang vor der mitgelieferten neben der Kopilot.exe.</summary>
     public IReadOnlyList<string> ReloadTemplates()
     {

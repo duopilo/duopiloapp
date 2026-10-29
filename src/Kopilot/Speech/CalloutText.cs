@@ -21,6 +21,9 @@ public static partial class CalloutText
         "One hundred knots", "V1", "Rotate", "Positive climb", "Spoilers", "No spoilers", "Reverse green", "Decel", "Seventy knots",
         "Ten thousand", "Transition altitude", "Transition level", "Gear down", "Gear up", "Flaps zero", "Flaps one", "Flaps two", "Flaps three",
         "Speed checked, flaps one", "Speed checked, flaps two", "Speed checked, flaps three", "Speed checked, flaps full",
+
+        // Sprachschleife (v0.9): Taxi-Speed-Warnung und kurze Antworten
+        "Taxi speed", "Say again", "Unable", "Cancelled",
     ];
 
     /// <summary>Test-Ansage aus Dashboard und Tray.</summary>
@@ -90,6 +93,8 @@ public static partial class CalloutText
         ["FLX"] = "flex",
         ["MCT"] = "max continuous",
         ["CONFIG"] = "config",
+        ["STD"] = "standard",
+        ["FL"] = "flight level",
     };
 
     // Werden Buchstabe für Buchstabe gesprochen
@@ -97,6 +102,7 @@ public static partial class CalloutText
     {
         "APU", "ADR", "IR", "ILS", "GPS", "GPWS", "EGPWS", "FMGC", "FMS", "FCU", "MCDU", "ATC", "VHF", "HF", "CVR", "FWC",
         "SDAC", "BSCU", "DMC", "RA", "IAS", "ND", "PFD", "LGCIU", "BMC", "CIDS", "FADEC", "EIU", "FCDC", "SFCC", "WAI", "EAI",
+        "QNH", "LS", "FD", "TA", "VS",
     };
 
     // Farben der Hydrauliksysteme nach "HYD"

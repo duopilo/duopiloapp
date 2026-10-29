@@ -14,14 +14,29 @@ namespace Kopilot.Speech;
 /// wenn eine englische Stimme installiert ist, sonst Kokoro. Abgespielt wird beides über denselben Windows-Player
 /// (Ausgabegerät wählbar).
 /// </para>
-/// Läuft nur im HTTP-Modus (Tray-Instanz), damit die stdio-Instanz von Claude Desktop nicht doppelt spricht.
 /// <para>
-/// Spricht auch die ATC-Funksprüche (<see cref="IAtcRadio"/>), jede Station mit ihrer eigenen Kokoro-Stimme. Dafür wird
-/// Kokoro auch dann geladen, wenn die Callouts die Windows-Stimme nehmen. Eine Warning unterbricht einen Funkspruch.
+/// Dieselbe Warteschlange spricht auch die Antworten der Sprachschleife (<see cref="IVoiceOutput"/>) und die
+/// ATC-Funksprüche (<see cref="IAtcRadio"/>): Warnungen &gt; Callouts &gt; Antworten &gt; ATC. Jede ATC-Station spricht mit
+/// ihrer eigenen Kokoro-Stimme; dafür wird Kokoro auch dann geladen, wenn die Callouts die Windows-Stimme nehmen.
+/// Eine Warning unterbricht alles, ein unterbrochener Funkspruch kommt danach einmal erneut.
 /// </para>
+/// Läuft nur im HTTP-Modus (Tray-Instanz), damit die stdio-Instanz von Claude Desktop nicht doppelt spricht.
 /// </summary>
-public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IAtcRadio
+public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOutput, IAtcRadio
 {
+    /// <summary>So lange warten Ansagen (außer Warnungen) höchstens, solange der Pilot spricht.</summary>
+    private static readonly TimeSpan MaxHoldForPilot = TimeSpan.FromSeconds(6);
+
+    /// <summary>Länger spricht der Pilot nicht am Stück (Sätze enden spätestens nach 12 s) – sonst hängt der Zustand.</summary>
+    private static readonly TimeSpan MaxPilotSpeaking = TimeSpan.FromSeconds(15);
+
+    /// <summary>Zeitkritische Callouts warten nicht, auch wenn der Pilot gerade spricht.</summary>
+    private static readonly HashSet<string> TimeCritical = new(StringComparer.Ordinal)
+    {
+        Rules.Pm100Knots, Rules.PmV1, Rules.PmRotate, Rules.PmPositiveClimb, Rules.PmSpoilers, Rules.PmReverse, Rules.PmDecel,
+        Rules.Pm70Knots, Rules.AutoRadioAltitude, Rules.AutoMinimum, Rules.AutoRetard,
+    };
+
     private const int CacheLimit = 160;
 
     private readonly AlertBus _bus;
@@ -42,9 +57,16 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IAtcRadio
     private volatile string? _error;
     private IReadOnlyList<VoiceInfo> _voices = [];
     private IReadOnlyList<AudioDeviceInfo> _devices = [];
-    private AlertSeverity? _speaking;
+    private volatile SpeechItem? _current;
+    private volatile bool _preempted;
+    private volatile VoiceOutputOptions _voice = VoiceOutputOptions.Default;
+    private volatile bool _pilotSpeaking;
+    private long _lastSpeechEndTicks;
+    private long _lastAtcSpeechEndTicks;
+    private long _pilotSpeakingSinceTicks;
+    private int _speakingNow;
+    private DateTimeOffset? _holdSinceUtc;
     private CancellationTokenSource? _currentCts;
-    private CancellationTokenSource? _atcCts;
     private volatile bool _atcWantsKokoro;
     private string? _lastSpoken;
     private bool _windowsHasEnglish;
@@ -78,7 +100,7 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IAtcRadio
         _speech?.ActiveVoice,
         _voices,
         _devices,
-        _speaking is not null,
+        _current is not null,
         _lastSpoken,
         ActiveEngine,
         new KokoroStatus(
@@ -87,6 +109,99 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IAtcRadio
             _kokoroError,
             _kokoro.Voices,
             _lastSynthesisMs));
+
+    // ------------------------------------------------------------------ IVoiceOutput (Sprachschleife)
+
+    public bool Available => ActiveEngine is not null;
+
+    public bool IsSpeaking => _current is not null || Volatile.Read(ref _speakingNow) > 0;
+
+    public DateTimeOffset LastSpeechEndUtc => new(Interlocked.Read(ref _lastSpeechEndTicks), TimeSpan.Zero);
+
+    public DateTimeOffset? LastAtcSpeechEndUtc
+    {
+        get
+        {
+            var ticks = Interlocked.Read(ref _lastAtcSpeechEndTicks);
+            return ticks > 0 ? new DateTimeOffset(ticks, TimeSpan.Zero) : null;
+        }
+    }
+
+    public bool PilotSpeaking
+    {
+        get => _pilotSpeaking && !PilotSpeakingStale(DateTimeOffset.UtcNow);
+        set
+        {
+            var changed = _pilotSpeaking != value;
+            if (changed && value)
+            {
+                Interlocked.Exchange(ref _pilotSpeakingSinceTicks, DateTimeOffset.UtcNow.UtcTicks);
+            }
+
+            _pilotSpeaking = value;
+            if (changed && !value)
+            {
+                // Wartende Ansagen sofort sprechen, sobald der Pilot fertig ist
+                _signal.Release();
+            }
+        }
+    }
+
+    /// <summary>"Pilot spricht" hängt schon zu lange (z. B. Mikrofon mitten im Satz weg) – nicht mehr darauf warten.</summary>
+    private bool PilotSpeakingStale(DateTimeOffset now) =>
+        now - new DateTimeOffset(Interlocked.Read(ref _pilotSpeakingSinceTicks), TimeSpan.Zero) > MaxPilotSpeaking;
+
+    /// <summary>Sim pausiert (laut letztem Monitoring-Takt).</summary>
+    private bool SimPaused => _monitoring.LastSnapshot?.Paused == true;
+
+    private bool Silenced => _voice.SilentWhenPaused && SimPaused;
+
+    public void ConfigureVoice(VoiceOutputOptions options)
+    {
+        var old = _voice;
+        var normalized = options.Normalized();
+        _voice = normalized;
+        if (old.KopilotVoice != normalized.KopilotVoice)
+        {
+            ClearCache();
+            SchedulePrewarm();
+        }
+    }
+
+    public bool Say(SpeechRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Text) || ActiveEngine is null || Silenced)
+        {
+            return false;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var item = new SpeechItem
+        {
+            Text = request.Text.Trim(),
+            Spoken = string.IsNullOrWhiteSpace(request.Spoken) ? null : request.Spoken.Trim(),
+            Priority = request.Priority,
+            TimeUtc = now,
+            ExpiresUtc = now + (request.MaxAge ?? CalloutQueue.DefaultMaxAge(request.Priority)),
+            Voice = request.Voice,
+            Volume = Math.Clamp(double.IsFinite(request.Volume) ? request.Volume : 1, 0, 1),
+            Source = request.Source,
+            OnSpoken = request.OnSpoken,
+        };
+
+        var (accepted, preempt) = _queue.Offer(item, now, _current?.Priority);
+        if (preempt)
+        {
+            Preempt();
+        }
+
+        if (accepted)
+        {
+            _signal.Release();
+        }
+
+        return accepted;
+    }
 
     public async Task<SpeechStatus> RefreshAsync(CancellationToken ct)
     {
@@ -124,8 +239,12 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IAtcRadio
 
         if (!normalized.Enabled)
         {
-            _queue.Clear();
-            CancelCurrent();
+            // Nur die Callouts verstummen – Antworten und ATC der Sprachschleife laufen weiter
+            _queue.Drop(i => i.IsAlert);
+            if (_current?.IsAlert == true)
+            {
+                CancelCurrent();
+            }
         }
 
         if (old.KokoroVoice != normalized.KokoroVoice || Math.Abs(old.Rate - normalized.Rate) > 1e-6)
@@ -151,7 +270,17 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IAtcRadio
             throw new InvalidOperationException(StatusError() ?? "Sprachausgabe ist nicht verfügbar.");
         }
 
-        await SpeakAsync(text, ct);
+        // Wie eine Ansage aus der Warteschlange: Mikrofon der Sprachschleife stumm, danach die Nachlaufzeit
+        Interlocked.Increment(ref _speakingNow);
+        try
+        {
+            await SpeakAsync(text, ct);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _speakingNow);
+            Interlocked.Exchange(ref _lastSpeechEndTicks, DateTimeOffset.UtcNow.UtcTicks);
+        }
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -258,10 +387,10 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IAtcRadio
         _signal.Release();
     }
 
-    private async Task<SpeechClip> KokoroClipAsync(string text, CancellationToken ct)
+    private async Task<SpeechClip> KokoroClipAsync(string text, string voice, CancellationToken ct)
     {
         var settings = _settings;
-        var key = $"{settings.KokoroVoice}|{settings.Rate:0.00}|{text}";
+        var key = $"{voice}|{settings.Rate:0.00}|{text}";
         lock (_cacheLock)
         {
             if (_cache.TryGetValue(key, out var hit))
@@ -271,9 +400,9 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IAtcRadio
         }
 
         var watch = Stopwatch.StartNew();
-        var clip = await Task.Run(() => _kokoro.Synthesize(text, settings.KokoroVoice, settings.Rate), ct);
+        var clip = await Task.Run(() => _kokoro.Synthesize(text, voice, settings.Rate), ct);
         _lastSynthesisMs = (int)watch.ElapsedMilliseconds;
-        _log.LogDebug("Kokoro: \"{Text}\" in {Ms} ms", text, _lastSynthesisMs);
+        _log.LogDebug("Kokoro ({Voice}): \"{Text}\" in {Ms} ms", voice, text, _lastSynthesisMs);
 
         lock (_cacheLock)
         {
@@ -288,6 +417,17 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IAtcRadio
         }
 
         return clip;
+    }
+
+    /// <summary>Stimme für eine Ansage: eigene Stimme der Ansage (ATC), sonst die Kopilot-Stimme, sonst die aus dem Dashboard.</summary>
+    private string VoiceFor(SpeechItem? item)
+    {
+        if (KokoroSpeechEngine.IsEnglishVoice(item?.Voice))
+        {
+            return item!.Voice!;
+        }
+
+        return _voice.KopilotVoice ?? _settings.KokoroVoice;
     }
 
     private void ClearCache()
@@ -319,7 +459,7 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IAtcRadio
 
         try
         {
-            await KokoroClipAsync(CalloutText.ForSpeech(text), ct);
+            await KokoroClipAsync(CalloutText.ForSpeech(text), VoiceFor(null), ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -332,15 +472,16 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IAtcRadio
     // ------------------------------------------------------------------ ATC
 
     /// <summary>
-    /// ATC-Funkspruch mit der Kokoro-Stimme der Station. Solange Kokoro lädt, spricht die Windows-Stimme (falls englisch),
-    /// sonst bleibt es beim Text im Verlauf. Nicht im Cache – Funksprüche wiederholen sich selten.
+    /// ATC-Funkspruch in die Warteschlange (Priorität ATC: nach Warnungen, Callouts und Antworten von Kopilot), gesprochen mit
+    /// der Kokoro-Stimme der Station. Solange Kokoro lädt, spricht die Windows-Stimme (falls englisch). Kehrt sofort zurück –
+    /// die Reihenfolge der Funksprüche bleibt in der Warteschlange erhalten, und das Mikrofon der Sprachschleife bleibt
+    /// stumm, solange ATC spricht.
     /// </summary>
-    public async Task TransmitAsync(AtcTransmission transmission, CancellationToken ct)
+    public Task TransmitAsync(AtcTransmission transmission, CancellationToken ct)
     {
-        var speech = _speech;
-        if (speech is null || !_settings.Enabled || string.IsNullOrWhiteSpace(transmission.Spoken))
+        if (_speech is null || !_settings.Enabled || string.IsNullOrWhiteSpace(transmission.Spoken))
         {
-            return;
+            return Task.CompletedTask;
         }
 
         if (!_atcWantsKokoro)
@@ -349,73 +490,47 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IAtcRadio
             EnsureKokoroIfNeeded();
         }
 
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct, _stopping);
-        _atcCts = cts;
-        try
+        if (Silenced)
         {
-            var settings = _settings;
-            if (_kokoroState == KokoroState.Ready && KokoroSpeechEngine.IsEnglishVoice(transmission.Voice))
-            {
-                var clip = await Task.Run(() => _kokoro.Synthesize(transmission.Spoken, transmission.Voice, settings.Rate), cts.Token);
-                if (clip.Samples.Length == 0)
-                {
-                    return;
-                }
+            return Task.CompletedTask;
+        }
 
-                var wav = WavEncoder.Encode(clip.Samples, clip.SampleRate, settings.Volume);
-                await _engineLock.WaitAsync(cts.Token);
-                try
-                {
-                    await speech.PlayWavAsync(wav, cts.Token);
-                }
-                finally
-                {
-                    _engineLock.Release();
-                }
-            }
-            else if (_windowsHasEnglish)
-            {
-                await _engineLock.WaitAsync(cts.Token);
-                try
-                {
-                    await speech.SpeakAsync(transmission.Spoken, cts.Token);
-                }
-                finally
-                {
-                    _engineLock.Release();
-                }
-            }
+        var now = DateTimeOffset.UtcNow;
+        var item = new SpeechItem
+        {
+            Text = string.IsNullOrWhiteSpace(transmission.Text) ? transmission.Spoken : transmission.Text,
+            Spoken = transmission.Spoken,
+            Priority = SpeechPriority.Atc,
+            TimeUtc = now,
+            ExpiresUtc = now + CalloutQueue.AtcMaxAge,
+            Voice = transmission.Voice,
+            Volume = _voice.AtcVolume,
+            Source = "atc:" + transmission.StationName,
+        };
 
-            _lastSpoken = transmission.Text;
-        }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested && !_stopping.IsCancellationRequested)
+        if (_queue.Offer(item, now, _current?.Priority).Accepted)
         {
-            // Von einer Warning unterbrochen
+            _signal.Release();
         }
-        finally
-        {
-            _atcCts = null;
-        }
-    }
 
-    private void CancelAtc()
-    {
-        try
-        {
-            _atcCts?.Cancel();
-        }
-        catch (ObjectDisposedException)
-        {
-            // Funkspruch war gerade fertig
-        }
+        return Task.CompletedTask;
     }
 
     // ------------------------------------------------------------------ Abspielen
 
-    private async Task SpeakAsync(string callout, CancellationToken ct)
+    private Task SpeakAsync(string callout, CancellationToken ct) =>
+        SpeakAsync(new SpeechItem { Text = callout, Priority = SpeechPriority.Response }, ct);
+
+    private async Task SpeakAsync(SpeechItem item, CancellationToken ct)
     {
         var speech = _speech ?? throw new InvalidOperationException("Windows-Wiedergabe nicht verfügbar.");
-        var text = CalloutText.ForSpeech(callout);
+        if (item.Priority == SpeechPriority.Atc)
+        {
+            await SpeakAtcAsync(speech, item, ct);
+            return;
+        }
+
+        var text = CalloutText.ForSpeech(item.Spoken ?? item.Text);
         if (text.Length == 0)
         {
             return;
@@ -423,14 +538,14 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IAtcRadio
 
         if (ActiveEngine == SpeechEngines.Kokoro)
         {
-            var clip = await KokoroClipAsync(text, ct);
+            var clip = await KokoroClipAsync(text, VoiceFor(item), ct);
             ct.ThrowIfCancellationRequested();
             if (clip.Samples.Length == 0)
             {
                 return;
             }
 
-            var wav = WavEncoder.Encode(clip.Samples, clip.SampleRate, _settings.Volume);
+            var wav = WavEncoder.Encode(clip.Samples, clip.SampleRate, _settings.Volume * item.Volume);
             await _engineLock.WaitAsync(ct);
             try
             {
@@ -452,6 +567,53 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IAtcRadio
         finally
         {
             _engineLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Funkspruch: Kokoro mit der Stimme der Station (ohne Cache – Funksprüche wiederholen sich selten), solange Kokoro lädt
+    /// die englische Windows-Stimme, sonst nichts. Die Sprechform kommt fertig vom ATC-Modul.
+    /// </summary>
+    private async Task SpeakAtcAsync(WindowsSpeech speech, SpeechItem item, CancellationToken ct)
+    {
+        var text = (item.Spoken ?? item.Text).Trim();
+        if (text.Length == 0)
+        {
+            return;
+        }
+
+        var settings = _settings;
+        if (_kokoroState == KokoroState.Ready && KokoroSpeechEngine.IsEnglishVoice(item.Voice))
+        {
+            var clip = await Task.Run(() => _kokoro.Synthesize(text, item.Voice!, settings.Rate), ct);
+            ct.ThrowIfCancellationRequested();
+            if (clip.Samples.Length == 0)
+            {
+                return;
+            }
+
+            var wav = WavEncoder.Encode(clip.Samples, clip.SampleRate, settings.Volume * item.Volume);
+            await _engineLock.WaitAsync(ct);
+            try
+            {
+                await speech.PlayWavAsync(wav, ct);
+            }
+            finally
+            {
+                _engineLock.Release();
+            }
+        }
+        else if (_windowsHasEnglish)
+        {
+            await _engineLock.WaitAsync(ct);
+            try
+            {
+                await speech.SpeakAsync(text, ct);
+            }
+            finally
+            {
+                _engineLock.Release();
+            }
         }
     }
 
@@ -483,17 +645,19 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IAtcRadio
             }
 
             var now = DateTimeOffset.UtcNow;
+            var voice = _voice;
             foreach (var e in events)
             {
-                var (accepted, preempt) = _queue.Offer(e, _settings, now, _speaking);
-                if (preempt)
+                // Sprachschleife: aktive Callouts aus voice-settings.json, bei Pause gar nichts (auch nicht "Sim paused")
+                if (!voice.SpeaksRule(e.Rule) || (voice.SilentWhenPaused && (SimPaused || e.Rule == Rules.SimPaused)))
                 {
-                    CancelCurrent();
+                    continue;
                 }
 
-                if (accepted && e.Severity == AlertSeverity.Warning)
+                var (accepted, preempt) = _queue.OfferAlert(e, _settings, now, _current?.Priority, voice.KopilotVolume);
+                if (preempt)
                 {
-                    CancelAtc();
+                    Preempt();
                 }
 
                 if (accepted)
@@ -508,41 +672,115 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IAtcRadio
     {
         while (!ct.IsCancellationRequested)
         {
-            await _signal.WaitAsync(ct);
-            if (_queue.Take(DateTimeOffset.UtcNow) is not { } next)
+            // Mit Zeitlimit: wartende Ansagen nach einer Pause oder nach dem Piloten auch ohne neues Signal sprechen
+            await _signal.WaitAsync(TimeSpan.FromMilliseconds(250), ct);
+            while (!ct.IsCancellationRequested && await SpeakNextAsync(ct))
             {
-                // Nichts zu sagen – Zeit für die Vorab-Synthese
-                await PrewarmOneAsync(ct);
-                continue;
-            }
-
-            if (!_settings.Enabled || ActiveEngine is null)
-            {
-                continue;
-            }
-
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            _currentCts = cts;
-            _speaking = next.Severity;
-            try
-            {
-                await SpeakAsync(next.Callout!, cts.Token);
-                _lastSpoken = next.Callout;
-            }
-            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-            {
-                // Von einer Warning unterbrochen
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                _log.LogWarning("Ansage \"{Callout}\" fehlgeschlagen: {Message}", next.Callout, ex.Message);
-            }
-            finally
-            {
-                _speaking = null;
-                _currentCts = null;
             }
         }
+    }
+
+    /// <summary>Spricht die nächste Ansage. false = nichts (mehr) zu tun.</summary>
+    private async Task<bool> SpeakNextAsync(CancellationToken ct)
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (Silenced)
+        {
+            // Pause: Callouts und Antworten verfallen, ATC wartet bis nach der Pause
+            _queue.Drop(i => i.Priority != SpeechPriority.Atc);
+            return false;
+        }
+
+        if (_queue.Peek(now) is not { } next)
+        {
+            _holdSinceUtc = null;
+
+            // Nichts zu sagen – Zeit für die Vorab-Synthese
+            await PrewarmOneAsync(ct);
+            return false;
+        }
+
+        if (ActiveEngine is null || (next.IsAlert && !_settings.Enabled))
+        {
+            _queue.Take(now);
+            return true;
+        }
+
+        // Der Pilot spricht: kurz warten (nur Warnungen und zeitkritische Callouts fallen ins Wort)
+        if (next.Priority < SpeechPriority.Warning && PilotSpeaking && !(next.Rule is not null && TimeCritical.Contains(next.Rule)))
+        {
+            _holdSinceUtc ??= now;
+            if (now - _holdSinceUtc < MaxHoldForPilot)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(100), ct);
+                return true;
+            }
+        }
+
+        _holdSinceUtc = null;
+        if (_queue.Take(now) is not { } item)
+        {
+            return true;
+        }
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        _currentCts = cts;
+        _preempted = false;
+        _current = item;
+        try
+        {
+            await SpeakAsync(item, cts.Token);
+            _lastSpoken = item.Text;
+            if (!cts.IsCancellationRequested)
+            {
+                Spoken(item, DateTimeOffset.UtcNow);
+            }
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            // Von einer Warnung unterbrochen: Antworten und ATC einmal neu einreihen, Callouts verfallen
+            if (_preempted && _queue.Requeue(item, DateTimeOffset.UtcNow))
+            {
+                _log.LogDebug("Ansage \"{Text}\" unterbrochen, kommt nach der Warnung erneut.", item.Text);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _log.LogWarning("Ansage \"{Callout}\" fehlgeschlagen: {Message}", item.Text, ex.Message);
+        }
+        finally
+        {
+            _current = null;
+            _currentCts = null;
+            Interlocked.Exchange(ref _lastSpeechEndTicks, DateTimeOffset.UtcNow.UtcTicks);
+        }
+
+        return true;
+    }
+
+    /// <summary>Ansage ganz gesprochen: ATC-Zeit merken, Rückmeldung an die Sprachschleife (Readback gehört).</summary>
+    private void Spoken(SpeechItem item, DateTimeOffset end)
+    {
+        if (item.Priority == SpeechPriority.Atc)
+        {
+            Interlocked.Exchange(ref _lastAtcSpeechEndTicks, end.UtcTicks);
+        }
+
+        try
+        {
+            item.OnSpoken?.Invoke(end);
+        }
+        catch (Exception ex)
+        {
+            _log.LogDebug("Rückmeldung nach \"{Text}\" fehlgeschlagen: {Message}", item.Text, ex.Message);
+        }
+    }
+
+    /// <summary>Eine Warnung unterbricht die laufende Ansage.</summary>
+    private void Preempt()
+    {
+        _preempted = true;
+        CancelCurrent();
     }
 
     private void CancelCurrent()

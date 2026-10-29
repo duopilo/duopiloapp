@@ -35,6 +35,15 @@ public sealed class MonitorSettings
 
     /// <summary>Ältere Verkehrslagen werden nicht ausgewertet.</summary>
     public double MaxTrafficAgeSec { get; init; } = 10;
+
+    /// <summary>Taxi-Speed-Warnung: ab dieser Groundspeed am Boden (kt). Zur Laufzeit änderbar (voice-settings.json).</summary>
+    public double TaxiSpeedKt { get; set; } = 25;
+
+    /// <summary>Taxi-Speed-Warnung: frühestens nach dieser Zeit erneut (s).</summary>
+    public double TaxiSpeedCooldownSec { get; set; } = 30;
+
+    /// <summary>Taxi-Speed-Warnung an/aus (zusätzlich zu <see cref="DisabledRules"/>).</summary>
+    public bool TaxiSpeedEnabled { get; set; } = true;
 }
 
 /// <summary>
@@ -105,7 +114,17 @@ public sealed partial class MonitorEngine
     public IEnumerable<string> EnabledRules => Rules.All.Where(IsEnabled);
 
     public bool IsEnabled(string rule) =>
-        !_settings.DisabledRules.Contains(rule) && (!Rules.IsAircraftAutoCallout(rule) || _settings.AircraftAutoCallouts);
+        !_settings.DisabledRules.Contains(rule)
+        && (!Rules.IsAircraftAutoCallout(rule) || _settings.AircraftAutoCallouts)
+        && (rule != Rules.TaxiSpeed || _settings.TaxiSpeedEnabled);
+
+    /// <summary>Taxi-Speed-Warnung einstellen (Sprachschleife, voice-settings.json).</summary>
+    public void ConfigureTaxiSpeed(bool enabled, double thresholdKt, double cooldownSec)
+    {
+        _settings.TaxiSpeedEnabled = enabled;
+        _settings.TaxiSpeedKt = Math.Clamp(double.IsFinite(thresholdKt) ? thresholdKt : 25, 5, 60);
+        _settings.TaxiSpeedCooldownSec = Math.Clamp(double.IsFinite(cooldownSec) ? cooldownSec : 30, 5, 600);
+    }
 
     public bool AircraftAutoCallouts
     {
@@ -190,6 +209,7 @@ public sealed partial class MonitorEngine
         CheckLandingConfiguration(s, now, suppressed, events);
         CheckRunwayAssigned(s, now, suppressed, events);
         CheckPmCallouts(s, now, suppressed, events);
+        CheckTaxiSpeed(s, now, suppressed, events);
         CheckAircraftAutoCallouts(s, now, suppressed, events);
 
         _prev = s;

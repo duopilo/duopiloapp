@@ -12,6 +12,8 @@ using Microsoft.Extensions.Options;
 //   Kopilot.exe --no-tray          → ohne Tray-Symbol
 //   Kopilot.exe --generate-secret  → zufälliges Geheimnis für BearerToken / ConsentPassword ausgeben
 //
+// Sprachschleife (Mikrofon, Whisper, Kopilot-Befehle) nur im HTTP-Modus: %LOCALAPPDATA%\Kopilot\voice-settings.json
+//
 // Ohne --stdio/--http entscheidet Kopilot:Transport in appsettings(.Local).json.
 
 static bool Has(string[] args, string flag) => args.Any(a => string.Equals(a, flag, StringComparison.OrdinalIgnoreCase));
@@ -88,6 +90,9 @@ else
     builder.Services.AddSingleton<Kopilot.Speech.ISpeechOutput>(sp => sp.GetRequiredService<Kopilot.Speech.CalloutSpeaker>());
     builder.Services.AddSingleton<Kopilot.Atc.IAtcRadio>(sp => sp.GetRequiredService<Kopilot.Speech.CalloutSpeaker>());
     builder.Services.AddHostedService(sp => sp.GetRequiredService<Kopilot.Speech.CalloutSpeaker>());
+
+    // Sprachschleife (Mikrofon → Whisper → Kopilot/ATC → Sprachausgabe), aus voice-settings.json – standardmäßig aus
+    Kopilot.Voice.VoiceServiceCollectionExtensions.AddKopilotVoice(builder.Services);
 
     if (OperatingSystem.IsWindows() && !Has(args, "--no-tray"))
     {
