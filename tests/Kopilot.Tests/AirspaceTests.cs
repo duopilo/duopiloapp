@@ -381,7 +381,7 @@ public sealed class AirspaceTests
     [Fact]
     public void OpenFlights_im_Originalformat()
     {
-        const string data = """
+        const string data = """"
             1,"Lufthansa",\N,"LH","DLH","LUFTHANSA","Germany","Y"
             2,"Old Air",\N,"","OLD","OLDIE","Nowhere","N"
             3,"New Air",\N,"","OLD","NEWBIE","Nowhere","Y"
@@ -390,7 +390,7 @@ public sealed class AirspaceTests
             5,"Quote ""Air""",\N,"","QAI","QUOTE AIR","X","Y"
             6,"No ICAO",\N,"NI","","NOICAO","X","Y"
             7,"No callsign",\N,"","NOC",\N,"X","Y"
-            """;
+            """";
 
         var airlines = AirlineDirectory.Parse(new StringReader(data));
 
