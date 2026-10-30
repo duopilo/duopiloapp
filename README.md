@@ -216,18 +216,27 @@ Sagst du „negative“ oder korrigierst den Wert, wird die Aktion verworfen. Ei
 
 NAV & LOGO fehlt: Der Schalter ist beim A32NX nur als Input Event (`B:`) erreichbar, das kann Kopilot noch nicht.
 
-**Was nie geht:** Triebwerks-Master, Zündung/Start, Schub, Feuer-Handles und -Agents, Treibstoff, MCDU, Pause/Slew/Sim-Steuerung. Das ist im Code festgelegt, auch ein bearbeitetes Profil kommt nicht daran vorbei:
+**Was nie geht:** Triebwerks-Master, Zündung/Start, Schub, Feuer-Handles und -Agents, Treibstoff (Pumpen, Crossfeed), Hydraulik (Pumpen, PTU, RAT), IDG-Trennung, MCDU, Pause/Slew/Sim-Steuerung – auch nicht mit Rückfrage. Was den Flieger beschädigen kann oder irreversibel ist, bestätigen sich die Piloten selbst. Das ist im Code festgelegt, auch ein bearbeitetes Profil kommt nicht daran vorbei:
 - Kopilot sendet nur Events aus einer festen Liste (FCU, Autobrake, Fahrwerk, Klappen, Spoiler, Licht, Schilder, Transponder, COM).
 - Kopilot schreibt nur L:-Variablen, nie Standard-SimVars, und auch dort greift die Sperrliste.
 - Fahrwerk und Klappen gehen nur über ihre Events, und nur zusammen mit der passenden Sperre.
+- Bereiche und IDs wie `Engine`, `Fuel`, `Fire`, `Hydraulic`, `eng.*`, `fuel.*`, `*.idg1` werden beim Laden entfernt.
+- Sicherheitsrelevante Schalter (Fahrwerk, Klappen, Speedbrake, Batterien, Packs, APU Master, Transponder, TCAS, AP/ATHR, FCU-Höhe, ADIRS) stehen nur unter ihrer Standard-ID (`gear.down`, `air.pack1` …) – sonst würden die Sperren unten nicht greifen.
 - Es gibt kein Tool, das beliebige Events oder Variablen schreibt.
 
-**Sperren:**
+**Sperren** (abgelehnt mit Grund):
 - Fahrwerk einfahren nur in der Luft
-- Fahrwerk ausfahren nur bis VLO (A320: 250 kt)
+- Fahrwerk ausfahren nur bis VLO (A320/A330: 250 kt) und unter der Höchsthöhe (`maxGearAltitudeFt`, A320/A330: 25.000 ft Druckhöhe)
 - Klappen nur bis zur VFE der neuen Stellung
+- Speedbrake ausfahren nicht in den gesperrten Klappenstellungen (`speedbrakeInhibitFlaps`, A320/A330: FULL)
+- Batterien aus nur am Boden, beide Packs aus nur am Boden (ein Pack aus im Flug geht, solange das andere an ist)
+- APU Master aus nicht bei APU Bleed an
 
-Fehlt ein Grenzwert im Profil, ist die Aktion gesperrt. Dazu kommen Bedingungen je Aktion, z. B. V/S und Heading nicht im TRK/FPA-Modus, QNH nur im QNH-Modus, APU Start nur mit APU Master.
+**Rückfrage mit Warnhinweis** (nach dem Readback ein zweites „confirm“): Transponder STBY, ALT RPTG aus und TCAS STBY im Flug · Squawk 7500/7600/7700 · ADIRS aus · AP 1/2 und A/THR aus im Flug · FCU-Höhe unter der MSA oder außerhalb der ATC-Freigabe (`clearedAltitude`; stimmt die Höhe mit der Freigabe, entfällt die MSA-Prüfung). Das erste `confirm_action` führt dann nicht aus, sondern liefert `status: "awaiting_caution_confirmation"` mit `caution`, z. B. „Caution, transponder standby in flight. Confirm transponder standby?“. Erst das zweite „confirm“ mit demselben Token führt aus. Steht der Schalter schon so, entfällt die Rückfrage. Die Rückfrage gilt in jedem Ablauf – auch ein späterer Modus „ausführen + Callout“ muss sie stellen (`ActionPlan.NeedsCrossConfirmation`).
+
+**Fehlt ein Grenzwert im Profil** (VLO/VLE, VFE einer Stellung, `maxGearAltitudeFt`, `speedbrakeInhibitFlaps`, `msaSource`), geht die Aktion nur mit Rückfrage. Das steht im Dashboard-Protokoll („Grenzwert fehlt“), im Log und in `kopilot_status` (`profileWarnings`). Dazu kommen Bedingungen je Aktion, z. B. V/S und Heading nicht im TRK/FPA-Modus, QNH nur im QNH-Modus, APU Start nur mit APU Master.
+
+**Fahrwerk und Klappen nachlesen:** Nach `gear.down` wartet Kopilot, bis alle Beine verriegelt sind, und sagt dann „Gear down, three green“ – sonst nach 20 s „Gear disagree“. Analog „Gear up“ und „Flaps two“ erst bei erreichter Stellung (Klappen und Vorflügel stehen still), sonst „Flaps disagree“. Pausen verlängern die Wartezeit. Die Callouts laufen als PM_GEAR/PM_FLAPS über die Sprachausgabe und `get_alerts`; den Hebelwechsel sagt das Monitoring dann nicht zusätzlich an. Gelesen werden die MSFS-Standardwerte (`GEAR CENTER/LEFT/RIGHT POSITION`, `TRAILING/LEADING EDGE FLAPS LEFT PERCENT`), im Profil unter `verification` überschreibbar.
 
 Die Aktionen stehen im Flugzeugprofil unter `actions` (Events, Variablen, Readback, Prüfung). Sie sind aus dem FBW-Quellcode abgeleitet. Ob eine Aktion angekommen ist, zeigt das Protokoll im Dashboard (✓/✗).
 
@@ -346,7 +355,7 @@ Mikrofon → Silero VAD (Satzgrenzen) → Whisper (Abschrift) → Router ─┬�
 | EFIS, FCU | QNH 1013 / QNH one zero one three · Baro standard · Altitude five thousand · Flight level one two zero · Speed two five zero · Heading zero niner zero · Managed speed · Vertical speed minus one thousand · Autopilot one on · Approach on |
 | Transponder | Squawk seven thousand / Squawk 1 2 3 4 · TCAS TA/RA · TCAS TA only |
 
-Jeder Befehl läuft über den bestehenden Zwei-Schritt-Ablauf: Kopilot ruft `prepare_action` auf und spricht den Readback („Flaps one“). Erst auf **„Confirm“**, **„Correct“** oder **„Affirm“** (auch „Korrekt“) folgt `confirm_action`; **„Negative“** oder **„Cancel“** verwirft die Aktion („Cancelled“). „Ja“, „OK“ oder „Roger“ allein bestätigen nichts – nach einem Readback fragt Kopilot dann „Say again“. Bestätigt wird nur, was du gehört hast: „Confirm“ zählt erst, wenn der Readback ganz gesprochen ist, und nur in einem Satz, den du danach begonnen hast. Ohne Antwort verfällt die Aktion 60 Sekunden nach dem Readback still; wird der Readback gar nicht gesprochen (keine Stimme, Pause), sofort. Ausgeführt sagt Kopilot nichts – nur „Not confirmed“, wenn das Flugzeug den Wert nicht übernommen hat, „Unable“ bei einer Sperre und „Input disabled“, wenn die Eingabe gesperrt ist. Zwei Befehle in einem Satz oder Unbekanntes → „Say again“ (längeres Gespräch im Raum wird still verworfen).
+Jeder Befehl läuft über den bestehenden Zwei-Schritt-Ablauf: Kopilot ruft `prepare_action` auf und spricht den Readback („Flaps one“). Erst auf **„Confirm“**, **„Correct“** oder **„Affirm“** (auch „Korrekt“) folgt `confirm_action`; **„Negative“** oder **„Cancel“** verwirft die Aktion („Cancelled“). „Ja“, „OK“ oder „Roger“ allein bestätigen nichts – nach einem Readback fragt Kopilot dann „Say again“. Bestätigt wird nur, was du gehört hast: „Confirm“ zählt erst, wenn der Readback ganz gesprochen ist, und nur in einem Satz, den du danach begonnen hast. Ohne Antwort verfällt die Aktion 60 Sekunden nach dem Readback still; wird der Readback gar nicht gesprochen (keine Stimme, Pause), sofort. Ausgeführt sagt Kopilot nichts – nur „Not confirmed“, wenn das Flugzeug den Wert nicht übernommen hat, „Unable“ bei einer Sperre und „Input disabled“, wenn die Eingabe gesperrt ist. Kritische Aktionen (siehe Eingabe-Modul) fragen nach dem ersten „Confirm“ mit Warnhinweis nach („Caution, autothrust off. Confirm autothrust off?“); erst ein zweites „Confirm“ führt aus. Nach Fahrwerk und Klappen kommt der Callout mit der erreichten Stellung („Gear down, three green“). Zwei Befehle in einem Satz oder Unbekanntes → „Say again“ (längeres Gespräch im Raum wird still verworfen).
 
 **Abfragen** – Antwort nur als reiner Callout, Geschwindigkeiten immer in Knoten:
 
@@ -638,7 +647,8 @@ Study-Level-Flugzeuge legen vieles (AP-Status, FMA, Autobrake, ECAM, Fuel Flow) 
 - **fuel** listet Treibstoffpumpen und -ventile für `get_systems` (`fuel.pumps`), gleiches Format wie `electrical`.
 - **limits.landingFlaps** sind die Klappenstellungen für den Landecheck, `vfeKt` gilt je Stellung (Klartext aus `flaps` oder Hebel-Index).
 - **variables** sind freie Zusatzwerte, die `get_aircraft_profile` roh ausgibt.
-- **limits** nutzt das Monitoring (Gear/Flap Speed, Overspeed, 250 kt unter FL100).
+- **limits** nutzt das Monitoring (Gear/Flap Speed, Overspeed, 250 kt unter FL100) und das Eingabe-Modul: `vloKt`, `vfeKt`, `maxGearAltitudeFt` (Fahrwerk ausfahren nur darunter), `speedbrakeInhibitFlaps` (z. B. `["FULL"]`), `msaSource` (`"ofp"` = MORA aus dem SimBrief-Navlog, höchster Wert der beiden Fixes des aktuellen Abschnitts). Fehlt ein Wert, gehen die betroffenen Aktionen nur mit Rückfrage.
+- **verification** (optional): `gear.legs` und `flaps.surfaces` mit eigenen Variablen, Schwellen (`downAt`, `upAt`, `tolerance`, `settleSec`) und Zeitgrenzen (`timeoutSec`) für das Nachlesen nach Fahrwerk und Klappen.
 
 **ECAM-Klartext:** Das A32NX schreibt nur Codes (z. B. `220000501`) in die EWD-Variablen. Die Texte stehen in der FlyByWire-Tabelle `EwdMessages.ts` (GPL-3.0), beim Headwind A330-900neo in dessen eigener Fassung (Format `hdw-a339x`). Kopilot lädt sie beim ersten Bedarf von GitHub, speichert sie unter `%LOCALAPPDATA%\Kopilot\ecam\` und erneuert sie alle 14 Tage. Ohne Internet bleibt der Cache gültig. Die Tabelle liegt bewusst nicht im Repo.
 

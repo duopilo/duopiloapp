@@ -40,6 +40,8 @@ public sealed record PendingVoiceAction(string Token, string ActionId, string? V
 /// confirm_action; "Negative"/"Cancel" → cancel_action; nach dem Timeout verfällt die Aktion still.
 /// Bestätigt wird nur, was der Pilot gehört hat: "Confirm" zählt erst, wenn der Readback ganz gesprochen ist
 /// (<see cref="VoiceDialog.Spoken"/>), und nur, wenn der Pilot danach zu sprechen begonnen hat.
+/// Kritische Aktionen (z. B. Transponder STBY im Flug) fragen nach dem ersten "Confirm" mit Warnhinweis nach; erst ein zweites
+/// "Confirm" nach der gehörten Rückfrage führt aus.
 /// Abfragen werden mit dem reinen Callout beantwortet, Unbekanntes mit "Say again".
 /// Nicht threadsicher – die Sprachschleife ruft alles nacheinander auf.
 /// </summary>
