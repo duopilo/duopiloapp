@@ -1,3 +1,5 @@
+using Kopilot.Localization;
+
 namespace Kopilot.Atc;
 
 /// <summary>Verweis auf eine Station, aus dem sich die Station nach einem Neustart wieder bauen lässt.</summary>
@@ -202,7 +204,7 @@ public sealed partial class AtcSession
         UpdateOceanicClearance(input);
 
         return s.PendingReadback is { } pending
-            ? $"Readback {pending} war beim Sichern noch offen – gilt als erledigt ({s.Step} → {Step})."
+            ? Loc.T("atc.session.readbackOpen", pending, s.Step, Step)
             : null;
     }
 

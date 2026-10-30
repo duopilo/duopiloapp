@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
+using Kopilot.Localization;
 using Microsoft.Extensions.Options;
 
 namespace Kopilot.Remote;
@@ -50,7 +51,7 @@ public sealed class OAuthStore
         var client = new RegisteredClient
         {
             ClientId = Secrets.NewToken("kpc_"),
-            ClientName = string.IsNullOrWhiteSpace(clientName) ? "Unbenannter Client" : clientName.Trim()[..Math.Min(clientName.Trim().Length, 100)],
+            ClientName = string.IsNullOrWhiteSpace(clientName) ? Loc.T("remote.oauth.unnamedClient") : clientName.Trim()[..Math.Min(clientName.Trim().Length, 100)],
             RedirectUris = [.. redirectUris],
             CreatedUtc = Now,
         };
@@ -62,7 +63,7 @@ public sealed class OAuthStore
             SaveLocked();
         }
 
-        _log.LogInformation("OAuth: Client registriert: {Name} ({Redirects})", client.ClientName, string.Join(", ", client.RedirectUris));
+        _log.LogInformation(Loc.Log("log.remote.oauth.clientRegistered"), client.ClientName, string.Join(", ", client.RedirectUris));
         return client;
     }
 
@@ -116,32 +117,32 @@ public sealed class OAuthStore
     {
         if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(codeVerifier))
         {
-            return TokenResult.Error("invalid_request", "code und code_verifier sind Pflicht.");
+            return TokenResult.Error("invalid_request", Loc.T("remote.oauth.codeVerifierRequired"));
         }
 
         if (!_codes.TryRemove(Secrets.Hash(code), out var entry) || entry.ExpiresUtc < Now)
         {
-            return TokenResult.Error("invalid_grant", "Code ungültig, abgelaufen oder schon benutzt.");
+            return TokenResult.Error("invalid_grant", Loc.T("remote.oauth.codeInvalid"));
         }
 
         if (entry.ClientId != clientId)
         {
-            return TokenResult.Error("invalid_grant", "Code gehört zu einem anderen Client.");
+            return TokenResult.Error("invalid_grant", Loc.T("remote.oauth.codeOtherClient"));
         }
 
         if (redirectUri is not null && redirectUri != entry.RedirectUri)
         {
-            return TokenResult.Error("invalid_grant", "redirect_uri stimmt nicht mit der Autorisierung überein.");
+            return TokenResult.Error("invalid_grant", Loc.T("remote.oauth.redirectMismatch"));
         }
 
         if (!Secrets.FixedTimeEquals(Secrets.PkceChallenge(codeVerifier), entry.CodeChallenge))
         {
-            return TokenResult.Error("invalid_grant", "PKCE-Prüfung fehlgeschlagen.");
+            return TokenResult.Error("invalid_grant", Loc.T("remote.oauth.pkceFailed"));
         }
 
         if (resource is not null && !ResourceMatches(resource))
         {
-            return TokenResult.Error("invalid_target", "Unbekannte Ressource.");
+            return TokenResult.Error("invalid_target", Loc.T("remote.oauth.unknownResource"));
         }
 
         return IssueTokens(entry.ClientId);
@@ -154,7 +155,7 @@ public sealed class OAuthStore
     {
         if (string.IsNullOrEmpty(refreshToken))
         {
-            return TokenResult.Error("invalid_request", "refresh_token fehlt.");
+            return TokenResult.Error("invalid_request", Loc.T("remote.oauth.refreshTokenMissing"));
         }
 
         var hash = Secrets.Hash(refreshToken);
@@ -163,12 +164,12 @@ public sealed class OAuthStore
             var entry = _state.RefreshTokens.FirstOrDefault(t => t.Hash == hash);
             if (entry is null || entry.ExpiresUtc < Now)
             {
-                return TokenResult.Error("invalid_grant", "Refresh-Token ungültig oder abgelaufen.");
+                return TokenResult.Error("invalid_grant", Loc.T("remote.oauth.refreshTokenInvalid"));
             }
 
             if (clientId is not null && entry.ClientId != clientId)
             {
-                return TokenResult.Error("invalid_grant", "Refresh-Token gehört zu einem anderen Client.");
+                return TokenResult.Error("invalid_grant", Loc.T("remote.oauth.refreshTokenOtherClient"));
             }
 
             _state.RefreshTokens.Remove(entry);
@@ -238,13 +239,13 @@ public sealed class OAuthStore
             if (File.Exists(_file))
             {
                 var state = JsonSerializer.Deserialize<State>(File.ReadAllText(_file), FileJson) ?? new State();
-                _log.LogInformation("OAuth-Zustand geladen: {Clients} Client(s), {Tokens} aktive Verbindung(en) – {File}", state.Clients.Count, state.RefreshTokens.Count, _file);
+                _log.LogInformation(Loc.Log("log.remote.oauth.stateLoaded"), state.Clients.Count, state.RefreshTokens.Count, _file);
                 return state;
             }
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
         {
-            _log.LogWarning(ex, "OAuth-Zustand konnte nicht gelesen werden, starte leer: {File}", _file);
+            _log.LogWarning(ex, Loc.Log("log.remote.oauth.stateUnreadable"), _file);
         }
 
         return new State();
@@ -261,7 +262,7 @@ public sealed class OAuthStore
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            _log.LogError(ex, "OAuth-Zustand konnte nicht gespeichert werden: {File}", _file);
+            _log.LogError(ex, Loc.Log("log.remote.oauth.stateNotSaved"), _file);
         }
     }
 

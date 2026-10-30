@@ -1,12 +1,12 @@
 # lib/
 
-Optionaler Ablageort für die SimConnect-DLLs, falls das MSFS-2024-SDK nicht automatisch gefunden wird.
+Optional location for the SimConnect DLLs, in case the MSFS 2024 SDK isn't found automatically.
 
-Kopiere aus dem SDK hierher:
+Copy from the SDK to here:
 
-| Datei | Quelle im SDK |
+| File | Source in the SDK |
 |---|---|
 | `Microsoft.FlightSimulator.SimConnect.dll` | `SimConnect SDK\lib\managed\` |
 | `SimConnect.dll` | `SimConnect SDK\lib\` |
 
-Die DLLs werden nicht eingecheckt (`.gitignore`).
+The DLLs are not checked in (`.gitignore`).

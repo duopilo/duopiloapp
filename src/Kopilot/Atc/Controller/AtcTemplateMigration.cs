@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Kopilot.Localization;
 
 namespace Kopilot.Atc;
 
@@ -32,11 +33,11 @@ public static class AtcTemplateMigration
                 if (Key(firs, "CZQO") is null)
                 {
                     firs["CZQO"] = czqx;
-                    notes.Add($"{label}: Gander Oceanic von \"CZQX\" nach \"CZQO\" übernommen – CZQX ist jetzt Gander Center (Domestic).");
+                    notes.Add(Loc.T("atc.templates.migrateCzqxMoved", label));
                 }
                 else
                 {
-                    notes.Add($"{label}: alter Oceanic-Eintrag \"CZQX\" entfernt – CZQX ist jetzt Gander Center (Domestic), Oceanic steht unter \"CZQO\".");
+                    notes.Add(Loc.T("atc.templates.migrateCzqxRemoved", label));
                 }
             }
 
@@ -46,7 +47,7 @@ public static class AtcTemplateMigration
                 var voice = stations[voiceKey];
                 stations.Remove(voiceKey);
                 stations["FIR/CZQO"] = voice;
-                notes.Add($"{label}: feste Stimme von FIR/CZQX nach FIR/CZQO übernommen.");
+                notes.Add(Loc.T("atc.templates.migrateVoiceMoved", label));
             }
         }
 

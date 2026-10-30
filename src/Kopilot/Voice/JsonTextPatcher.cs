@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Kopilot.Localization;
 
 namespace Kopilot.Voice;
 
@@ -37,7 +38,7 @@ public static class JsonTextPatcher
             var depth = reader.CurrentDepth;
             if (depth >= names.Length)
             {
-                throw new JsonException("JSON zu tief verschachtelt.");
+                throw new JsonException(Loc.T("voice.json.tooDeep"));
             }
 
             switch (reader.TokenType)
@@ -83,7 +84,7 @@ public static class JsonTextPatcher
 
         if (deepestBrace < 0)
         {
-            throw new JsonException("Kein JSON-Objekt gefunden.");
+            throw new JsonException(Loc.T("voice.json.noObject"));
         }
 
         // Fehlende Teile des Pfads als neue Eigenschaft direkt hinter der "{" des tiefsten vorhandenen Objekts einfügen,

@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json.Serialization;
 using Kopilot.Atc;
 using Kopilot.FlightPlan;
+using Kopilot.Localization;
 
 namespace Kopilot.Monitoring;
 
@@ -267,7 +268,7 @@ public static class FuelCheckText
     public static string Kg(double kg)
     {
         var rounded = (long)Math.Round(Math.Abs(kg) / 10) * 10;
-        return (kg < 0 && rounded > 0 ? "−" : "") + rounded.ToString("#,0", Inv).Replace(',', '.') + " kg";
+        return (kg < 0 && rounded > 0 ? "−" : "") + rounded.ToString("#,0", Inv).Replace(",", Loc.T("monitor.fuel.groupSeparator"), StringComparison.Ordinal) + " kg";
     }
 
     /// <summary>Mit Vorzeichen: "+1.200 kg" / "−2.180 kg".</summary>

@@ -27,7 +27,7 @@ public enum AlertKind
 /// <param name="Id">Fortlaufende Nummer (für get_alerts/wait_for_alerts "sinceId").</param>
 /// <param name="Rule">Regel-ID, z. B. "GEAR_SPEED".</param>
 /// <param name="Callout">Kurzer englischer Callout zum Vorlesen, null bei Clear oder wenn stumm.</param>
-/// <param name="Message">Erklärung auf Deutsch mit den Werten.</param>
+/// <param name="Message">Erklärung in der gewählten Sprache mit den Werten.</param>
 public sealed record AlertEvent(
     long Id,
     DateTimeOffset TimeUtc,

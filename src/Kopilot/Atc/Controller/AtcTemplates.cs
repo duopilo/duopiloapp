@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Kopilot.Atc.Airspace;
+using Kopilot.Localization;
 
 namespace Kopilot.Atc;
 
@@ -266,13 +267,13 @@ public static class AtcTemplateLoader
     /// <summary>Grundlage und eigene Kopie zusammenführen: Objekte werden je Schlüssel gemischt, die Kopie gewinnt; Listen ersetzt sie ganz.</summary>
     public static AtcTemplates ParseLayered(string? baseJson, string? userJson, List<string> notes)
     {
-        var merged = baseJson is null ? new JsonObject() : AtcTemplateMigration.Migrate(ParseObject(baseJson), notes, "Grundlage");
+        var merged = baseJson is null ? new JsonObject() : AtcTemplateMigration.Migrate(ParseObject(baseJson), notes, Loc.T("atc.templates.labelBase"));
         if (userJson is not null)
         {
-            Merge(merged, AtcTemplateMigration.Migrate(ParseObject(userJson), notes, "eigene Kopie"));
+            Merge(merged, AtcTemplateMigration.Migrate(ParseObject(userJson), notes, Loc.T("atc.templates.labelUserCopy")));
         }
 
-        return (merged.Deserialize<AtcTemplates>(Options) ?? throw new JsonException("Leere Vorlagendatei.")).Normalized();
+        return (merged.Deserialize<AtcTemplates>(Options) ?? throw new JsonException(Loc.T("atc.templates.empty"))).Normalized();
     }
 
     /// <summary>Datei lesen. Fehler beim Lesen oder im JSON landen in <paramref name="errors"/>.</summary>
@@ -325,7 +326,7 @@ public static class AtcTemplateLoader
     }
 
     private static JsonObject ParseObject(string json) =>
-        JsonNode.Parse(json, documentOptions: DocumentOptions) as JsonObject ?? throw new JsonException("Die Vorlagendatei muss ein JSON-Objekt sein.");
+        JsonNode.Parse(json, documentOptions: DocumentOptions) as JsonObject ?? throw new JsonException(Loc.T("atc.templates.notObject"));
 
     /// <summary>Tiefe Mischung: gleichnamige Objekte rekursiv, sonst ersetzt <paramref name="overlay"/> den Wert (Schlüssel ohne Groß-/Kleinschreibung).</summary>
     public static void Merge(JsonObject target, JsonObject overlay)
@@ -356,7 +357,7 @@ public static class AtcTemplateLoader
         {
             if (templates.Message(id) is not { } m || m.Variants.Count == 0 || m.Variants.All(string.IsNullOrWhiteSpace))
             {
-                errors.Add($"Funkspruch \"{id}\" fehlt.");
+                errors.Add(Loc.T("atc.templates.messageMissing", id));
             }
         }
 
@@ -364,7 +365,7 @@ public static class AtcTemplateLoader
         {
             if (message.From is not ("atc" or "pilot"))
             {
-                errors.Add($"{id}: \"from\" muss \"atc\" oder \"pilot\" sein.");
+                errors.Add(Loc.T("atc.templates.fromInvalid", id));
             }
 
             foreach (var variant in message.Variants)
@@ -376,11 +377,11 @@ public static class AtcTemplateLoader
             {
                 if (!AtcVariables.Checkable.Contains(item))
                 {
-                    errors.Add($"{id}: Readback-Punkt \"{item}\" ist nicht prüfbar.");
+                    errors.Add(Loc.T("atc.templates.readbackNotCheckable", id, item));
                 }
                 else if (!templates.Corrections.TryGetValue(item, out var correction) || string.IsNullOrWhiteSpace(correction))
                 {
-                    errors.Add($"{id}: Für den Readback-Punkt \"{item}\" fehlt eine Korrektur unter \"corrections\".");
+                    errors.Add(Loc.T("atc.templates.correctionMissing", id, item));
                 }
             }
         }
@@ -392,7 +393,7 @@ public static class AtcTemplateLoader
 
         if (templates.Voices.Pool.Count == 0)
         {
-            errors.Add("voices.pool ist leer – jede Station braucht eine Stimme.");
+            errors.Add(Loc.T("atc.templates.voicePoolEmpty"));
         }
 
         return errors;
@@ -404,13 +405,13 @@ public static class AtcTemplateLoader
         {
             if (!AtcVariables.Known.Contains(name))
             {
-                errors.Add($"{id}: unbekannte Variable {{{name}}}.");
+                errors.Add(Loc.T("atc.templates.unknownVariable", id, name));
             }
         }
 
         if (text.Contains("mach", StringComparison.OrdinalIgnoreCase))
         {
-            errors.Add($"{id}: Geschwindigkeiten nur in Knoten, nicht in Mach.");
+            errors.Add(Loc.T("atc.templates.machNotAllowed", id));
         }
     }
 }

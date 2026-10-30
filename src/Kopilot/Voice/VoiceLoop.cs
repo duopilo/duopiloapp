@@ -1,5 +1,6 @@
 using System.Threading.Channels;
 using Kopilot.Input;
+using Kopilot.Localization;
 using Kopilot.Monitoring;
 using Kopilot.Sim;
 using Kopilot.Speech;
@@ -101,7 +102,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
     /// <summary>Einstellungen geändert (Dashboard): Schleife mit den neuen Werten neu starten – Kopilot läuft weiter.</summary>
     public void Reload(string reason)
     {
-        _log.LogInformation("Sprachschleife: Neustart ({Reason}).", reason);
+        _log.LogInformation(Loc.Log("log.voice.loop.restart"), reason);
         lock (_runLock)
         {
             _runCts?.Cancel();
@@ -178,7 +179,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
                 default:
                     failures++;
                     var delay = TimeSpan.FromSeconds(Math.Min(300, 30 * Math.Pow(2, failures - 1)));
-                    _log.LogWarning("Sprachschleife: neuer Versuch in {Seconds} s (oder sofort nach einer Änderung im Dashboard).", (int)delay.TotalSeconds);
+                    _log.LogWarning(Loc.Log("log.voice.loop.retry"), (int)delay.TotalSeconds);
                     await WaitForReloadAsync(delay, stoppingToken);
                     break;
             }
@@ -223,13 +224,13 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
 
         if (error is not null)
         {
-            _log.LogWarning("Sprachschleife: {Error} – es gelten die Standardwerte.", error);
+            _log.LogWarning(Loc.Log("log.voice.loop.settingsError"), error);
         }
 
         LogSettings(settings, devices);
         if (_store.TemplateMismatch(settings) is { } hint)
         {
-            _log.LogWarning("Sprachschleife: {Hint}", hint);
+            _log.LogWarning(Loc.Log("log.voice.loop.templateHint"), hint);
         }
 
         // Ohne Sprachschleife bleibt alles wie bisher (auch "Sim paused" und die Taxi-Speed-Werte aus appsettings.json)
@@ -239,11 +240,9 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
             SetStatus(s => s with
             {
                 State = "off",
-                Note = $"Aus. Einschalten im Dashboard (Ansagen → Stimme → Sprachschleife) oder in {_store.FilePath} mit \"enabled\": true.",
+                Note = Loc.T("voice.loop.offNote", _store.FilePath),
             });
-            _log.LogInformation(
-                "Sprachschleife aus ({File}: \"enabled\": false). Einschalten im Dashboard unter Ansagen → Stimme oder in dieser Datei – nicht in der Vorlage neben der Kopilot.exe.",
-                _store.FilePath);
+            _log.LogInformation(Loc.Log("log.voice.loop.off"), _store.FilePath);
             return RunResult.Disabled;
         }
 
@@ -270,13 +269,13 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
             var runtime = recognizer.Runtime;
             SetStatus(s => s with { State = "listening", Runtime = runtime, ListeningSinceUtc = DateTimeOffset.UtcNow, Error = null });
             _log.LogInformation(
-                "Sprachschleife bereit: Whisper {Model} ({Runtime}), Sprache {Language}, VAD-Schwelle {Threshold}, ATC-Modul {Atc}, Eingabe-Modul {Input}.",
+                Loc.Log("log.voice.loop.ready"),
                 settings.Recognition.Model,
                 recognizer.Runtime ?? "?",
                 settings.Recognition.Language,
                 settings.Microphone.Threshold,
-                _atc.Enabled ? "an" : "aus",
-                _input.Enabled ? "frei" : "gesperrt (Befehle werden mit \"Input disabled\" beantwortet)");
+                _atc.Enabled ? Loc.En("voice.word.on") : Loc.En("voice.word.off"),
+                _input.Enabled ? Loc.En("voice.loop.inputFree") : Loc.En("voice.loop.inputLocked"));
 
             Task[] tasks =
             [
@@ -301,7 +300,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
 
             ct.ThrowIfCancellationRequested();
             await first;
-            throw new InvalidOperationException("Ein Teil der Sprachschleife hat sich unerwartet beendet.");
+            throw new InvalidOperationException(Loc.T("voice.loop.partEnded"));
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -310,7 +309,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         catch (Exception ex)
         {
             SetStatus(s => s with { State = "error", Error = ex.Message });
-            _log.LogError(ex, "Sprachschleife gestoppt: {Message}", ex.Message);
+            _log.LogError(ex, Loc.Log("log.voice.loop.stopped"), ex.Message);
             return RunResult.Error;
         }
         finally
@@ -359,11 +358,10 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
     private void LogSettings(VoiceSettings s, IReadOnlyList<MicrophoneDevice> devices)
     {
         _log.LogInformation(
-            "Sprachschleife: Einstellungen aus {File} – enabled {Enabled}, Mikrofon \"{Device}\", Whisper {Model} ({Cpu}, {Threads} Threads, Sprache {Language}), " +
-            "VAD-Schwelle {Threshold}, Stille {SilenceMs} ms, Mindestlänge {MinSpeechMs} ms, Anrede Pflicht {Wake}, Tastenkürzel {Hotkey}.",
+            Loc.Log("log.voice.loop.settings"),
             _store.FilePath,
             s.Enabled,
-            s.Microphone.Device.Length > 0 ? s.Microphone.Device : "(Windows-Standardgerät)",
+            s.Microphone.Device.Length > 0 ? s.Microphone.Device : Loc.En("voice.mic.windowsDefault"),
             s.Recognition.Model,
             s.Recognition.Device,
             s.Recognition.Threads,
@@ -371,14 +369,14 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
             s.Microphone.Threshold,
             s.Microphone.SilenceMs,
             s.Microphone.MinSpeechMs,
-            s.Commands.RequireWakeWord ? "ja" : "nein",
-            string.IsNullOrWhiteSpace(s.Hotkeys.Mute) ? "keins" : s.Hotkeys.Mute);
+            s.Commands.RequireWakeWord ? Loc.En("voice.word.yes") : Loc.En("voice.word.no"),
+            string.IsNullOrWhiteSpace(s.Hotkeys.Mute) ? Loc.En("voice.word.none") : s.Hotkeys.Mute);
 
         _log.LogInformation(
-            "Aufnahmegeräte: {Devices}",
+            Loc.Log("log.voice.mic.devices"),
             devices.Count == 0
-                ? "keine gefunden"
-                : string.Join(" | ", devices.Select(d => $"[{d.Number}] {d.FullName}{(d.IsDefault ? " (Windows-Standard)" : "")}")));
+                ? Loc.En("voice.mic.noneFound")
+                : string.Join(" | ", devices.Select(d => d.IsDefault ? Loc.En("voice.mic.listItemDefault", d.Number, d.FullName) : $"[{d.Number}] {d.FullName}")));
     }
 
     private async Task<(IVoiceActivityDetector Vad, WhisperRecognizer Recognizer)> LoadModelsAsync(VoiceSettings settings, CancellationToken ct)
@@ -393,7 +391,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
 
         if (!File.Exists(vadPath))
         {
-            _log.LogInformation("Silero VAD fehlt – lade nach {Path} …", vadPath);
+            _log.LogInformation(Loc.Log("log.voice.model.vadMissing"), vadPath);
         }
 
         await ModelDownloader.EnsureAsync(vadPath, SileroVad.ModelUrl, SileroVad.MinModelBytes, null, ct);
@@ -401,7 +399,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         {
             if (!File.Exists(whisperPath))
             {
-                _log.LogInformation("Whisper-Modell {Model} fehlt – lade nach {Path} …", r.Model, whisperPath);
+                _log.LogInformation(Loc.Log("log.voice.model.whisperMissing"), r.Model, whisperPath);
             }
 
             var lastLogged = -1;
@@ -416,14 +414,14 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
                     if (quarter > lastLogged && quarter < 4)
                     {
                         lastLogged = quarter;
-                        _log.LogInformation("Whisper-Modell: {Percent} % geladen.", quarter * 25);
+                        _log.LogInformation(Loc.Log("log.voice.model.whisperProgress"), quarter * 25);
                     }
                 },
                 ct);
         }
         else if (!File.Exists(whisperPath))
         {
-            throw new FileNotFoundException($"Whisper-Modell nicht gefunden: {whisperPath}", whisperPath);
+            throw new FileNotFoundException(Loc.T("voice.model.whisperNotFound", whisperPath), whisperPath);
         }
 
         SetStatus(s => s with { DownloadProgress = null });
@@ -433,7 +431,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         {
             var recognizer = await Task.Run(() => WhisperRecognizer.Load(whisperPath, r), ct);
             _log.LogInformation(
-                "Modelle geladen in {Ms} ms: Silero VAD ({VadPath}), Whisper {WhisperPath} ({Runtime}).",
+                Loc.Log("log.voice.model.loaded"),
                 (int)(DateTimeOffset.UtcNow - started).TotalMilliseconds,
                 vadPath,
                 whisperPath,
@@ -462,7 +460,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         var (hotkey, problem) = GlobalHotkey.Register(binding!, () => _events.Writer.TryWrite(new VoiceEvent.ToggleMute()));
         if (problem is not null)
         {
-            _log.LogWarning("Sprachschleife: {Problem}", problem);
+            _log.LogWarning(Loc.Log("log.voice.loop.hotkeyProblem"), problem);
             return null;
         }
 
@@ -493,14 +491,14 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
                 if (!found)
                 {
                     _log.LogWarning(
-                        "Mikrofon \"{Device}\" nicht gefunden – nehme {Fallback}. Vorhanden: {Devices}. Kopilot wechselt, sobald es da ist.",
+                        Loc.Log("log.voice.mic.notFound"),
                         device,
                         capture.DeviceName,
                         string.Join(", ", devices.Select(d => d.Name)));
                 }
                 else
                 {
-                    _log.LogInformation("Mikrofon offen: {Device} (WinMM-Gerät {Number}, 16 kHz mono).", capture.DeviceName, capture.DeviceNumber);
+                    _log.LogInformation(Loc.Log("log.voice.mic.open"), capture.DeviceName, capture.DeviceNumber);
                 }
 
                 Exception? reason = null;
@@ -523,7 +521,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
 
                         if (MicrophoneCapture.Resolve(device, MicrophoneCapture.Devices()).Found)
                         {
-                            _log.LogInformation("Mikrofon \"{Device}\" ist jetzt verfügbar – wechsle.", device);
+                            _log.LogInformation(Loc.Log("log.voice.mic.nowAvailable"), device);
                             break;
                         }
                     }
@@ -531,17 +529,17 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
 
                 if (reason is not null)
                 {
-                    _log.LogWarning("Mikrofon getrennt: {Message}", reason.Message);
+                    _log.LogWarning(Loc.Log("log.voice.mic.disconnected"), reason.Message);
                 }
                 else if (!ct.IsCancellationRequested && found)
                 {
-                    _log.LogWarning("Mikrofon {Device}: Aufnahme beendet – öffne es erneut.", capture.DeviceName);
+                    _log.LogWarning(Loc.Log("log.voice.mic.reopen"), capture.DeviceName);
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                SetStatus(s => s with { Error = $"Mikrofon: {ex.Message}" });
-                _log.LogWarning("Mikrofon nicht verfügbar: {Message}", ex.Message);
+                SetStatus(s => s with { Error = Loc.T("voice.mic.error", ex.Message) });
+                _log.LogWarning(Loc.Log("log.voice.mic.unavailable"), ex.Message);
             }
             finally
             {
@@ -567,7 +565,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         if (_diag.Audio(samples, now))
         {
             _log.LogInformation(
-                "Mikrofon liefert Audio: erster Block nach {Ms} ms, Pegel {Level:0} dBFS.",
+                Loc.Log("log.voice.mic.firstAudio"),
                 _microphoneOpenedUtc is { } opened ? (int)(now - opened).TotalMilliseconds : 0,
                 MicrophoneCapture.PeakDbfs(samples));
         }
@@ -606,7 +604,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
                 {
                     warnedNoData = true;
                     _log.LogWarning(
-                        "Mikrofon {Device}: seit {Seconds} s keine Daten. Gerät belegt oder defekt? Anderes Mikrofon im Dashboard wählen.",
+                        Loc.Log("log.voice.mic.noData"),
                         Status.Microphone,
                         (int)(now - since).TotalSeconds);
                 }
@@ -615,20 +613,19 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
                 {
                     warnedSilence = true;
                     _log.LogWarning(
-                        "Mikrofon {Device} liefert nur Stille (alle Werte 0). Mikrofon stummgeschaltet, falsches Gerät, oder in Windows unter " +
-                        "Datenschutz → Mikrofon \"Desktop-Apps Zugriff auf das Mikrofon erlauben\" aus?",
+                        Loc.Log("log.voice.mic.silenceOnly"),
                         Status.Microphone);
                 }
 
                 if (_diag.LastAudioUtc is { } last && now - last > TimeSpan.FromSeconds(5) && !warnedStall)
                 {
                     warnedStall = true;
-                    _log.LogWarning("Mikrofon {Device}: seit {Seconds} s keine Daten mehr.", Status.Microphone, (int)(now - last).TotalSeconds);
+                    _log.LogWarning(Loc.Log("log.voice.mic.stalled"), Status.Microphone, (int)(now - last).TotalSeconds);
                 }
                 else if (_diag.LastAudioUtc is { } again && now - again <= TimeSpan.FromSeconds(5) && warnedStall)
                 {
                     warnedStall = false;
-                    _log.LogInformation("Mikrofon {Device}: Daten kommen wieder.", Status.Microphone);
+                    _log.LogInformation(Loc.Log("log.voice.mic.resumed"), Status.Microphone);
                 }
             }
 
@@ -638,8 +635,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
                 var w = _diag.TakeWindow();
                 var status = Status;
                 _log.LogInformation(
-                    "Sprachschleife {State}: Mikrofon {Device}, letzte {Minutes} min: {Blocks} Audioblöcke, Spitzenpegel {Peak} dBFS, " +
-                    "{Speech} s Sprache, {Utterances} Sätze, {Dropped} verworfen.",
+                    Loc.Log("log.voice.loop.report"),
                     status.State,
                     status.Microphone,
                     (int)ReportInterval.TotalMinutes,
@@ -695,7 +691,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
                         // Kopilot spricht: angefangenen Satz verwerfen (sonst hören wir uns selbst)
                         if (segmenter.InSpeech)
                         {
-                            _log.LogDebug("Halbduplex: Kopilot spricht – angefangener Satz verworfen.");
+                            _log.LogDebug(Loc.Log("log.voice.audio.halfDuplexDrop"));
                         }
 
                         segmenter.Reset();
@@ -718,7 +714,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
                     // Nicht bei jedem 32-ms-Block loggen – das Log liefe voll
                     if (vadFailures++ % 100 == 0)
                     {
-                        _log.LogWarning("VAD fehlgeschlagen ({Count}×): {Message}", vadFailures, ex.Message);
+                        _log.LogWarning(Loc.Log("log.voice.vad.failed"), vadFailures, ex.Message);
                     }
 
                     continue;
@@ -728,7 +724,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
                 var utterance = segmenter.Push(frame, probability);
                 if (!wasInSpeech && segmenter.InSpeech)
                 {
-                    _log.LogDebug("VAD: Sprache beginnt (Wahrscheinlichkeit {P:0.00}).", probability);
+                    _log.LogDebug(Loc.Log("log.voice.vad.speechStart"), probability);
                 }
 
                 // Stumm (z. B. Funk über VATSIM): Ansagen nicht aufhalten
@@ -744,12 +740,12 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
                 if (Interlocked.Increment(ref _queuedUtterances) > MaxQueuedUtterances)
                 {
                     Interlocked.Decrement(ref _queuedUtterances);
-                    _diag.Dropped("Whisper kommt nicht hinterher");
-                    _log.LogInformation("Satz verworfen ({Seconds:0.0} s) – Whisper kommt nicht hinterher ({Max} Sätze warten schon).", seconds, MaxQueuedUtterances);
+                    _diag.Dropped(Loc.T("voice.drop.whisperBehind"));
+                    _log.LogInformation(Loc.Log("log.voice.drop.whisperBehind"), seconds, MaxQueuedUtterances);
                 }
                 else
                 {
-                    _log.LogDebug("VAD: Satz {Seconds:0.0} s an Whisper.", seconds);
+                    _log.LogDebug(Loc.Log("log.voice.vad.utterance"), seconds);
                     _events.Writer.TryWrite(new VoiceEvent.Utterance(utterance, DateTimeOffset.UtcNow));
                 }
             }
@@ -785,7 +781,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
                         break;
                     case VoiceEvent.ToggleMute _:
                         var reply = _dialog.SetMuted(!_dialog.Muted);
-                        _log.LogInformation("Spracheingabe {State} (Tastenkürzel).", _dialog.Muted ? "stumm" : "an");
+                        _log.LogInformation(Loc.Log("log.voice.mute.hotkey"), _dialog.Muted ? Loc.En("voice.word.muted") : Loc.En("voice.word.on"));
                         Speak(reply);
                         break;
                     case VoiceEvent.ReplySpoken spoken:
@@ -803,7 +799,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
             }
             catch (Exception ex)
             {
-                _log.LogWarning(ex, "Sprachschleife: Satz nicht verarbeitet: {Message}", ex.Message);
+                _log.LogWarning(ex, Loc.Log("log.voice.loop.utteranceFailed"), ex.Message);
             }
         }
     }
@@ -815,16 +811,16 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         // Sim pausiert: nichts verarbeiten, nichts sagen
         if (_monitoring.LastSnapshot?.Paused == true && _settings.Callouts.SilentWhenPaused)
         {
-            _diag.Dropped("Sim pausiert");
-            _log.LogInformation("Satz verworfen ({Seconds:0.0} s) – Sim pausiert (callouts.silentWhenPaused).", seconds);
+            _diag.Dropped(Loc.T("voice.drop.simPaused"));
+            _log.LogInformation(Loc.Log("log.voice.drop.simPaused"), seconds);
             return;
         }
 
         // Stumm: nur kurze Sätze abschreiben (für "Kopilot weiter")
         if (_dialog.Muted && u.Samples.Length > SegmenterOptions.SampleRate * 4)
         {
-            _diag.Dropped("Spracheingabe stumm");
-            _log.LogInformation("Satz verworfen ({Seconds:0.0} s) – Spracheingabe stumm (Tastenkürzel oder \"Kopilot Pause\").", seconds);
+            _diag.Dropped(Loc.T("voice.inputMuted"));
+            _log.LogInformation(Loc.Log("log.voice.drop.muted"), seconds);
             return;
         }
 
@@ -833,9 +829,9 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         SetStatus(s => s with { LastTranscriptionMs = transcript.ElapsedMs, LastHeardUtc = u.EndUtc });
         if (text.Length == 0)
         {
-            _diag.Dropped("Whisper: nichts erkannt");
+            _diag.Dropped(Loc.T("voice.drop.nothingRecognized"));
             _log.LogInformation(
-                "Whisper: nichts Brauchbares ({Seconds:0.0} s Audio, {Ms} ms, roh \"{Raw}\").",
+                Loc.Log("log.voice.whisper.nothing"),
                 seconds,
                 transcript.ElapsedMs,
                 transcript.Text?.Trim());
@@ -845,7 +841,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         _diag.Recognized();
         if (!string.Equals(text, transcript.Text?.Trim(), StringComparison.Ordinal))
         {
-            _log.LogDebug("Whisper roh: \"{Raw}\" → \"{Text}\"", transcript.Text?.Trim(), text);
+            _log.LogDebug(Loc.Log("log.voice.whisper.raw"), transcript.Text?.Trim(), text);
         }
 
         var startUtc = u.EndUtc - TimeSpan.FromSeconds(seconds);
@@ -853,8 +849,12 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         var route = outcome.Route;
         var lastRoute = route.Target == VoiceTarget.Atc ? $"ATC {route.Station ?? route.Callsign} ({route.Reason})" : "Kopilot";
         var lastInput = outcome.Atc is { } atc
-            ? atc.Ok ? $"ATC: {atc.Responses.Count(r => r.From == "atc")} Antwort(en)" : $"ATC: {atc.Error}"
+            ? atc.Ok ? Loc.T("voice.status.atcReplies", atc.Responses.Count(r => r.From == "atc")) : $"ATC: {atc.Error}"
             : _dialog.LastResult is { } r ? r.Reason is null ? r.Status : $"{r.Status}: {r.Reason}" : null;
+        // Dasselbe englisch fürs Log (Logs bleiben immer Englisch)
+        var lastInputLog = outcome.Atc is { } atcLog
+            ? atcLog.Ok ? Loc.En("voice.status.atcReplies", atcLog.Responses.Count(x => x.From == "atc")) : $"ATC: {Loc.ToEnglish(atcLog.Error)}"
+            : _dialog.LastResult is { } rLog ? rLog.Reason is null ? rLog.Status : $"{rLog.Status}: {Loc.ToEnglish(rLog.Reason)}" : null;
         SetStatus(s => s with
         {
             LastTranscript = text,
@@ -867,25 +867,25 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         if (outcome.Atc is { } result)
         {
             _log.LogInformation(
-                "Funk an {Station} ({Reason}, {Seconds:0.0} s Audio, Whisper {Ms} ms): \"{Text}\" → {Result}",
+                Loc.Log("log.voice.atc.transmission"),
                 route.Station ?? route.Callsign ?? "ATC",
                 route.Reason,
                 seconds,
                 transcript.ElapsedMs,
                 text,
-                result.Ok ? $"{result.Responses.Count(x => x.From == "atc")} Antwort(en) von ATC" : $"Fehler: {result.Error}");
+                result.Ok ? Loc.En("voice.atc.repliesFromAtc", result.Responses.Count(x => x.From == "atc")) : Loc.En("voice.atc.error", Loc.ToEnglish(result.Error)));
         }
         else
         {
             _log.LogInformation(
-                "Pilot ({Language}, {Seconds:0.0} s Audio, Whisper {Ms} ms): \"{Text}\" → {Intent}{Reply}{Input}",
+                Loc.Log("log.voice.pilot.utterance"),
                 transcript.Language ?? "?",
                 seconds,
                 transcript.ElapsedMs,
                 text,
                 outcome.Intent,
                 outcome.Reply is null ? "" : $" → \"{outcome.Reply.Text}\"",
-                lastInput is null ? "" : $" ({lastInput})");
+                lastInputLog is null ? "" : $" ({lastInputLog})");
         }
 
         if (outcome.Reply is not null)
@@ -908,7 +908,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         if (!accepted)
         {
             _dialog.NotSpoken(reply);
-            _log.LogInformation("Antwort \"{Text}\" nicht gesprochen (keine Stimme oder Sim pausiert).", reply.Text);
+            _log.LogInformation(Loc.Log("log.voice.reply.notSpoken"), reply.Text);
         }
     }
 
@@ -966,7 +966,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         }
         catch (Exception ex)
         {
-            _log.LogWarning("Aufnahmegeräte nicht lesbar: {Message}", ex.Message);
+            _log.LogWarning(Loc.Log("log.voice.mic.listFailed"), ex.Message);
             return [];
         }
     }

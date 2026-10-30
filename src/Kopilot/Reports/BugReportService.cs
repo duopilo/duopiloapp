@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text;
 using Kopilot.Atc;
 using Kopilot.FlightPlan;
+using Kopilot.Localization;
 using Kopilot.Monitoring;
 using Kopilot.Sim;
 using Kopilot.Tools;
@@ -86,20 +87,20 @@ public sealed class BugReportService(
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            error = $"Lokale Kopie nicht geschrieben: {ex.Message}";
+            error = Loc.T("report.copy.notWritten", ex.Message);
             file = null;
-            log.LogWarning("Meldung: {Error}", error);
+            log.LogWarning(Loc.Log("log.report.copyFailed"), error);
         }
 
-        log.LogInformation("Meldung „{Title}“ ({Labels}){File}", issue.Title, string.Join(", ", issue.Labels), file is null ? "" : $" → {file}");
+        log.LogInformation(Loc.Log("log.report.saved"), issue.Title, string.Join(", ", issue.Labels), file is null ? "" : $" → {file}");
         return new BugReportSaved(issue, file, error);
     }
 
     /// <summary>Lokale Kopie: Titel, Labels, Link und der ungekürzte Text.</summary>
     public static string LocalCopy(BugReportIssue issue) =>
         $"# {issue.Title}\n\n" +
-        (issue.Labels.Count > 0 ? $"Labels: {string.Join(", ", issue.Labels)}\n\n" : "") +
-        (issue.Url is null ? "" : $"GitHub: [neues Issue mit diesem Inhalt]({issue.Url})\n\n") +
+        (issue.Labels.Count > 0 ? Loc.T("report.copy.labels", string.Join(", ", issue.Labels)) + "\n\n" : "") +
+        (issue.Url is null ? "" : Loc.T("report.copy.github", issue.Url) + "\n\n") +
         issue.Body;
 
     private BugReportContext Snapshot(DateTimeOffset now)
@@ -132,7 +133,8 @@ public sealed class BugReportService(
         string? voiceLast = null;
         if (heardStatus.LastTranscript is { Length: > 0 } heard)
         {
-            voiceLast = $"„{heard}“ → {heardStatus.LastRoute ?? "?"}" + (heardStatus.LastReply is { Length: > 0 } reply ? $" → „{reply}“" : "") +
+            voiceLast = Loc.T("report.voice.heard", heard, heardStatus.LastRoute ?? "?") +
+                        (heardStatus.LastReply is { Length: > 0 } reply ? " " + Loc.T("report.voice.reply", reply) : "") +
                         (heardStatus.LastHeardUtc is { } at ? $" ({at.UtcDateTime.ToString("HH:mm:ss", CultureInfo.InvariantCulture)}Z)" : "");
         }
 

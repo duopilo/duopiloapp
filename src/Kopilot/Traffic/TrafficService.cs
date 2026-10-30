@@ -1,3 +1,4 @@
+using Kopilot.Localization;
 using Kopilot.Monitoring;
 using Kopilot.Sim;
 using Microsoft.Extensions.Options;
@@ -101,7 +102,7 @@ public sealed class TrafficService : BackgroundService
     {
         if (!_proximityEnabled)
         {
-            _log.LogInformation("Verkehrswarnung (TRAFFIC_PROXIMITY) ist aus – keine Verkehrsabfragen im Hintergrund.");
+            _log.LogInformation(Loc.Log("log.traffic.proximityOff"));
             return;
         }
 
@@ -146,7 +147,7 @@ public sealed class TrafficService : BackgroundService
             if (now - _lastErrorLogUtc > TimeSpan.FromMinutes(1))
             {
                 _lastErrorLogUtc = now;
-                _log.LogWarning(ex, "Verkehrsabfrage fehlgeschlagen");
+                _log.LogWarning(ex, Loc.Log("log.traffic.scanFailed"));
             }
         }
     }

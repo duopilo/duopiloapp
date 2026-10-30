@@ -2,6 +2,7 @@ using Kopilot.Aircraft;
 using Kopilot.FlightPlan;
 using Kopilot.Hosting;
 using Kopilot.Input;
+using Kopilot.Localization;
 using Kopilot.Sim;
 using Kopilot.Speech;
 using Kopilot.Tools;
@@ -37,7 +38,15 @@ public static class DashboardEndpoints
                 "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
             context.Response.Headers.XContentTypeOptions = "nosniff";
             context.Response.Headers["Referrer-Policy"] = "no-referrer";
-            return Resource("dashboard.html", "text/html; charset=utf-8");
+            var html = Page();
+            return html is null ? Results.NotFound() : Results.Content(html, "text/html; charset=utf-8");
+        }).LocalOnly();
+
+        // Texte des Dashboards in einer Sprache (Standard: eingestellte Sprache) – zum Umschalten ohne Neuladen der Seite
+        app.MapGet("/api/i18n", (HttpContext context, string? lang) =>
+        {
+            NoCache(context);
+            return Results.Content(Json.Serialize(I18n(lang)), "application/json");
         }).LocalOnly();
 
         app.MapGet("/dashboard/fonts/{file}", (string file, HttpContext context) =>
@@ -80,7 +89,7 @@ public static class DashboardEndpoints
             NoCache(context);
             var speech = context.RequestServices.GetService<ISpeechOutput>();
             return speech is null
-                ? Results.Content(Json.Serialize(new { available = false, error = "Sprachausgabe gibt es nur in der Tray-Instanz (HTTP-Modus)." }), "application/json")
+                ? Results.Content(Json.Serialize(new { available = false, error = Loc.T("dashdata.speech.trayOnly") }), "application/json")
                 : Results.Content(Json.Serialize(SpeechView(await speech.RefreshAsync(ct))), "application/json");
         }).LocalOnly();
 
@@ -119,7 +128,7 @@ public static class DashboardEndpoints
             NoCache(context);
             if (context.RequestServices.GetService<VoiceLoop>() is not { } loop)
             {
-                return Results.Content(Json.Serialize(new { available = false, error = VoiceUnavailable }), "application/json");
+                return Results.Content(Json.Serialize(new { available = false, error = Loc.T("settings.voice.trayOnly") }), "application/json");
             }
 
             loop.RefreshDevices();
@@ -141,11 +150,12 @@ public static class DashboardEndpoints
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
             {
                 return Results.Content(
-                    Json.Serialize(new { available = true, error = $"{VoiceSettingsStore.FileName} nicht geschrieben: {ex.Message}" }),
+                    Json.Serialize(new { available = true, error = Loc.T("settings.file.notWritten", VoiceSettingsStore.FileName, ex.Message) }),
                     "application/json");
             }
 
-            loop.Reload($"Dashboard: Sprachschleife {(saved.Enabled ? "an" : "aus")}, Mikrofon \"{(saved.Microphone.Device.Length > 0 ? saved.Microphone.Device : "Windows-Standardgerät")}\"");
+            var microphone = saved.Microphone.Device.Length > 0 ? saved.Microphone.Device : Loc.T("dashdata.voice.defaultMicrophone");
+            loop.Reload(saved.Enabled ? Loc.T("dashdata.voice.reloadOn", microphone) : Loc.T("dashdata.voice.reloadOff", microphone));
             return Results.Content(Json.Serialize(VoiceView(loop, saved)), "application/json");
         }).LocalOnly();
 
@@ -167,7 +177,7 @@ public static class DashboardEndpoints
                 return Results.BadRequest();
             }
 
-            var result = input.CancelEverywhere("Abgebrochen (Dashboard)");
+            var result = input.CancelEverywhere(Loc.T("dashdata.input.cancelled"));
             return Results.Content(Json.Serialize(new { status = result.Status, action = result.Action }), "application/json");
         }).LocalOnly();
 
@@ -188,8 +198,6 @@ public static class DashboardEndpoints
 
     /// <summary>Body von POST /api/voice. null = unverändert; Mikrofon "" = Windows-Standardgerät.</summary>
     public sealed record VoiceToggle(bool? Enabled, string? Microphone);
-
-    private const string VoiceUnavailable = "Die Sprachschleife gibt es nur in der Tray-Instanz (HTTP-Modus).";
 
     /// <param name="saved">Gerade gespeicherte Einstellungen (der Neustart der Schleife läuft noch) – sonst der aktuelle Stand.</param>
     private static object VoiceView(VoiceLoop loop, VoiceSettings? saved)
@@ -247,6 +255,46 @@ public static class DashboardEndpoints
         context.Request.Headers.TryGetValue(ActionHeader, out var value) && value == "1";
 
     private static void NoCache(HttpContext context) => context.Response.Headers.CacheControl = "no-store";
+
+    /// <summary>Prefix of the dashboard keys in the language files.</summary>
+    public const string I18nPrefix = "dashboard.";
+
+    /// <summary>Marker in dashboard.html, replaced with the texts of the selected language (no flash of English when German is set).</summary>
+    public const string I18nMarker = "<!--KOPILOT_I18N-->";
+
+    private static readonly System.Text.Json.JsonSerializerOptions EmbedJson = new()
+    {
+        // Default encoder: escapes < and > – the JSON sits inside a <script> block
+        PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase,
+    };
+
+    /// <summary>Texts for the dashboard: language in use, available languages and all "dashboard." keys (missing ones in English).</summary>
+    public static object I18n(string? language = null)
+    {
+        var lang = Loc.Normalize(language) ?? Loc.Language;
+        return new
+        {
+            language = lang,
+            available = Loc.Available.Select(l => new { code = l.Code, name = l.Name }),
+            strings = Loc.Strings(I18nPrefix, lang),
+        };
+    }
+
+    /// <summary>dashboard.html with the texts of the selected language embedded and html lang set.</summary>
+    public static string? Page()
+    {
+        using var stream = typeof(DashboardEndpoints).Assembly.GetManifestResourceStream(ResourcePrefix + "dashboard.html");
+        if (stream is null)
+        {
+            return null;
+        }
+
+        using var reader = new StreamReader(stream);
+        var html = reader.ReadToEnd();
+        var data = System.Text.Json.JsonSerializer.Serialize(I18n(), EmbedJson);
+        html = html.Replace(I18nMarker, $"<script id=\"i18n\" type=\"application/json\">{data}</script>", StringComparison.Ordinal);
+        return html.Replace("<html lang=\"en\">", $"<html lang=\"{Loc.Language}\">", StringComparison.Ordinal);
+    }
 
     private static IResult Resource(string name, string contentType)
     {

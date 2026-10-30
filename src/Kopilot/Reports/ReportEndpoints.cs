@@ -1,5 +1,6 @@
 using Kopilot.Dashboard;
 using Kopilot.Hosting;
+using Kopilot.Localization;
 using Kopilot.Tools;
 
 namespace Kopilot.Reports;
@@ -66,14 +67,14 @@ public static class ReportEndpoints
                 return Results.Content(Json.Serialize(new
                 {
                     ok = false,
-                    error = "Die Momentaufnahme ist nicht mehr da (Kopilot neu gestartet?). Bitte „Fehler melden“ noch einmal drücken.",
+                    error = Loc.T("report.error.captureMissing"),
                 }), "application/json");
             }
 
             var categories = BugReport.Resolve(body.Categories);
             if (categories.Count == 0 && string.IsNullOrWhiteSpace(body.Description))
             {
-                return Results.Content(Json.Serialize(new { ok = false, error = "Bitte eine Art wählen oder kurz beschreiben, was nicht stimmt." }), "application/json");
+                return Results.Content(Json.Serialize(new { ok = false, error = Loc.T("report.error.empty") }), "application/json");
             }
 
             var saved = reports.Submit(capture, categories, body.Title, body.Description);

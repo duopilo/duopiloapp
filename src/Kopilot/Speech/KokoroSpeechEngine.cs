@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using KokoroSharp.Core;
 using KokoroSharp.Processing;
+using Kopilot.Localization;
 using Microsoft.Extensions.Options;
 using OnnxSessionOptions = Microsoft.ML.OnnxRuntime.SessionOptions;
 
@@ -89,9 +90,9 @@ public sealed partial class KokoroSpeechEngine : IDisposable
 
         if (!File.Exists(ModelPath))
         {
-            _log.LogInformation("Sprachmodell fehlt – lade Kokoro (~310 MB) nach {Path} …", ModelPath);
+            _log.LogInformation(Loc.Log("log.speech.kokoroDownloading"), ModelPath);
             await DownloadAsync(downloadProgress, ct);
-            _log.LogInformation("Sprachmodell geladen.");
+            _log.LogInformation(Loc.Log("log.speech.kokoroDownloaded"));
         }
 
         var threads = Math.Clamp(_options.KokoroThreads, 1, 16);
@@ -107,7 +108,7 @@ public sealed partial class KokoroSpeechEngine : IDisposable
 
     public SpeechClip Synthesize(string text, string voice, double speed)
     {
-        var model = _model ?? throw new InvalidOperationException("Das Sprachmodell ist noch nicht geladen.");
+        var model = _model ?? throw new InvalidOperationException(Loc.T("speech.kokoro.notLoaded"));
         var v = Voice(voice);
         lock (_inferLock)
         {
@@ -162,7 +163,7 @@ public sealed partial class KokoroSpeechEngine : IDisposable
     {
         if (!IsEnglishVoice(name))
         {
-            throw new ArgumentException($"Unbekannte Stimme \"{name}\".", nameof(name));
+            throw new ArgumentException(Loc.T("speech.kokoro.unknownVoice", name), nameof(name));
         }
 
         lock (_voiceLock)
@@ -175,7 +176,7 @@ public sealed partial class KokoroSpeechEngine : IDisposable
             var path = Path.Combine(_voicesDirectory, name + ".npy");
             if (!File.Exists(path))
             {
-                throw new FileNotFoundException($"Stimme \"{name}\" nicht gefunden (erwartet unter {path}).", path);
+                throw new FileNotFoundException(Loc.T("speech.kokoro.voiceNotFound", name, path), path);
             }
 
             voice = KokoroVoice.FromPath(path);
@@ -223,7 +224,7 @@ public sealed partial class KokoroSpeechEngine : IDisposable
             if ((total is > 0 && length != total) || length < MinModelBytes)
             {
                 File.Delete(temp);
-                throw new IOException($"Download des Sprachmodells unvollständig ({length / 1048576.0:0} MB).");
+                throw new IOException(Loc.T("speech.kokoro.downloadIncomplete", length / 1048576.0));
             }
         }
 
@@ -241,7 +242,7 @@ public sealed partial class KokoroSpeechEngine : IDisposable
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            throw new TimeoutException("Download des Sprachmodells hängt seit einer Minute.");
+            throw new TimeoutException(Loc.T("speech.kokoro.downloadStalled"));
         }
     }
 

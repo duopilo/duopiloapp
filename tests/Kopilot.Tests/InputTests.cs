@@ -191,7 +191,7 @@ public sealed partial class InputTests
     [Fact]
     public void Fahrwerk_einfahren_am_Boden_gesperrt()
     {
-        Assert.Equal("Am Boden gesperrt.", ActionPlanner.Plan(GearUp(), null, Limits, Ground()).Refusal);
+        Assert.Equal("Locked on the ground.", ActionPlanner.Plan(GearUp(), null, Limits, Ground()).Refusal);
         Assert.NotNull(ActionPlanner.Plan(GearUp(), null, Limits, Air()).Plan);
         Assert.NotNull(ActionPlanner.Plan(GearUp(), null, Limits, Air() with { OnGround = null }).Refusal);
     }
@@ -229,8 +229,8 @@ public sealed partial class InputTests
         };
 
         Assert.NotNull(ActionPlanner.Plan(gpu, "on", Limits, Ground()).Plan);
-        Assert.Equal("Nur am Boden möglich.", ActionPlanner.Plan(gpu, "on", Limits, Air()).Refusal);
-        Assert.Contains("Unklar", ActionPlanner.Plan(gpu, "off", Limits, Air() with { OnGround = null }).Refusal);
+        Assert.Equal("Only possible on the ground.", ActionPlanner.Plan(gpu, "on", Limits, Air()).Refusal);
+        Assert.Contains("Not clear", ActionPlanner.Plan(gpu, "off", Limits, Air() with { OnGround = null }).Refusal);
     }
 
     [Fact]
@@ -238,7 +238,7 @@ public sealed partial class InputTests
     {
         var action = Speed();
         action.Interlocks = ["irgendwas"];
-        Assert.Contains("Unbekannte Sperre", ActionPlanner.Plan(action, "250", Limits, Air()).Refusal);
+        Assert.Contains("Unknown interlock", ActionPlanner.Plan(action, "250", Limits, Air()).Refusal);
     }
 
     [Theory]
@@ -292,7 +292,7 @@ public sealed partial class InputTests
         Assert.Empty(ActionPlanner.Plan(Flaps(), "0", none, Air(150)).Plan!.Cautions);
 
         // Fahrt unbekannt bleibt gesperrt
-        Assert.Contains("Fahrt unbekannt", ActionPlanner.Plan(GearDown(), null, none, Air(150) with { IasKt = null }).Refusal);
+        Assert.Contains("Airspeed unknown", ActionPlanner.Plan(GearDown(), null, none, Air(150) with { IasKt = null }).Refusal);
 
         // Groß-/Kleinschreibung der Stellung egal
         var mixed = new AircraftLimits { VfeKt = new() { ["Full"] = 177, ["2"] = 200, ["1"] = 230, ["3"] = 185 } };
@@ -461,7 +461,7 @@ public sealed partial class InputTests
 
         // External Power: nur am Boden, Einschalten nur mit GPU
         var extPwr = profile.Actions.Single(a => a.Id == "elec.extPwr");
-        Assert.Equal("Nur am Boden möglich.", ActionPlanner.Plan(extPwr, "on", profile.Limits, Air(150)).Refusal);
+        Assert.Equal("Only possible on the ground.", ActionPlanner.Plan(extPwr, "on", profile.Limits, Air(150)).Refusal);
         var onGround = ActionPlanner.Plan(extPwr, "on", profile.Limits, Ground()).Plan!;
         Assert.Equal("L:A32NX_EXT_PWR_AVAIL:1", Assert.Single(onGround.Requires).Variable);
         Assert.Empty(ActionPlanner.Plan(extPwr, "off", profile.Limits, Ground()).Plan!.Requires);
@@ -697,7 +697,7 @@ public sealed partial class InputTests
         Assert.True(done.Confirmed);
         Assert.Equal(new[] { "A32NX.FCU_SPD_SET:250", "A32NX.FCU_SPD_PULL:0" }, backend.Sent);
         Assert.Null(input.Pending);
-        Assert.Equal("ausgeführt", input.History[0].Outcome);
+        Assert.Equal("executed", input.History[0].Outcome);
 
         // Token ist verbraucht
         Assert.Equal(InputResult.Failed, (await input.ConfirmAsync(prepared.Token!, "confirm", default)).Status);
@@ -745,7 +745,7 @@ public sealed partial class InputTests
 
         var result = await claudeDesktop.ConfirmAsync(prepared.Token!, "confirm", default);
         Assert.Equal(InputResult.Refused, result.Status);
-        Assert.Contains("Dashboard", result.Reason);
+        Assert.Contains("dashboard", result.Reason);
         Assert.Empty(backend.Sent);
     }
 
@@ -779,7 +779,7 @@ public sealed partial class InputTests
         Assert.Null(input.Pending);
         Assert.Equal(InputResult.Failed, (await input.ConfirmAsync(prepared.Token!, "confirm", default)).Status);
         Assert.Empty(backend.Sent);
-        Assert.Contains(input.History, e => e.Outcome == "abgelaufen");
+        Assert.Contains(input.History, e => e.Outcome == "expired");
     }
 
     [Fact]
@@ -838,7 +838,7 @@ public sealed partial class InputTests
 
         Assert.Equal(InputResult.Executed, result.Status);
         Assert.False(result.Confirmed);
-        Assert.Contains("zurückgesetzt", result.Reason);
+        Assert.Contains("reset", result.Reason);
         Assert.Equal(new[] { "L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON=1" }, backend.Sent);
     }
 
@@ -1007,7 +1007,7 @@ public sealed partial class InputTests
         Assert.Equal(InputResult.Refused, (await input.PrepareAsync("fcu.speed", "250", default)).Status);
 
         backend.Profile = new AircraftProfile { Name = "Leer" };
-        Assert.Contains("gibt es", (await input.PrepareAsync("fcu.speed", "250", default)).Reason);
+        Assert.Contains("doesn't exist", (await input.PrepareAsync("fcu.speed", "250", default)).Reason);
     }
 
     [Fact]

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Kopilot.Localization;
 
 namespace Kopilot.Hosting;
 
@@ -25,7 +26,7 @@ public sealed class AppRestart(string[] args, IHostApplicationLifetime lifetime,
     {
         if (!Available)
         {
-            return "Neustart ist nur in der Tray-Instanz unter Windows möglich.";
+            return Loc.T("host.restart.unavailable");
         }
 
         if (Interlocked.Exchange(ref _started, 1) == 1)
@@ -51,11 +52,11 @@ public sealed class AppRestart(string[] args, IHostApplicationLifetime lifetime,
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
         {
             Interlocked.Exchange(ref _started, 0);
-            log.LogWarning("Neustart nicht möglich: {Message}", ex.Message);
-            return $"Neustart nicht möglich: {ex.Message}";
+            log.LogWarning(Loc.Log("log.host.restart.failed"), ex.Message);
+            return Loc.T("host.restart.failed", ex.Message);
         }
 
-        log.LogInformation("Kopilot startet neu ({Reason}).", reason);
+        log.LogInformation(Loc.Log("log.host.restart.restarting"), reason);
 
         // Kurz warten, damit die Antwort ans Dashboard noch rausgeht
         _ = Task.Delay(TimeSpan.FromMilliseconds(400)).ContinueWith(_ => lifetime.StopApplication(), TaskScheduler.Default);

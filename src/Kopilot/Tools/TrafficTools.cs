@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Globalization;
+using Kopilot.Localization;
 using Kopilot.Monitoring;
 using Kopilot.Sim;
 using Kopilot.Traffic;
@@ -48,7 +49,7 @@ public static class TrafficTools
         var maxTargets = Math.Clamp(limit, 1, MaxLimit);
         var radius = TrafficService.ClampRadius(radiusNm);
         var radiusNote = double.IsFinite(radiusNm) && radiusNm > TrafficService.MaxRadiusNm
-            ? $"Radius auf {Nm(TrafficService.MaxRadiusNm)} NM (200 km) begrenzt – mehr nimmt SimConnect nicht an."
+            ? Loc.T("tools.traffic.radiusLimited", Nm(TrafficService.MaxRadiusNm))
             : null;
 
         if (status.FlightRunning == false)
@@ -61,7 +62,7 @@ public static class TrafficTools
                 totalInRadius = 0,
                 targets = Array.Empty<object>(),
                 callout = (string?)null,
-                message = "Kein Flug geladen (Hauptmenü oder Ladebildschirm).",
+                message = Loc.T("tools.traffic.noFlight"),
                 activeAlerts = AlertView.Active(alerts),
             });
         }
@@ -118,31 +119,31 @@ public static class TrafficTools
     {
         if (result.Error is { } error)
         {
-            return ("error", $"Verkehrsabfrage fehlgeschlagen: {error}");
+            return ("error", Loc.T("tools.traffic.queryFailed", error));
         }
 
         var picture = result.Picture;
         if (picture.Own is null)
         {
             return result.Complete
-                ? ("no_position", "Eigene Position unbekannt – Verkehr kann nicht relativ zum Flugzeug berechnet werden.")
-                : ("no_response", "MSFS hat nicht auf die Verkehrsabfrage geantwortet. Läuft ein Flug? Sonst kopilot_status prüfen.");
+                ? ("no_position", Loc.T("tools.traffic.noOwnPosition"))
+                : ("no_response", Loc.T("tools.traffic.noResponse"));
         }
 
         if (targetCount > 0)
         {
-            return ("ok", result.Complete ? null : "MSFS hat nicht vollständig geantwortet – evtl. fehlen Ziele.");
+            return ("ok", result.Complete ? null : Loc.T("tools.traffic.incomplete"));
         }
 
         var radius = Nm(result.RadiusNm);
         if (picture.OthersReceived == 0)
         {
-            return ("no_traffic", $"Kein Verkehr im Umkreis von {radius} NM. Falls das nicht stimmen kann: KI-Verkehr bzw. Multiplayer ist im Sim vermutlich deaktiviert.");
+            return ("no_traffic", Loc.T("tools.traffic.noneMaybeDisabled", radius));
         }
 
         return ("no_traffic", airborneOnly
-            ? $"Kein Verkehr in der Luft im Umkreis von {radius} NM (nur Flugzeuge am Boden)."
-            : $"Kein Verkehr im Umkreis von {radius} NM.");
+            ? Loc.T("tools.traffic.noneAirborne", radius)
+            : Loc.T("tools.traffic.none", radius));
     }
 
     public static object View(TrafficTarget t, bool closest) => new

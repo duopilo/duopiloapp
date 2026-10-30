@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Kopilot.Aircraft;
+using Kopilot.Localization;
 using Kopilot.Monitoring;
 using Kopilot.Sim;
 using Microsoft.Win32;
@@ -45,11 +46,11 @@ public sealed class TrayService(
                 var sync = new WinForms.WindowsFormsSynchronizationContext();
                 SynchronizationContext.SetSynchronizationContext(sync);
                 _ui = sync;
-                _context = new TrayContext(info, sim, profiles, alerts, monitoring, lifetime, speech);
+                _context = new TrayContext(info, sim, profiles, alerts, monitoring, lifetime, speech, sync);
             }
             catch (Exception ex)
             {
-                log.LogError(ex, "Tray-Symbol konnte nicht erstellt werden – Kopilot läuft ohne weiter.");
+                log.LogError(ex, Loc.Log("log.tray.createFailed"));
                 return;
             }
             finally
@@ -89,18 +90,26 @@ public sealed class TrayService(
         private readonly MonitoringService _monitoring;
         private readonly IHostApplicationLifetime _lifetime;
         private readonly Kopilot.Speech.ISpeechOutput? _speech;
+        private readonly SynchronizationContext _ui;
 
         private readonly WinForms.NotifyIcon _icon;
         private readonly WinForms.ToolStripMenuItem _speechItem;
         private readonly WinForms.ToolStripMenuItem _statusItem;
         private readonly WinForms.ToolStripMenuItem _autostartItem;
+        private readonly WinForms.ToolStripMenuItem _dashboardItem;
+        private readonly WinForms.ToolStripMenuItem _reloadItem;
+        private readonly WinForms.ToolStripMenuItem _logItem;
+        private readonly WinForms.ToolStripMenuItem _folderItem;
+        private readonly WinForms.ToolStripMenuItem _exitItem;
         private readonly WinForms.Timer _timer;
         private readonly Dictionary<string, Drawing.Icon> _icons = [];
         private string _state = "";
+        private bool _closed;
 
-        public TrayContext(DesktopInfo info, SimConnectClient sim, ProfileStore profiles, AlertBus alerts, MonitoringService monitoring, IHostApplicationLifetime lifetime, Kopilot.Speech.ISpeechOutput? speech)
+        public TrayContext(DesktopInfo info, SimConnectClient sim, ProfileStore profiles, AlertBus alerts, MonitoringService monitoring, IHostApplicationLifetime lifetime, Kopilot.Speech.ISpeechOutput? speech, SynchronizationContext ui)
         {
             _speech = speech;
+            _ui = ui;
             _info = info;
             _sim = sim;
             _profiles = profiles;
@@ -118,23 +127,28 @@ public sealed class TrayService(
             }
 
             _statusItem = new WinForms.ToolStripMenuItem("Kopilot") { Enabled = false };
-            var dashboard = new WinForms.ToolStripMenuItem("Dashboard öffnen", null, (_, _) => Open(_info.DashboardUrl));
-            dashboard.Font = new Drawing.Font(dashboard.Font, Drawing.FontStyle.Bold);
-            _autostartItem = new WinForms.ToolStripMenuItem("Mit Windows starten", null, (_, _) => ToggleAutostart()) { Checked = Autostart.IsEnabled() };
-            _speechItem = new WinForms.ToolStripMenuItem("Callouts sprechen", null, (_, _) => ToggleSpeech()) { Visible = speech is not null };
+            _dashboardItem = new WinForms.ToolStripMenuItem("", null, (_, _) => Open(_info.DashboardUrl));
+            _dashboardItem.Font = new Drawing.Font(_dashboardItem.Font, Drawing.FontStyle.Bold);
+            _autostartItem = new WinForms.ToolStripMenuItem("", null, (_, _) => ToggleAutostart()) { Checked = Autostart.IsEnabled() };
+            _speechItem = new WinForms.ToolStripMenuItem("", null, (_, _) => ToggleSpeech()) { Visible = speech is not null };
+            _reloadItem = new WinForms.ToolStripMenuItem("", null, (_, _) => ReloadProfiles());
+            _logItem = new WinForms.ToolStripMenuItem("", null, (_, _) => Open(_info.LogFile)) { Enabled = _info.LogFile is not null };
+            _folderItem = new WinForms.ToolStripMenuItem("", null, (_, _) => Open(AppContext.BaseDirectory));
+            _exitItem = new WinForms.ToolStripMenuItem("", null, (_, _) => _lifetime.StopApplication());
+            SetMenuTexts();
 
             var menu = new WinForms.ContextMenuStrip();
             menu.Items.Add(_statusItem);
             menu.Items.Add(new WinForms.ToolStripSeparator());
-            menu.Items.Add(dashboard);
-            menu.Items.Add(new WinForms.ToolStripMenuItem("Profile neu laden", null, (_, _) => ReloadProfiles()));
-            menu.Items.Add(new WinForms.ToolStripMenuItem("Logdatei öffnen", null, (_, _) => Open(_info.LogFile)) { Enabled = _info.LogFile is not null });
-            menu.Items.Add(new WinForms.ToolStripMenuItem("Programmordner öffnen", null, (_, _) => Open(AppContext.BaseDirectory)));
+            menu.Items.Add(_dashboardItem);
+            menu.Items.Add(_reloadItem);
+            menu.Items.Add(_logItem);
+            menu.Items.Add(_folderItem);
             menu.Items.Add(new WinForms.ToolStripSeparator());
             menu.Items.Add(_speechItem);
             menu.Items.Add(_autostartItem);
             menu.Items.Add(new WinForms.ToolStripSeparator());
-            menu.Items.Add(new WinForms.ToolStripMenuItem("Beenden", null, (_, _) => _lifetime.StopApplication()));
+            menu.Items.Add(_exitItem);
             menu.Opening += (_, _) =>
             {
                 Refresh();
@@ -161,10 +175,49 @@ public sealed class TrayService(
             {
                 _icon.ShowBalloonTip(
                     4000,
-                    "Kopilot läuft",
-                    "Kopilot sitzt jetzt hier im Infobereich. Doppelklick öffnet das Dashboard.",
+                    Loc.T("tray.balloon.runningTitle"),
+                    Loc.T("tray.balloon.runningText"),
                     WinForms.ToolTipIcon.None);
             }
+
+            // Language changed in the dashboard: update the menu texts (the event comes from any thread)
+            Loc.LanguageChanged += OnLanguageChanged;
+        }
+
+        private void OnLanguageChanged(string language)
+        {
+            try
+            {
+                _ui.Post(_ => ApplyLanguage(), null);
+            }
+            catch (InvalidOperationException)
+            {
+                // Tray thread is shutting down (also ObjectDisposedException) – nothing left to update
+            }
+        }
+
+        private void ApplyLanguage()
+        {
+            if (_closed)
+            {
+                return;
+            }
+
+            SetMenuTexts();
+            RefreshSpeechItem();
+            Refresh();
+        }
+
+        /// <summary>Menu texts in the selected language (status and speech state follow in Refresh and RefreshSpeechItem when the menu opens).</summary>
+        private void SetMenuTexts()
+        {
+            _dashboardItem.Text = Loc.T("tray.menu.openDashboard");
+            _reloadItem.Text = Loc.T("tray.menu.reloadProfiles");
+            _logItem.Text = Loc.T("tray.menu.openLog");
+            _folderItem.Text = Loc.T("tray.menu.openFolder");
+            _autostartItem.Text = Loc.T("tray.menu.autostart");
+            _exitItem.Text = Loc.T("tray.menu.exit");
+            _speechItem.Text = Loc.T("tray.menu.speech");
         }
 
         private void Refresh()
@@ -185,15 +238,15 @@ public sealed class TrayService(
             string text;
             if (!connected)
             {
-                text = "Kopilot – wartet auf MSFS";
+                text = Loc.T("tray.tooltip.waiting");
             }
             else if (_sim.Status.Paused)
             {
-                text = "Kopilot – Sim pausiert";
+                text = Loc.T("tray.tooltip.paused");
             }
             else
             {
-                var profile = _sim.ActiveProfile?.Name ?? _sim.Str("title") ?? "Flugzeug unbekannt";
+                var profile = _sim.ActiveProfile?.Name ?? _sim.Str("title") ?? Loc.T("tray.tooltip.unknownAircraft");
                 text = $"Kopilot – {profile}";
                 var top = active.FirstOrDefault(a => a.Callout is not null);
                 if (top is not null)
@@ -204,9 +257,9 @@ public sealed class TrayService(
 
             // NotifyIcon.Text erlaubt höchstens 127 Zeichen
             _icon.Text = text.Length > 127 ? text[..127] : text;
-            _statusItem.Text = !connected ? "Wartet auf Microsoft Flight Simulator"
-                : _sim.Status.Paused ? "Sim pausiert"
-                : $"Verbunden: {_sim.ActiveProfile?.Name ?? "kein Profil"} (Phase {_monitoring.Phase})";
+            _statusItem.Text = !connected ? Loc.T("tray.status.waiting")
+                : _sim.Status.Paused ? Loc.T("tray.status.paused")
+                : Loc.T("tray.status.connected", _sim.ActiveProfile?.Name ?? Loc.T("tray.status.noProfile"), _monitoring.Phase);
         }
 
         private void ReloadProfiles()
@@ -216,8 +269,8 @@ public sealed class TrayService(
             var errors = _profiles.Errors.Count;
             _icon.ShowBalloonTip(
                 3000,
-                "Profile neu geladen",
-                errors == 0 ? $"{_profiles.All.Count} Profile geladen." : $"{_profiles.All.Count} Profile geladen, {errors} mit Fehlern – Details im Dashboard.",
+                Loc.T("tray.balloon.profilesTitle"),
+                errors == 0 ? Loc.T("tray.balloon.profilesLoaded", _profiles.All.Count) : Loc.T("tray.balloon.profilesWithErrors", _profiles.All.Count, errors),
                 errors == 0 ? WinForms.ToolTipIcon.Info : WinForms.ToolTipIcon.Warning);
         }
 
@@ -229,7 +282,7 @@ public sealed class TrayService(
             }
             catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or IOException)
             {
-                _icon.ShowBalloonTip(4000, "Autostart", $"Konnte den Autostart nicht ändern: {ex.Message}", WinForms.ToolTipIcon.Warning);
+                _icon.ShowBalloonTip(4000, Loc.T("tray.balloon.autostartTitle"), Loc.T("tray.balloon.autostartFailed", ex.Message), WinForms.ToolTipIcon.Warning);
             }
 
             _autostartItem.Checked = Autostart.IsEnabled();
@@ -246,10 +299,10 @@ public sealed class TrayService(
             _speechItem.Checked = st.Settings.Enabled;
             _speechItem.Text = st.Kokoro?.State switch
             {
-                Kopilot.Speech.KokoroState.Downloading when st.ActiveEngine is null => $"Callouts sprechen (lädt Sprachmodell {st.Kokoro.Progress ?? 0:P0})",
-                Kopilot.Speech.KokoroState.Loading when st.ActiveEngine is null => "Callouts sprechen (startet …)",
-                _ when !st.Available => "Callouts sprechen (keine Stimme – siehe Dashboard)",
-                _ => "Callouts sprechen",
+                Kopilot.Speech.KokoroState.Downloading when st.ActiveEngine is null => Loc.T("tray.menu.speechDownloading", st.Kokoro.Progress ?? 0),
+                Kopilot.Speech.KokoroState.Loading when st.ActiveEngine is null => Loc.T("tray.menu.speechStarting"),
+                _ when !st.Available => Loc.T("tray.menu.speechNoVoice"),
+                _ => Loc.T("tray.menu.speech"),
             };
         }
 
@@ -268,7 +321,7 @@ public sealed class TrayService(
             }
             catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException)
             {
-                _icon.ShowBalloonTip(4000, "Callouts", $"Konnte die Sprachausgabe nicht umschalten: {ex.Message}", WinForms.ToolTipIcon.Warning);
+                _icon.ShowBalloonTip(4000, Loc.T("tray.balloon.speechTitle"), Loc.T("tray.balloon.speechFailed", ex.Message), WinForms.ToolTipIcon.Warning);
             }
         }
 
@@ -291,6 +344,8 @@ public sealed class TrayService(
 
         protected override void ExitThreadCore()
         {
+            _closed = true;
+            Loc.LanguageChanged -= OnLanguageChanged;
             _timer.Stop();
             _timer.Dispose();
             _icon.Visible = false;

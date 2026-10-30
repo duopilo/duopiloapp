@@ -1,3 +1,4 @@
+using Kopilot.Localization;
 using Microsoft.Extensions.Options;
 
 namespace Kopilot.Remote;
@@ -52,7 +53,7 @@ public sealed class McpAuthMiddleware(RequestDelegate next, IOptions<KopilotOpti
         await context.Response.WriteAsJsonAsync(new
         {
             error = token is null ? "unauthorized" : "invalid_token",
-            message = "Kopilot: Zugriff nur mit gültigem Token.",
+            message = Loc.T("remote.mcp.unauthorized"),
         });
     }
 

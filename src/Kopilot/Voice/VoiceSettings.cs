@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Kopilot.Localization;
 using Kopilot.Speech;
 
 namespace Kopilot.Voice;
@@ -340,13 +341,12 @@ public sealed class VoiceSettingsStore(string dataDirectory, string? templateDir
             var template = Parse(File.ReadAllText(TemplatePath));
             if (template.Enabled && !effective.Enabled)
             {
-                return $"In der Vorlage {TemplatePath} steht \"enabled\": true – wirksam ist aber nur {FilePath} (dort steht false). " +
-                       "Die Vorlage überschreibt update.cmd bei jedem Update.";
+                return Loc.T("voice.settings.templateEnabled", TemplatePath, FilePath);
             }
 
             if (template.Microphone.Device.Length > 0 && template.Microphone.Device != effective.Microphone.Device)
             {
-                return $"Mikrofon \"{template.Microphone.Device}\" steht nur in der Vorlage {TemplatePath} – wirksam ist {FilePath}.";
+                return Loc.T("voice.settings.templateMicrophone", template.Microphone.Device, TemplatePath, FilePath);
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)

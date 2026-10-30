@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Kopilot.Localization;
 using Microsoft.Extensions.Options;
 
 namespace Kopilot.Sim;
@@ -72,7 +73,7 @@ public sealed class TrafficConnection : IDisposable
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
             {
-                _log.LogWarning("Verkehrs-Nachrichtenlog nicht verfügbar: {Message}", ex.Message);
+                _log.LogWarning(Loc.Log("log.traffic.messageLogUnavailable"), ex.Message);
             }
         }
     }
@@ -92,7 +93,7 @@ public sealed class TrafficConnection : IDisposable
     {
         if (!_sim.Connection.IsConnected)
         {
-            return AircraftScan.Fail("Keine Verbindung zu MSFS.");
+            return AircraftScan.Fail(Loc.T("sim.notConnected"));
         }
 
         await _gate.WaitAsync(ct);
@@ -111,7 +112,7 @@ public sealed class TrafficConnection : IDisposable
         _gate.Wait(TimeSpan.FromSeconds(2));
         try
         {
-            Close("Kopilot wird beendet");
+            Close(Loc.T("traffic.connection.closeShutdown"));
             _messageLog?.Dispose();
         }
         finally
@@ -130,7 +131,7 @@ public sealed class TrafficConnection : IDisposable
             var since = _sim.Connection.SinceUtc;
             if (_handle != IntPtr.Zero && _openedFor != since)
             {
-                Close("MSFS-Verbindung wurde neu aufgebaut");
+                Close(Loc.T("traffic.connection.closeReconnected"));
             }
 
             if (_handle == IntPtr.Zero && Open(since) is { } openError)
@@ -142,7 +143,7 @@ public sealed class TrafficConnection : IDisposable
             Dispatch(null);
             if (_handle == IntPtr.Zero)
             {
-                return AircraftScan.Fail("MSFS hat die Verkehrsverbindung beendet.");
+                return AircraftScan.Fail(Loc.T("traffic.connection.endedBySim"));
             }
 
             var layout = withText ? TextLayout : NumericLayout;
@@ -160,7 +161,7 @@ public sealed class TrafficConnection : IDisposable
                 Dispatch(collector);
                 if (_handle == IntPtr.Zero)
                 {
-                    return AircraftScan.Fail("MSFS hat die Verkehrsverbindung beendet.");
+                    return AircraftScan.Fail(Loc.T("traffic.connection.endedBySim"));
                 }
 
                 var now = DateTimeOffset.UtcNow;
@@ -185,7 +186,7 @@ public sealed class TrafficConnection : IDisposable
             _timeoutsInRow = complete ? 0 : _timeoutsInRow + 1;
             if (_timeoutsInRow >= 3)
             {
-                Close("dreimal keine vollständige Antwort");
+                Close(Loc.T("traffic.connection.closeIncomplete"));
             }
 
             LogSummaryIfDue();
@@ -198,8 +199,8 @@ public sealed class TrafficConnection : IDisposable
         }
         catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
         {
-            _unavailable = $"Native SimConnect.dll nicht nutzbar: {ex.Message}";
-            _log.LogError(ex, "Verkehrsabfrage nicht möglich – native SimConnect.dll fehlt oder passt nicht (siehe README, 'SimConnect-SDK').");
+            _unavailable = Loc.T("traffic.connection.dllUnusable", ex.Message);
+            _log.LogError(ex, Loc.Log("log.traffic.dllUnusable"));
             _handle = IntPtr.Zero;
             return AircraftScan.Fail(_unavailable);
         }
@@ -215,7 +216,7 @@ public sealed class TrafficConnection : IDisposable
 
         if (DateTimeOffset.UtcNow < _retryAfterUtc)
         {
-            return "Verkehrsverbindung zu MSFS gerade nicht verfügbar – neuer Versuch in wenigen Sekunden.";
+            return Loc.T("traffic.connection.retryLater");
         }
 
         var hr = NativeSimConnect.SimConnect_Open(
@@ -223,7 +224,7 @@ public sealed class TrafficConnection : IDisposable
         if (hr < 0 || handle == IntPtr.Zero)
         {
             _retryAfterUtc = DateTimeOffset.UtcNow + RetryDelay;
-            return $"Verkehrsverbindung zu MSFS nicht möglich (HRESULT 0x{hr:X8}).";
+            return Loc.T("traffic.connection.openFailed", hr);
         }
 
         _handle = handle;
@@ -243,9 +244,9 @@ public sealed class TrafficConnection : IDisposable
 
         if (!_openReceived)
         {
-            Close("keine Bestätigung von MSFS");
+            Close(Loc.T("traffic.connection.closeNoAck"));
             _retryAfterUtc = DateTimeOffset.UtcNow + RetryDelay;
-            return "MSFS hat die Verkehrsverbindung nicht bestätigt.";
+            return Loc.T("traffic.connection.notAcknowledged");
         }
 
         foreach (var layout in Layouts)
@@ -253,9 +254,15 @@ public sealed class TrafficConnection : IDisposable
             Define(layout);
         }
 
-        _log.LogInformation(
-            "Eigene SimConnect-Verbindung für Verkehr geöffnet (native SimConnect.dll, Größenprüfung je Nachricht){Log}.",
-            _messageLog is null ? "" : $", Nachrichtenlog {_messageLog.FilePath}");
+        if (_messageLog is null)
+        {
+            _log.LogInformation(Loc.Log("log.traffic.opened"));
+        }
+        else
+        {
+            _log.LogInformation(Loc.Log("log.traffic.openedWithLog"), _messageLog.FilePath);
+        }
+
         return null;
     }
 
@@ -312,14 +319,14 @@ public sealed class TrafficConnection : IDisposable
                 break;
 
             case TrafficMessageParser.RecvIdQuit:
-                Close("MSFS beendet");
+                Close(Loc.T("traffic.connection.closeSimQuit"));
                 break;
 
             case TrafficMessageParser.RecvIdException:
                 if (TrafficMessageParser.ParseException(received) is { } ex && _loggedExceptions++ < 20)
                 {
                     _log.LogWarning(
-                        "SimConnect-Exception auf der Verkehrsverbindung: {Exception} (SendID {SendId}, Index {Index})",
+                        Loc.Log("log.traffic.exception"),
                         ex.Exception, ex.SendId, ex.Index);
                 }
 
@@ -345,7 +352,7 @@ public sealed class TrafficConnection : IDisposable
         {
             _loggedMessages++;
             _log.LogInformation(
-                "Verkehr BYTYPE ({Kind}): Anfrage {RequestId}, Definition {DefineId}, Objekt {ObjectId}, {Entry}/{OutOf}, dwSize {DwSize}, pcbData {Received}, Nutzdaten {Payload} von {Expected} Byte – {Flags}",
+                Loc.Log("log.traffic.message"),
                 kind, m.RequestId, m.DefineId, m.ObjectId, m.EntryNumber, m.OutOf, m.DwSize, m.ReceivedBytes, m.PayloadBytes, m.ExpectedPayloadBytes, TrafficMessageLog.Flags(m));
         }
 
@@ -353,7 +360,7 @@ public sealed class TrafficConnection : IDisposable
         if ((m.IsShort || !m.HeaderComplete || m.SizeMismatch) && (_loggedWarnings++ < 10 || _loggedWarnings % 100 == 0))
         {
             _log.LogWarning(
-                "Verkehr BYTYPE auffällig ({Flags}): Objekt {ObjectId}, {Entry}/{OutOf}, dwSize {DwSize}, pcbData {Received}, Nutzdaten {Payload} von {Expected} Byte",
+                Loc.Log("log.traffic.messageSuspicious"),
                 TrafficMessageLog.Flags(m), m.ObjectId, m.EntryNumber, m.OutOf, m.DwSize, m.ReceivedBytes, m.PayloadBytes, m.ExpectedPayloadBytes);
         }
     }
@@ -379,7 +386,7 @@ public sealed class TrafficConnection : IDisposable
         }
 
         _log.LogInformation(
-            "Verkehr BYTYPE seit {Since:HH:mm}Z: {Messages} Nachrichten. Leere Antwort: {EmptyVerdict}. Kurzer Datenblock: {ShortVerdict}.",
+            Loc.Log("log.traffic.summary"),
             d.SinceUtc, d.Messages, d.EmptyReplyVerdict, d.ShortBlockVerdict);
     }
 
@@ -396,12 +403,12 @@ public sealed class TrafficConnection : IDisposable
         }
         catch (Exception ex)
         {
-            _log.LogDebug(ex, "Fehler beim Schließen der Verkehrsverbindung");
+            _log.LogDebug(ex, Loc.Log("log.traffic.closeFailed"));
         }
 
         _handle = IntPtr.Zero;
         _openedFor = null;
-        _log.LogInformation("Verkehrsverbindung zu MSFS geschlossen: {Reason}", reason);
+        _log.LogInformation(Loc.Log("log.traffic.closed"), reason);
         LogSummary();
     }
 
@@ -409,7 +416,7 @@ public sealed class TrafficConnection : IDisposable
     {
         if (hr < 0)
         {
-            throw new TrafficConnectionException($"Verkehrsabfrage an MSFS fehlgeschlagen ({what}, HRESULT 0x{hr:X8}).");
+            throw new TrafficConnectionException(Loc.T("traffic.connection.callFailed", what, hr));
         }
     }
 

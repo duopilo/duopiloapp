@@ -1,5 +1,6 @@
 using Kopilot.Dashboard;
 using Kopilot.Hosting;
+using Kopilot.Localization;
 using Kopilot.Tools;
 
 namespace Kopilot.Settings;
@@ -19,6 +20,9 @@ public static class SettingsEndpoints
 
     /// <param name="Action">"new" oder "remove".</param>
     public sealed record TokenBody(string? Action);
+
+    /// <param name="Language">Sprachcode, z. B. "en" oder "de".</param>
+    public sealed record LanguageBody(string? Language);
 
     /// <summary>null = unverändert.</summary>
     public sealed record ModulesBody(bool? Monitoring, bool? Atc, bool? Input, bool? Voice);
@@ -56,6 +60,9 @@ public static class SettingsEndpoints
         app.MapPost("/api/settings/modules", (HttpContext context, SettingsService settings, ModulesBody body) =>
             IsDashboardAction(context) ? Answer(settings, settings.SaveModules(body.Monitoring, body.Atc, body.Input, body.Voice)) : Results.BadRequest()).LocalOnly();
 
+        app.MapPost("/api/settings/language", (HttpContext context, SettingsService settings, LanguageBody body) =>
+            IsDashboardAction(context) ? Answer(settings, settings.SaveLanguage(body.Language)) : Results.BadRequest()).LocalOnly();
+
         // Neustart der Tray-Instanz (nach Änderungen, die erst beim Start gelesen werden)
         app.MapPost("/api/restart", (HttpContext context) =>
         {
@@ -66,10 +73,10 @@ public static class SettingsEndpoints
 
             if (context.RequestServices.GetService<AppRestart>() is not { } restart)
             {
-                return Results.Content(Json.Serialize(new { ok = false, error = "Neustart gibt es nur in der Tray-Instanz (HTTP-Modus)." }), "application/json");
+                return Results.Content(Json.Serialize(new { ok = false, error = Loc.T("settings.restart.trayOnly") }), "application/json");
             }
 
-            var error = restart.Restart("Dashboard-Einstellungen");
+            var error = restart.Restart(Loc.T("settings.restart.reason"));
             return Results.Content(Json.Serialize(new { ok = error is null, error }), "application/json");
         }).LocalOnly();
     }

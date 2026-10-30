@@ -1,6 +1,7 @@
 using Kopilot.Aircraft;
 using Kopilot.Atc;
 using Kopilot.FlightPlan;
+using Kopilot.Localization;
 using Kopilot.Monitoring;
 using Kopilot.Sim;
 
@@ -25,22 +26,22 @@ public sealed class InputContext(AtcService atc, SimBriefService simBrief, SimCo
     {
         if (string.IsNullOrWhiteSpace(source))
         {
-            return new MsaReading(null, null, "keine MSA-Quelle im Profil");
+            return new MsaReading(null, null, Loc.T("input.msa.noSource"));
         }
 
         if (!source.Trim().Equals("ofp", StringComparison.OrdinalIgnoreCase))
         {
-            return new MsaReading(null, source, $"unbekannte MSA-Quelle \"{source}\"");
+            return new MsaReading(null, source, Loc.T("input.msa.unknownSource", source));
         }
 
         if (simBrief.Current is not { } ofp)
         {
-            return new MsaReading(null, "ofp", "kein SimBrief-Plan geladen");
+            return new MsaReading(null, "ofp", Loc.T("input.msa.noOfp"));
         }
 
         if (sim.Num("lat") is not { } lat || sim.Num("lon") is not { } lon)
         {
-            return new MsaReading(null, "ofp", "Position unbekannt");
+            return new MsaReading(null, "ofp", Loc.T("input.msa.positionUnknown"));
         }
 
         var points = ofp.RoutePoints();
@@ -58,12 +59,12 @@ public static class MsaCalculator
     {
         if (route is null || route.LegIndex < 0 || route.LegIndex + 1 >= points.Count)
         {
-            return new MsaReading(null, "ofp", "Position nicht auf der Route");
+            return new MsaReading(null, "ofp", Loc.T("input.msa.notOnRoute"));
         }
 
         if (Math.Abs(route.CrossTrackNm) > MaxCrossTrackNm)
         {
-            return new MsaReading(null, "ofp", $"{Math.Abs(route.CrossTrackNm):0} nm neben der Route");
+            return new MsaReading(null, "ofp", Loc.T("input.msa.offRoute", Math.Abs(route.CrossTrackNm)));
         }
 
         double? msa = null;
@@ -77,6 +78,6 @@ public static class MsaCalculator
 
         return msa is { } ft
             ? new MsaReading(ft, $"MORA {points[route.LegIndex].Ident}–{points[route.LegIndex + 1].Ident}", null)
-            : new MsaReading(null, "ofp", "keine MORA im SimBrief-Navlog");
+            : new MsaReading(null, "ofp", Loc.T("input.msa.noMora"));
     }
 }

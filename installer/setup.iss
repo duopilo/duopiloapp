@@ -16,22 +16,22 @@
 ; Deinstallation: Programm, Startmenü-Eintrag und Autostart weg; Einstellungen und Daten nur nach Rückfrage.
 
 #ifndef AppName
-  #error AppName fehlt - bitte installer/installer.ps1 benutzen.
+  #error AppName is missing - please use installer/installer.ps1.
 #endif
 #ifndef AppExe
-  #error AppExe fehlt - bitte installer/installer.ps1 benutzen.
+  #error AppExe is missing - please use installer/installer.ps1.
 #endif
 #ifndef AppVersion
-  #error AppVersion fehlt - bitte installer/installer.ps1 benutzen.
+  #error AppVersion is missing - please use installer/installer.ps1.
 #endif
 #ifndef AppVersionNumeric
-  #error AppVersionNumeric fehlt - bitte installer/installer.ps1 benutzen.
+  #error AppVersionNumeric is missing - please use installer/installer.ps1.
 #endif
 #ifndef Quelle
-  #error Quelle fehlt - bitte installer/installer.ps1 benutzen.
+  #error Quelle is missing - please use installer/installer.ps1.
 #endif
 #ifndef Manifest
-  #error Manifest fehlt - bitte installer/installer.ps1 benutzen.
+  #error Manifest is missing - please use installer/installer.ps1.
 #endif
 #ifndef RepoUrl
   #define RepoUrl "https://github.com/Shin-Jin-Jin/Kopilot"
@@ -83,22 +83,24 @@ RestartApplications=no
 UsedUserAreasWarning=no
 
 [Languages]
-Name: "de"; MessagesFile: "compiler:Languages\German.isl"
-Name: "en"; MessagesFile: "compiler:Default.isl"
+; Englisch zuerst: Standard und Rückfall, wenn die Windows-Anzeigesprache zu keinem Eintrag passt. Auf einem deutschen Windows
+; wählt Setup Deutsch, der Sprachdialog lässt es ändern. Die Namen sind die Präfixe in [CustomMessages].
+Name: "english"; MessagesFile: "compiler:Default.isl"
+Name: "german"; MessagesFile: "compiler:Languages\German.isl"
 
 [CustomMessages]
-de.AutostartGroup=Weitere Optionen:
-de.AutostartTask=Mit Windows starten (Autostart)
-de.StillRunning=%1 läuft noch und ließ sich nicht beenden – vermutlich startet Claude Desktop seine Instanz gleich wieder.%n%nBitte Claude Desktop über das Symbol im Infobereich beenden und Setup erneut starten.
-de.StillRunningUninstall=%1 läuft noch und ließ sich nicht beenden – vermutlich startet Claude Desktop seine Instanz gleich wieder.%n%nBitte Claude Desktop über das Symbol im Infobereich beenden und die Deinstallation erneut starten.
-de.BackupDone=Geänderte mitgelieferte Dateien (z. B. Profile) wurden vor dem Update gesichert:%n%n%1
-de.DeleteDataQuestion=Auch die Einstellungen und Daten von %1 löschen?%n%n• im Programmordner: appsettings.Local.json, eigene Profile, Sicherungen%n• %2 (Logs, Sprachmodelle, Dashboard-Einstellungen, Claude-Anmeldungen)%n%nMit „Nein“ bleiben sie für eine spätere Installation erhalten. Ein selbst gebautes %1 nutzt denselben Datenordner.
-en.AutostartGroup=Additional options:
-en.AutostartTask=Start with Windows (autostart)
-en.StillRunning=%1 is still running and could not be stopped – Claude Desktop probably restarts its instance right away.%n%nPlease quit Claude Desktop from its notification area icon and run Setup again.
-en.StillRunningUninstall=%1 is still running and could not be stopped – Claude Desktop probably restarts its instance right away.%n%nPlease quit Claude Desktop from its notification area icon and run the uninstaller again.
-en.BackupDone=Modified bundled files (e.g. aircraft profiles) were backed up before the update:%n%n%1
-en.DeleteDataQuestion=Also delete the settings and data of %1?%n%n• in the program folder: appsettings.Local.json, own profiles, backups%n• %2 (logs, speech models, dashboard settings, Claude sign-ins)%n%nChoose "No" to keep them for a later installation. A self-built %1 uses the same data folder.
+english.AutostartGroup=Additional options:
+english.AutostartTask=Start with Windows (autostart)
+english.StillRunning=%1 is still running and could not be stopped – Claude Desktop probably restarts its instance right away.%n%nPlease quit Claude Desktop from its notification area icon and run Setup again.
+english.StillRunningUninstall=%1 is still running and could not be stopped – Claude Desktop probably restarts its instance right away.%n%nPlease quit Claude Desktop from its notification area icon and run the uninstaller again.
+english.BackupDone=Modified bundled files (e.g. aircraft profiles) were backed up before the update:%n%n%1
+english.DeleteDataQuestion=Also delete the settings and data of %1?%n%n• in the program folder: appsettings.Local.json, own profiles, backups%n• %2 (logs, speech models, dashboard settings, Claude sign-ins)%n%nChoose "No" to keep them for a later installation. A self-built %1 uses the same data folder.
+german.AutostartGroup=Weitere Optionen:
+german.AutostartTask=Mit Windows starten (Autostart)
+german.StillRunning=%1 läuft noch und ließ sich nicht beenden – vermutlich startet Claude Desktop seine Instanz gleich wieder.%n%nBitte Claude Desktop über das Symbol im Infobereich beenden und Setup erneut starten.
+german.StillRunningUninstall=%1 läuft noch und ließ sich nicht beenden – vermutlich startet Claude Desktop seine Instanz gleich wieder.%n%nBitte Claude Desktop über das Symbol im Infobereich beenden und die Deinstallation erneut starten.
+german.BackupDone=Geänderte mitgelieferte Dateien (z. B. Profile) wurden vor dem Update gesichert:%n%n%1
+german.DeleteDataQuestion=Auch die Einstellungen und Daten von %1 löschen?%n%n• im Programmordner: appsettings.Local.json, eigene Profile, Sicherungen%n• %2 (Logs, Sprachmodelle, Dashboard-Einstellungen, Claude-Anmeldungen)%n%nMit „Nein“ bleiben sie für eine spätere Installation erhalten. Ein selbst gebautes %1 nutzt denselben Datenordner.
 
 [Tasks]
 Name: "autostart"; Description: "{cm:AutostartTask}"; GroupDescription: "{cm:AutostartGroup}"; Flags: unchecked
@@ -107,7 +109,9 @@ Name: "autostart"; Description: "{cm:AutostartTask}"; GroupDescription: "{cm:Aut
 Source: "{#Quelle}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#Manifest}"; DestDir: "{app}"; DestName: "shipped-files.sha256"; Flags: ignoreversion
 ; Eigene Einstellungen: einmal leer anlegen, nie überschreiben, beim Deinstallieren nur nach Rückfrage löschen.
-Source: "appsettings.Local.leer.json"; DestDir: "{app}"; DestName: "appsettings.Local.json"; Flags: onlyifdoesntexist uninsneveruninstall; Permissions: users-modify
+; Deutscher Installer: die neue Datei setzt "Language": "de" (nur beim ersten Mal – eine vorhandene Datei bleibt unberührt).
+Source: "appsettings.Local.leer.json"; DestDir: "{app}"; DestName: "appsettings.Local.json"; Languages: english; Flags: onlyifdoesntexist uninsneveruninstall; Permissions: users-modify
+Source: "appsettings.Local.leer.de.json"; DestDir: "{app}"; DestName: "appsettings.Local.json"; Languages: german; Flags: onlyifdoesntexist uninsneveruninstall; Permissions: users-modify
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"
@@ -152,13 +156,13 @@ begin
               '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
   begin
     { Ohne PowerShell weiter wie bisher – gesperrte Dateien meldet Setup dann selbst. }
-    Log('PowerShell ließ sich nicht starten: ' + SysErrorMessage(ResultCode));
+    Log('Could not start PowerShell: ' + SysErrorMessage(ResultCode));
     Result := True;
     exit;
   end;
   Result := ResultCode = 0;
   if not Result then
-    Log('Laufende Instanzen ließen sich nicht beenden.');
+    Log('Could not stop the running instances.');
 end;
 
 procedure BackupFile(const RelPath: String);
@@ -171,10 +175,10 @@ begin
   if ForceDirectories(ExtractFileDir(Target)) and FileCopy(ExpandConstant('{app}\') + RelPath, Target, False) then
   begin
     BackupCount := BackupCount + 1;
-    Log('Geändert, gesichert: ' + RelPath);
+    Log('Modified, backed up: ' + RelPath);
   end
   else
-    Log('Sichern fehlgeschlagen: ' + RelPath);
+    Log('Backup failed: ' + RelPath);
 end;
 
 procedure BackupIfExists(const RelPath: String);

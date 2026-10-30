@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using Kopilot.Atc;
+using Kopilot.Localization;
 using Kopilot.Monitoring;
 using ModelContextProtocol.Server;
 
@@ -85,8 +86,7 @@ public static class AtcControllerTools
                 enabled = atc.Enabled,
                 templates = atc.TemplatesPath,
                 templateErrors = atc.TemplateErrors,
-                hint = "Die Sitzung beginnt mit dem ersten Funkspruch (atc_transmit) oder atc_control start. " +
-                       "Eine gesicherte Sitzung desselben Flugs wird dabei fortgesetzt.",
+                hint = Loc.T("tools.atc.sessionHint"),
                 persistence = Persistence(atc),
                 templateNotes = atc.TemplateNotes,
                 airspace = atc.AirspaceSources,

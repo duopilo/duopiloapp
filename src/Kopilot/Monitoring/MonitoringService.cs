@@ -1,4 +1,5 @@
 using Kopilot.FlightPlan;
+using Kopilot.Localization;
 using Microsoft.Extensions.Options;
 
 namespace Kopilot.Monitoring;
@@ -88,11 +89,11 @@ public sealed class MonitoringService : BackgroundService
     {
         if (!_options.Enabled)
         {
-            _log.LogInformation("Monitoring ist ausgeschaltet (Kopilot:Monitoring:Enabled).");
+            _log.LogInformation(Loc.Log("log.monitor.disabled"));
             return;
         }
 
-        _log.LogInformation("Monitoring aktiv ({Interval} ms, {Rules} Regeln).", IntervalMs, EnabledRules.Count);
+        _log.LogInformation(Loc.Log("log.monitor.enabled"), IntervalMs, EnabledRules.Count);
         using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(IntervalMs));
         try
         {
@@ -150,7 +151,7 @@ public sealed class MonitoringService : BackgroundService
             if (now - _lastErrorLogUtc > TimeSpan.FromMinutes(1))
             {
                 _lastErrorLogUtc = now;
-                _log.LogError(ex, "Fehler im Monitoring");
+                _log.LogError(ex, Loc.Log("log.monitor.error"));
             }
         }
     }

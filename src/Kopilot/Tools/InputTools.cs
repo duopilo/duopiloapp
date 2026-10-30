@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using Kopilot.Input;
+using Kopilot.Localization;
 using ModelContextProtocol.Server;
 
 namespace Kopilot.Tools;
@@ -44,7 +45,7 @@ public static class InputTools
         return Json.Serialize(new
         {
             enabled = input.Enabled,
-            note = input.Enabled ? null : "Eingaben sind gesperrt – der Pilot kann sie im Kopilot-Dashboard freigeben.",
+            note = input.Enabled ? null : Loc.T("tools.input.disabledNote"),
             areas = input.Actions.Select(a => a.Area).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
             actions,
             pending = Pending(input),
@@ -69,14 +70,14 @@ public static class InputTools
         {
             if (string.IsNullOrWhiteSpace(action))
             {
-                return View(new InputResult(InputResult.Refused, "Parameter 'action' fehlt – siehe list_actions."), null);
+                return View(new InputResult(InputResult.Refused, Loc.T("tools.input.actionMissing")), null);
             }
 
             var result = await input.PrepareAsync(action, value, cancellationToken);
             return View(result, result.Status == InputResult.AwaitingConfirmation
                 ? result.CautionFollows
-                    ? "Read this back to the pilot now and wait for 'confirm'. Then call confirm_action with the token and the pilot's words – a caution with a second confirmation follows."
-                    : "Read this back to the pilot now and wait for 'confirm'. Then call confirm_action with the token and the pilot's words."
+                    ? Loc.T("tools.input.readBackThenCaution")
+                    : Loc.T("tools.input.readBack")
                 : null);
         });
     }
@@ -101,7 +102,7 @@ public static class InputTools
         {
             var result = await input.ConfirmAsync(token, pilotConfirmation, cancellationToken);
             return View(result, result.Status == InputResult.AwaitingCautionConfirmation
-                ? "Do not execute yet: read the 'caution' text to the pilot word for word and wait for 'confirm'. Then call confirm_action again with the same token."
+                ? Loc.T("tools.input.readCaution")
                 : null);
         });
     }
@@ -127,7 +128,7 @@ public static class InputTools
         InputService input,
         [Description("Token from prepare_action. Empty = cancel whatever is pending.")] string? token = null)
     {
-        return Json.Serialize(View(input.Cancel(string.IsNullOrWhiteSpace(token) ? null : token, "Abgebrochen (Claude)"), null));
+        return Json.Serialize(View(input.Cancel(string.IsNullOrWhiteSpace(token) ? null : token, Loc.T("tools.input.cancelledByClaude")), null));
     }
 
     /// <summary>Jede Ausnahme wird zu einer strukturierten Antwort (status "error") – nie ein nackter MCP-Fehler.</summary>
@@ -139,8 +140,8 @@ public static class InputTools
         }
         catch (Exception ex)
         {
-            log.LogError(ex, "{Tool} fehlgeschlagen", tool);
-            return Json.Serialize(new { status = InputResult.Error, reason = $"Interner Fehler in {tool}: {ex.Message}" });
+            log.LogError(ex, Loc.Log("log.input.toolFailed"), tool);
+            return Json.Serialize(new { status = InputResult.Error, reason = Loc.T("tools.input.internalError", tool, ex.Message) });
         }
     }
 

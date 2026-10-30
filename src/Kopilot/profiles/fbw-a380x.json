@@ -6,7 +6,7 @@
     { "path": [ "FlyByWire", "A380" ] },
     { "title": [ "A380X" ] }
   ],
-  "notes": "AUTOPILOT MASTER ist falsch – AP-Status aus A32NX_AUTOPILOT_1/2_ACTIVE. FMA/A-THR/Fuel Flow aus den gemeinsamen A32NX-Variablen übernommen und noch ungeprüft. ECAM-Zeilen des A380X-EWD sind noch nicht eingebunden. Engine-Fire-Variablen (A32NX_FIRE_TEST_ENG1, ENG ON FIRE) bleiben 0.",
+  "notes": "AUTOPILOT MASTER is wrong – AP status from A32NX_AUTOPILOT_1/2_ACTIVE. FMA/A-THR/fuel flow taken from the shared A32NX variables, not verified yet. ECAM lines of the A380X EWD are not wired up yet. Engine fire variables (A32NX_FIRE_TEST_ENG1, ENG ON FIRE) stay 0.",
   "bindings": {
     "ap1": { "name": "L:A32NX_AUTOPILOT_1_ACTIVE", "type": "bool", "verified": true },
     "ap2": { "name": "L:A32NX_AUTOPILOT_2_ACTIVE", "type": "bool", "verified": false },
@@ -42,12 +42,12 @@
       "name": "L:A32NX_AUTOBRAKES_ARMED_MODE", "type": "enum", "verified": false,
       "values": { "0": "DISARM", "1": "BTV", "2": "LOW", "3": "L2", "4": "L3", "5": "HIGH", "6": "RTO" }
     },
-    "speedTarget": { "name": "L:A32NX_SPEEDS_MANAGED_PFD", "unit": "knots", "type": "number", "verified": false, "description": "intern m/s, gelesen in kt" },
+    "speedTarget": { "name": "L:A32NX_SPEEDS_MANAGED_PFD", "unit": "knots", "type": "number", "verified": false, "description": "stored in m/s, read in kt" },
     "speedManaged": { "name": "L:A32NX_FCU_AFS_DISPLAY_SPD_MACH_MANAGED", "type": "bool", "verified": false },
     "selectedSpeed": { "name": "L:A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE", "type": "number", "verified": false },
     "machMode": { "name": "L:A32NX_FCU_AFS_DISPLAY_MACH_MODE", "type": "bool", "verified": false },
     "selectedAltitude": { "name": "L:A32NX_FCU_AFS_DISPLAY_ALT_VALUE", "type": "number", "verified": false },
-    "fuelFlowKgh": { "name": "L:A32NX_ENGINE_FF:{i}", "type": "number", "verified": false, "description": "Fuel Flow je Triebwerk in kg/h" }
+    "fuelFlowKgh": { "name": "L:A32NX_ENGINE_FF:{i}", "type": "number", "verified": false, "description": "Fuel flow per engine in kg/h" }
   },
   "limits": {
     // A380-800 – bitte prüfen
@@ -57,6 +57,6 @@
     "speedLimitBelowFl100Kt": 250
   },
   "variables": [
-    { "key": "fireTestPressed", "name": "L:A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED", "unit": "number", "description": "Fire-Test-Taste gedrückt" }
+    { "key": "fireTestPressed", "name": "L:A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED", "unit": "number", "description": "Fire test button pressed" }
   ]
 }

@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using Kopilot.Aircraft;
+using Kopilot.Localization;
 using Kopilot.Monitoring;
 using Microsoft.Extensions.Options;
 
@@ -42,7 +43,7 @@ public sealed record InputResult(
     /// <summary>Rückfrage mit Warnhinweis (englisch, zum Vorlesen) – bei <see cref="AwaitingCautionConfirmation"/>.</summary>
     public string? Caution { get; init; }
 
-    /// <summary>Warnhinweise auf Deutsch (Gründe der Rückfrage).</summary>
+    /// <summary>Warnhinweise in der eingestellten Sprache (Gründe der Rückfrage).</summary>
     public IReadOnlyList<string>? Cautions { get; init; }
 
     /// <summary>Nach dem Readback folgt noch eine Rückfrage mit Warnhinweis (bei <see cref="AwaitingConfirmation"/>).</summary>
@@ -221,45 +222,53 @@ public sealed partial class InputService
         var action = profile?.Actions.FirstOrDefault(a => a.Id.Equals(actionId?.Trim(), StringComparison.OrdinalIgnoreCase));
         if (profile is null || action is null)
         {
-            return new InputResult(InputResult.Refused, $"Aktion \"{actionId}\" gibt es für dieses Flugzeug nicht.", Action: actionId);
+            return new InputResult(InputResult.Refused, Loc.T("input.verified.unknownAction", actionId), Action: actionId);
         }
 
         var cutoff = _time.GetUtcNow() - TimeSpan.FromMinutes(15);
-        var executed = History.FirstOrDefault(e => e.Action.Equals(action.Id, StringComparison.OrdinalIgnoreCase) && e.Outcome == "ausgeführt" && e.TimeUtc >= cutoff);
+        var executed = History.FirstOrDefault(e => e.Action.Equals(action.Id, StringComparison.OrdinalIgnoreCase) && e.Code == InputOutcome.Executed && e.TimeUtc >= cutoff);
 
         if (!PilotConfirmsWorked(action, pilotConfirmation, executed?.Value))
         {
             return new InputResult(
                 InputResult.Refused,
-                "Nur speichern, wenn der Pilot klar bestätigt, dass es im Cockpit funktioniert hat (z. B. \"check\", \"confirm\", \"on\", \"avail\", \"läuft\" oder der Name der Aktion) – ohne Verneinung.",
+                Loc.T("input.verified.notConfirmed"),
                 Action: action.Id);
         }
 
         if (executed is null)
         {
-            return new InputResult(InputResult.Refused, "Diese Aktion wurde in den letzten 15 Minuten nicht ausgeführt – erst ausführen, dann im Cockpit prüfen.", Action: action.Id);
+            return new InputResult(InputResult.Refused, Loc.T("input.verified.notExecuted"), Action: action.Id);
         }
 
         if (executed.Verified == false)
         {
-            return new InputResult(InputResult.Refused, "Das Flugzeug hat den Wert bei der letzten Ausführung nicht übernommen – erst die Ursache klären.", Action: action.Id);
+            return new InputResult(InputResult.Refused, Loc.T("input.verified.lastFailed"), Action: action.Id);
         }
 
         _verified.Record(profile.Name, action, "pilot", executed.Value, _time.GetUtcNow());
         lock (_lock)
         {
-            AddLogLocked(action.Id, executed.Value, "geprüft", "vom Piloten im Cockpit bestätigt", true);
+            AddLogLocked(action.Id, executed.Value, InputOutcome.Verified, Loc.T("input.detail.confirmedByPilot"), true);
         }
 
-        return new InputResult(InputResult.Executed, "Als geprüft gespeichert.", Action: action.Id, Value: executed.Value, Verified: true);
+        return new InputResult(InputResult.Executed, Loc.T("input.verified.saved"), Action: action.Id, Value: executed.Value, Verified: true);
     }
 
     /// <summary>Schalter im Dashboard. Jede Änderung verwirft offene Aktionen in allen Instanzen.</summary>
     public void SetEnabled(bool enabled)
     {
         _store.Save(new InputSettings { Enabled = enabled, Epoch = Epoch + 1 });
-        _log.LogInformation("Eingabe {State} (Dashboard).", enabled ? "freigegeben" : "gesperrt");
-        Cancel(null, enabled ? "Eingabe freigegeben" : "Eingabe gesperrt");
+        if (enabled)
+        {
+            _log.LogInformation(Loc.Log("log.input.enabledByDashboard"));
+        }
+        else
+        {
+            _log.LogInformation(Loc.Log("log.input.disabledByDashboard"));
+        }
+
+        Cancel(null, enabled ? Loc.T("input.cancel.enabled") : Loc.T("input.cancel.disabled"));
     }
 
     /// <summary>Abbrechen im Dashboard: verwirft offene Aktionen in allen Kopilot-Instanzen.</summary>
@@ -281,13 +290,13 @@ public sealed partial class InputService
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             // Der MCP-Aufruf wurde beendet (z. B. Zeitüberschreitung beim Client) – dann darf auch keine Aktion offen bleiben
-            _log.LogWarning("Eingabe: prepare_action {Action} = {Value} vom Client abgebrochen", actionId, value);
-            return new InputResult(InputResult.Failed, "Aufruf abgebrochen – es wurde keine Aktion vorbereitet. Neu mit prepare_action.", Action: actionId, Value: value);
+            _log.LogWarning(Loc.Log("log.input.prepareCancelled"), actionId, value);
+            return new InputResult(InputResult.Failed, Loc.T("input.prepare.callCancelled"), Action: actionId, Value: value);
         }
         catch (Exception ex)
         {
-            _log.LogError(ex, "Eingabe: prepare_action {Action} = {Value} fehlgeschlagen", actionId, value);
-            return new InputResult(InputResult.Error, $"Interner Fehler: {ex.Message}", Action: actionId, Value: value);
+            _log.LogError(ex, Loc.Log("log.input.prepareFailed"), actionId, value);
+            return new InputResult(InputResult.Error, Loc.T("input.error.internal", ex.Message), Action: actionId, Value: value);
         }
     }
 
@@ -295,7 +304,7 @@ public sealed partial class InputService
     {
         if (!Enabled)
         {
-            return new InputResult(InputResult.Disabled, "Eingaben sind gesperrt. Freigabe im Kopilot-Dashboard (Eingabe) oder Kopilot:Input:Enabled.");
+            return new InputResult(InputResult.Disabled, Loc.T("input.prepare.disabled"));
         }
 
         // Jede neue Anfrage verwirft die offene Aktion – auch wenn sie selbst scheitert. Ihr Readback gilt dann nicht mehr,
@@ -306,7 +315,7 @@ public sealed partial class InputService
             ExpireLocked();
             if (_pending is not null)
             {
-                RetireLocked("ersetzt", "Neue Aktion angefordert");
+                RetireLocked(InputOutcome.Replaced, Loc.T("input.detail.newRequested"));
             }
         }
 
@@ -319,7 +328,7 @@ public sealed partial class InputService
         var action = profile!.Actions.FirstOrDefault(a => a.Id.Equals(actionId?.Trim(), StringComparison.OrdinalIgnoreCase));
         if (action is null)
         {
-            return Refuse(actionId, value, $"Aktion \"{actionId}\" gibt es für {profile.Name} nicht – siehe list_actions.");
+            return Refuse(actionId, value, Loc.T("input.prepare.unknownAction", actionId, profile.Name));
         }
 
         var snapshot = _backend.Snapshot();
@@ -350,17 +359,17 @@ public sealed partial class InputService
             // Nur die neueste Anfrage legt eine Aktion an: Der zurückgegebene Token gehört damit immer zur offenen Aktion.
             if (sequence != Interlocked.Read(ref _prepareSequence))
             {
-                stale = "Inzwischen wurde eine neuere Aktion angefordert – diese Vorbereitung ist verworfen und hat keinen Token.";
+                stale = Loc.T("input.prepare.superseded");
             }
             else if (ct.IsCancellationRequested)
             {
-                stale = "Aufruf abgebrochen – es wurde keine Aktion vorbereitet. Neu mit prepare_action.";
+                stale = Loc.T("input.prepare.callCancelled");
             }
             else
             {
                 if (_pending is not null)
                 {
-                    RetireLocked("ersetzt", "Neue Aktion vorbereitet");
+                    RetireLocked(InputOutcome.Replaced, Loc.T("input.detail.newPrepared"));
                 }
 
                 _pending = pending;
@@ -371,15 +380,15 @@ public sealed partial class InputService
                 AddLogLocked(
                     plan.Action.Id,
                     plan.ValueText,
-                    "vorbereitet",
-                    plan.NeedsCrossConfirmation ? $"{plan.Readback} · danach Rückfrage: {CautionText(plan)}" : plan.Readback,
+                    InputOutcome.Prepared,
+                    plan.NeedsCrossConfirmation ? Loc.T("input.detail.preparedWithCaution", plan.Readback, CautionText(plan)) : plan.Readback,
                     null);
                 Share(pending);
             }
 
             if (stale is not null)
             {
-                AddLogLocked(plan.Action.Id, plan.ValueText, "verworfen", stale, null);
+                AddLogLocked(plan.Action.Id, plan.ValueText, InputOutcome.Discarded, stale, null);
             }
         }
 
@@ -418,7 +427,7 @@ public sealed partial class InputService
             {
                 return new InputResult(
                     InputResult.Failed,
-                    TokenProblemLocked(token) ?? "Keine offene Aktion – abgelaufen oder schon ausgeführt. Neu mit prepare_action.");
+                    TokenProblemLocked(token) ?? Loc.T("input.confirm.nonePending"));
             }
 
             if (!string.Equals(_pending.Token, token?.Trim(), StringComparison.OrdinalIgnoreCase))
@@ -426,32 +435,32 @@ public sealed partial class InputService
                 return new InputResult(
                     InputResult.Failed,
                     TokenProblemLocked(token)
-                    ?? $"Token passt nicht zur offenen Aktion ({_pending.Plan.Summary}). Den Token aus der letzten prepare_action-Antwort verwenden.",
+                    ?? Loc.T("input.confirm.tokenMismatch", _pending.Plan.Summary),
                     Action: _pending.Plan.Action.Id);
             }
 
             var words = Words(pilotConfirmation);
             if (words.Overlaps(NoWords))
             {
-                var cancelled = RetireLocked("abgebrochen", $"Pilot: \"{pilotConfirmation}\"");
-                return new InputResult(InputResult.Cancelled, "Pilot hat nicht bestätigt – Aktion verworfen.", Action: cancelled.Plan.Action.Id);
+                var cancelled = RetireLocked(InputOutcome.Cancelled, Loc.T("input.detail.pilotSaid", pilotConfirmation));
+                return new InputResult(InputResult.Cancelled, Loc.T("input.confirm.pilotDeclined"), Action: cancelled.Plan.Action.Id);
             }
 
             if (!words.Overlaps(YesWords))
             {
-                return new InputResult(InputResult.Failed, "Keine klare Bestätigung des Piloten. Readback vorlesen und auf \"confirm\" warten.");
+                return new InputResult(InputResult.Failed, Loc.T("input.confirm.notClear"));
             }
 
             if (_time.GetUtcNow() - _pending.CreatedUtc < TimeSpan.FromSeconds(1))
             {
-                return new InputResult(InputResult.Failed, "Erst den Readback vorlesen und die Antwort des Piloten abwarten.");
+                return new InputResult(InputResult.Failed, Loc.T("input.confirm.tooFast"));
             }
 
             input = _pendingInput;
             pendingProfile = _pendingProfile;
             pendingEpoch = _pendingEpoch;
             sequence = Interlocked.Read(ref _prepareSequence);
-            pending = TakeLocked("schon mit confirm_action verwendet");
+            pending = TakeLocked(Loc.T("input.fate.used"));
         }
 
         // Ab hier läuft die Aktion zu Ende, auch wenn der MCP-Aufruf abgebrochen wird – sonst bliebe sie halb ausgeführt.
@@ -463,12 +472,12 @@ public sealed partial class InputService
             var action = pending.Plan.Action;
             if (!Enabled)
             {
-                return Refuse(action.Id, pending.Plan.ValueText, "Eingaben wurden inzwischen gesperrt.");
+                return Refuse(action.Id, pending.Plan.ValueText, Loc.T("input.confirm.disabledMeanwhile"));
             }
 
             if (Epoch != pendingEpoch)
             {
-                return Refuse(action.Id, pending.Plan.ValueText, "Im Dashboard abgebrochen.");
+                return Refuse(action.Id, pending.Plan.ValueText, Loc.T("input.confirm.cancelledInDashboard"));
             }
 
             var profile = _backend.Profile;
@@ -479,7 +488,7 @@ public sealed partial class InputService
 
             if (!ReferenceEquals(profile, pendingProfile))
             {
-                return Refuse(action.Id, pending.Plan.ValueText, "Flugzeug oder Profil hat gewechselt – bitte neu vorbereiten.");
+                return Refuse(action.Id, pending.Plan.ValueText, Loc.T("input.confirm.profileChanged"));
             }
 
             var snapshot = _backend.Snapshot();
@@ -514,16 +523,16 @@ public sealed partial class InputService
         }
     }
 
-    public InputResult Cancel(string? token, string reason = "Abgebrochen")
+    public InputResult Cancel(string? token, string? reason = null)
     {
         lock (_lock)
         {
             if (_pending is null || (token is not null && !string.Equals(_pending.Token, token.Trim(), StringComparison.OrdinalIgnoreCase)))
             {
-                return new InputResult(InputResult.Cancelled, "Keine passende offene Aktion.");
+                return new InputResult(InputResult.Cancelled, Loc.T("input.cancel.noMatch"));
             }
 
-            var cancelled = RetireLocked("abgebrochen", reason);
+            var cancelled = RetireLocked(InputOutcome.Cancelled, reason ?? Loc.T("input.cancel.default"));
             return new InputResult(InputResult.Cancelled, Action: cancelled.Plan.Action.Id, Value: cancelled.Plan.ValueText);
         }
     }
@@ -537,7 +546,7 @@ public sealed partial class InputService
             var state = await _backend.ReadAsync(requirement.Variable, requirement.Unit, ct);
             if (state is null)
             {
-                return $"Zustand {requirement.Variable} nicht lesbar.";
+                return Loc.T("input.state.unreadable", requirement.Variable);
             }
 
             if (!requirement.Matches(state.Value))
@@ -576,7 +585,7 @@ public sealed partial class InputService
                     if (state is null)
                     {
                         Unclaim(job);
-                        return Fail(plan, $"Zustand {condition.Variable} nicht lesbar.", executedAny: sent > 0);
+                        return Fail(plan, Loc.T("input.state.unreadable", condition.Variable), executedAny: sent > 0);
                     }
 
                     if (condition.Matches(state.Value))
@@ -625,7 +634,7 @@ public sealed partial class InputService
             }
             catch (Exception ex)
             {
-                _log.LogWarning("Eingabe: Prüfung von {Action} fehlgeschlagen: {Message}", plan.Action.Id, ex.Message);
+                _log.LogWarning(Loc.Log("log.input.checkFailed"), plan.Action.Id, ex.Message);
                 verified = null;
             }
         }
@@ -642,14 +651,14 @@ public sealed partial class InputService
         // Rohwert der Prüfvariable mit Namen der Auswahl, z. B. Schalterstellung 0 = "on" – sonst liest sich 0 wie "aus"
         var afterText = after is { } afterValue ? ActionPlanner.StateName(plan.Action, afterValue) : null;
         var expectedText = plan.Action.Parameter?.IsChoice == true ? plan.ValueText : null;
-        string Shown(double? v, string? name) => v is not { } d ? "nichts" : name is null ? d.ToString(inv) : $"{d.ToString(inv)} ({name})";
+        string Shown(double? v, string? name) => v is not { } d ? Loc.T("input.detail.nothing") : name is null ? d.ToString(inv) : $"{d.ToString(inv)} ({name})";
         var detail = verified switch
         {
-            true when alreadySet => "war schon so",
-            true => plan.Check!.Independent ? "vom Flugzeug bestätigt" : "Wert steht (nur Schaltervariable geprüft)",
-            false when reverted => $"vom Flugzeug zurückgesetzt (zeigt {Shown(after, afterText)})",
-            false => $"Flugzeug zeigt {Shown(after, afterText)} statt {Shown(plan.Check!.Condition.Value, expectedText)}",
-            null => alreadySet ? "war schon so" : null,
+            true when alreadySet => Loc.T("input.detail.alreadySet"),
+            true => plan.Check!.Independent ? Loc.T("input.detail.confirmedByAircraft") : Loc.T("input.detail.switchOnly"),
+            false when reverted => Loc.T("input.detail.reverted", Shown(after, afterText)),
+            false => Loc.T("input.detail.mismatch", Shown(after, afterText), Shown(plan.Check!.Condition.Value, expectedText)),
+            null => alreadySet ? Loc.T("input.detail.alreadySet") : null,
         };
 
         // Echter Nachweis (Flugzeugzustand, nicht nur Schalterstellung) nach einer wirklichen Änderung: als geprüft merken
@@ -666,13 +675,13 @@ public sealed partial class InputService
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                _log.LogWarning("verified-actions.json nicht geschrieben: {Message}", ex.Message);
+                _log.LogWarning(Loc.Log("log.input.verifiedNotWritten"), ex.Message);
             }
         }
 
         lock (_lock)
         {
-            AddLogLocked(plan.Action.Id, plan.ValueText, "ausgeführt", newlyVerified ? detail + " · als geprüft gespeichert" : detail, verified);
+            AddLogLocked(plan.Action.Id, plan.ValueText, InputOutcome.Executed, newlyVerified ? Loc.T("input.detail.savedAsVerified", detail) : detail, verified);
         }
 
         // Nachlesen mit Callout ("Gear down, three green" / "Gear disagree") – nur wenn wirklich etwas gesendet wurde und der Hebel steht
@@ -694,8 +703,8 @@ public sealed partial class InputService
             InputResult.Executed,
             Reason: verified == false
                 ? reverted
-                    ? "Das Flugzeug hat den Wert kurz übernommen und wieder zurückgesetzt – Voraussetzungen im Cockpit prüfen (z. B. Strom)."
-                    : "Das Flugzeug hat den Wert (noch) nicht übernommen – bitte im Cockpit prüfen."
+                    ? Loc.T("input.result.reverted")
+                    : Loc.T("input.result.notTaken")
                 : null,
             Action: plan.Action.Id,
             Value: plan.ValueText,
@@ -729,7 +738,7 @@ public sealed partial class InputService
             return;
         }
 
-        var result = outcome.Ok ? "nachgelesen" : outcome.Readable ? "abweichend" : "nicht nachlesbar";
+        var result = outcome.Ok ? InputOutcome.Checked : outcome.Readable ? InputOutcome.Disagree : InputOutcome.Unreadable;
         var detail = outcome.Callout is null ? outcome.Message : $"\"{outcome.Callout}\" – {outcome.Message}";
         lock (_lock)
         {
@@ -759,11 +768,11 @@ public sealed partial class InputService
             try
             {
                 cleared = _context?.ClearedAltitudeFt();
-                msa = _context?.Msa(profile.Limits.MsaSource, snapshot) ?? new MsaReading(null, profile.Limits.MsaSource, "keine Daten");
+                msa = _context?.Msa(profile.Limits.MsaSource, snapshot) ?? new MsaReading(null, profile.Limits.MsaSource, Loc.T("input.msa.noData"));
             }
             catch (Exception ex)
             {
-                _log.LogWarning("Freigabe/MSA nicht lesbar: {Message}", ex.Message);
+                _log.LogWarning(Loc.Log("log.input.clearanceMsaUnreadable"), ex.Message);
                 msa = new MsaReading(null, profile.Limits.MsaSource, ex.Message);
             }
         }
@@ -810,10 +819,10 @@ public sealed partial class InputService
         {
             if (sequence != Interlocked.Read(ref _prepareSequence) || _pending is not null)
             {
-                AddLogLocked(plan.Action.Id, plan.ValueText, "verworfen", "Inzwischen wurde eine neuere Aktion angefordert.", null);
+                AddLogLocked(plan.Action.Id, plan.ValueText, InputOutcome.Discarded, Loc.T("input.caution.newerRequested"), null);
                 return new InputResult(
                     InputResult.Failed,
-                    "Inzwischen wurde eine neuere Aktion angefordert – diese Rückfrage ist verworfen.",
+                    Loc.T("input.caution.superseded"),
                     Action: plan.Action.Id,
                     Value: plan.ValueText);
             }
@@ -833,7 +842,7 @@ public sealed partial class InputService
             _pendingProfile = profile;
             _pendingEpoch = epoch;
             LogMissingLimitsLocked(plan);
-            AddLogLocked(plan.Action.Id, plan.ValueText, "Rückfrage", CautionText(plan), null);
+            AddLogLocked(plan.Action.Id, plan.ValueText, InputOutcome.Caution, CautionText(plan), null);
             Share(next);
         }
 
@@ -859,8 +868,8 @@ public sealed partial class InputService
     {
         foreach (var caution in plan.Cautions.Where(c => c.MissingLimit))
         {
-            _log.LogWarning("Eingabe {Action}: Grenzwert fehlt ({Code}) – {Reason}", plan.Action.Id, caution.Code, caution.Reason);
-            AddLogLocked(plan.Action.Id, plan.ValueText, "Grenzwert fehlt", caution.Reason, null);
+            _log.LogWarning(Loc.Log("log.input.limitMissing"), plan.Action.Id, caution.Code, caution.Reason);
+            AddLogLocked(plan.Action.Id, plan.ValueText, InputOutcome.LimitMissing, caution.Reason, null);
         }
     }
 
@@ -907,23 +916,23 @@ public sealed partial class InputService
     {
         if (!_backend.Connected)
         {
-            return "Keine Verbindung zu MSFS.";
+            return Loc.T("input.precheck.notConnected");
         }
 
         if (profile is null)
         {
-            return "Für dieses Flugzeug gibt es kein Profil und damit keine Eingaben.";
+            return Loc.T("input.precheck.noProfile");
         }
 
         var s = _backend.Snapshot();
         if (s.FlightRunning == false)
         {
-            return "Kein Flug geladen.";
+            return Loc.T("input.precheck.noFlight");
         }
 
         if (s.DataAgeSec is not { } age || age > 5)
         {
-            return "Sim-Daten veraltet – Eingabe gesperrt.";
+            return Loc.T("input.precheck.staleData");
         }
 
         return null;
@@ -933,7 +942,7 @@ public sealed partial class InputService
     {
         lock (_lock)
         {
-            AddLogLocked(action ?? "?", value, "abgelehnt", reason, null);
+            AddLogLocked(action ?? "?", value, InputOutcome.Refused, reason, null);
         }
 
         return new InputResult(InputResult.Refused, reason, Action: action, Value: value);
@@ -941,12 +950,12 @@ public sealed partial class InputService
 
     private InputResult ErrorResult(ActionPlan plan, Exception ex, bool executedAny)
     {
-        _log.LogError(ex, "Eingabe: {Action} = {Value} mit Ausnahme abgebrochen", plan.Action.Id, plan.ValueText);
-        var reason = ex is OperationCanceledException ? "Zeitüberschreitung beim Ausführen." : $"Interner Fehler: {ex.Message}";
-        var text = executedAny ? reason + " Möglicherweise teilweise ausgeführt – bitte im Cockpit prüfen." : reason;
+        _log.LogError(ex, Loc.Log("log.input.executionException"), plan.Action.Id, plan.ValueText);
+        var reason = ex is OperationCanceledException ? Loc.T("input.error.timeout") : Loc.T("input.error.internal", ex.Message);
+        var text = executedAny ? Loc.T("input.result.maybePartial", reason) : reason;
         lock (_lock)
         {
-            AddLogLocked(plan.Action.Id, plan.ValueText, "fehlgeschlagen", text, null);
+            AddLogLocked(plan.Action.Id, plan.ValueText, InputOutcome.Failed, text, null);
         }
 
         return new InputResult(InputResult.Error, text, Action: plan.Action.Id, Value: plan.ValueText);
@@ -954,10 +963,10 @@ public sealed partial class InputService
 
     private InputResult Fail(ActionPlan plan, string reason, bool executedAny)
     {
-        var text = executedAny ? reason + " Möglicherweise teilweise ausgeführt – bitte im Cockpit prüfen." : reason;
+        var text = executedAny ? Loc.T("input.result.maybePartial", reason) : reason;
         lock (_lock)
         {
-            AddLogLocked(plan.Action.Id, plan.ValueText, "fehlgeschlagen", text, null);
+            AddLogLocked(plan.Action.Id, plan.ValueText, InputOutcome.Failed, text, null);
         }
 
         return new InputResult(InputResult.Failed, text, Action: plan.Action.Id, Value: plan.ValueText);
@@ -985,14 +994,15 @@ public sealed partial class InputService
         return taken;
     }
 
-    /// <summary>Offene Aktion verwerfen und protokollieren ("ersetzt", "abgebrochen", "abgelaufen").</summary>
+    /// <summary>Offene Aktion verwerfen und protokollieren (<see cref="InputOutcome.Replaced"/>, <see cref="InputOutcome.Cancelled"/>, <see cref="InputOutcome.Expired"/>).</summary>
     private PendingAction RetireLocked(string outcome, string? detail)
     {
         var fate = outcome switch
         {
-            "ersetzt" => "durch eine neuere prepare_action-Anfrage ersetzt",
-            "abgelaufen" => "abgelaufen (keine Bestätigung im Zeitfenster)",
-            _ => outcome,
+            InputOutcome.Replaced => Loc.T("input.fate.replaced"),
+            InputOutcome.Expired => Loc.T("input.fate.expired"),
+            InputOutcome.Cancelled => Loc.T("input.fate.cancelled"),
+            _ => InputOutcome.Text(outcome),
         };
         var taken = TakeLocked(fate);
         AddLogLocked(taken.Plan.Action.Id, taken.Plan.ValueText, outcome, detail, null);
@@ -1003,7 +1013,7 @@ public sealed partial class InputService
     {
         if (_pending is { } p && _time.GetUtcNow() > p.ExpiresUtc)
         {
-            RetireLocked("abgelaufen", "Keine Bestätigung");
+            RetireLocked(InputOutcome.Expired, Loc.T("input.detail.noConfirmation"));
         }
     }
 
@@ -1013,21 +1023,19 @@ public sealed partial class InputService
         var t = token?.Trim();
         if (string.IsNullOrEmpty(t))
         {
-            return _pending is null ? null : "Kein Token angegeben – den Token aus der letzten prepare_action-Antwort verwenden.";
+            return _pending is null ? null : Loc.T("input.token.missing");
         }
-
-        var open = _pending is { } p
-            ? $" Offen ist jetzt {p.Plan.Summary} – deren Readback dem Piloten vorlesen und seine Antwort abwarten."
-            : " Neu mit prepare_action.";
 
         if (_retired.FirstOrDefault(r => string.Equals(r.Token, t, StringComparison.OrdinalIgnoreCase)) is { } retired)
         {
-            return $"Token {t} gehört zu {retired.Summary} – {retired.Fate}.{open}";
+            return _pending is { } p
+                ? Loc.T("input.token.retiredOtherOpen", t, retired.Summary, retired.Fate, p.Plan.Summary)
+                : Loc.T("input.token.retired", t, retired.Summary, retired.Fate);
         }
 
         if (ForeignPending is { TokenHash: { } hash } foreign && string.Equals(hash, TokenHash(t), StringComparison.Ordinal))
         {
-            return $"Token {t} gehört zu {foreign.Action} in einer anderen Kopilot-Instanz – confirm_action über dieselbe Verbindung aufrufen wie prepare_action.";
+            return Loc.T("input.token.foreign", t, foreign.Action);
         }
 
         return null;
@@ -1054,19 +1062,21 @@ public sealed partial class InputService
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            _log.LogDebug("input-pending.json nicht geschrieben: {Message}", ex.Message);
+            _log.LogDebug(Loc.Log("log.input.pendingNotWritten"), ex.Message);
         }
     }
 
+    /// <param name="outcome">Code aus <see cref="InputOutcome"/>.</param>
     private void AddLogLocked(string action, string? value, string outcome, string? detail, bool? verified)
     {
-        _history.AddFirst(new InputLogEntry(_time.GetUtcNow(), action, value, outcome, detail, verified));
+        var text = InputOutcome.Text(outcome);
+        _history.AddFirst(new InputLogEntry(_time.GetUtcNow(), action, value, text, detail, verified) { Code = outcome });
         while (_history.Count > MaxLog)
         {
             _history.RemoveLast();
         }
 
-        _log.LogInformation("Eingabe {Outcome}: {Action}{Value} – {Detail}", outcome, action, value is null ? "" : " = " + value, detail ?? "");
+        _log.LogInformation(Loc.Log("log.input.entry"), text, action, value is null ? "" : " = " + value, detail ?? "");
     }
 
     [GeneratedRegex(@"\p{L}+")]

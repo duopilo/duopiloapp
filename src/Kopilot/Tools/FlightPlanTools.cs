@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Globalization;
 using Kopilot.FlightPlan;
+using Kopilot.Localization;
 using Kopilot.Monitoring;
 using Kopilot.Sim;
 using ModelContextProtocol.Server;
@@ -100,14 +101,14 @@ public static class FlightPlanTools
 
         if (sim.Num("lat") is not { } lat || sim.Num("lon") is not { } lon)
         {
-            return Json.Serialize(new { connected = true, loaded = true, message = "Keine Position vom Sim.", activeAlerts = AlertView.Active(alerts) });
+            return Json.Serialize(new { connected = true, loaded = true, message = Loc.T("tools.flightplan.noPosition"), activeAlerts = AlertView.Active(alerts) });
         }
 
         var points = ofp.RoutePoints();
         var progress = simBrief.Locate(ofp, points, lat, lon);
         if (progress is null)
         {
-            return Json.Serialize(new { connected = true, loaded = true, message = "Der SimBrief-Plan enthält keine verwertbare Route.", activeAlerts = AlertView.Active(alerts) });
+            return Json.Serialize(new { connected = true, loaded = true, message = Loc.T("tools.flightplan.noRoute"), activeAlerts = AlertView.Active(alerts) });
         }
 
         var gs = sim.Num("gs");
@@ -168,8 +169,8 @@ public static class FlightPlanTools
             },
             fuelCheck = FuelCheckView(monitoring, FuelPlanSample.PlanIdOf(ofp)),
             note = fp.FmsWaypointNotInPlan
-                ? "Das FMS fliegt einen Punkt an, der nicht im SimBrief-Plan steht – nächster Fix und Distanzen kommen aus dem Plan."
-                : fp.InTerminalArea ? "Im SID/STAR- oder Flughafenbereich weicht die Flugbahn oft vom Plan ab (Vektoren)." : null,
+                ? Loc.T("tools.flightplan.fmsNotInPlan")
+                : fp.InTerminalArea ? Loc.T("tools.flightplan.terminalArea") : null,
             activeAlerts = AlertView.Active(alerts),
         });
     }

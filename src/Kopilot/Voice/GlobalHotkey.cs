@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Kopilot.Localization;
 
 namespace Kopilot.Voice;
 
@@ -50,21 +51,21 @@ public sealed record HotkeyBinding(uint Modifiers, uint VirtualKey, string Text)
 
             if (key is not null)
             {
-                error = $"Tastenkürzel \"{text}\": mehr als eine Taste.";
+                error = Loc.T("voice.hotkey.moreThanOneKey", text);
                 return false;
             }
 
             key = KeyCode(raw);
             if (key is null)
             {
-                error = $"Tastenkürzel \"{text}\": unbekannte Taste \"{raw}\".";
+                error = Loc.T("voice.hotkey.unknownKey", text, raw);
                 return false;
             }
         }
 
         if (key is null)
         {
-            error = $"Tastenkürzel \"{text}\": keine Taste.";
+            error = Loc.T("voice.hotkey.noKey", text);
             return false;
         }
 
@@ -121,7 +122,7 @@ public sealed class GlobalHotkey : IDisposable
     {
         var hotkey = new GlobalHotkey(binding, onPressed);
         hotkey._thread.Start();
-        var error = hotkey._registered.Task.Wait(TimeSpan.FromSeconds(5)) ? hotkey._registered.Task.Result : "Zeitüberschreitung";
+        var error = hotkey._registered.Task.Wait(TimeSpan.FromSeconds(5)) ? hotkey._registered.Task.Result : Loc.T("voice.hotkey.timeout");
         if (error is not null)
         {
             hotkey.Dispose();
@@ -139,7 +140,7 @@ public sealed class GlobalHotkey : IDisposable
         PeekMessage(out _, IntPtr.Zero, WmUser, WmUser, PmNoRemove);
         if (!RegisterHotKey(IntPtr.Zero, HotkeyId, binding.Modifiers | ModNoRepeat, binding.VirtualKey))
         {
-            _registered.TrySetResult($"Tastenkürzel {binding.Text} ist schon belegt (Fehler {Marshal.GetLastWin32Error()}).");
+            _registered.TrySetResult(Loc.T("voice.hotkey.taken", binding.Text, Marshal.GetLastWin32Error()));
             return;
         }
 

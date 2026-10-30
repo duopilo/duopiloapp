@@ -1,3 +1,5 @@
+using Kopilot.Localization;
+
 namespace Kopilot.Monitoring;
 
 /// <summary>Ein FMA-Wechsel mit dem, was sich geändert hat, und den Flugdaten in dem Moment.</summary>
@@ -41,7 +43,7 @@ public sealed class FmaLog(int capacity = 400)
                     return null;
                 }
 
-                return Add(s, state, ["Start: " + Describe(state)]);
+                return Add(s, state, [Loc.T("monitor.fma.start", Describe(state))]);
             }
 
             if (state == _last)
@@ -50,11 +52,11 @@ public sealed class FmaLog(int capacity = 400)
             }
 
             var changes = new List<string>();
-            Compare(changes, "Schub", _last.Thrust, state.Thrust);
-            Compare(changes, "vertikal", _last.Vertical, state.Vertical);
-            Compare(changes, "vertikal armed", _last.VerticalArmed, state.VerticalArmed);
-            Compare(changes, "lateral", _last.Lateral, state.Lateral);
-            Compare(changes, "lateral armed", _last.LateralArmed, state.LateralArmed);
+            Compare(changes, Loc.T("monitor.fma.thrust"), _last.Thrust, state.Thrust);
+            Compare(changes, Loc.T("monitor.fma.vertical"), _last.Vertical, state.Vertical);
+            Compare(changes, Loc.T("monitor.fma.verticalArmed"), _last.VerticalArmed, state.VerticalArmed);
+            Compare(changes, Loc.T("monitor.fma.lateral"), _last.Lateral, state.Lateral);
+            Compare(changes, Loc.T("monitor.fma.lateralArmed"), _last.LateralArmed, state.LateralArmed);
             Compare(changes, "AP", _last.Autopilot, state.Autopilot);
             Compare(changes, "FD", OnOff(_last.FlightDirector), OnOff(state.FlightDirector));
             Compare(changes, "A/THR", _last.Autothrust, state.Autothrust);

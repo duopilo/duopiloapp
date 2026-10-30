@@ -1,4 +1,5 @@
 using Kopilot.Atc;
+using Kopilot.Localization;
 
 namespace Kopilot.Voice;
 
@@ -54,14 +55,14 @@ public sealed class VoiceDispatcher(VoiceDialog dialog, IAtcLink atc, VoiceRoute
             // ATC hat nach dem Readback gesprochen: Ein "Confirm" ist jetzt nicht mehr eindeutig – Aktion verwerfen
             if (dialog.Pending is { HeardUtc: { } heard } && lastAtc > heard)
             {
-                dialog.CancelPending("ATC hat nach dem Readback gesprochen");
+                dialog.CancelPending(Loc.T("voice.cancel.atcSpoke"));
             }
 
             // "Say again", "Affirm", "Negative" ohne Station und Anrede: an ATC, wenn ATC zuletzt gesprochen hat
             if (!addressed && intent.Kind is (IntentKind.SayAgain or IntentKind.Confirm or IntentKind.Negative)
                 && (dialog.LastSpokeUtc is not { } lastKopilot || lastAtc > lastKopilot))
             {
-                return await ToAtcAsync(text, normalized, route with { Target = VoiceTarget.Atc, Reason = $"{intent} an ATC" }, ct);
+                return await ToAtcAsync(text, normalized, route with { Target = VoiceTarget.Atc, Reason = Loc.T("voice.route.toAtc", intent) }, ct);
             }
         }
 
@@ -73,7 +74,7 @@ public sealed class VoiceDispatcher(VoiceDialog dialog, IAtcLink atc, VoiceRoute
     {
         if (!atc.Enabled)
         {
-            return new VoiceOutcome(normalized, route, null, VoiceReply.Of(AtcUnavailable), new AtcTransmitResult(false, "ATC ist ausgeschaltet.", []));
+            return new VoiceOutcome(normalized, route, null, VoiceReply.Of(AtcUnavailable), new AtcTransmitResult(false, Loc.T("voice.atc.disabled"), []));
         }
 
         var result = await atc.TransmitAsync(text, ct);

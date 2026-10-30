@@ -1,4 +1,5 @@
 using Kopilot.Input;
+using Kopilot.Localization;
 
 namespace Kopilot.Voice;
 
@@ -93,7 +94,7 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
         _muted = muted;
         if (muted)
         {
-            CancelPending("Spracheingabe stumm");
+            CancelPending(Loc.T("voice.inputMuted"));
         }
 
         return Remember(VoiceReply.Of(muted ? Paused : Resumed));
@@ -135,7 +136,7 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
                 return Pending is { HeardUtc: not null } ? VoiceReply.Of(SayAgain) : null;
 
             case IntentKind.Negative:
-                return Pending is null ? null : Remember(CancelPending("Pilot: negative") ? VoiceReply.Of(Cancelled) : VoiceReply.Of(Unable));
+                return Pending is null ? null : Remember(CancelPending(Loc.T("voice.cancel.pilotNegative")) ? VoiceReply.Of(Cancelled) : VoiceReply.Of(Unable));
 
             case IntentKind.Query when RequireWakeWord && !addressed:
             case IntentKind.Action when RequireWakeWord && !addressed:
@@ -176,7 +177,7 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
     {
         if (reply.ReadbackToken is { } token && Pending is { HeardUtc: null } p && p.Token == token)
         {
-            CancelPending("Readback nicht gesprochen");
+            CancelPending(Loc.T("voice.cancel.readbackNotSpoken"));
         }
     }
 
@@ -198,14 +199,14 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
     {
         if (Pending is { } p && _time.GetUtcNow() > p.ExpiresUtc)
         {
-            CancelPending("Keine Bestätigung (Sprache)");
+            CancelPending(Loc.T("voice.cancel.noConfirmation"));
         }
     }
 
     private async Task<VoiceReply?> PrepareAsync(VoiceIntent intent, CancellationToken ct)
     {
         // Eine neue Aktion ersetzt die offene – auch im Eingabe-Modul, falls die neue abgelehnt wird
-        CancelPending("Neuer Befehl (Sprache)");
+        CancelPending(Loc.T("voice.cancel.newCommand"));
 
         var result = await gateway.PrepareAsync(intent.ActionId!, intent.Value, ct);
         LastResult = result;

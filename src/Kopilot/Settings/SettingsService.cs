@@ -2,6 +2,7 @@ using Kopilot.Atc;
 using Kopilot.FlightPlan;
 using Kopilot.Hosting;
 using Kopilot.Input;
+using Kopilot.Localization;
 using Kopilot.Monitoring;
 using Kopilot.Remote;
 using Kopilot.Voice;
@@ -30,20 +31,21 @@ public sealed class SettingsService
 {
     private static readonly string[] Root = [KopilotOptions.Section];
 
-    /// <summary>Werte, die erst nach einem Neustart gelten: Schlüssel unter "Kopilot" → Anzeigename und laufender Wert.</summary>
-    private static readonly Dictionary<string, (string Label, Func<KopilotOptions, string> Running)> RestartKeys = new()
+    /// <summary>Werte, die erst nach einem Neustart gelten: Schlüssel unter "Kopilot" → Anzeigename (eingestellte Sprache) und laufender Wert.</summary>
+    private static readonly Dictionary<string, (Func<string> Label, Func<KopilotOptions, string> Running)> RestartKeys = new()
     {
-        [Keys.PublicUrl] = ("Öffentliche Adresse (Tunnel)", o => NormalizeUrl(o.Remote.PublicUrl)),
-        [Keys.ConsentPassword] = ("Freigabe-Passwort", o => o.Remote.ConsentPassword),
-        [Keys.BearerToken] = ("Bearer-Token", o => o.Remote.BearerToken.Trim()),
-        [Keys.Monitoring] = ("Monitoring", o => Bool(o.Monitoring.Enabled)),
-        [Keys.Atc] = ("ATC", o => Bool(o.Atc.Enabled)),
+        [Keys.PublicUrl] = (() => Loc.T("settings.label.publicUrl"), o => NormalizeUrl(o.Remote.PublicUrl)),
+        [Keys.ConsentPassword] = (() => Loc.T("settings.label.consentPassword"), o => o.Remote.ConsentPassword),
+        [Keys.BearerToken] = (() => Loc.T("settings.label.bearerToken"), o => o.Remote.BearerToken.Trim()),
+        [Keys.Monitoring] = (() => Loc.T("settings.label.monitoring"), o => Bool(o.Monitoring.Enabled)),
+        [Keys.Atc] = (() => Loc.T("settings.label.atc"), o => Bool(o.Atc.Enabled)),
     };
 
     /// <summary>Schlüssel, die eine Umgebungsvariable überschreiben kann (dann wirkt die Datei nicht).</summary>
     private static readonly string[] OverridableKeys =
     [
         Keys.SimBriefUsername, Keys.SimBriefPilotId, Keys.PublicUrl, Keys.ConsentPassword, Keys.BearerToken, Keys.Monitoring, Keys.Atc,
+        Keys.Language,
     ];
 
     private static readonly HttpClient TunnelHttp = new() { Timeout = TimeSpan.FromSeconds(10) };
@@ -90,6 +92,7 @@ public sealed class SettingsService
         public const string BearerToken = "Remote:BearerToken";
         public const string Monitoring = "Monitoring:Enabled";
         public const string Atc = "Atc:Enabled";
+        public const string Language = "Language";
     }
 
     /// <summary>Was erst nach einem Neustart gilt (Anzeigenamen). Leer = alles ist wirksam.</summary>
@@ -99,7 +102,7 @@ public sealed class SettingsService
         {
             return RestartKeys
                 .Where(k => _saved.TryGetValue(k.Key, out var saved) && saved != k.Value.Running(_options))
-                .Select(k => k.Value.Label)
+                .Select(k => k.Value.Label())
                 .ToList();
         }
     }
@@ -162,6 +165,12 @@ public sealed class SettingsService
                     : new { available = true, enabled = voice.Status.Enabled, state = voice.Status.State, file = voice.Store.FilePath },
             },
             reports = new { repository = o.Reports.GitHubRepository },
+            language = new
+            {
+                current = Loc.Language,
+                available = Loc.Available.Select(l => new { code = l.Code, name = l.Name }),
+                overrides = Loc.OverrideDirectory,
+            },
         };
     }
 
@@ -172,12 +181,12 @@ public sealed class SettingsService
         pilotId = (pilotId ?? "").Trim();
         if (username.Length > 64 || username.Any(char.IsControl))
         {
-            return SettingsResult.Fail("Der SimBrief-Username ist zu lang (höchstens 64 Zeichen).");
+            return SettingsResult.Fail(Loc.T("settings.simbrief.usernameTooLong"));
         }
 
         if (pilotId.Length > 12 || !pilotId.All(char.IsAsciiDigit))
         {
-            return SettingsResult.Fail("Die Pilot-ID besteht nur aus Ziffern (simbrief.com → Account Settings).");
+            return SettingsResult.Fail(Loc.T("settings.simbrief.pilotIdDigits"));
         }
 
         if (!Write([SettingValue.Of(KeyPath(Keys.SimBriefUsername), username), SettingValue.Of(KeyPath(Keys.SimBriefPilotId), pilotId)], out var error))
@@ -186,10 +195,33 @@ public sealed class SettingsService
         }
 
         var changed = _simBrief.ChangeAccount(username, pilotId);
-        var account = pilotId.Length > 0 ? $"Pilot-ID {pilotId}" : username.Length > 0 ? $"Username {username}" : null;
+        var account = pilotId.Length > 0 ? Loc.T("settings.simbrief.pilotId", pilotId) : username.Length > 0 ? Loc.T("settings.simbrief.username", username) : null;
         return new SettingsResult(true, account is null
-            ? "SimBrief ausgeschaltet."
-            : changed ? $"SimBrief gespeichert ({account}) – gilt sofort." : $"SimBrief unverändert ({account}).");
+            ? Loc.T("settings.simbrief.off")
+            : changed ? Loc.T("settings.simbrief.saved", account) : Loc.T("settings.simbrief.unchanged", account));
+    }
+
+    /// <summary>
+    /// Sprache für Dashboard, Tool-Meldungen und Tray speichern und sofort übernehmen (Logs bleiben Englisch). Callouts, Checklisten, FMA-Ansagen,
+    /// Warnungen und Funk bleiben Englisch.
+    /// </summary>
+    public SettingsResult SaveLanguage(string? language)
+    {
+        var code = Loc.Normalize(language);
+        if (code is null)
+        {
+            return SettingsResult.Fail(Loc.T("settings.language.unknown", language ?? "", string.Join(", ", Loc.Available.Select(l => l.Code))));
+        }
+
+        if (!Write([SettingValue.Of(KeyPath(Keys.Language), code)], out var error))
+        {
+            return SettingsResult.Fail(error);
+        }
+
+        var previous = Loc.Language;
+        Loc.SetLanguage(code);
+        _log.LogInformation(Loc.Log("log.settings.languageChanged"), previous, code);
+        return new SettingsResult(true, Loc.T("settings.language.saved", Loc.Available.FirstOrDefault(l => l.Code == code)?.Name ?? code));
     }
 
     /// <summary>
@@ -205,7 +237,7 @@ public sealed class SettingsService
             var url = NormalizeUrl(publicUrl);
             if (url.Length > 0 && new RemoteOptions { PublicUrl = url }.PublicBaseUri is null)
             {
-                return SettingsResult.Fail("Die öffentliche Adresse muss mit https:// beginnen und darf keinen Pfad haben, z. B. https://kopilot.example.com (ohne /mcp).");
+                return SettingsResult.Fail(Loc.T("settings.claude.publicUrlInvalid"));
             }
 
             values.Add(SettingValue.Of(KeyPath(Keys.PublicUrl), url));
@@ -221,7 +253,7 @@ public sealed class SettingsService
         {
             if (consentPassword.Length < RemoteOptions.MinConsentPasswordLength)
             {
-                return SettingsResult.Fail($"Das Freigabe-Passwort braucht mindestens {RemoteOptions.MinConsentPasswordLength} Zeichen.");
+                return SettingsResult.Fail(Loc.T("settings.claude.passwordTooShort", RemoteOptions.MinConsentPasswordLength));
             }
 
             values.Add(SettingValue.Of(KeyPath(Keys.ConsentPassword), consentPassword));
@@ -230,7 +262,7 @@ public sealed class SettingsService
 
         if (values.Count == 0)
         {
-            return new SettingsResult(true, "Nichts geändert.");
+            return new SettingsResult(true, Loc.T("settings.nothingChanged"));
         }
 
         if (!Write(values, out var error))
@@ -239,8 +271,8 @@ public sealed class SettingsService
         }
 
         Track(tracked);
-        _log.LogInformation("Einstellungen (Dashboard): Zugang für Claude geändert ({Keys}) – gilt nach Neustart.", string.Join(", ", tracked.Select(t => t.Key)));
-        return new SettingsResult(true, RestartMessage("Zugang für Claude gespeichert"));
+        _log.LogInformation(Loc.Log("log.settings.claudeChanged"), string.Join(", ", tracked.Select(t => t.Key)));
+        return new SettingsResult(true, RestartMessage(Loc.T("settings.claude.saved")));
     }
 
     /// <summary>Bearer-Token für Claude Code und andere Clients neu erzeugen ("new") oder entfernen ("remove").</summary>
@@ -256,7 +288,7 @@ public sealed class SettingsService
                 token = "";
                 break;
             default:
-                return SettingsResult.Fail("Unbekannte Aktion (erlaubt: new, remove).");
+                return SettingsResult.Fail(Loc.T("settings.token.unknownAction"));
         }
 
         if (!Write([SettingValue.Of(KeyPath(Keys.BearerToken), token)], out var error))
@@ -265,10 +297,14 @@ public sealed class SettingsService
         }
 
         Track([(Keys.BearerToken, token)]);
-        _log.LogInformation("Einstellungen (Dashboard): Bearer-Token {Action} – gilt nach Neustart.", token.Length > 0 ? "neu erzeugt" : "entfernt");
-        return token.Length > 0
-            ? new SettingsResult(true, RestartMessage("Neuer Bearer-Token gespeichert – jetzt kopieren, er wird nur einmal angezeigt"), Token: token)
-            : new SettingsResult(true, RestartMessage("Bearer-Token entfernt"));
+        if (token.Length > 0)
+        {
+            _log.LogInformation(Loc.Log("log.settings.tokenCreated"));
+            return new SettingsResult(true, RestartMessage(Loc.T("settings.token.created")), Token: token);
+        }
+
+        _log.LogInformation(Loc.Log("log.settings.tokenRemoved"));
+        return new SettingsResult(true, RestartMessage(Loc.T("settings.token.removed")));
     }
 
     /// <summary>Module ein- und ausschalten. null = unverändert.</summary>
@@ -297,20 +333,20 @@ public sealed class SettingsService
             }
 
             Track(tracked);
-            messages.Add(string.Join(", ", tracked.Select(t => $"{RestartKeys[t.Key].Label} {(t.Value == "true" ? "an" : "aus")}")));
+            messages.Add(string.Join(", ", tracked.Select(t => ModuleState(RestartKeys[t.Key].Label(), t.Value == "true"))));
         }
 
         if (input is { } i)
         {
             _input.SetEnabled(i);
-            messages.Add(i ? "Eingabe freigegeben" : "Eingabe gesperrt");
+            messages.Add(i ? Loc.T("settings.modules.inputEnabled") : Loc.T("settings.modules.inputDisabled"));
         }
 
         if (voice is { } v)
         {
             if (_services.GetService<VoiceLoop>() is not { } loop)
             {
-                return SettingsResult.Fail("Die Sprachschleife gibt es nur in der Tray-Instanz (HTTP-Modus).");
+                return SettingsResult.Fail(Loc.T("settings.voice.trayOnly"));
             }
 
             try
@@ -319,19 +355,20 @@ public sealed class SettingsService
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
             {
-                return SettingsResult.Fail($"{VoiceSettingsStore.FileName} nicht geschrieben: {ex.Message}");
+                return SettingsResult.Fail(Loc.T("settings.file.notWritten", VoiceSettingsStore.FileName, ex.Message));
             }
 
-            loop.Reload($"Dashboard-Einstellungen: Sprachschleife {(v ? "an" : "aus")}");
-            messages.Add(v ? "Sprachschleife an" : "Sprachschleife aus");
+            var voiceChange = v ? Loc.T("settings.modules.voiceOn") : Loc.T("settings.modules.voiceOff");
+            loop.Reload(Loc.T("settings.voice.reloadReason", voiceChange));
+            messages.Add(voiceChange);
         }
 
         if (messages.Count == 0)
         {
-            return new SettingsResult(true, "Nichts geändert.");
+            return new SettingsResult(true, Loc.T("settings.nothingChanged"));
         }
 
-        _log.LogInformation("Einstellungen (Dashboard): {Changes}", string.Join("; ", messages));
+        _log.LogInformation(Loc.Log("log.settings.modulesChanged"), string.Join("; ", messages.Select(Loc.ToEnglish)));
         return new SettingsResult(true, RestartMessage(string.Join(" · ", messages)));
     }
 
@@ -346,8 +383,8 @@ public sealed class SettingsService
         if (remote.PublicBaseUri is null)
         {
             result = TunnelResult("off", remote.PublicUrl.Length == 0
-                ? "Keine öffentliche Adresse eingetragen – Claude erreicht Kopilot nur lokal (Claude Desktop, Claude Code)."
-                : "Die öffentliche Adresse ist ungültig (https:// ohne Pfad).");
+                ? Loc.T("settings.tunnel.noPublicUrl")
+                : Loc.T("settings.tunnel.publicUrlInvalid"));
         }
         else
         {
@@ -361,23 +398,21 @@ public sealed class SettingsService
                 result = code switch
                 {
                     401 when body.Contains("Kopilot", StringComparison.OrdinalIgnoreCase) =>
-                        TunnelResult("ok", $"Tunnel steht: {remote.PublicBaseUri.Host} erreicht diese Kopilot-Instanz."),
+                        TunnelResult("ok", Loc.T("settings.tunnel.ok", remote.PublicBaseUri.Host)),
                     403 when cloudflare =>
-                        TunnelResult("blocked", "Cloudflare blockt diesen Rechner (HTTP 403) – vermutlich die WAF-Regel, die /mcp nur für Claude öffnet. " +
-                                                "Das ist so gewollt; von hier lässt sich der Tunnel dann nicht prüfen."),
-                    400 => TunnelResult("error", "Kopilot hat den Hostnamen abgelehnt (HTTP 400). Passt die öffentliche Adresse zum Hostnamen des Tunnels?"),
-                    502 or 503 or 504 or 530 => TunnelResult("error",
-                        $"Cloudflare erreicht Kopilot nicht (HTTP {code}). Läuft cloudflared, und zeigt der Tunnel auf {_options.HttpUrl}?"),
-                    _ => TunnelResult("error", $"Unerwartete Antwort HTTP {code} von {url}."),
+                        TunnelResult("blocked", Loc.T("settings.tunnel.blocked")),
+                    400 => TunnelResult("error", Loc.T("settings.tunnel.hostRejected")),
+                    502 or 503 or 504 or 530 => TunnelResult("error", Loc.T("settings.tunnel.originUnreachable", code, _options.HttpUrl)),
+                    _ => TunnelResult("error", Loc.T("settings.tunnel.unexpected", code, url)),
                 };
             }
             catch (HttpRequestException ex)
             {
-                result = TunnelResult("error", $"{url} nicht erreichbar: {ex.Message} – DNS-Eintrag und Tunnel prüfen.");
+                result = TunnelResult("error", Loc.T("settings.tunnel.unreachable", url, ex.Message));
             }
             catch (TaskCanceledException) when (!ct.IsCancellationRequested)
             {
-                result = TunnelResult("error", $"Keine Antwort von {url} nach 10 s.");
+                result = TunnelResult("error", Loc.T("settings.tunnel.timeout", url));
             }
         }
 
@@ -385,12 +420,14 @@ public sealed class SettingsService
         return result;
     }
 
+    private static string ModuleState(string label, bool on) => on ? Loc.T("settings.modules.on", label) : Loc.T("settings.modules.off", label);
+
     private static object TunnelResult(string state, string message) => new { state, message, checkedUtc = DateTimeOffset.UtcNow };
 
     private string RestartMessage(string text)
     {
         var pending = PendingRestart();
-        return pending.Count == 0 ? text + "." : $"{text} – gilt nach einem Neustart von Kopilot.";
+        return pending.Count == 0 ? text + "." : Loc.T("settings.result.afterRestart", text);
     }
 
     private bool Write(IReadOnlyList<SettingValue> values, out string error)
@@ -403,7 +440,7 @@ public sealed class SettingsService
         }
         catch (SettingsWriteException ex)
         {
-            _log.LogWarning("Einstellungen nicht gespeichert: {Message}", ex.Message);
+            _log.LogWarning(Loc.Log("log.settings.notSaved"), ex.Message);
             error = ex.Message;
             return false;
         }

@@ -1,3 +1,5 @@
+using Kopilot.Localization;
+
 namespace Kopilot.Hosting;
 
 public enum KopilotTransport
@@ -50,14 +52,13 @@ public static class KopilotConfiguration
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
         {
-            reason = $"Ungültige HttpUrl: '{url}'.";
+            reason = Loc.En("log.host.config.httpUrlInvalid", url);
             return false;
         }
 
         if (!Remote.RequestOrigin.IsLoopbackHost(uri.Host))
         {
-            reason = $"HttpUrl '{url}' bindet nicht an localhost. Erlaubt sind nur 127.0.0.1, localhost und [::1] – " +
-                     "der Zugang von außen läuft ausschließlich über den Cloudflare Tunnel.";
+            reason = Loc.En("log.host.config.httpUrlNotLoopback", url);
             return false;
         }
 

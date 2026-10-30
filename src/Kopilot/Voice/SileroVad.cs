@@ -1,3 +1,4 @@
+using Kopilot.Localization;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using OnnxSessionOptions = Microsoft.ML.OnnxRuntime.SessionOptions;
@@ -50,7 +51,7 @@ public sealed class SileroVad : IVoiceActivityDetector
     {
         if (frame.Length != FrameSamples)
         {
-            throw new ArgumentException($"Silero VAD braucht {FrameSamples} Samples, nicht {frame.Length}.", nameof(frame));
+            throw new ArgumentException(Loc.T("voice.vad.frameSize", FrameSamples, frame.Length), nameof(frame));
         }
 
         lock (_lock)

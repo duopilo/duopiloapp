@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Kopilot.Aircraft;
+using Kopilot.Localization;
 using Kopilot.Monitoring;
 
 namespace Kopilot.Input;
@@ -45,24 +46,25 @@ public static partial class ActionSafety
     /// <summary>
     /// Sicherheitsrelevante Schritte (Event oder Variable) und die IDs, unter denen sie stehen dürfen. Die Plausibilitätssperren
     /// in <see cref="SafetyRules"/> hängen an diesen IDs – eine umbenannte Aktion käme sonst an ihnen vorbei.
+    /// What = Schlüssel des Namens in den Sprachdateien.
     /// </summary>
     private static readonly (Regex Pattern, string[] Ids, string What)[] Sensitive =
     [
-        (new(@"^GEAR_DOWN$", RegexOptions.IgnoreCase), ["gear.down"], "Fahrwerk ausfahren"),
-        (new(@"^GEAR_UP$", RegexOptions.IgnoreCase), ["gear.up"], "Fahrwerk einfahren"),
-        (new(@"^FLAPS_", RegexOptions.IgnoreCase), ["flaps"], "Klappen"),
-        (new(@"(^|_)SPOILERS_SET$", RegexOptions.IgnoreCase), ["speedbrake"], "Speedbrake"),
-        (new(@"(?<![A-Z])BAT(T|TERY)?(?![A-Z])", RegexOptions.IgnoreCase), ["elec.battery", "elec.bat1", "elec.bat2"], "Batterien"),
-        (new(@"PACK_?\d", RegexOptions.IgnoreCase), ["air.pack1", "air.pack2"], "Packs"),
-        (new(@"APU_?MASTER", RegexOptions.IgnoreCase), ["apu.master"], "APU Master"),
-        (new(@"TRANSPONDER_(MODE|STATE)|XPNDR_?MODE", RegexOptions.IgnoreCase), ["xpdr.mode"], "Transponder-Modus"),
-        (new(@"ATC_ALT|ALT_?RPTG|ALT_?REPORT", RegexOptions.IgnoreCase), ["xpdr.altReporting"], "ALT RPTG"),
-        (new(@"TCAS_(POSITION|MODE)", RegexOptions.IgnoreCase), ["tcas.mode"], "TCAS-Modus"),
-        (new(@"XPNDR_SET|XPNDR_CODE|TRANSPONDER_CODE", RegexOptions.IgnoreCase), ["xpdr.code"], "Squawk"),
-        (new(@"FCU_AP_?\d|(?<![A-Z])AP_?\d_(PUSH|DISC)", RegexOptions.IgnoreCase), ["fcu.ap1", "fcu.ap2"], "Autopilot"),
-        (new(@"ATHR|AUTOTHRUST|AUTO_?THROTTLE", RegexOptions.IgnoreCase), ["fcu.athr"], "Autothrust"),
-        (new(@"FCU_ALT_(SET|INC|DEC)(?![A-Z])", RegexOptions.IgnoreCase), ["fcu.altitude"], "FCU-Höhe"),
-        (new(@"ADIRS|ADIRU|(?<![A-Z])IR_?\d_?MODE", RegexOptions.IgnoreCase), ["adirs.*"], "ADIRS"),
+        (new(@"^GEAR_DOWN$", RegexOptions.IgnoreCase), ["gear.down"], "input.sensitive.gearDown"),
+        (new(@"^GEAR_UP$", RegexOptions.IgnoreCase), ["gear.up"], "input.sensitive.gearUp"),
+        (new(@"^FLAPS_", RegexOptions.IgnoreCase), ["flaps"], "input.sensitive.flaps"),
+        (new(@"(^|_)SPOILERS_SET$", RegexOptions.IgnoreCase), ["speedbrake"], "input.sensitive.speedbrake"),
+        (new(@"(?<![A-Z])BAT(T|TERY)?(?![A-Z])", RegexOptions.IgnoreCase), ["elec.battery", "elec.bat1", "elec.bat2"], "input.sensitive.batteries"),
+        (new(@"PACK_?\d", RegexOptions.IgnoreCase), ["air.pack1", "air.pack2"], "input.sensitive.packs"),
+        (new(@"APU_?MASTER", RegexOptions.IgnoreCase), ["apu.master"], "input.sensitive.apuMaster"),
+        (new(@"TRANSPONDER_(MODE|STATE)|XPNDR_?MODE", RegexOptions.IgnoreCase), ["xpdr.mode"], "input.sensitive.xpdrMode"),
+        (new(@"ATC_ALT|ALT_?RPTG|ALT_?REPORT", RegexOptions.IgnoreCase), ["xpdr.altReporting"], "input.sensitive.altReporting"),
+        (new(@"TCAS_(POSITION|MODE)", RegexOptions.IgnoreCase), ["tcas.mode"], "input.sensitive.tcasMode"),
+        (new(@"XPNDR_SET|XPNDR_CODE|TRANSPONDER_CODE", RegexOptions.IgnoreCase), ["xpdr.code"], "input.sensitive.squawk"),
+        (new(@"FCU_AP_?\d|(?<![A-Z])AP_?\d_(PUSH|DISC)", RegexOptions.IgnoreCase), ["fcu.ap1", "fcu.ap2"], "input.sensitive.autopilot"),
+        (new(@"ATHR|AUTOTHRUST|AUTO_?THROTTLE", RegexOptions.IgnoreCase), ["fcu.athr"], "input.sensitive.autothrust"),
+        (new(@"FCU_ALT_(SET|INC|DEC)(?![A-Z])", RegexOptions.IgnoreCase), ["fcu.altitude"], "input.sensitive.fcuAltitude"),
+        (new(@"ADIRS|ADIRU|(?<![A-Z])IR_?\d_?MODE", RegexOptions.IgnoreCase), ["adirs.*"], "input.sensitive.adirs"),
     ];
 
     /// <summary>Erlaubte Standard-Events (genauer Name).</summary>
@@ -103,7 +105,7 @@ public static partial class ActionSafety
     {
         if (string.IsNullOrWhiteSpace(name))
         {
-            return "Event ohne Namen";
+            return Loc.T("input.safety.eventNoName");
         }
 
         var n = name.Trim();
@@ -114,17 +116,17 @@ public static partial class ActionSafety
 
         if (ForbiddenEvent().IsMatch(Flat(n)))
         {
-            return $"{n} ist gesperrt (Triebwerk, Feuer, Treibstoff, Schub, MCDU, Sim-Steuerung)";
+            return Loc.T("input.safety.eventForbidden", n);
         }
 
         if (!AllowedEvents.Contains(n) && !AllowedEventPrefixes.Any(p => n.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
         {
-            return $"{n} steht nicht auf der Liste erlaubter Events";
+            return Loc.T("input.safety.eventNotAllowed", n);
         }
 
         if (n.Equals("ELECTRICAL_CIRCUIT_TOGGLE", StringComparison.OrdinalIgnoreCase) && !AllowedCircuits.Contains(data))
         {
-            return $"Stromkreis {data} ist nicht freigegeben (nur Lichtstromkreise)";
+            return Loc.T("input.safety.circuitNotAllowed", data);
         }
 
         return null;
@@ -135,17 +137,17 @@ public static partial class ActionSafety
     {
         if (string.IsNullOrWhiteSpace(name))
         {
-            return "Variable ohne Namen";
+            return Loc.T("input.safety.variableNoName");
         }
 
         var n = name.Trim();
         if (!n.StartsWith("L:", StringComparison.OrdinalIgnoreCase))
         {
-            return $"{n}: Es dürfen nur L:-Variablen geschrieben werden";
+            return Loc.T("input.safety.onlyLVariables", n);
         }
 
         return ForbiddenVariable().IsMatch(Flat(n[2..]))
-            ? $"{n} ist gesperrt (Triebwerk, Feuer, Treibstoff, MCDU, Sim-Steuerung; Fahrwerk/Klappen/Spoiler nur über ihre Events)"
+            ? Loc.T("input.safety.variableForbidden", n)
             : null;
     }
 
@@ -154,11 +156,11 @@ public static partial class ActionSafety
     {
         if (!string.IsNullOrWhiteSpace(action.Area) && ForbiddenAreas.Contains(action.Area.Trim()))
         {
-            return $"Bereich {action.Area} ist gesperrt (Triebwerk, Treibstoff, Feuer, Hydraulik, IDG – nie über Kopilot)";
+            return Loc.T("input.safety.areaForbidden", action.Area);
         }
 
         return !string.IsNullOrWhiteSpace(action.Id) && ForbiddenId().IsMatch(action.Id.Trim())
-            ? $"{action.Id} ist gesperrt (Triebwerk, Treibstoff, Feuer, Hydraulik, IDG – nie über Kopilot)"
+            ? Loc.T("input.safety.idForbidden", action.Id)
             : null;
     }
 
@@ -181,7 +183,7 @@ public static partial class ActionSafety
             {
                 if (pattern.IsMatch(name) && !ids.Any(allowed => IdMatches(id, allowed)))
                 {
-                    return $"{raw.Trim()} ({what}) nur unter {string.Join(" / ", ids)} – dort greifen die Sicherheitssperren";
+                    return Loc.T("input.safety.canonicalId", raw.Trim(), Loc.T(what), string.Join(" / ", ids));
                 }
             }
         }
@@ -218,7 +220,7 @@ public static partial class ActionSafety
         {
             if (step is null)
             {
-                return "leerer Schritt";
+                return Loc.T("input.safety.emptyStep");
             }
 
             if (!string.IsNullOrWhiteSpace(step.Event))
@@ -234,7 +236,7 @@ public static partial class ActionSafety
                 if (RequiredInterlock.TryGetValue(step.Event.Trim(), out var needed)
                     && !action.Interlocks.Contains(needed, StringComparer.OrdinalIgnoreCase))
                 {
-                    return $"{step.Event} braucht die Sperre \"{needed}\"";
+                    return Loc.T("input.safety.interlockRequired", step.Event, needed);
                 }
             }
             else if (VariableProblem(step.Set) is { } problem)
@@ -304,15 +306,15 @@ public static class Interlocks
     {
         if (name is null)
         {
-            return InterlockOutcome.Refuse("Leere Sperre im Profil – Aktion gesperrt.");
+            return InterlockOutcome.Refuse(Loc.T("input.interlock.empty"));
         }
 
         if (name.Equals(NotOnGround, StringComparison.OrdinalIgnoreCase))
         {
             return s.OnGround switch
             {
-                true => InterlockOutcome.Refuse("Am Boden gesperrt."),
-                null => InterlockOutcome.Refuse("Unklar, ob das Flugzeug am Boden ist – gesperrt."),
+                true => InterlockOutcome.Refuse(Loc.T("input.interlock.lockedOnGround")),
+                null => InterlockOutcome.Refuse(Loc.T("input.interlock.groundUnknown")),
                 _ => InterlockOutcome.Allowed,
             };
         }
@@ -322,8 +324,8 @@ public static class Interlocks
             return s.OnGround switch
             {
                 true => InterlockOutcome.Allowed,
-                false => InterlockOutcome.Refuse("Nur am Boden möglich."),
-                null => InterlockOutcome.Refuse("Unklar, ob das Flugzeug am Boden ist – gesperrt."),
+                false => InterlockOutcome.Refuse(Loc.T("input.interlock.groundOnly")),
+                null => InterlockOutcome.Refuse(Loc.T("input.interlock.groundUnknown")),
             };
         }
 
@@ -336,18 +338,18 @@ public static class Interlocks
 
             if (s.IasKt is not { } ias)
             {
-                return InterlockOutcome.Refuse("Fahrt unbekannt – Fahrwerk gesperrt.");
+                return InterlockOutcome.Refuse(Loc.T("input.interlock.gearSpeedUnknown"));
             }
 
             if ((limits.VloKt ?? limits.VleKt) is not { } limit)
             {
                 return InterlockOutcome.Ask(new SafetyCaution(
-                    "LIMIT_MISSING_VLO", "gear speed limit unknown", "Im Profil fehlt VLO/VLE – Fahrwerk nur mit Rückfrage.", MissingLimit: true));
+                    "LIMIT_MISSING_VLO", "gear speed limit unknown", Loc.T("input.interlock.vloMissing"), MissingLimit: true));
             }
 
             var label = limits.VloKt is null ? "VLE" : "VLO";
             return ias > limit
-                ? InterlockOutcome.Refuse($"Fahrwerk gesperrt: {ias:0} kt über {label} {limit:0} kt.")
+                ? InterlockOutcome.Refuse(Loc.T("input.interlock.gearOverspeed", ias, label, limit))
                 : InterlockOutcome.Allowed;
         }
 
@@ -360,25 +362,25 @@ public static class Interlocks
 
             if (option is null)
             {
-                return InterlockOutcome.Refuse("Klappenstellung fehlt – gesperrt.");
+                return InterlockOutcome.Refuse(Loc.T("input.interlock.flapsPositionMissing"));
             }
 
             if (s.IasKt is not { } ias)
             {
-                return InterlockOutcome.Refuse("Fahrt unbekannt – Klappen gesperrt.");
+                return InterlockOutcome.Refuse(Loc.T("input.interlock.flapsSpeedUnknown"));
             }
 
             if (limits.VfeFor(null, option) is not { } vfe)
             {
                 return InterlockOutcome.Ask(new SafetyCaution(
-                    "LIMIT_MISSING_VFE", "flap speed limit unknown", $"Im Profil fehlt die VFE für Flaps {option} – nur mit Rückfrage.", MissingLimit: true));
+                    "LIMIT_MISSING_VFE", "flap speed limit unknown", Loc.T("input.interlock.vfeMissing", option), MissingLimit: true));
             }
 
             return ias > vfe
-                ? InterlockOutcome.Refuse($"Flaps {option} gesperrt: {ias:0} kt über VFE {vfe:0} kt.")
+                ? InterlockOutcome.Refuse(Loc.T("input.interlock.flapsOverspeed", option, ias, vfe))
                 : InterlockOutcome.Allowed;
         }
 
-        return InterlockOutcome.Refuse($"Unbekannte Sperre \"{name}\" im Profil – Aktion gesperrt.");
+        return InterlockOutcome.Refuse(Loc.T("input.interlock.unknown", name));
     }
 }

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using Kopilot.Localization;
 using Kopilot.Settings;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -8,6 +9,11 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Kopilot.Tests;
 
 /// <summary>Einstellungsseite im Dashboard: schreibt in appsettings.Local.json, ohne Kommentare zu verlieren, und verrät keine Geheimnisse.</summary>
+/// <remarks>
+/// In der Sammlung "Language": SaveLanguage stellt die Sprache für den ganzen Prozess um (Loc.SetLanguage) – das darf nicht parallel
+/// zu anderen Tests laufen, die englische Texte erwarten.
+/// </remarks>
+[Collection(LanguageCollection.Name)]
 public sealed class SettingsTests : IAsyncLifetime
 {
     /// <summary>So legt der Installer die Datei an (nur Kommentare im Objekt).</summary>
@@ -115,7 +121,7 @@ public sealed class SettingsTests : IAsyncLifetime
         var result = await PostAsync("/api/settings/simbrief", """{"pilotId":"12ab"}""");
 
         Assert.False(result.GetProperty("ok").GetBoolean());
-        Assert.Contains("Ziffern", result.GetProperty("error").GetString());
+        Assert.Contains("digits", result.GetProperty("error").GetString());
         Assert.Equal(InstallerFile, File.ReadAllText(_settingsFile));
     }
 
@@ -153,7 +159,7 @@ public sealed class SettingsTests : IAsyncLifetime
 
         var voice = await PostAsync("/api/settings/modules", """{"voice":true}""");
         Assert.False(voice.GetProperty("ok").GetBoolean());
-        Assert.Contains("Tray", voice.GetProperty("error").GetString());
+        Assert.Contains("tray instance", voice.GetProperty("error").GetString());
     }
 
     [Fact]
@@ -176,8 +182,8 @@ public sealed class SettingsTests : IAsyncLifetime
 
     [Theory]
     [InlineData("""{"publicUrl":"http://kopilot.example.com"}""", "https://")]
-    [InlineData("""{"publicUrl":"https://kopilot.example.com/mcp"}""", "ohne /mcp")]
-    [InlineData("""{"consentPassword":"zu-kurz"}""", "12 Zeichen")]
+    [InlineData("""{"publicUrl":"https://kopilot.example.com/mcp"}""", "without /mcp")]
+    [InlineData("""{"consentPassword":"zu-kurz"}""", "12 characters")]
     public async Task Ungueltiger_Zugang_wird_abgelehnt(string body, string message)
     {
         var result = await PostAsync("/api/settings/claude", body);
@@ -197,8 +203,8 @@ public sealed class SettingsTests : IAsyncLifetime
         Assert.Equal("https://kopilot.example.com", claude.GetProperty("publicUrl").GetString());
         Assert.Equal("https://kopilot.example.com/mcp", claude.GetProperty("connectorUrl").GetString());
         var changes = result.GetProperty("settings").GetProperty("restart").GetProperty("changes").EnumerateArray().Select(c => c.GetString()).ToList();
-        Assert.Contains("Öffentliche Adresse (Tunnel)", changes);
-        Assert.Contains("Freigabe-Passwort", changes);
+        Assert.Contains("Public address (tunnel)", changes);
+        Assert.Contains("Consent password", changes);
         Assert.Equal("https://kopilot.example.com", Load()["Kopilot:Remote:PublicUrl"]);
         Assert.Equal("ein-langes-passwort", Load()["Kopilot:Remote:ConsentPassword"]);
         Assert.DoesNotContain("ein-langes-passwort", result.ToString());
@@ -210,7 +216,42 @@ public sealed class SettingsTests : IAsyncLifetime
         var result = await PostAsync("/api/restart", "{}");
 
         Assert.False(result.GetProperty("ok").GetBoolean());
-        Assert.Contains("Tray", result.GetProperty("error").GetString());
+        Assert.Contains("tray instance", result.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task Sprache_wird_gespeichert_und_gilt_sofort()
+    {
+        try
+        {
+            var result = await PostAsync("/api/settings/language", """{"language":"de"}""");
+
+            Assert.True(result.GetProperty("ok").GetBoolean(), result.ToString());
+            Assert.Equal("de", Load()["Kopilot:Language"]);
+            Assert.Equal("de", result.GetProperty("settings").GetProperty("language").GetProperty("current").GetString());
+            Assert.Contains("// Eigene Einstellungen", File.ReadAllText(_settingsFile));
+        }
+        finally
+        {
+            Loc.SetLanguage("en");
+        }
+    }
+
+    [Fact]
+    public async Task Unbekannte_Sprache_wird_abgelehnt_und_nichts_geschrieben()
+    {
+        try
+        {
+            var result = await PostAsync("/api/settings/language", """{"language":"xx"}""");
+
+            Assert.False(result.GetProperty("ok").GetBoolean());
+            Assert.Contains("\"xx\"", result.GetProperty("error").GetString());
+            Assert.Equal(InstallerFile, File.ReadAllText(_settingsFile));
+        }
+        finally
+        {
+            Loc.SetLanguage("en");
+        }
     }
 
     [Fact]
@@ -287,4 +328,11 @@ public sealed class SettingsTests : IAsyncLifetime
 
     private static IConfiguration Parse(string json) =>
         new ConfigurationBuilder().AddJsonStream(new MemoryStream(Encoding.UTF8.GetBytes(json))).Build();
+}
+
+/// <summary>Tests, die die Sprache für den ganzen Prozess umstellen (Loc.SetLanguage), laufen nicht parallel zu anderen.</summary>
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class LanguageCollection
+{
+    public const string Name = "Language";
 }

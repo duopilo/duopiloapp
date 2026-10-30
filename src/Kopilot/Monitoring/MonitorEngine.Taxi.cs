@@ -1,3 +1,5 @@
+using Kopilot.Localization;
+
 namespace Kopilot.Monitoring;
 
 /// <summary>
@@ -83,7 +85,7 @@ public sealed partial class MonitorEngine
         _taxiLastWarningUtc = now;
         if (!suppressed && IsEnabled(Rules.TaxiSpeed))
         {
-            events.Add(Event(now, Rules.TaxiSpeed, AlertSeverity.Caution, AlertKind.Event, "Taxi speed", $"Am Boden mit {Kt(gs)} Groundspeed, Grenze {Kt(limit)}."));
+            events.Add(Event(now, Rules.TaxiSpeed, AlertSeverity.Caution, AlertKind.Event, "Taxi speed", Loc.T("monitor.alert.taxiSpeed", Kt(gs), Kt(limit))));
         }
     }
 }

@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using Kopilot.Aircraft;
+using Kopilot.Localization;
 using Kopilot.Monitoring;
 
 namespace Kopilot.Input;
@@ -20,7 +21,7 @@ public static class ActionPlanner
 
         if (action.Steps.Count == 0)
         {
-            return PlanResult.Refuse($"{action.Id} hat im Profil keine Schritte.");
+            return PlanResult.Refuse(Loc.T("input.plan.noSteps", action.Id));
         }
 
         // ---------------- Wert
@@ -31,7 +32,7 @@ public static class ActionPlanner
         {
             if (string.IsNullOrWhiteSpace(input))
             {
-                return PlanResult.Refuse($"{action.Id} braucht einen Wert: {Describe(p)}.");
+                return PlanResult.Refuse(Loc.T("input.plan.valueRequired", action.Id, Describe(p)));
             }
 
             var parsed = p.IsChoice ? ParseChoice(p, input) : ParseNumber(p, input);
@@ -70,12 +71,12 @@ public static class ActionPlanner
 
             if (string.IsNullOrWhiteSpace(step.Event) == string.IsNullOrWhiteSpace(step.Set))
             {
-                return PlanResult.Refuse($"{action.Id}: Jeder Schritt braucht genau eines von \"event\" oder \"set\".");
+                return PlanResult.Refuse(Loc.T("input.plan.stepEventOrSet", action.Id));
             }
 
             if (Resolve(step.Value, value, option, fallback: 0) is not { } raw)
             {
-                return PlanResult.Refuse($"{action.Id}: Kein Wert für \"{option}\" im Schritt {step.Event ?? step.Set}.");
+                return PlanResult.Refuse(Loc.T("input.plan.noStepValue", action.Id, option, step.Event ?? step.Set));
             }
 
             var scaled = raw * step.Scale;
@@ -84,7 +85,7 @@ public static class ActionPlanner
             {
                 if (Resolve(c.EqualTo, value, option, fallback: value) is not { } expected)
                 {
-                    return PlanResult.Refuse($"{action.Id}: Kein Vergleichswert für \"{option}\".");
+                    return PlanResult.Refuse(Loc.T("input.plan.noSkipValue", action.Id, option));
                 }
 
                 skip = new ResolvedCondition(c.Variable.Trim(), Unit(c.Unit), expected, c.Tolerance);
@@ -100,7 +101,7 @@ public static class ActionPlanner
                 var rounded = Math.Round(scaled);
                 if (!double.IsFinite(rounded) || rounded < int.MinValue || rounded > uint.MaxValue)
                 {
-                    return PlanResult.Refuse($"{action.Id}: Wert {scaled} passt nicht in ein Event.");
+                    return PlanResult.Refuse(Loc.T("input.plan.valueTooLarge", action.Id, scaled));
                 }
 
                 var data = rounded < 0 ? unchecked((uint)(int)rounded) : (uint)rounded;
@@ -122,7 +123,7 @@ public static class ActionPlanner
 
         if (steps.Count == 0)
         {
-            return PlanResult.Refuse($"{action.Id}: Für \"{option}\" ist im Profil kein Schritt hinterlegt.");
+            return PlanResult.Refuse(Loc.T("input.plan.noStepForOption", action.Id, option));
         }
 
         ResolvedCheck? check = null;
@@ -130,7 +131,7 @@ public static class ActionPlanner
         {
             if (Resolve(chk.Expect, value, option, fallback: value) is not { } expect)
             {
-                return PlanResult.Refuse($"{action.Id}: Keine Prüfung für \"{option}\" im Profil.");
+                return PlanResult.Refuse(Loc.T("input.plan.noCheckForOption", action.Id, option));
             }
 
             var variable = chk.Variable.Trim();
@@ -153,10 +154,10 @@ public static class ActionPlanner
 
             if (Resolve(r.EqualTo, value, option, fallback: value) is not { } required)
             {
-                return PlanResult.Refuse($"{action.Id}: Keine Bedingung für \"{option}\".");
+                return PlanResult.Refuse(Loc.T("input.plan.noConditionForOption", action.Id, option));
             }
 
-            requires.Add(new ResolvedCondition(r.Variable.Trim(), Unit(r.Unit), required, r.Tolerance, r.Message ?? $"{r.Variable} passt nicht."));
+            requires.Add(new ResolvedCondition(r.Variable.Trim(), Unit(r.Unit), required, r.Tolerance, ConditionMessage(r)));
         }
 
         var spoken = option is not null && action.Parameter?.Spoken is { } say
@@ -237,13 +238,13 @@ public static class ActionPlanner
             return string.Join(" | ", p.Options?.Keys ?? Enumerable.Empty<string>());
         }
 
-        var range = p.Min is { } min && p.Max is { } max ? $"{Num(min)}–{Num(max)}" : "Zahl";
+        var range = p.Min is { } min && p.Max is { } max ? $"{Num(min)}–{Num(max)}" : Loc.T("input.value.number");
         var unit = string.IsNullOrWhiteSpace(p.Unit) ? "" : " " + p.Unit;
         return p.Format?.ToLowerInvariant() switch
         {
-            "squawk" => "4 Ziffern 0–7",
+            "squawk" => Loc.T("input.value.squawk"),
             "heading" => "0–360°",
-            "altitude" => $"{range}{unit} oder FLxxx",
+            "altitude" => Loc.T("input.value.altitude", range, unit),
             _ => range + unit,
         };
     }
@@ -276,7 +277,7 @@ public static class ActionPlanner
         var options = p.Options ?? [];
         var key = options.Keys.FirstOrDefault(k => k.Equals(input.Trim(), StringComparison.OrdinalIgnoreCase));
         return key is null
-            ? Parsed.Fail($"\"{input.Trim()}\" gibt es nicht. Möglich: {string.Join(", ", options.Keys)}.")
+            ? Parsed.Fail(Loc.T("input.plan.unknownOption", input.Trim(), string.Join(", ", options.Keys)))
             : new Parsed(options[key], key, key, null);
     }
 
@@ -289,7 +290,7 @@ public static class ActionPlanner
         {
             if (text.Length != 4 || text.Any(c => c is < '0' or > '7'))
             {
-                return Parsed.Fail($"Squawk \"{text}\" ungültig – 4 Ziffern von 0 bis 7.");
+                return Parsed.Fail(Loc.T("input.plan.squawkInvalid", text));
             }
 
             return new Parsed(int.Parse(text, CultureInfo.InvariantCulture), text, null, null);
@@ -304,7 +305,7 @@ public static class ActionPlanner
 
         if (!double.TryParse(text.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out var value) || !double.IsFinite(value))
         {
-            return Parsed.Fail($"\"{input.Trim()}\" ist keine Zahl.");
+            return Parsed.Fail(Loc.T("input.plan.notANumber", input.Trim()));
         }
 
         if (flightLevel)
@@ -315,7 +316,7 @@ public static class ActionPlanner
         var unit = string.IsNullOrWhiteSpace(p.Unit) ? "" : " " + p.Unit;
         if ((p.Min is { } min && value < min - 1e-9) || (p.Max is { } max && value > max + 1e-9))
         {
-            return Parsed.Fail($"{Num(value)}{unit} liegt außerhalb {Describe(p)}.");
+            return Parsed.Fail(Loc.T("input.plan.outOfRange", Num(value), unit, Describe(p)));
         }
 
         if (p.Step is { } step && step > 0)
@@ -323,7 +324,7 @@ public static class ActionPlanner
             var steps = value / step;
             if (Math.Abs(steps - Math.Round(steps)) > 1e-6)
             {
-                return Parsed.Fail($"{Num(value)}{unit} passt nicht ins Raster von {Num(step)}{unit}.");
+                return Parsed.Fail(Loc.T("input.plan.offStep", Num(value), unit, Num(step)));
             }
 
             value = Math.Round(steps) * step;
@@ -379,6 +380,18 @@ public static class ActionPlanner
             default:
                 return null;
         }
+    }
+
+    /// <summary>Text, wenn eine Bedingung nicht erfüllt ist: "messageKey" aus den Sprachdateien, sonst "message" aus dem Profil, sonst ein Standardtext.</summary>
+    private static string ConditionMessage(StepCondition r)
+    {
+        var key = r.MessageKey?.Trim();
+        if (!string.IsNullOrEmpty(key) && Loc.Has(key))
+        {
+            return Loc.T(key);
+        }
+
+        return r.Message ?? Loc.T("input.plan.conditionNotMet", r.Variable);
     }
 
     private static string Unit(string? unit) => string.IsNullOrWhiteSpace(unit) ? "number" : unit.Trim();

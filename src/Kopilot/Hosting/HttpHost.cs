@@ -2,6 +2,7 @@ using Kopilot.Aircraft;
 using Kopilot.Dashboard;
 using Kopilot.Ecam;
 using Kopilot.FlightPlan;
+using Kopilot.Localization;
 using Kopilot.Monitoring;
 using Kopilot.Remote;
 using Kopilot.Reports;
@@ -113,28 +114,28 @@ public static class HttpHost
     {
         if (remote.HasBearerToken)
         {
-            log.LogInformation("Zugriffsschutz: Bearer-Token aktiv.");
+            log.LogInformation(Loc.Log("log.host.security.bearerActive"));
         }
         else if (remote.BearerToken.Length > 0)
         {
-            log.LogWarning("Bearer-Token ist kürzer als {Min} Zeichen und wird ignoriert. Neuen erzeugen mit: Kopilot.exe --generate-secret", RemoteOptions.MinBearerTokenLength);
+            log.LogWarning(Loc.Log("log.host.security.bearerTooShort"), RemoteOptions.MinBearerTokenLength);
         }
 
         if (remote.OAuthEnabled)
         {
-            log.LogInformation("Zugriffsschutz: OAuth aktiv. Connector-URL für Claude: {Url}", remote.ResourceUrl);
+            log.LogInformation(Loc.Log("log.host.security.oauthActive"), remote.ResourceUrl);
         }
         else if (remote.PublicUrl.Length > 0 || remote.ConsentPassword.Length > 0)
         {
             var reason = remote.PublicBaseUri is null
-                ? "PublicUrl muss eine https-Adresse ohne Pfad sein"
-                : $"ConsentPassword muss mindestens {RemoteOptions.MinConsentPasswordLength} Zeichen haben";
-            log.LogWarning("OAuth ist NICHT aktiv: {Reason}.", reason);
+                ? Loc.T("host.security.publicUrlInvalid")
+                : Loc.T("host.security.consentPasswordShort", RemoteOptions.MinConsentPasswordLength);
+            log.LogWarning(Loc.Log("log.host.security.oauthInactive"), reason);
         }
 
         if (!remote.HasBearerToken && !remote.OAuthEnabled)
         {
-            log.LogWarning("Kein Token konfiguriert – /mcp ist gesperrt. Die Browser-Prüfseiten funktionieren lokal weiterhin. Siehe README, 'Remote-Betrieb'.");
+            log.LogWarning(Loc.Log("log.host.security.noToken"));
         }
     }
 }

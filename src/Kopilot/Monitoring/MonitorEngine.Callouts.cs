@@ -1,5 +1,6 @@
 using System.Globalization;
 using Kopilot.Atc;
+using Kopilot.Localization;
 
 namespace Kopilot.Monitoring;
 
@@ -78,17 +79,17 @@ public sealed partial class MonitorEngine
         {
             if (Crossed(pias, ias, 100))
             {
-                Say(Rules.Pm100Knots, "One hundred knots", "Startlauf: 100 kt.");
+                Say(Rules.Pm100Knots, "One hundred knots", Loc.T("monitor.pm.hundredKnots"));
             }
 
             if (s.V1Kt is { } v1 && Crossed(pias, ias, v1))
             {
-                Say(Rules.PmV1, "V1", $"V1 ({v1:0} kt).");
+                Say(Rules.PmV1, "V1", Loc.T("monitor.pm.v1", v1));
             }
 
             if (s.VrKt is { } vr && Crossed(pias, ias, vr))
             {
-                Say(Rules.PmRotate, "Rotate", $"VR ({vr:0} kt).");
+                Say(Rules.PmRotate, "Rotate", Loc.T("monitor.pm.rotate", vr));
             }
         }
 
@@ -101,7 +102,7 @@ public sealed partial class MonitorEngine
                  && s.VerticalSpeedFpm is > 300 && (s.RadioAltFt ?? s.AglFt) is > 30)
         {
             _positiveClimbDone = true;
-            Say(Rules.PmPositiveClimb, "Positive climb", "Positive Steigrate nach dem Abheben.");
+            Say(Rules.PmPositiveClimb, "Positive climb", Loc.T("monitor.pm.positiveClimb"));
         }
 
         // ---------------- Landerollen: Spoilers, Reverse, Decel, 70 kt
@@ -113,19 +114,19 @@ public sealed partial class MonitorEngine
                 if (s.GroundSpoilersOut == true)
                 {
                     _spoilersDone = true;
-                    Say(Rules.PmSpoilers, "Spoilers", "Ground Spoiler ausgefahren.");
+                    Say(Rules.PmSpoilers, "Spoilers", Loc.T("monitor.pm.spoilers"));
                 }
                 else if (s.GroundSpoilersOut == false && sinceTouchdown > TimeSpan.FromSeconds(3))
                 {
                     _spoilersDone = true;
-                    Say(Rules.PmSpoilers, "No spoilers", "Ground Spoiler 3 s nach dem Aufsetzen nicht ausgefahren.", AlertSeverity.Caution);
+                    Say(Rules.PmSpoilers, "No spoilers", Loc.T("monitor.pm.noSpoilers"), AlertSeverity.Caution);
                 }
             }
 
             if (!_reverseDone && s.ReverserPct is >= 90)
             {
                 _reverseDone = true;
-                Say(Rules.PmReverse, "Reverse green", "Schubumkehr ausgefahren.");
+                Say(Rules.PmReverse, "Reverse green", Loc.T("monitor.pm.reverse"));
             }
 
             if (!_decelDone)
@@ -135,7 +136,7 @@ public sealed partial class MonitorEngine
                     if (decel)
                     {
                         _decelDone = true;
-                        Say(Rules.PmDecel, "Decel", "Autobrake DECEL.");
+                        Say(Rules.PmDecel, "Decel", Loc.T("monitor.pm.decelLight"));
                     }
                 }
                 else if (_groundDecelKtPerSec is <= -3)
@@ -145,7 +146,7 @@ public sealed partial class MonitorEngine
                     if (now - _decelSince.Value >= TimeSpan.FromSeconds(1))
                     {
                         _decelDone = true;
-                        Say(Rules.PmDecel, "Decel", "Verzögerung spürbar.");
+                        Say(Rules.PmDecel, "Decel", Loc.T("monitor.pm.decel"));
                     }
                 }
                 else
@@ -156,7 +157,7 @@ public sealed partial class MonitorEngine
 
             if (p is not null && p.IasKt is { } before && s.IasKt is { } after && before >= 70 && after < 70)
             {
-                Say(Rules.Pm70Knots, "Seventy knots", "Landerollen: 70 kt.");
+                Say(Rules.Pm70Knots, "Seventy knots", Loc.T("monitor.pm.seventyKnots"));
             }
         }
         else
@@ -179,13 +180,13 @@ public sealed partial class MonitorEngine
             if (_tenThousandArmed && Crossed(palt, alt, 10000) && s.VerticalSpeedFpm is { } vs && Math.Abs(vs) > 300)
             {
                 _tenThousandArmed = false;
-                Say(Rules.PmTenThousand, "Ten thousand", vs > 0 ? "Steigflug durch 10.000 ft." : "Sinkflug durch 10.000 ft.");
+                Say(Rules.PmTenThousand, "Ten thousand", vs > 0 ? Loc.T("monitor.pm.tenThousandClimb") : Loc.T("monitor.pm.tenThousandDescent"));
             }
 
             if (!_transitionAltitudeDone && s.TransitionAltitudeFt is { } ta && ta > 0 && s.VerticalSpeedFpm is > 300 && palt < ta && alt >= ta)
             {
                 _transitionAltitudeDone = true;
-                Say(Rules.PmTransition, "Transition altitude", $"Transition Altitude {ta:0} ft – Höhenmesser auf STD.");
+                Say(Rules.PmTransition, "Transition altitude", Loc.T("monitor.pm.transitionAltitude", ta));
             }
         }
 
@@ -193,7 +194,7 @@ public sealed partial class MonitorEngine
             && Math.Abs(pa - ppa) <= MaxAltitudeStepFt && !_transitionLevelDone && s.TransitionLevelFt is { } tl && tl > 0 && s.VerticalSpeedFpm is < -300 && ppa > tl && pa <= tl)
         {
             _transitionLevelDone = true;
-            Say(Rules.PmTransition, "Transition level", $"Transition Level FL{tl / 100:000} – Höhenmesser auf QNH.");
+            Say(Rules.PmTransition, "Transition level", Loc.T("monitor.pm.transitionLevel", tl / 100));
         }
 
         if (s.OnGround == true)
@@ -238,7 +239,7 @@ public sealed partial class MonitorEngine
                     // Hat Kopilot die Klappen selbst gesetzt, sagt das Eingabe-Modul sie erst bei erreichter Stellung an
                     if (_settings.Claims?.IsClaimed(ConfigCalloutClaims.Flaps, now) != true)
                     {
-                        Say(Rules.PmFlaps, callout, $"Klappen {flaps}.");
+                        Say(Rules.PmFlaps, callout, Loc.T("monitor.pm.flaps", flaps));
                     }
                 }
             }
@@ -267,7 +268,7 @@ public sealed partial class MonitorEngine
                     // Hat Kopilot das Fahrwerk selbst bewegt, kommt "Gear down, three green" vom Eingabe-Modul
                     if (_settings.Claims?.IsClaimed(ConfigCalloutClaims.Gear, now) != true)
                     {
-                        Say(Rules.PmGear, down ? "Gear down" : "Gear up", down ? "Fahrwerkshebel unten." : "Fahrwerkshebel oben.");
+                        Say(Rules.PmGear, down ? "Gear down" : "Gear up", down ? Loc.T("monitor.pm.gearDown") : Loc.T("monitor.pm.gearUp"));
                     }
                 }
             }
@@ -334,14 +335,14 @@ public sealed partial class MonitorEngine
             if (!_hundredAboveDone && Crossed(previous, current, m + 100))
             {
                 _hundredAboveDone = true;
-                Say(Rules.AutoMinimum, "Hundred above", $"100 ft über Minimum ({m:0} ft).");
+                Say(Rules.AutoMinimum, "Hundred above", Loc.T("monitor.auto.hundredAbove", m));
                 return;
             }
 
             if (!_minimumDone && Crossed(previous, current, m))
             {
                 _minimumDone = true;
-                Say(Rules.AutoMinimum, "Minimum", $"Minimum ({m:0} ft).");
+                Say(Rules.AutoMinimum, "Minimum", Loc.T("monitor.auto.minimum", m));
                 return;
             }
         }
@@ -354,11 +355,11 @@ public sealed partial class MonitorEngine
                 if (ft <= 20 && !_retardDone && s.Fma?.Thrust is not null and not "THR IDLE" and not "")
                 {
                     _retardDone = true;
-                    Say(Rules.AutoRetard, "Retard", "Schubhebel in Leerlauf.");
+                    Say(Rules.AutoRetard, "Retard", Loc.T("monitor.auto.retard"));
                 }
                 else
                 {
-                    Say(Rules.AutoRadioAltitude, words, $"Radiohöhe {ft:0} ft.");
+                    Say(Rules.AutoRadioAltitude, words, Loc.T("monitor.auto.radioAltitude", ft));
                 }
 
                 break;

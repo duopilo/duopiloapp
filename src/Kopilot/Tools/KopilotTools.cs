@@ -2,6 +2,7 @@ using System.ComponentModel;
 using Kopilot.Aircraft;
 using Kopilot.Ecam;
 using Kopilot.FlightPlan;
+using Kopilot.Localization;
 using Kopilot.Monitoring;
 using Kopilot.Sim;
 using ModelContextProtocol.Server;
@@ -15,8 +16,7 @@ namespace Kopilot.Tools;
 [McpServerToolType]
 public static class KopilotTools
 {
-    internal const string NotConnectedMessage =
-        "Keine Verbindung zu Microsoft Flight Simulator. Kopilot verbindet sich automatisch, sobald MSFS läuft.";
+    internal static string NotConnectedMessage => Loc.T("tools.common.notConnected");
 
     [McpServerTool(Name = "kopilot_status", ReadOnly = true)]
     [Description(
@@ -198,14 +198,14 @@ public static class KopilotTools
             var ff = signals.FuelFlowKgh(i);
             if (running == true && egt is < -40)
             {
-                notes.Add($"ENG {i}: EGT {egt:0} °C bei laufendem Triebwerk – unplausibel (extremes Wetter oder Air-Start?).");
+                notes.Add(Loc.T("tools.status.systems.egtImplausible", i, egt));
             }
 
             if (running == true && n2 is > 50 && ff is not > 1)
             {
                 notes.Add(signals.Profile is { } profile
-                    ? $"ENG {i}: Fuel Flow 0 bei laufendem Triebwerk – Variable fuelFlowKgh im Profil {profile.Name} prüfen."
-                    : $"ENG {i}: Fuel Flow 0 bei laufendem Triebwerk – für dieses Flugzeug gibt es kein Profil, und die generische SimVar liefert hier nichts.");
+                    ? Loc.T("tools.status.systems.fuelFlowZeroProfile", i, profile.Name)
+                    : Loc.T("tools.status.systems.fuelFlowZeroGeneric", i));
             }
 
             return new
@@ -306,7 +306,7 @@ public static class KopilotTools
             {
                 connected = true,
                 flightPlanActive = false,
-                message = "Die GPS-Flugplanvariablen des Sims sind leer – das FMS dieses Flugzeugs speist sie nicht. Für Route und Fortschritt get_progress (SimBrief) nutzen.",
+                message = Loc.T("tools.status.navigation.gpsEmpty"),
                 groundSpeedKt = Fmt.Int(sim.Num("gs")),
                 activeAlerts = AlertView.Active(alerts),
             });
@@ -377,7 +377,7 @@ public static class KopilotTools
                 aircraftTitle = sim.Str("title"),
                 aircraftPath = sim.Status.AircraftPath,
                 profile = (string?)null,
-                message = $"Für dieses Flugzeug gibt es kein Profil. Profile liegen in {profiles.DirectoryPath}.",
+                message = Loc.T("tools.status.profile.none", profiles.DirectoryPath),
                 activeAlerts = AlertView.Active(alerts),
             });
         }
@@ -452,7 +452,7 @@ public static class KopilotTools
         return Json.Serialize(new
         {
             name,
-            unit = result.Value is string && !unit.Equals("string", StringComparison.OrdinalIgnoreCase) ? "string (automatisch)" : unit,
+            unit = result.Value is string && !unit.Equals("string", StringComparison.OrdinalIgnoreCase) ? Loc.T("tools.status.simvar.autoString") : unit,
             ok = result.Ok,
             value = arinc is not null ? null : result.Value is double d ? Math.Round(d, 4) : result.Value,
             arinc429 = arinc,
@@ -478,7 +478,7 @@ public static class KopilotTools
         microphoneConfigured = string.IsNullOrEmpty(v.ConfiguredMicrophone) ? null : v.ConfiguredMicrophone,
         microphoneFound = v.MicrophoneFound,
         defaultMicrophone = v.DefaultMicrophone,
-        microphones = v.Microphones?.Select(m => m.IsDefault ? $"{m.FullName} (Windows-Standard)" : m.FullName),
+        microphones = v.Microphones?.Select(m => m.IsDefault ? Loc.T("tools.status.voice.defaultMicrophone", m.FullName) : m.FullName),
         levelDbfs = v.LevelDbfs,
         lastAudioUtc = v.LastAudioUtc,
         lastHeardUtc = v.LastHeardUtc,
@@ -518,7 +518,7 @@ public static class KopilotTools
             value = double.IsFinite(word.Value) ? Math.Round(word.Value, 4) : (double?)null,
             ssm = word.Ssm.ToString(),
             valid = word.IsNormal,
-            source = known ? "profile" : "erkannt am Rohwert",
+            source = known ? "profile" : Loc.T("tools.status.arinc.detectedFromRaw"),
         };
     }
 
@@ -543,7 +543,7 @@ public static class KopilotTools
             return new
             {
                 source = "generic",
-                note = "Generische SimVars – bei Study-Level-Airlinern evtl. nicht aussagekräftig. A/THR-Status ist ohne Profil unbekannt.",
+                note = Loc.T("tools.status.autopilot.genericNote"),
                 engaged = s.ApEngaged,
                 flightDirector = s.FlightDirector,
                 navHold = sim.Bool("apNav"),

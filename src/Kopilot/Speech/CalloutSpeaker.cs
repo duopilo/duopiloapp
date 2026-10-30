@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Kopilot.Atc;
+using Kopilot.Localization;
 using Kopilot.Monitoring;
 using Microsoft.Extensions.Options;
 
@@ -215,7 +216,7 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
             }
             catch (Exception ex)
             {
-                _log.LogWarning("Stimmen/Geräte konnten nicht gelesen werden: {Message}", ex.Message);
+                _log.LogWarning(Loc.Log("log.speech.devicesFailed"), ex.Message);
             }
         }
 
@@ -234,7 +235,7 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            _log.LogWarning("speech.json konnte nicht gespeichert werden: {Message}", ex.Message);
+            _log.LogWarning(Loc.Log("log.speech.saveFailed"), ex.Message);
         }
 
         if (!normalized.Enabled)
@@ -255,7 +256,7 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
 
         if (old.Engine != normalized.Engine)
         {
-            _log.LogInformation("Stimme: {Engine}", normalized.Engine);
+            _log.LogInformation(Loc.Log("log.speech.engine"), normalized.Engine);
         }
 
         EnsureKokoroIfNeeded();
@@ -267,7 +268,7 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
     {
         if (ActiveEngine is null)
         {
-            throw new InvalidOperationException(StatusError() ?? "Sprachausgabe ist nicht verfügbar.");
+            throw new InvalidOperationException(StatusError() ?? Loc.T("speech.unavailable"));
         }
 
         // Wie eine Ansage aus der Warteschlange: Mikrofon der Sprachschleife stumm, danach die Nachlaufzeit
@@ -292,14 +293,18 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
             await ApplyAsync(stoppingToken);
             await RefreshAsync(stoppingToken);
             _windowsHasEnglish = _speech.HasEnglishVoice;
-            _log.LogInformation(
-                "Sprachausgabe bereit: Windows-Stimme {Voice}{English}",
-                _speech.ActiveVoice ?? "keine",
-                _windowsHasEnglish ? "" : " (keine englische Stimme installiert)");
+            if (_windowsHasEnglish)
+            {
+                _log.LogInformation(Loc.Log("log.speech.ready"), _speech.ActiveVoice ?? Loc.En("speech.word.none"));
+            }
+            else
+            {
+                _log.LogInformation(Loc.Log("log.speech.readyNoEnglish"), _speech.ActiveVoice ?? Loc.En("speech.word.none"));
+            }
         }
         catch (Exception ex)
         {
-            _error = $"Windows-Sprachausgabe nicht verfügbar: {ex.Message}";
+            _error = Loc.T("speech.windowsUnavailable", ex.Message);
             _log.LogWarning("{Error}", _error);
             _speech = null;
             return;
@@ -357,7 +362,7 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
                 },
                 ct);
             _kokoroState = KokoroState.Ready;
-            _log.LogInformation("Kokoro bereit ({Voices} englische Stimmen).", _kokoro.Voices.Count);
+            _log.LogInformation(Loc.Log("log.speech.kokoroReady"), _kokoro.Voices.Count);
             SchedulePrewarm();
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -368,7 +373,7 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
         {
             _kokoroError = ex.Message;
             _kokoroState = KokoroState.Failed;
-            _log.LogWarning("Kokoro konnte nicht geladen werden: {Message}", ex.Message);
+            _log.LogWarning(Loc.Log("log.speech.kokoroFailed"), ex.Message);
         }
     }
 
@@ -402,7 +407,7 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
         var watch = Stopwatch.StartNew();
         var clip = await Task.Run(() => _kokoro.Synthesize(text, voice, settings.Rate), ct);
         _lastSynthesisMs = (int)watch.ElapsedMilliseconds;
-        _log.LogDebug("Kokoro ({Voice}): \"{Text}\" in {Ms} ms", voice, text, _lastSynthesisMs);
+        _log.LogDebug(Loc.Log("log.speech.kokoroSynthesis"), voice, text, _lastSynthesisMs);
 
         lock (_cacheLock)
         {
@@ -463,7 +468,7 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _log.LogDebug("Vorab-Synthese \"{Text}\" fehlgeschlagen: {Message}", text, ex.Message);
+            _log.LogDebug(Loc.Log("log.speech.prewarmFailed"), text, ex.Message);
         }
 
         _signal.Release();
@@ -523,7 +528,7 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
 
     private async Task SpeakAsync(SpeechItem item, CancellationToken ct)
     {
-        var speech = _speech ?? throw new InvalidOperationException("Windows-Wiedergabe nicht verfügbar.");
+        var speech = _speech ?? throw new InvalidOperationException(Loc.T("speech.playbackUnavailable"));
         if (item.Priority == SpeechPriority.Atc)
         {
             await SpeakAtcAsync(speech, item, ct);
@@ -741,12 +746,12 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
             // Von einer Warnung unterbrochen: Antworten und ATC einmal neu einreihen, Callouts verfallen
             if (_preempted && _queue.Requeue(item, DateTimeOffset.UtcNow))
             {
-                _log.LogDebug("Ansage \"{Text}\" unterbrochen, kommt nach der Warnung erneut.", item.Text);
+                _log.LogDebug(Loc.Log("log.speech.requeued"), item.Text);
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _log.LogWarning("Ansage \"{Callout}\" fehlgeschlagen: {Message}", item.Text, ex.Message);
+            _log.LogWarning(Loc.Log("log.speech.failed"), item.Text, ex.Message);
         }
         finally
         {
@@ -772,7 +777,7 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
         }
         catch (Exception ex)
         {
-            _log.LogDebug("Rückmeldung nach \"{Text}\" fehlgeschlagen: {Message}", item.Text, ex.Message);
+            _log.LogDebug(Loc.Log("log.speech.onSpokenFailed"), item.Text, ex.Message);
         }
     }
 
@@ -809,7 +814,7 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
         }
         catch (Exception ex)
         {
-            _log.LogWarning("Spracheinstellungen nicht übernommen: {Message}", ex.Message);
+            _log.LogWarning(Loc.Log("log.speech.applyFailed"), ex.Message);
         }
         finally
         {
@@ -831,16 +836,16 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
 
         if (_speech is null)
         {
-            return "Sprachausgabe startet …";
+            return Loc.T("speech.status.starting");
         }
 
         return _kokoroState switch
         {
-            KokoroState.Downloading => $"Kokoro wird geladen ({Volatile.Read(ref _kokoroProgress):P0} von ~310 MB) – bis dahin liest der Browser vor.",
-            KokoroState.Loading => "Kokoro startet …",
-            KokoroState.Failed => $"Kokoro konnte nicht geladen werden: {_kokoroError}",
-            _ when SpeechEngines.Normalize(_settings.Engine) == SpeechEngines.Kokoro => "Kokoro startet …",
-            _ => "Keine englische Windows-Stimme installiert. Stimme auf „Kokoro“ oder „Automatisch“ stellen, oder Englisch (Vereinigtes Königreich) mit Sprachausgabe in Windows hinzufügen.",
+            KokoroState.Downloading => Loc.T("speech.status.kokoroDownloading", Volatile.Read(ref _kokoroProgress)),
+            KokoroState.Loading => Loc.T("speech.status.kokoroStarting"),
+            KokoroState.Failed => Loc.T("speech.status.kokoroFailed", _kokoroError),
+            _ when SpeechEngines.Normalize(_settings.Engine) == SpeechEngines.Kokoro => Loc.T("speech.status.kokoroStarting"),
+            _ => Loc.T("speech.status.noEnglishVoice"),
         };
     }
 

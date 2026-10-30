@@ -352,7 +352,7 @@ public sealed class TrafficTests
         Assert.Equal(AlertKind.Raise, e.Kind);
         Assert.Equal(AlertSeverity.Caution, e.Severity);
         Assert.Equal("Traffic, 2 o'clock, 2 miles, 500 feet above, climbing", e.Callout);
-        Assert.Contains("2 Uhr", e.Message);
+        Assert.Contains("2 o'clock", e.Message);
 
         // Bleibt aktiv, keine zweite Meldung
         Assert.Empty(Feed(engine, Cruise(14, conflict), Cruise(16, conflict)));
@@ -623,7 +623,7 @@ public sealed class TrafficTests
         Assert.Empty(Feed(engine, CruiseFl320(12, target, 32_000)));
         var e = Assert.Single(Feed(engine, CruiseFl320(13.2, target, 32_000)));
         Assert.Equal("Traffic, 9 o'clock, 2 miles, 800 feet above", e.Callout);
-        Assert.Contains("800 ft darüber", e.Message);
+        Assert.Contains("800 ft above", e.Message);
 
         var withTrueAltitude = WarmedUp();
         Assert.Empty(Feed(withTrueAltitude, CruiseFl320(12, target, null), CruiseFl320(13.2, target, null), CruiseFl320(16, target, null)));
@@ -699,6 +699,6 @@ public sealed class TrafficTests
 
         Feed(engine, Cruise(12, conflict));
         var e = Assert.Single(Feed(engine, Cruise(13.2, conflict)));
-        Assert.StartsWith("Verkehr auf 2 Uhr, 2.1 NM, 500 ft darüber", e.Message);
+        Assert.StartsWith("Traffic at 2 o'clock, 2.1 NM, 500 ft above", e.Message);
     }
 }

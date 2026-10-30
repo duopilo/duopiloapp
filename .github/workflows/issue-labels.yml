@@ -3,7 +3,7 @@ name: Labels für Meldungen
 # Meldungen aus dem Kopilot-Dashboard tragen ihre Art als unsichtbare Markierung im Kontext
 # (<!-- kopilot-meldung labels: data/frequency,bug -->). Der Link aus dem Dashboard setzt die Labels zwar auch direkt,
 # das wirkt aber nur für Leute mit Triage-Rechten. Diese Action setzt sie für alle anderen – und bei Issues, die von
-# Hand über die Vorlage angelegt wurden, anhand von „Art der Meldung“.
+# Hand über die Vorlage angelegt wurden, anhand von „Type of report“ (bzw. „Art der Meldung“ in der alten Vorlage).
 
 on:
   issues:
@@ -27,9 +27,9 @@ jobs:
           # Nur diese Labels sind erlaubt – alles andere aus dem Text wird ignoriert
           declare -A COLORS=( ["data/fir"]="1d76db" ["data/frequency"]="0e8a16" ["data/airline"]="5319e7" ["bug"]="d73a4a" )
           declare -A DESCRIPTIONS=(
-            ["data/fir"]="Datenfehler: FIR-Grenze, Sektor oder Station"
-            ["data/frequency"]="Datenfehler: Frequenz"
-            ["data/airline"]="Datenfehler: Airline oder Rufzeichen"
+            ["data/fir"]="Data error: FIR boundary, sector or station"
+            ["data/frequency"]="Data error: frequency"
+            ["data/airline"]="Data error: airline or callsign"
             ["bug"]="Something isn't working"
           )
 
@@ -41,12 +41,12 @@ jobs:
             [[ -n "${COLORS[$label]:-}" ]] && wanted+=("$label")
           done
 
-          # Von Hand über die Vorlage: Abschnitt „Art der Meldung“
-          art=$(printf '%s' "$BODY" | awk '/^### Art der Meldung/{flag=1; next} /^### /{flag=0} flag')
-          grep -q 'FIR-Grenze' <<< "$art" && wanted+=("data/fir")
-          grep -q 'Frequenz' <<< "$art" && wanted+=("data/frequency")
+          # Von Hand über die Vorlage: Abschnitt „Type of report“ (englische Vorlage) bzw. „Art der Meldung“ (ältere deutsche Vorlage)
+          art=$(printf '%s' "$BODY" | awk '/^### (Type of report|Art der Meldung)/{flag=1; next} /^### /{flag=0} flag')
+          grep -qE 'FIR boundary|FIR-Grenze' <<< "$art" && wanted+=("data/fir")
+          grep -qE 'Frequency|Frequenz' <<< "$art" && wanted+=("data/frequency")
           grep -q 'Airline' <<< "$art" && wanted+=("data/airline")
-          grep -q 'Programmfehler' <<< "$art" && wanted+=("bug")
+          grep -qE '\bBug\b|Programmfehler' <<< "$art" && wanted+=("bug")
 
           if [[ ${#wanted[@]} -eq 0 ]]; then
             echo "Keine Meldung aus Kopilot – nichts zu tun."

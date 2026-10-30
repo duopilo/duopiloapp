@@ -1,61 +1,63 @@
-# Cloudflare Tunnel für Kopilot einrichten
+**English** | [Deutsch](cloudflared.de.md)
 
-Ziel: `https://kopilot.flo210500.com` zeigt über einen **Named Tunnel** auf Kopilot (`http://127.0.0.1:5155`) auf dem Sim-PC. cloudflared läuft als **Windows-Dienst**. Am Router und an der Windows-Firewall wird **kein Port geöffnet**, cloudflared baut die Verbindung von innen nach außen auf.
+# Setting up a Cloudflare Tunnel for Kopilot
+
+Goal: `https://kopilot.flo210500.com` points to Kopilot (`http://127.0.0.1:5155`) on the sim PC through a **named tunnel**. cloudflared runs as a **Windows service**. **No port is opened** on the router or in Windows Firewall; cloudflared connects from the inside out.
 
 ```
-Claude (Cloud) ──https──▶ Cloudflare ──Tunnel──▶ cloudflared (Dienst) ──▶ http://127.0.0.1:5155 ──▶ Kopilot ──▶ MSFS
+Claude (Cloud) ──https──▶ Cloudflare ──Tunnel──▶ cloudflared (service) ──▶ http://127.0.0.1:5155 ──▶ Kopilot ──▶ MSFS
 ```
 
-Die Anleitung folgt der offiziellen Cloudflare-Doku für [lokal verwaltete Tunnel als Windows-Dienst](https://developers.cloudflare.com/tunnel/advanced/local-management/as-a-service/windows/).
+This guide follows the official Cloudflare docs for [locally-managed tunnels as a Windows service](https://developers.cloudflare.com/tunnel/advanced/local-management/as-a-service/windows/).
 
-## Voraussetzungen
+## Prerequisites
 
-- Die Domain **flo210500.com** liegt mit ihrem DNS bei Cloudflare. Im Cloudflare-Dashboard steht bei der Domain der Status *Aktiv*.
-- Kopilot läuft im HTTP-Modus mit `PublicUrl = https://kopilot.flo210500.com` (siehe README, „Remote-Betrieb“).
-- Eine **Eingabeaufforderung als Administrator**. Alle Befehle unten sind für `cmd.exe`.
+- The DNS of the domain **flo210500.com** is hosted at Cloudflare. The Cloudflare dashboard shows the domain as *Active*.
+- Kopilot runs in HTTP mode with `PublicUrl = https://kopilot.flo210500.com` (see [README](../README.md), "Remote operation").
+- A **Command Prompt run as administrator**. All commands below are for `cmd.exe`.
 
-## 1. cloudflared installieren
+## 1. Install cloudflared
 
-1. Ordner anlegen:
+1. Create the folder:
    ```bat
    mkdir C:\Cloudflared\bin
    ```
-2. Auf der [Cloudflare-Downloadseite](https://developers.cloudflare.com/tunnel/downloads/) die Windows-64-Bit-Version herunterladen, nach `C:\Cloudflared\bin\` legen und in `cloudflared.exe` umbenennen.
-3. Prüfen:
+2. Download the Windows 64-bit version from the [Cloudflare downloads page](https://developers.cloudflare.com/tunnel/downloads/), put it into `C:\Cloudflared\bin\` and rename it to `cloudflared.exe`.
+3. Check:
    ```bat
    cd /d C:\Cloudflared\bin
    cloudflared.exe --version
    ```
 
-> Mit `winget install --id Cloudflare.cloudflared` geht es auch. Dann liegt die EXE woanders. Rufe sie in den Schritten 2 bis 7 ohne `cd` direkt als `cloudflared` auf und passe den EXE-Pfad im `ImagePath` in Schritt 8 an (`where cloudflared` zeigt ihn).
+> `winget install --id Cloudflare.cloudflared` works too. The EXE then lives somewhere else. In steps 2 to 7, call it directly as `cloudflared` without the `cd`, and adjust the EXE path in the `ImagePath` in step 8 (`where cloudflared` shows it).
 
-## 2. Bei Cloudflare anmelden
+## 2. Log in to Cloudflare
 
 ```bat
 cloudflared.exe tunnel login
 ```
 
-Es öffnet sich der Browser. Dort **flo210500.com** auswählen und bestätigen. Das Zertifikat landet in `%USERPROFILE%\.cloudflared\cert.pem`.
+A browser window opens. Select **flo210500.com** there and confirm. The certificate is saved to `%USERPROFILE%\.cloudflared\cert.pem`.
 
-## 3. Tunnel anlegen
+## 3. Create the tunnel
 
 ```bat
 cloudflared.exe tunnel create kopilot
 ```
 
-Die Ausgabe enthält die **Tunnel-ID** (eine UUID). Schreib sie dir auf, unten steht sie als `<TUNNEL-ID>`. Die Zugangsdatei liegt danach in `%USERPROFILE%\.cloudflared\<TUNNEL-ID>.json`.
+The output contains the **tunnel ID** (a UUID). Write it down; below it appears as `<TUNNEL-ID>`. The credentials file is then in `%USERPROFILE%\.cloudflared\<TUNNEL-ID>.json`.
 
-## 4. Subdomain auf den Tunnel zeigen lassen
+## 4. Point the subdomain to the tunnel
 
 ```bat
 cloudflared.exe tunnel route dns kopilot kopilot.flo210500.com
 ```
 
-Das legt bei Cloudflare den DNS-Eintrag `kopilot` als CNAME auf den Tunnel an.
+This creates the DNS record `kopilot` at Cloudflare as a CNAME to the tunnel.
 
-## 5. Dateien für den Dienst bereitstellen
+## 5. Provide the files for the service
 
-Der Dienst läuft als *LocalSystem* und sucht seine Dateien im Systemprofil, nicht in deinem Benutzerordner:
+The service runs as *LocalSystem* and looks for its files in the system profile, not in your user folder:
 
 ```bat
 mkdir C:\Windows\System32\config\systemprofile\.cloudflared
@@ -63,9 +65,9 @@ copy %USERPROFILE%\.cloudflared\cert.pem C:\Windows\System32\config\systemprofil
 copy %USERPROFILE%\.cloudflared\<TUNNEL-ID>.json C:\Windows\System32\config\systemprofile\.cloudflared\
 ```
 
-## 6. config.yml anlegen
+## 6. Create config.yml
 
-Den Editor **als Administrator** öffnen und als `C:\Windows\System32\config\systemprofile\.cloudflared\config.yml` speichern:
+Open Notepad **as administrator** and save this as `C:\Windows\System32\config\systemprofile\.cloudflared\config.yml`:
 
 ```yaml
 tunnel: <TUNNEL-ID>
@@ -78,25 +80,25 @@ ingress:
   - service: http_status:404
 ```
 
-Wichtig:
-- **Kein `httpHostHeader` setzen.** Kopilot braucht den öffentlichen Hostnamen, um Tunnel-Aufrufe von lokalen Aufrufen zu unterscheiden.
-- Die letzte Regel (`http_status:404`) fängt alle anderen Hostnamen ab.
+Important:
+- **Do not set `httpHostHeader`.** Kopilot needs the public hostname to tell tunnel requests from local ones.
+- The last rule (`http_status:404`) catches all other hostnames.
 
-Die Regeln prüfen:
+Check the rules:
 
 ```bat
 cloudflared.exe tunnel --config C:\Windows\System32\config\systemprofile\.cloudflared\config.yml ingress validate
 ```
 
-## 7. Probelauf im Vordergrund
+## 7. Test run in the foreground
 
-Kopilot muss laufen. Dann den Tunnel testweise im Fenster starten:
+Kopilot must be running. Then start the tunnel in the window as a test:
 
 ```bat
 cloudflared.exe tunnel --config C:\Windows\System32\config\systemprofile\.cloudflared\config.yml run
 ```
 
-In einem **zweiten** Fenster prüfen:
+Check in a **second** window:
 
 ```bat
 curl https://kopilot.flo210500.com/.well-known/oauth-protected-resource
@@ -104,14 +106,14 @@ curl -i https://kopilot.flo210500.com/mcp
 curl -i https://kopilot.flo210500.com/state
 ```
 
-Erwartet:
-1. JSON mit `"resource":"https://kopilot.flo210500.com/mcp"`
-2. `401 Unauthorized` mit `WWW-Authenticate: Bearer resource_metadata="…"`
-3. `404 Not Found`, denn die Prüfseiten sind über den Tunnel gesperrt.
+Expected:
+1. JSON with `"resource":"https://kopilot.flo210500.com/mcp"`
+2. `401 Unauthorized` with `WWW-Authenticate: Bearer resource_metadata="…"`
+3. `404 Not Found`, because the diagnostic pages are blocked through the tunnel.
 
-Danach den Probelauf mit `Strg+C` beenden.
+Then stop the test run with `Ctrl+C`.
 
-## 8. Als Windows-Dienst einrichten
+## 8. Set up as a Windows service
 
 ```bat
 cd /d C:\Cloudflared\bin
@@ -122,39 +124,39 @@ sc start cloudflared
 sc query cloudflared
 ```
 
-Bei `sc query` muss `STATE : 4 RUNNING` stehen. Der Dienst startet ab jetzt automatisch mit Windows. Ein Fehler bei `sc stop` ist normal, wenn der Dienst noch nicht lief.
+`sc query` must show `STATE : 4 RUNNING`. From now on the service starts automatically with Windows. An error from `sc stop` is normal if the service wasn't running yet.
 
-> Den `ImagePath` kannst du alternativ im Registrierungs-Editor unter `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Cloudflared` setzen. Achte darauf, dass keine zusätzlichen Leerzeichen hineinrutschen.
+> Alternatively, set the `ImagePath` in Registry Editor under `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Cloudflared`. Make sure no extra spaces slip in.
 
-Nach Änderungen an `config.yml`:
+After changing `config.yml`:
 
 ```bat
 sc stop cloudflared
 sc start cloudflared
 ```
 
-Danach die drei `curl`-Tests aus Schritt 7 wiederholen.
+Then repeat the three `curl` tests from step 7.
 
-## Optional: Nur Claude an /mcp lassen (Cloudflare-WAF)
+## Optional: let only Claude reach /mcp (Cloudflare WAF)
 
-Claudes Server greifen aus dem Bereich `160.79.104.0/21` zu ([Anthropic IP-Adressen](https://platform.claude.com/docs/en/api/ip-addresses)). Mit einer WAF-Regel kannst du alles andere blocken. Ausgenommen bleibt nur die Freigabeseite `/authorize`, die du selbst im Browser öffnest.
+Claude's servers connect from the range `160.79.104.0/21` ([Anthropic IP addresses](https://platform.claude.com/docs/en/api/ip-addresses)). A WAF rule can block everything else. The only exception is the consent page `/authorize`, which you open yourself in the browser.
 
-Cloudflare-Dashboard → flo210500.com → **Security → WAF → Custom rules → Create rule**, Ausdruck bearbeiten:
+Cloudflare dashboard → flo210500.com → **Security → WAF → Custom rules → Create rule**, edit the expression:
 
 ```
 (http.host eq "kopilot.flo210500.com" and not ip.src in {160.79.104.0/21} and http.request.uri.path ne "/authorize")
 ```
 
-Aktion: **Block**.
+Action: **Block**.
 
-Folge: Über die öffentliche URL kommen dann nur noch Claudes Server durch. Claude Code auf dem Sim-PC nutzt stattdessen die lokale Adresse `http://127.0.0.1:5155/mcp` mit dem Bearer-Token. Ändert Anthropic seinen IP-Bereich, musst du die Regel anpassen.
+Result: only Claude's servers get through the public URL. Claude Code on the sim PC uses the local address `http://127.0.0.1:5155/mcp` with the bearer token instead. If Anthropic changes its IP range, you have to update the rule.
 
-## Fehlersuche
+## Troubleshooting
 
-| Symptom | Ursache |
+| Symptom | Cause |
 |---|---|
-| Cloudflare-Fehler **1033** | Der Tunnel läuft nicht. Prüfen mit `sc query cloudflared` und im Log `C:\Cloudflared\cloudflared.log`. |
-| **502 Bad Gateway** | Der Tunnel läuft, aber Kopilot nicht, oder Kopilot nicht im HTTP-Modus bzw. auf einem anderen Port. |
-| **400 Bad Request** (leere Seite) | Kopilots Host-Filter kennt den Hostnamen nicht. `PublicUrl` in `appsettings.Local.json` muss genau `https://kopilot.flo210500.com` sein. |
-| `/.well-known/…` liefert **404** | OAuth ist in Kopilot nicht aktiv. Das Kopilot-Log sagt beim Start, warum (z. B. Passwort zu kurz). |
-| Dienst startet nicht | `ImagePath` prüfen (Pfad zur EXE, keine Extra-Leerzeichen), dann `config.yml` mit `ingress validate` testen. |
+| Cloudflare error **1033** | The tunnel isn't running. Check with `sc query cloudflared` and in the log `C:\Cloudflared\cloudflared.log`. |
+| **502 Bad Gateway** | The tunnel is running, but Kopilot isn't, or Kopilot isn't in HTTP mode or runs on a different port. |
+| **400 Bad Request** (blank page) | Kopilot's host filter doesn't know the hostname. `PublicUrl` in `appsettings.Local.json` must be exactly `https://kopilot.flo210500.com`. |
+| `/.well-known/…` returns **404** | OAuth isn't active in Kopilot. The Kopilot log says why at startup (e.g. password too short). |
+| Service doesn't start | Check the `ImagePath` (path to the EXE, no extra spaces), then test `config.yml` with `ingress validate`. |

@@ -1,5 +1,6 @@
 using System.Globalization;
 using Kopilot.FlightPlan;
+using Kopilot.Localization;
 
 namespace Kopilot.Monitoring;
 
@@ -49,7 +50,7 @@ public sealed partial class MonitorEngine
     private double _fuelRiseTopKg;
     private DateTimeOffset _fuelRiseLastUtc;
     private FuelBaseline? _fuelBaseline;
-    private string? _fuelRestartLabel;
+    private FuelSince? _fuelRestartLabel;
     private double _fuelSinceCheckSec;
     private double? _fuelClockZulu;
     private DateTimeOffset? _fuelClockUtc;
@@ -93,7 +94,7 @@ public sealed partial class MonitorEngine
         if (baseline is null)
         {
             // Erster Wert im Reiseflug (oder nach dem Tanken): Bezug für "seit dem letzten Check", ohne Ansage
-            baseline = new FuelBaseline(sample.DiffKg, _fuelRestartLabel ?? "Überwachungsbeginn");
+            baseline = new FuelBaseline(sample.DiffKg, _fuelRestartLabel ?? FuelSince.Start);
             _fuelBaseline = baseline;
             _fuelRestartLabel = null;
             _fuelSinceCheckSec = 0;
@@ -139,7 +140,7 @@ public sealed partial class MonitorEngine
         {
             warnings.Add("deviation");
             extras.Add("deviation increased by " + FuelCheckText.Difference(-change, sample.ActualKg));
-            notes.Add($"Abweichung seit {baseline.Label} um {FuelCheckText.Kg(-change)} schlechter geworden (Schwelle {FuelCheckText.Kg(settings.DeviationIncreaseKg)}) – Verbrauch und Tanks prüfen, Leck möglich.");
+            notes.Add(Loc.T("monitor.fuel.deviationNote", FuelCheckText.Kg(-change), SinceText(baseline), FuelCheckText.Kg(settings.DeviationIncreaseKg)));
         }
 
         if (landingWarn && sample.PredictedLandingKg is { } predicted && sample.MinimumLandingKg is { } minimum)
@@ -148,26 +149,33 @@ public sealed partial class MonitorEngine
             {
                 warnings.Add("landing_minimum");
                 extras.Add($"landing fuel {FuelCheckText.Amount(predicted)}, below minimum");
-                notes.Add($"Prognostizierte Landemenge {FuelCheckText.Kg(predicted)} unter dem Minimum von {FuelCheckText.Kg(minimum)}.");
+                notes.Add(Loc.T("monitor.fuel.landingBelowMinimum", FuelCheckText.Kg(predicted), FuelCheckText.Kg(minimum)));
             }
             else
             {
                 warnings.Add("landing_buffer");
                 extras.Add($"landing fuel {FuelCheckText.Amount(predicted)}, minimum {FuelCheckText.Amount(minimum)}");
-                notes.Add($"Prognostizierte Landemenge {FuelCheckText.Kg(predicted)} unter Minimum + Puffer ({FuelCheckText.Kg(minimum)} + {FuelCheckText.Kg((threshold ?? minimum) - minimum)}).");
+                notes.Add(Loc.T("monitor.fuel.landingBelowBuffer", FuelCheckText.Kg(predicted), FuelCheckText.Kg(minimum), FuelCheckText.Kg((threshold ?? minimum) - minimum)));
             }
         }
 
         var where = kind switch
         {
-            FuelCheckKind.Waypoint => $"Fuel Check {ident}",
-            FuelCheckKind.Interval => "Fuel Check (Intervall)",
-            _ => "Fuel Check",
+            FuelCheckKind.Waypoint => Loc.T("monitor.fuel.checkAt", ident),
+            FuelCheckKind.Interval => Loc.T("monitor.fuel.checkInterval"),
+            _ => Loc.T("monitor.fuel.check"),
         };
-        var message = $"{where}: an Bord {FuelCheckText.Kg(sample.ActualKg)}, Plan {FuelCheckText.Kg(sample.PlannedKg)} ({FuelCheckText.SignedKg(sample.DiffKg)}), "
-            + $"seit {baseline.Label} {FuelCheckText.SignedKg(change)}."
+        var message = Loc.T("monitor.fuel.summary",
+                where,
+                FuelCheckText.Kg(sample.ActualKg),
+                FuelCheckText.Kg(sample.PlannedKg),
+                FuelCheckText.SignedKg(sample.DiffKg),
+                SinceText(baseline),
+                FuelCheckText.SignedKg(change))
             + (sample.PredictedLandingKg is { } landing
-                ? $" Landung ca. {FuelCheckText.Kg(landing)}" + (sample.MinimumLandingKg is { } min ? $" (Minimum {FuelCheckText.Kg(min)})." : ".")
+                ? " " + (sample.MinimumLandingKg is { } min
+                    ? Loc.T("monitor.fuel.landingWithMinimum", FuelCheckText.Kg(landing), FuelCheckText.Kg(min))
+                    : Loc.T("monitor.fuel.landing", FuelCheckText.Kg(landing)))
                 : "")
             + (notes.Count > 0 ? " " + string.Join(" ", notes) : "");
 
@@ -204,7 +212,9 @@ public sealed partial class MonitorEngine
         // Eine Landewarnung allein ist kein neuer Bezugspunkt – die Abweichung zählt weiter ab dem letzten Check
         if (kind != FuelCheckKind.Landing)
         {
-            _fuelBaseline = new FuelBaseline(sample.DiffKg, ident ?? (kind == FuelCheckKind.Interval ? $"dem Check um {Clock(s.ZuluTimeSec, now)}" : "der letzten Warnung"));
+            _fuelBaseline = ident is not null ? new FuelBaseline(sample.DiffKg, FuelSince.Fix, ident)
+                : kind == FuelCheckKind.Interval ? new FuelBaseline(sample.DiffKg, FuelSince.Check, Clock(s.ZuluTimeSec, now))
+                : new FuelBaseline(sample.DiffKg, FuelSince.Warning);
             _fuelSinceCheckSec = 0;
         }
     }
@@ -271,11 +281,11 @@ public sealed partial class MonitorEngine
             return;
         }
 
-        _fuelRestartLabel = kind == FuelCheckKind.Refuel ? "dem Tanken" : "der Treibstoffänderung";
+        _fuelRestartLabel = kind == FuelCheckKind.Refuel ? FuelSince.Refuel : FuelSince.FuelChange;
 
         var message = kind == FuelCheckKind.Refuel
-            ? $"Nachtanken erkannt: {FuelCheckText.Kg(fromKg)} → {FuelCheckText.Kg(toKg)} ({FuelCheckText.SignedKg(toKg - fromKg)}). Kein Leck – der Fuel Check vergleicht ab jetzt neu."
-            : $"Treibstoff sprunghaft gesunken: {FuelCheckText.Kg(fromKg)} → {FuelCheckText.Kg(toKg)} ({FuelCheckText.SignedKg(toKg - fromKg)}), schneller als jeder Verbrauch – als manuelle Änderung gewertet, der Fuel Check vergleicht ab jetzt neu.";
+            ? Loc.T("monitor.fuel.refuel", FuelCheckText.Kg(fromKg), FuelCheckText.Kg(toKg), FuelCheckText.SignedKg(toKg - fromKg))
+            : Loc.T("monitor.fuel.defuel", FuelCheckText.Kg(fromKg), FuelCheckText.Kg(toKg), FuelCheckText.SignedKg(toKg - fromKg));
 
         if (_fuelPlanId is not null)
         {
@@ -421,5 +431,27 @@ public sealed partial class MonitorEngine
     }
 
     /// <summary>Bezug für "seit dem letzten Check": Abweichung damals und wo das war (für die Meldung).</summary>
-    private sealed record FuelBaseline(double DiffKg, string Label);
+    private sealed record FuelBaseline(double DiffKg, FuelSince Since, string? Arg = null);
+
+    /// <summary>Worauf sich "seit …" bezieht – der Text entsteht erst in der Meldung, in deren Sprache.</summary>
+    private enum FuelSince
+    {
+        Start,
+        Fix,
+        Check,
+        Warning,
+        Refuel,
+        FuelChange,
+    }
+
+    /// <summary>"since HENDY", "since the 14:20Z check" … in der gewählten Sprache.</summary>
+    private static string SinceText(FuelBaseline baseline) => baseline.Since switch
+    {
+        FuelSince.Fix => Loc.T("monitor.fuel.sinceFix", baseline.Arg),
+        FuelSince.Check => Loc.T("monitor.fuel.sinceCheck", baseline.Arg),
+        FuelSince.Warning => Loc.T("monitor.fuel.sinceWarning"),
+        FuelSince.Refuel => Loc.T("monitor.fuel.sinceRefuel"),
+        FuelSince.FuelChange => Loc.T("monitor.fuel.sinceFuelChange"),
+        _ => Loc.T("monitor.fuel.sinceStart"),
+    };
 }

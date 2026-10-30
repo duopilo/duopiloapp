@@ -1,36 +1,37 @@
-name: Meldung aus Kopilot
-description: Datenfehler (FIR-Grenze, Station, Frequenz, Airline) oder Programmfehler – am einfachsten über „Fehler melden“ im Kopilot-Dashboard, das den Kontext mitschickt.
-title: "[Meldung] "
+name: Report from Kopilot
+description: Data error (FIR boundary, station, frequency, airline) or bug – easiest via “Report a problem” in the Kopilot dashboard, which sends the context along.
+title: "[Report] "
 body:
   - type: markdown
     attributes:
       value: |
-        Kommt die Meldung aus dem Dashboard („Fehler melden“), sind die Felder schon ausgefüllt und die Labels gesetzt.
-        Datenkorrekturen bitte möglichst mit Quelle (Sim-ATC, Karte, AIP), sie werden nach Prüfung eingepflegt.
+        If the report comes from the dashboard (“Report a problem”), the fields are already filled in and the labels are set.
+        For data corrections, please add a source if you can (sim ATC, chart, AIP) – they are added after review.
+  # The ids (art, beschreibung, kontext) are filled in by the dashboard link – keep them as they are.
   - type: dropdown
     id: art
     attributes:
-      label: Art der Meldung
-      description: Nur nötig, wenn du das Issue von Hand anlegst – aus dem Dashboard kommt die Art schon mit.
+      label: Type of report
+      description: Only needed if you create the issue by hand – from the dashboard the type comes along.
       multiple: true
       options:
-        - FIR-Grenze / Station
-        - Frequenz
-        - Airline / Rufzeichen
-        - Programmfehler
+        - FIR boundary / station
+        - Frequency
+        - Airline / callsign
+        - Bug
     validations:
       required: false
   - type: textarea
     id: beschreibung
     attributes:
-      label: Was ist falsch, was wäre richtig?
-      description: Was Kopilot gemacht hat, was richtig gewesen wäre und woher du das weißt (z. B. „Sim-ATC übergibt hier an Montreal Center 132.25“).
+      label: What is wrong, and what would be right?
+      description: What Kopilot did, what would have been right, and how you know (e.g. “Sim ATC hands over to Montreal Center 132.25 here”).
     validations:
       required: true
   - type: textarea
     id: kontext
     attributes:
-      label: Kontext aus Kopilot
-      description: Füllt das Dashboard aus (Position, Höhe, Station und Frequenz laut Kopilot, COM1, Uhrzeit, Version, letzte Funksprüche). Bitte nicht löschen.
+      label: Context from Kopilot
+      description: Filled in by the dashboard (position, altitude, station and frequency per Kopilot, COM1, time, version, last radio calls). Please don't delete it.
     validations:
       required: false
