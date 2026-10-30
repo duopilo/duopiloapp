@@ -1,3 +1,5 @@
+[English](README.md) | **Deutsch**
+
 # Kopilot
 
 Kopilot verbindet **Microsoft Flight Simulator 2024** über SimConnect mit **Claude**. Er läuft als MCP-Server auf dem Sim-PC. Claude kann damit Höhe, Geschwindigkeit, Konfiguration, Navigation und Wetter selbst ablesen, statt dass du sie vorlesen musst. Claude ist so der **Pilot Monitoring**, du bleibst Pilot Flying.
@@ -483,8 +485,25 @@ Der Regler „Helligkeit“ dimmt nur die Anzeigen – für Nachtflüge.
 | **SimBrief** | Username oder Pilot-ID, lädt danach gleich den Plan | sofort |
 | **Mikrofon** | Aufnahmegerät der Sprachschleife mit Pegel | sofort |
 | **Module** | Monitoring, Eingabe (zweimal klicken), ATC, Sprachschleife | Monitoring/ATC nach Neustart, sonst sofort |
+| **Sprache** | Dashboard, Tool-Meldungen, Logs, Tray-Menü, Meldungen aus „Fehler melden“ (siehe [Sprache](#sprache)) | sofort |
 
 Geschrieben wird in die vorhandenen Dateien: `appsettings.Local.json` neben der `Kopilot.exe` (Kommentare und Reihenfolge bleiben erhalten, vorher landet eine Sicherung in `%LOCALAPPDATA%\Kopilot\appsettings.Local.backup.json`), Eingabe und Sprachschleife wie bisher in `input.json` bzw. `voice-settings.json`. Was erst beim Start gelesen wird, zeigt die Seite als „gilt nach Neustart“ – der Knopf **Kopilot neu starten** startet die Tray-Instanz neu (die ATC-Sitzung kommt aus der Sicherung zurück). Passwort und Token gehen nie an den Browser zurück; ein neu erzeugter Token wird genau einmal zum Kopieren angezeigt. Setzt eine Umgebungsvariable (`Kopilot__…`) denselben Wert, weist die Seite darauf hin – die Variable hat Vorrang vor der Datei.
+
+### Sprache
+
+Kopilots eigene Texte sind standardmäßig Englisch, Deutsch ist optional. Umstellen im Dashboard unter **Einstellungen → Sprache** (gilt sofort) oder in `appsettings.Local.json`:
+
+```jsonc
+"Kopilot": { "Language": "de" }   // Standard "en"
+```
+
+- **Folgt der Einstellung:** Dashboard, Tool-Meldungen an Claude (Felder `message`/`note`), Logs, Tray-Menü und Meldungen aus **Fehler melden**.
+- **Bleibt immer Englisch**, wie bei einer echten Crew (SOP): Callouts, Checklisten, FMA-Ansagen, Warnungen und Funk (ATC-Vorlagen). Claude selbst antwortet in der Sprache, in der du mit ihm sprichst.
+- Werte in Flugzeugprofilen und ATC-Vorlagen sind sprachneutral (IDs, Einheiten); Geschwindigkeiten immer in Knoten.
+- Die Sprachschleife versteht Befehle unabhängig davon auf Deutsch und Englisch (`recognition.language` in `voice-settings.json`).
+- Übersetzungen: `src/Kopilot/i18n/<code>.json`, Details in [docs/i18n.md](docs/i18n.md).
+
+Die Beschriftungen von Dashboard und Tray-Menü in diesem README sind die deutschen – mit der Standardsprache Englisch heißt es z. B. „Settings“ statt „Einstellungen“ und „Report a problem“ statt „Fehler melden“.
 
 ### Fehler melden
 
@@ -516,7 +535,7 @@ Ein paar Werte habe ich ohne Sim nicht prüfen können:
 - [ ] `flapsHandleIndex` folgt dem Klappenhebel (0 bis 4 bei 0/1/2/3/FULL)
 - [x] Beim iniBuilds A321LR sind die GPS-Navigationswerte leer, das FMS speist sie nicht. Route und Distanz kommen aus SimBrief (`get_progress`).
 - [x] Beim iniBuilds A321LR passen die Standard-AP-Werte (ALT/HDG/SPD/VS) zum FCU (getestet 28.10.)
-- [ ] FBW: Werte mit `"verified": false` im Profil prüfen (siehe [docs/aircraft.md](docs/aircraft.md))
+- [ ] FBW: Werte mit `"verified": false` im Profil prüfen (siehe [docs/aircraft.de.md](docs/aircraft.de.md))
 - [ ] Pause wird erkannt (`paused: true` in `get_flight_state`), auch Active Pause
 - [ ] ECAM-Klartext im A32NX (`get_warnings`), z. B. nach AP-Disconnect „AUTO FLT AP OFF“
 
@@ -607,7 +626,7 @@ Fehlt eine der Zeilen, sagt eine Warnung direkt darunter, was nicht stimmt.
 
 ### 3. Cloudflare Tunnel einrichten
 
-Schritt für Schritt in **[docs/cloudflared.md](docs/cloudflared.md)**: Named Tunnel, Subdomain `kopilot.flo210500.com`, cloudflared als Windows-Dienst, optional eine WAF-Regel, die `/mcp` nur für Claudes IP-Bereich öffnet.
+Schritt für Schritt in **[docs/cloudflared.de.md](docs/cloudflared.de.md)**: Named Tunnel, Subdomain `kopilot.flo210500.com`, cloudflared als Windows-Dienst, optional eine WAF-Regel, die `/mcp` nur für Claudes IP-Bereich öffnet.
 
 ### 4. Connector in Claude eintragen
 
@@ -641,7 +660,7 @@ Kopilot speichert Tokens nur als SHA-256-Hash. Tokens in der URL (`?token=`) nim
 
 ## Flugzeugprofile und L:-Variablen
 
-Study-Level-Flugzeuge legen vieles (AP-Status, FMA, Autobrake, ECAM, Fuel Flow) nicht in Standard-SimVars ab, sondern in eigenen **L:-Variablen**. Ein Profil unter `profiles\*.json` sagt Kopilot, woher die Werte kommen. Mitgeliefert: FlyByWire A32NX, FlyByWire A380X, Headwind A330-900neo, iniBuilds A321LR. Was bei welchem Flugzeug geht, steht in [docs/aircraft.md](docs/aircraft.md).
+Study-Level-Flugzeuge legen vieles (AP-Status, FMA, Autobrake, ECAM, Fuel Flow) nicht in Standard-SimVars ab, sondern in eigenen **L:-Variablen**. Ein Profil unter `profiles\*.json` sagt Kopilot, woher die Werte kommen. Mitgeliefert: FlyByWire A32NX, FlyByWire A380X, Headwind A330-900neo, iniBuilds A321LR. Was bei welchem Flugzeug geht, steht in [docs/aircraft.de.md](docs/aircraft.de.md).
 
 ```jsonc
 {
@@ -710,11 +729,14 @@ src/Kopilot/
   Sim/TrafficConnection.cs Eigene SimConnect-Verbindung für Verkehr (native SimConnect.dll, Größenprüfung je Nachricht)
   Traffic/                Verkehrsabfrage, Peilung/Uhrzeit/Callout, Hintergrundabfrage für TRAFFIC_PROXIMITY
   Tools/                  MCP-Tools
+  Localization/           Spracheinstellung, Texte nachschlagen (Loc)
+  i18n/                   Texte je Sprache (en.json, de.json)
   profiles/               Flugzeugprofile (JSON)
 src/SimConnectStub/       Platzhalter-API für CI-Builds ohne MSFS-SDK
 tools/import_sectors.py   Erzeugt data/sectors/atc-sectors.json aus den VATGlasses-Sektordaten
 tests/Kopilot.Tests/      Tests (OAuth, Zugriffsschutz, Monitoring-Regeln, ECAM, SimBrief, Profile, Verkehr, ATC, Sprachschleife) – laufen ohne MSFS
-docs/cloudflared.md       Anleitung Cloudflare Tunnel
+docs/cloudflared.de.md    Anleitung Cloudflare Tunnel
+docs/i18n.md              Übersetzungen und Sprachdateien
 installer/                Windows-Installer (Inno Setup) und Hilfsskripte für den Release-Workflow
 ```
 
