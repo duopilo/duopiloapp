@@ -239,14 +239,37 @@ public sealed partial class AtcSession
         SayWithReadback(output, id, locals, (o, i) => SetStep(after, i.TimeUtc));
     }
 
-    /// <summary>Sinkflug am Top of Descent auf <see cref="AtcRules.CenterDescentFt"/>.</summary>
+    /// <summary>
+    /// Sinkflug am Top of Descent. Mit STAR im OFP "descend via ANJLL4 arrival" – freigegeben ist dann die unterste Höhe der
+    /// STAR laut Navlog (mindestens die Höhe der Anflugfreigabe); ohne STAR "descend FL110". Endet die Freigabe unter der
+    /// Übergangshöhe, kommt das QNH dazu (und gehört zum Readback). Testflug 04:03Z: bisher nur "descend 11000 ft".
+    /// </summary>
     private void IssueTopOfDescent(List<AtcTransmission> output, DateTimeOffset now)
     {
         _descentIssued = true;
         _expectedLevel = null;
-        ClearedAltitudeFt = Rules.CenterDescentFt;
+        var via = Plan.Star is not null;
+        var feet = via ? Math.Max(ApproachLevelFt, RoundToHundreds(Plan.StarBottomFt ?? ApproachLevelFt)) : Rules.CenterDescentFt;
+        ClearedAltitudeFt = feet;
+
+        var locals = LevelLocals(feet, "descend");
+        var withQnh = !locals["level"].FlightLevel;
+        var id = (via, withQnh) switch
+        {
+            (true, true) => AtcMessageIds.CenterDescendViaQnh,
+            (true, false) => AtcMessageIds.CenterDescendVia,
+            (false, true) => AtcMessageIds.CenterDescendQnh,
+            _ => AtcMessageIds.CenterDescend,
+        };
+
+        // Eigene Vorlagen ohne die neuen Sprüche: wie bisher
+        if (_t.Message(id) is null)
+        {
+            id = AtcMessageIds.CenterDescend;
+        }
+
         SetStep(AtcStep.CenterReadback, now);
-        SayWithReadback(output, AtcMessageIds.CenterDescend, LevelLocals(Rules.CenterDescentFt, "descend"), (o, i) => SetStep(AtcStep.CenterCruise, i.TimeUtc));
+        SayWithReadback(output, id, locals, (o, i) => SetStep(AtcStep.CenterCruise, i.TimeUtc));
     }
 
     /// <summary>

@@ -72,6 +72,9 @@ public sealed partial class AtcPlan
     /// <summary>Stufensteigflüge im Reiseflug laut OFP (Höhe der Fixe), in Flugrichtung.</summary>
     public IReadOnlyList<AtcStepClimb> StepClimbs { get; init; } = [];
 
+    /// <summary>Niedrigste geplante Höhe an den Fixen der STAR laut Navlog (für "descend via"), null ohne Angabe.</summary>
+    public int? StarBottomFt { get; init; }
+
     /// <summary>Kennung des Flugs für die Stimmen ("SimBrief-Request-ID", sonst Route).</summary>
     public required string FlightKey { get; init; }
 
@@ -161,6 +164,7 @@ public sealed partial class AtcPlan
             DirectFix = DirectCandidate(ofp.Fixes),
             TodNm = TodDistance(points, distances),
             StepClimbs = FindStepClimbs(ofp.Fixes, points, distances, cruise),
+            StarBottomFt = StarBottom(ofp.Fixes),
             FlightKey = ofp.RequestId ?? $"{ofp.Origin.Icao}-{ofp.Destination.Icao}-{ofp.GeneratedUtc?.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture)}",
             Airspace = airspace,
         };
@@ -546,6 +550,31 @@ public sealed partial class AtcPlan
         }
 
         return result;
+    }
+
+    /// <summary>Niedrigste geplante Höhe der STAR-Fixe am Ende der Route (Navlog "altitude_feet").</summary>
+    private static int? StarBottom(IReadOnlyList<OfpFix> fixes)
+    {
+        int? bottom = null;
+        for (var i = fixes.Count - 1; i >= 0; i--)
+        {
+            if (fixes[i].Type == "apt")
+            {
+                continue;
+            }
+
+            if (!fixes[i].IsSidStar)
+            {
+                break;
+            }
+
+            if (fixes[i].AltitudeFt is { } altitude && altitude > 0)
+            {
+                bottom = Math.Min(bottom ?? altitude, altitude);
+            }
+        }
+
+        return bottom;
     }
 
     private static double? TodDistance(IReadOnlyList<RoutePoint> points, IReadOnlyList<double> distances)

@@ -94,7 +94,7 @@ After loading a flight, changing aircraft or an air start, monitoring stays sile
 
 With a SimBrief plan, Kopilot compares the fuel on board with the plan during cruise – like the crew's fuel check:
 
-- **At every OFP waypoint** (leg with SimBrief phase CRZ, excluding TOC/TOD) Kopilot calls out: "HENDY, fuel 34.1, 2.2 below plan" (tonnes, one decimal; below 50 kg deviation "on plan"). Navaids with a three-letter ident are named as on the radio ("Wabush" instead of YWK), coordinate points as "53 north 50 west".
+- **At every OFP waypoint** (leg with SimBrief phase CRZ, excluding TOC/TOD) Kopilot calls out: "Hendy, fuel 34.1, 2.2 below plan" (tonnes, one decimal; below 50 kg deviation "on plan"). The waypoint is pronounced like everywhere else (see Speech output): navaids with their name ("Wabush" instead of YWK), coordinate points as "fifty three north fifty west".
 - **Interval:** if no waypoint comes up for 30 min in cruise (sim time, pauses don't count), there is a check without a location: "Fuel 34.1, 2.2 below plan".
 - **Warning (`FUEL_WARNING`, caution)** – checked continuously, not just at waypoints:
   - the deviation has grown worse by more than `DeviationIncreaseKg` since the last check (suspected leak): "…, deviation increased by 0.6";
@@ -160,7 +160,23 @@ This is not TCAS: no resolution advisory, no prediction of the closest point of 
 
 ## Speech output
 
-Kopilot speaks the callouts itself, in English. Warnings interrupt everything else, older alerts expire after 8 seconds. ECAM titles are spelled out, e.g. "ENG 1 FIRE" → "engine 1 fire".
+Kopilot speaks the callouts itself, in English. Warnings interrupt everything else, older alerts expire after 8 seconds.
+
+**Pronunciation:** ATC, callouts, fuel check and the replies of the voice loop share one pronunciation (`Speech/Pronunciation.cs`), applied before the text goes to the voice:
+
+| What | Spoken |
+|---|---|
+| Fixes with five letters | as a word: HENDY → "Hendy" |
+| Navaids (up to three letters) | with the name from the OFP navlog: YWK → "Wabush"; without a name in the NATO alphabet: FFM → "foxtrot foxtrot mike" |
+| ICAO codes | always spelled: KLAX → "kilo lima alpha x-ray" |
+| Coordinate points | 53N050W, 5350N → "fifty three north fifty west"; 5530N → "fifty five thirty north …" |
+| Runways | 25R → "two five right", 09 → "zero niner" |
+| Squawks, headings, speeds, frequencies | digit by digit, 9 as "niner", frequencies with "decimal" |
+| Flight levels | "flight level three four zero", whole hundreds "flight level one hundred" (ICAO) |
+| Altitudes | in thousands: "one zero thousand", "two thousand five hundred" |
+| ECAM titles | spelled out: "ENG 1 FIRE" → "engine one fire", "APU" → "A P U" |
+
+Navlog names and the plan's airports come from the loaded SimBrief plan. Readbacks also accept the name ("direct Wabush") and naturally spoken coordinates ("fifty five north twenty west").
 
 There are two voices:
 
@@ -262,7 +278,7 @@ If an action's definition in the profile changes, the stored verification no lon
 
 ## ATC
 
-Kopilot comes with its own ATC: a state machine with fixed text templates, **no language model**. You talk on the radio as usual, Claude passes your transmission on with `atc_transmit` (or the voice loop does it directly, see below), and Kopilot answers as the responsible unit and speaks the reply itself – each station with its own Kokoro voice. Phraseology in English, ICAO style, numbers digit by digit ("squawk two two zero five"), speeds always in knots, never Mach.
+Kopilot comes with its own ATC: a state machine with fixed text templates, **no language model**. You talk on the radio as usual, Claude passes your transmission on with `atc_transmit` (or the voice loop does it directly, see below), and Kopilot answers as the responsible unit and speaks the reply itself – each station with its own Kokoro voice. Phraseology in English, ICAO style, numbers digit by digit ("squawk two two zero five"), speeds always in knots, never Mach; fixes, navaids and coordinates as described under Speech output ("proceed direct Wabush").
 
 **Flow** (transitions come from your transmissions and from the flight state):
 
@@ -272,7 +288,7 @@ Kopilot comes with its own ATC: a state machine with fixed text templates, **no 
 | Ground | Push and start, taxi clearance to the holding point (readback holding point/runway) | stopped at the holding point (8 s), or you call "ready" |
 | Tower | Line up and wait, takeoff clearance with wind (automatically as soon as you're on the runway, at the latest after 60 s) | from 1500 ft AGL: "contact Departure" |
 | Departure | "identified, climb FL150", optionally "proceed direct" to the first fix after the SID | 2000 ft below the cleared altitude → Center of the FIR |
-| Center | Climb to cruise altitude, level requests ("request climb flight level three four zero" → "climb and maintain FL340"), step climbs from the OFP ("when ready climb and maintain FL340"), at top of descent descent to FL110 | at every FIR boundary to the next Center, within the FIR at every sector boundary ("contact Montreal Center one three three decimal zero two five") |
+| Center | Climb to cruise altitude, level requests ("request climb flight level three four zero" → "climb and maintain FL340"), step climbs from the OFP ("when ready climb and maintain FL340"), at top of descent "descend via ANJLL4 arrival" (with a STAR in the OFP) or "descend FL110", below the transition altitude with QNH | at every FIR boundary to the next Center, within the FIR at every sector boundary ("contact Montreal Center one three three decimal zero two five") |
 | Oceanic | Clearance about 30 minutes before the entry point, then position reports at every oceanic fix ("roger") | at the exit point to the domestic unit, e.g. after HOIST to Gander Center (short check-in, no more position reports) |
 | Approach | Descent, STAR, expected approach and runway, QNH; approach clearance from 20 nm | from 12 nm: "contact Tower" |
 | Tower | Landing clearance with wind (at the latest 4 nm before the threshold) | after landing below 40 kt: "vacate via next exit, contact Ground" |
@@ -283,6 +299,8 @@ On short routes without oceanic fixes (coordinates like `55N020W` or a FIR marke
 **Readback:** for clearances Kopilot checks the values listed in the template (`readback`), e.g. SID, altitude and squawk for the route clearance. Kopilot understands digits ("2205", "FL110") as well as spoken numbers ("two two zero five", "five thousand feet", "one two one decimal eight") and the NATO alphabet. If a value is wrong or missing, "negative" comes with the correct value, e.g. "Lufthansa four alpha bravo, negative, squawk two two zero five" – then you only need to read back that value again. ATC doesn't answer acknowledgements without a clearance ("contact Ground one two one decimal eight"). "Say again" repeats the last transmission. A "radio check" (or "how do you read") is answered by the station with "read you five" (`common.radioCheck`), without changing anything in the flow or a pending readback.
 
 **Levels in cruise:** Departure (after the initial call), Center and Oceanic answer level requests: "request climb flight level three four zero", "requesting FL340", "request descent to one two thousand feet", "request higher"/"request lower" (without a level: the next step climb of the OFP, otherwise 2000 ft). The clearance is "climb and maintain FL340" (`center.levelChange`); below the transition altitude in feet with QNH ("descend and maintain 16000 ft, altimeter two niner niner two", `center.levelChangeQnh`). The readback is checked, and the cleared altitude applies at once – including for the FCU altitude check of the input module. "request descent" shortly before the top of descent gets the usual descent to FL110. Optionally ATC turns a request down ("unable FL340 due traffic, maintain FL320, expect FL340 in 10 minutes", `center.levelUnable`, rule `levelRequestUnablePercent`, off by default) and clears it on its own after `levelRequestDelayMinutes`. Step climbs from the OFP (planned level of the fixes in cruise) are cleared by ATC on its own 10 nm before the step point: "when ready climb and maintain FL340" (`center.levelWhenReady`, rules `offerStepClimbs`, `stepClimbLeadNm`); before that `get_atc_controller` suggests the request ("request climb FL340"). If you report a level on the initial call that differs from the clearance ("maintaining FL340" with FL320 cleared) and MSFS shows you there, ATC takes it over ("identified, maintain FL340").
+
+**Descent:** At the top of descent Center clears "descend via ANJLL4 arrival" if the OFP has a STAR (`center.descendVia`); the cleared altitude is then the lowest planned altitude of the STAR fixes in the navlog, at least the altitude of the approach clearance. Without a STAR it stays "descend FL110" (`rules.centerDescentFt`). If the clearance ends below the transition altitude of the destination, the QNH comes with it and is part of the readback ("descend via ANJLL4 arrival, altimeter two niner niner two", `center.descendViaQnh`, `center.descendQnh`) – in the test flight to KLAX it was only "descend 11000 ft".
 
 **Squawk and frequency:** MSFS sets the transponder code and COM1 on its own at times – even with its ATC muted (in the test flight squawk 3172 instead of 2340). Kopilot reads `TRANSPONDER CODE` and `COM ACTIVE FREQUENCY:1` continuously. If the code differs from the assigned one in flight for more than 15 s, ATC says "Condor two two zero five, check squawk, should be two three four zero" (`common.checkSquawk`); if COM1 is not on the frequency of the station after the first call (after a handoff: after 60 s grace), "check frequency, should be Montreal Center one three two decimal two five" (`common.checkFrequency`). The hint is repeated every 2 minutes, three times at most; emergency codes, placeholder frequencies and oceanic (HF) aren't checked. **Kopilot never resets anything on its own:** `get_atc_controller` lists the deviation under `deviations` with the `prepare_action` steps (`xpdr.code 2340`, or `com1.standby 132.250` then `com1.swap`), and a caution `ATC_SQUAWK`/`ATC_FREQUENCY` appears in `activeAlerts` and `wait_for_alerts` – Claude offers the reset, the pilot confirms. With `Kopilot:Atc:SquawkFromSim` = `true`, Kopilot takes over a discrete code MSFS sets in flight as the assigned squawk instead (never 2000/1200/7000 or emergency codes). Rules: `checkSquawk`, `checkFrequency`, `deviationSeconds`, `frequencyGraceSeconds`, `deviationRepeatSeconds`, `deviationMaxCalls`.
 
@@ -717,7 +735,7 @@ src/Kopilot/
   Program.cs              Startup: --stdio (Claude Desktop) or HTTP with tray, --console, --generate-secret
   Dashboard/              Dashboard in the browser (HTML, embedded B612 font), data API
   Desktop/                Tray icon, autostart
-  Speech/                 Speech output: Windows voice or Kokoro, priority queue, output device, ECAM text for speaking
+  Speech/                 Speech output: Windows voice or Kokoro, priority queue, output device, one pronunciation for ATC, callouts and fuel check
   Voice/                  Voice loop: microphone, Silero VAD, Whisper, normalization, router, commands, dialog, ATC interface
   Input/                  Input module: planning actions, interlocks, confirmation, execution via SimConnect
   Hosting/                Transport selection, configuration, HTTP host

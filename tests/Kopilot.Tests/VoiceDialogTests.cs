@@ -286,7 +286,7 @@ public sealed class VoiceDialogTests
         var reply = await Say(dialog, "QNH one zero one three");
 
         Assert.Equal("prepare efis.baro 1013", gateway.Calls[^1]);
-        Assert.Equal("QNH one zero one three set", reply?.Spoken);
+        Assert.Equal("Q N H one zero one three set", reply?.Spoken);
     }
 
     // ------------------------------------------------------------------ Abfragen, Unbekanntes, Stumm
@@ -409,19 +409,19 @@ public sealed class VoiceDialogTests
     [InlineData("Altitude 12500", "Altitude one two thousand five hundred")]
     [InlineData("Altitude FL120 set", "Altitude flight level one two zero set")]
     [InlineData("FL350", "flight level three five zero")]
-    [InlineData("QNH 1013 set", "QNH one zero one three set")]
+    [InlineData("QNH 1013 set", "Q N H one zero one three set")]
     [InlineData("Heading 090 selected", "Heading zero niner zero selected")]
     [InlineData("Squawk 7000", "Squawk seven zero zero zero")]
     [InlineData("Vertical speed -1000", "Vertical speed minus one thousand")]
-    [InlineData("COM one standby 121.800", "COM one standby one two one decimal eight")]
+    [InlineData("COM one standby 121.800", "com one standby one two one decimal eight")]
     [InlineData("Fuel 12.4 tons", "Fuel twelve point four tons")]
     [InlineData("Flaps 1", "Flaps one")]
     [InlineData("Engine 2 not running", "Engine two not running")]
-    [InlineData("ND range 40", "ND range forty")]
+    [InlineData("ND range 40", "N D range forty")]
     [InlineData("Speedbrake retracted", "Speedbrake retracted")]
     public void Zahlen_wie_im_Funk(string text, string spoken)
     {
-        Assert.Equal(spoken, VoicePhraseology.ForSpeech(text));
+        Assert.Equal(spoken, Kopilot.Speech.Pronunciation.ForSpeech(text, Kopilot.Speech.SpeechContext.Empty));
     }
 
     [Theory]
@@ -430,7 +430,7 @@ public sealed class VoiceDialogTests
     [InlineData("EDDL", "echo delta delta lima")]
     public void Buchstabieren_nach_NATO_Alphabet(string text, string spoken)
     {
-        Assert.Equal(spoken, VoicePhraseology.Spell(text));
+        Assert.Equal(spoken, Kopilot.Speech.Pronunciation.Spell(text));
     }
 
     // ------------------------------------------------------------------ Kritische Aktion: Rückfrage mit Warnhinweis (v0.9.1)

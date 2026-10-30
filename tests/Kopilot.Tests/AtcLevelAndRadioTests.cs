@@ -263,7 +263,7 @@ public sealed class AtcLevelAndRadioTests
         var unable = Assert.Single(flight.Say("Montreal Center, Condor 2205, request climb flight level 340", nm));
         Assert.Equal(AtcMessageIds.CenterLevelUnable, unable.MessageId);
         Assert.Equal("CFG2205, unable FL340 due traffic, maintain FL320, expect FL340 in 10 minutes", unable.Text);
-        Assert.Contains("expect flight level three four zero in 10 minutes", unable.Spoken, StringComparison.Ordinal);
+        Assert.Contains("expect flight level three four zero in ten minutes", unable.Spoken, StringComparison.Ordinal);
         Assert.Equal(32000, session.ClearedAltitudeFt);
         Assert.Null(session.PendingReadback);
         Assert.Equal(34000, session.ExpectedLevel!.AltitudeFt);
@@ -613,6 +613,103 @@ public sealed class AtcLevelAndRadioTests
         // Offenes Readback – ein vorangestellter Name zählt nicht als Anruf
         Assert.Empty(flight.Say("Gander, climb flight level three four zero, Condor 2205", nm));
         Assert.Null(session.PendingReadback);
+    }
+
+    // ------------------------------------------------------------------ Sinkflug am Top of Descent (Testlog 04:03Z)
+
+    private const int Tod = 6;
+
+    /// <summary>Wie nach KLAX: STAR mit geplanten Höhen im Navlog.</summary>
+    private static Ofp WithStar()
+    {
+        var ofp = Labrador();
+        var fixes = ofp.Fixes.ToList();
+        fixes.InsertRange(7,
+        [
+            Fix("HOLLE", 46.80, -72.80, "CZUL", "DSC", 11000) with { IsSidStar = true, Airway = "ANJLL4" },
+            Fix("ANJLL", 46.00, -73.30, "CZUL", "DSC", 8000) with { IsSidStar = true, Airway = "ANJLL4" },
+        ]);
+        return ofp with { StarIdent = "ANJLL4", Fixes = fixes };
+    }
+
+    private static AtcSession SessionFor(Ofp ofp)
+    {
+        var templates = TestData.Templates();
+        return new AtcSession(templates, AtcPlan.Build(ofp, null, templates), new AtcSessionContext(_ => null, new NoTaxiRouteProvider(), "bm_george"));
+    }
+
+    /// <summary>Bei Montreal eingecheckt, dann bis kurz vor den Top of Descent; Rückgabe: die Sinkflugfreigabe.</summary>
+    private static (AtcSession Session, Cruise Flight, AtcTransmission Descent) ToTopOfDescent(Ofp ofp)
+    {
+        var session = SessionFor(ofp);
+        var flight = new Cruise(session);
+        var nm = flight.Fix(Bravo) + 5;
+        flight.Start(nm);
+        flight.Say("Montreal Center, Condor 2205, maintaining flight level three two zero", nm);
+        flight.Say("Montreal Center, Condor 2205, request climb flight level 340", nm);
+        flight.Say("climb flight level three four zero, Condor 2205", nm);
+        flight.AltitudeFt = 34000;
+        return (session, flight, Assert.Single(flight.Run(flight.Fix(Tod) - 3, 1)));
+    }
+
+    [Fact]
+    public void Mit_STAR_descend_via_und_QNH()
+    {
+        var (session, flight, descent) = ToTopOfDescent(WithStar());
+        Assert.Equal(8000, session.Plan.StarBottomFt);
+
+        Assert.Equal(AtcMessageIds.CenterDescendViaQnh, descent.MessageId);
+        Assert.Equal("CFG2205, descend via ANJLL4 arrival, A2992", descent.Text);
+        Assert.Equal("Condor two two zero five, descend via Anjll four arrival, altimeter two niner niner two", descent.Spoken);
+        Assert.Equal(8000, session.ClearedAltitudeFt); // unterste Höhe der STAR laut Navlog
+        Assert.Equal(new[] { "star", "qnh" }, session.PendingReadback!.Items.Select(i => i.Name));
+
+        var tod = flight.Fix(Tod) - 3;
+        Assert.Equal("CFG2205, negative, A2992", Assert.Single(flight.Say("descend via ANJLL four arrival, Condor 2205", tod)).Text);
+        Assert.Empty(flight.Say("altimeter two niner niner two, Condor 2205", tod));
+        Assert.Equal(AtcStep.CenterCruise, session.Step);
+    }
+
+    [Fact]
+    public void Ohne_STAR_unter_der_Uebergangshoehe_mit_QNH()
+    {
+        var (session, flight, descent) = ToTopOfDescent(Labrador());
+        Assert.Equal(AtcMessageIds.CenterDescendQnh, descent.MessageId);
+        Assert.Equal("CFG2205, descend 11000 ft, A2992", descent.Text);
+        Assert.Equal(11000, session.ClearedAltitudeFt);
+        Assert.Empty(flight.Say("descend one one thousand feet, altimeter two niner niner two, Condor 2205", flight.Fix(Tod) - 3));
+    }
+
+    [Fact]
+    public void Ohne_STAR_ueber_der_Uebergangshoehe_wie_bisher()
+    {
+        // Ziel mit europäischer Übergangshöhe: FL110 ohne QNH
+        var ofp = Labrador() with { Destination = new OfpAirport("EDDB", "Berlin", "25R", 45.4706, -73.7408, 157, 5000, 6000, null) };
+        var (session, _, descent) = ToTopOfDescent(ofp);
+        Assert.Equal(AtcMessageIds.CenterDescend, descent.MessageId);
+        Assert.Equal("CFG2205, descend FL110", descent.Text);
+        Assert.Equal(new[] { "level" }, session.PendingReadback!.Items.Select(i => i.Name));
+    }
+
+    [Fact]
+    public void Descend_via_mit_STAR_ueber_der_Uebergangshoehe_ohne_QNH()
+    {
+        // STAR endet laut Navlog auf FL120, Ziel mit Übergangshöhe 5000 ft
+        var ofp = WithStar() with { Destination = new OfpAirport("EDDB", "Berlin", "25R", 45.4706, -73.7408, 157, 5000, 6000, null) };
+        ofp = ofp with
+        {
+            Fixes = ofp.Fixes.Select(f => f.Ident switch
+            {
+                "HOLLE" => f with { AltitudeFt = 13000 },
+                "ANJLL" => f with { AltitudeFt = 12000 },
+                _ => f,
+            }).ToList(),
+        };
+        var (session, _, descent) = ToTopOfDescent(ofp);
+        Assert.Equal(AtcMessageIds.CenterDescendVia, descent.MessageId);
+        Assert.Equal("CFG2205, descend via ANJLL4 arrival", descent.Text);
+        Assert.Equal(12000, session.ClearedAltitudeFt);
+        Assert.Equal(new[] { "star" }, session.PendingReadback!.Items.Select(i => i.Name));
     }
 
     // ------------------------------------------------------------------ Sicherung

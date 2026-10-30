@@ -59,6 +59,7 @@ public sealed class SimBriefService
         _options.Username = username;
         _options.PilotId = pilotId;
         _current = null;
+        Kopilot.Speech.SpeechContext.Current = Kopilot.Speech.SpeechContext.Empty;
         _legHint = null;
         _fetchedUtc = default;
         LastError = null;
@@ -105,6 +106,10 @@ public sealed class SimBriefService
             }
 
             _current = ofp;
+
+            // Aussprache: Funkfeuer mit dem Namen aus dem Navlog, Flughäfen des Plans buchstabiert
+            Kopilot.Speech.SpeechContext.Current = Kopilot.Speech.SpeechContext.From(ofp);
+
             _fetchedUtc = DateTimeOffset.UtcNow;
             LastError = null;
             _log.LogInformation(Loc.Log("log.flightplan.ofpLoaded"), ofp.Origin.Icao, ofp.Destination.Icao, ofp.Fixes.Count);

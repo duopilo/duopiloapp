@@ -464,7 +464,7 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
 
         try
         {
-            await KokoroClipAsync(CalloutText.ForSpeech(text), VoiceFor(null), ct);
+            await KokoroClipAsync(Pronunciation.ForSpeech(text), VoiceFor(null), ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -535,7 +535,7 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
             return;
         }
 
-        var text = CalloutText.ForSpeech(item.Spoken ?? item.Text);
+        var text = Pronunciation.ForSpeech(item.Spoken ?? item.Text);
         if (text.Length == 0)
         {
             return;

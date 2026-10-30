@@ -94,7 +94,7 @@ Nach dem Laden eines Flugs, einem Flugzeugwechsel oder einem Air-Start schweigt 
 
 Mit SimBrief-Plan vergleicht Kopilot im Reiseflug den Treibstoff an Bord mit dem Plan – wie die Crew beim Fuel Check:
 
-- **An jedem OFP-Wegpunkt** (Abschnitt mit SimBrief-Phase CRZ, ohne TOC/TOD) sagt Kopilot an: „HENDY, fuel 34.1, 2.2 below plan“ (Tonnen, eine Nachkommastelle; unter 50 kg Abweichung „on plan“). Funkfeuer mit dreistelliger Kennung heißen wie im Funk („Wabush“ statt YWK), Koordinatenpunkte „53 north 50 west“.
+- **An jedem OFP-Wegpunkt** (Abschnitt mit SimBrief-Phase CRZ, ohne TOC/TOD) sagt Kopilot an: „Hendy, fuel 34.1, 2.2 below plan“ (Tonnen, eine Nachkommastelle; unter 50 kg Abweichung „on plan“). Der Wegpunkt klingt wie überall (siehe Sprachausgabe): Funkfeuer mit Namen („Wabush“ statt YWK), Koordinatenpunkte „fifty three north fifty west“.
 - **Intervall:** Kommt im Reiseflug 30 min (Sim-Zeit, Pausen zählen nicht) kein Wegpunkt, gibt es einen Check ohne Ort: „Fuel 34.1, 2.2 below plan“.
 - **Warnung (`FUEL_WARNING`, Caution)** – laufend geprüft, nicht nur an Wegpunkten:
   - die Abweichung ist seit dem letzten Check um mehr als `DeviationIncreaseKg` schlechter geworden (Leckverdacht): „…, deviation increased by 0.6“;
@@ -160,7 +160,23 @@ Das ist kein TCAS: keine Ausweichempfehlung, keine Vorhersage des Annäherungspu
 
 ## Sprachausgabe
 
-Kopilot spricht die Callouts selbst, auf Englisch. Warnings unterbrechen alles andere, ältere Meldungen verfallen nach 8 Sekunden. ECAM-Titel werden ausgeschrieben, z. B. „ENG 1 FIRE“ → „engine 1 fire“.
+Kopilot spricht die Callouts selbst, auf Englisch. Warnungen unterbrechen alles andere, ältere Meldungen verfallen nach 8 Sekunden.
+
+**Aussprache:** ATC, Callouts, Fuel Check und die Antworten der Sprachschleife haben eine gemeinsame Aussprache (`Speech/Pronunciation.cs`), die vor der Sprachausgabe greift:
+
+| Was | Gesprochen |
+|---|---|
+| Fixe mit fünf Buchstaben | als Wort: HENDY → „Hendy“ |
+| Funkfeuer (bis drei Buchstaben) | mit dem Namen aus dem OFP-Navlog: YWK → „Wabush“; ohne Namen im NATO-Alphabet: FFM → „foxtrot foxtrot mike“ |
+| ICAO-Codes | immer buchstabiert: KLAX → „kilo lima alpha x-ray“ |
+| Koordinatenpunkte | 53N050W, 5350N → „fifty three north fifty west“; 5530N → „fifty five thirty north …“ |
+| Bahnen | 25R → „two five right“, 09 → „zero niner“ |
+| Squawks, Kurse, Speeds, Frequenzen | Ziffer für Ziffer, 9 als „niner“, Frequenzen mit „decimal“ |
+| Flugflächen | „flight level three four zero“, volle Hunderter „flight level one hundred“ (ICAO) |
+| Höhen | in Tausendern: „one zero thousand“, „two thousand five hundred“ |
+| ECAM-Titel | ausgeschrieben: „ENG 1 FIRE“ → „engine one fire“, „APU“ → „A P U“ |
+
+Namen aus dem Navlog und die Flughäfen des Plans kommen aus dem geladenen SimBrief-Plan. Im Readback gelten auch der Name („direct Wabush“) und natürlich gesprochene Koordinaten („fifty five north twenty west“).
 
 Es gibt zwei Stimmen:
 
@@ -262,7 +278,7 @@ Die Aktionen stehen im Flugzeugprofil unter `actions` (Events, Variablen, Readba
 
 ## ATC
 
-Kopilot bringt ein eigenes ATC mit: eine Zustandsmaschine mit festen Textvorlagen, **kein Sprachmodell**. Du funkst wie gewohnt, Claude gibt deinen Spruch mit `atc_transmit` weiter (oder die Sprachschleife direkt, siehe unten), Kopilot antwortet als die zuständige Stelle und spricht die Antwort selbst – jede Station mit eigener Kokoro-Stimme. Phraseologie auf Englisch im ICAO-Stil, Zahlen Ziffer für Ziffer („squawk two two zero five“), Geschwindigkeiten immer in Knoten, nie Mach.
+Kopilot bringt ein eigenes ATC mit: eine Zustandsmaschine mit festen Textvorlagen, **kein Sprachmodell**. Du funkst wie gewohnt, Claude gibt deinen Spruch mit `atc_transmit` weiter (oder die Sprachschleife direkt, siehe unten), Kopilot antwortet als die zuständige Stelle und spricht die Antwort selbst – jede Station mit eigener Kokoro-Stimme. Phraseologie auf Englisch im ICAO-Stil, Zahlen Ziffer für Ziffer („squawk two two zero five“), Geschwindigkeiten immer in Knoten, nie Mach; Fixe, Funkfeuer und Koordinaten wie unter Sprachausgabe beschrieben („proceed direct Wabush“).
 
 **Ablauf** (Übergänge kommen aus deinen Sprüchen und aus dem Flugzustand):
 
@@ -272,7 +288,7 @@ Kopilot bringt ein eigenes ATC mit: eine Zustandsmaschine mit festen Textvorlage
 | Ground | Push and start, Rollfreigabe zum Rollhalt (Readback Rollhalt/Bahn) | am Rollhalt stehen geblieben (8 s), oder du rufst „ready“ |
 | Tower | Line up and wait, Startfreigabe mit Wind (automatisch, sobald du auf der Bahn stehst, spätestens nach 60 s) | ab 1500 ft AGL: „contact Departure“ |
 | Departure | „identified, climb FL150“, optional „proceed direct“ zum ersten Fix nach der SID | 2000 ft unter der freigegebenen Höhe → Center der FIR |
-| Center | Steigflug auf Reiseflughöhe, Höhenanfragen („request climb flight level three four zero“ → „climb and maintain FL340“), Stufensteigflüge aus dem OFP („when ready climb and maintain FL340“), am Top of Descent Sinkflug auf FL110 | an jeder FIR-Grenze ans nächste Center, innerhalb der FIR an jeder Sektorgrenze („contact Montreal Center one three three decimal zero two five“) |
+| Center | Steigflug auf Reiseflughöhe, Höhenanfragen („request climb flight level three four zero“ → „climb and maintain FL340“), Stufensteigflüge aus dem OFP („when ready climb and maintain FL340“), am Top of Descent „descend via ANJLL4 arrival“ (mit STAR im OFP) bzw. „descend FL110“, unter der Übergangshöhe mit QNH | an jeder FIR-Grenze ans nächste Center, innerhalb der FIR an jeder Sektorgrenze („contact Montreal Center one three three decimal zero two five“) |
 | Oceanic | Freigabe ca. 30 Minuten vor dem Eintrittspunkt, danach Positionsmeldungen an jedem Oceanic-Fix („roger“) | am Austrittspunkt an die Domestic-Stelle, z. B. nach HOIST an Gander Center (kurze Anmeldung, keine Positionsmeldungen mehr) |
 | Approach | Sinkflug, STAR, erwarteter Anflug und Bahn, QNH; ab 20 nm Anflugfreigabe | ab 12 nm: „contact Tower“ |
 | Tower | Landefreigabe mit Wind (spätestens 4 nm vor der Schwelle) | nach der Landung unter 40 kt: „vacate via next exit, contact Ground“ |
@@ -283,6 +299,8 @@ Auf Kurzstrecken ohne Oceanic-Fixes (Koordinaten wie `55N020W` oder eine FIR, di
 **Readback:** Bei Freigaben prüft Kopilot die Werte aus der Vorlage (`readback`), z. B. SID, Höhe und Squawk bei der Streckenfreigabe. Kopilot versteht Ziffern („2205“, „FL110“) wie gesprochene Zahlen („two two zero five“, „five thousand feet“, „one two one decimal eight“) und das NATO-Alphabet. Ist ein Wert falsch oder fehlt, kommt „negative“ mit dem richtigen Wert, z. B. „Lufthansa four alpha bravo, negative, squawk two two zero five“ – danach musst du nur diesen Wert noch einmal zurücklesen. Quittungen ohne Freigabe („contact Ground one two one decimal eight“) beantwortet ATC nicht. „Say again“ wiederholt den letzten Funkspruch. Einen „radio check“ (oder „how do you read“) beantwortet die Station mit „read you five“ (`common.radioCheck`), ohne dass sich am Ablauf oder an einem offenen Readback etwas ändert.
 
 **Höhen im Reiseflug:** Departure (nach dem Erstanruf), Center und Oceanic beantworten Höhenanfragen: „request climb flight level three four zero“, „requesting FL340“, „request descent to one two thousand feet“, „request higher“/„request lower“ (ohne Höhe: die nächste Stufe des OFP, sonst 2000 ft). Die Freigabe lautet „climb and maintain FL340“ (`center.levelChange`), unter der Übergangshöhe in Fuß mit QNH („descend and maintain 16000 ft, altimeter two niner niner two“, `center.levelChangeQnh`). Das Readback wird geprüft, die freigegebene Höhe gilt sofort – auch für die FCU-Höhenprüfung des Eingabe-Moduls. „request descent“ kurz vor dem Top of Descent bekommt den üblichen Sinkflug auf FL110. Optional lehnt ATC eine Anfrage ab („unable FL340 due traffic, maintain FL320, expect FL340 in 10 minutes“, `center.levelUnable`, Regel `levelRequestUnablePercent`, standardmäßig aus) und gibt nach `levelRequestDelayMinutes` von selbst frei. Stufensteigflüge aus dem OFP (geplante Höhe der Fixe im Reiseflug) gibt ATC 10 nm vor dem Stufenpunkt von sich aus frei: „when ready climb and maintain FL340“ (`center.levelWhenReady`, Regeln `offerStepClimbs`, `stepClimbLeadNm`); davor schlägt `get_atc_controller` die Anfrage vor („request climb FL340“). Meldest du beim Erstanruf eine andere Höhe als die freigegebene („maintaining FL340“ bei Freigabe FL320) und zeigt MSFS dich dort, übernimmt ATC sie („identified, maintain FL340“).
+
+**Sinkflug:** Am Top of Descent gibt Center „descend via ANJLL4 arrival“ frei, wenn das OFP eine STAR hat (`center.descendVia`); freigegeben ist dann die niedrigste geplante Höhe der STAR-Fixe im Navlog, mindestens die Höhe der Anflugfreigabe. Ohne STAR bleibt es bei „descend FL110“ (`rules.centerDescentFt`). Endet die Freigabe unter der Übergangshöhe des Ziels, kommt das QNH dazu und gehört zum Readback („descend via ANJLL4 arrival, altimeter two niner niner two“, `center.descendViaQnh`, `center.descendQnh`) – im Testflug nach KLAX kam nur „descend 11000 ft“.
 
 **Squawk und Frequenz:** MSFS setzt Transpondercode und COM1 teils selbst – auch bei stumm geschaltetem Sim-ATC (im Testflug Squawk 3172 statt 2340). Kopilot liest `TRANSPONDER CODE` und `COM ACTIVE FREQUENCY:1` laufend. Weicht der Code im Flug länger als 15 s vom zugewiesenen ab, sagt ATC „Condor two two zero five, check squawk, should be two three four zero“ (`common.checkSquawk`); steht COM1 nach dem ersten Anruf (nach einer Übergabe: nach 60 s Schonfrist) nicht auf der Frequenz der Station, „check frequency, should be Montreal Center one three two decimal two five“ (`common.checkFrequency`). Der Hinweis kommt alle 2 Minuten wieder, höchstens dreimal; Notfallcodes, Platzhalter-Frequenzen und Oceanic (HF) werden nicht geprüft. **Kopilot setzt nie selbst zurück:** `get_atc_controller` zeigt die Abweichung unter `deviations` mit den Schritten für `prepare_action` (`xpdr.code 2340` bzw. `com1.standby 132.250`, dann `com1.swap`), und in `activeAlerts` und `wait_for_alerts` steht eine Caution `ATC_SQUAWK`/`ATC_FREQUENCY` – Claude bietet das Zurücksetzen an, der Pilot bestätigt. Mit `Kopilot:Atc:SquawkFromSim` = `true` übernimmt Kopilot stattdessen einen vergebenen Code, den MSFS im Flug setzt, als zugewiesenen Squawk (nie 2000/1200/7000 oder Notfallcodes). Regeln: `checkSquawk`, `checkFrequency`, `deviationSeconds`, `frequencyGraceSeconds`, `deviationRepeatSeconds`, `deviationMaxCalls`.
 
@@ -717,7 +735,7 @@ src/Kopilot/
   Program.cs              Start: --stdio (Claude Desktop) oder HTTP mit Tray, --console, --generate-secret
   Dashboard/              Dashboard im Browser (HTML, eingebettete Schrift B612), Daten-API
   Desktop/                Tray-Symbol, Autostart
-  Speech/                 Sprachausgabe: Windows-Stimme oder Kokoro, Warteschlange mit Prioritäten, Ausgabegerät, ECAM-Text zum Sprechen
+  Speech/                 Sprachausgabe: Windows-Stimme oder Kokoro, Warteschlange mit Prioritäten, Ausgabegerät, gemeinsame Aussprache für ATC, Callouts und Fuel Check
   Voice/                  Sprachschleife: Mikrofon, Silero VAD, Whisper, Normalisierung, Router, Befehle, Dialog, ATC-Schnittstelle
   Input/                  Eingabe-Modul: Aktionen planen, Sperren, Bestätigung, Ausführung über SimConnect
   Hosting/                Transport-Auswahl, Konfiguration, HTTP-Host

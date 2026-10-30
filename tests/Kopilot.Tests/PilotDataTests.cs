@@ -111,9 +111,9 @@ public sealed class PilotDataTests
     [Fact]
     public void Ziffern_werden_mit_niner_gesprochen()
     {
-        Assert.Equal("zero niner", Phraseology.Runway(9, null));
-        Assert.Equal("two seven right", Phraseology.Runway(27, "R"));
-        Assert.Equal("one niner niner", Phraseology.DigitByDigit(199));
+        Assert.Equal("zero niner", Kopilot.Speech.Pronunciation.Runway(9, null));
+        Assert.Equal("two seven right", Kopilot.Speech.Pronunciation.Runway(27, "R"));
+        Assert.Equal("one niner niner", Kopilot.Speech.Pronunciation.Digits(199));
     }
 
     // ------------------------------------------------------------------ SimBrief
