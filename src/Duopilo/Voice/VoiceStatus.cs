@@ -8,8 +8,14 @@ public sealed record VoiceStatus
     /// <summary>Gibt es in dieser Duopilo-Instanz überhaupt eine Sprachschleife (nur Tray-/HTTP-Instanz)?</summary>
     public bool Available { get; init; } = true;
 
-    /// <summary>unavailable, off, loading, listening, muted, error.</summary>
+    /// <summary>unavailable, off, loading, listening, muted, inactive (Sim läuft nicht, siehe <see cref="InactiveReason"/>), error.</summary>
     public string State { get; init; } = "off";
+
+    /// <summary>Zustand des Sims: running, notConnected, noFlight, paused (null = Schleife läuft nicht).</summary>
+    public string? SimState { get; init; }
+
+    /// <summary>Warum die Sprachschleife gerade nicht zuhört („Sim nicht verbunden“, „Kein Flug geladen“, „Pausiert“), sonst null.</summary>
+    public string? InactiveReason { get; init; }
 
     /// <summary>"enabled" aus voice-settings.json.</summary>
     public bool Enabled { get; init; }

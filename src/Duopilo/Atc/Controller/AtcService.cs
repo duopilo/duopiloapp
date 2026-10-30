@@ -44,6 +44,9 @@ public sealed class AtcService : BackgroundService
 
     private readonly object _airspaceLock = new();
 
+    /// <summary>Uhr der Zustandsmaschine: steht, solange der Sim nicht läuft (Pause, Menü, keine Verbindung).</summary>
+    private readonly SimClock _clock = new();
+
     private AtcTemplates? _templates;
     private string? _templatesPath;
     private string? _templatesBasePath;
@@ -363,6 +366,7 @@ public sealed class AtcService : BackgroundService
         {
             while (await timer.WaitForNextTickAsync(stoppingToken))
             {
+                _clock.Update(SimGate.Read(_sim) == SimActivityState.Running);
                 await AutoRestoreAsync(stoppingToken);
                 Tick();
                 SaveSession(force: false);
@@ -380,7 +384,8 @@ public sealed class AtcService : BackgroundService
 
     private void Tick()
     {
-        if (!_sim.Connection.IsConnected || _sim.Status.Paused)
+        // Nur, wenn der Sim läuft – nicht verbunden, kein Flug geladen oder pausiert: ATC schweigt, Fristen stehen (Sim-Zeit)
+        if (SimGate.Read(_sim) != SimActivityState.Running)
         {
             return;
         }
@@ -603,7 +608,7 @@ public sealed class AtcService : BackgroundService
                 return;
             }
 
-            snapshot = _session.Snapshot(now);
+            snapshot = _session.Snapshot(now) with { SimClockStoppedSec = Math.Round(_clock.StoppedTotal.TotalSeconds, 1) };
             _savedFingerprint = fingerprint;
             _savedUtc = now;
         }
@@ -671,6 +676,12 @@ public sealed class AtcService : BackgroundService
             var session = new AtcSession(templates, plan, context);
             if (snapshot is not null)
             {
+                if (snapshot.SimClockStoppedSec is { } stopped)
+                {
+                    // Fristen der Sicherung sind Sim-Zeit – die Uhr geht dort weiter
+                    _clock.Restore(TimeSpan.FromSeconds(stopped));
+                }
+
                 var note = session.Restore(snapshot, BuildInput());
                 _restoredFromUtc = snapshot.SavedUtc;
                 _log.LogInformation(
@@ -794,7 +805,8 @@ public sealed class AtcService : BackgroundService
 
     private AtcInput BuildInput() => new()
     {
-        TimeUtc = DateTimeOffset.UtcNow,
+        TimeUtc = _clock.Now,
+        WallUtc = DateTimeOffset.UtcNow,
         OnGround = _sim.Bool("onGround"),
         AltitudeFt = _sim.Num("altIndicated"),
         AglFt = _sim.Num("altAgl"),

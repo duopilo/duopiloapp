@@ -82,7 +82,14 @@ public enum OceanicClearanceState
 /// <summary>Was die Zustandsmaschine vom Flugzeug braucht (aus SimConnect). Höhen in ft, Geschwindigkeiten in kt.</summary>
 public sealed record AtcInput
 {
+    /// <summary>
+    /// Zeit der Zustandsmaschine (Wartezeiten, Fristen). Im Betrieb Sim-Zeit: steht, solange der Sim pausiert, kein Flug geladen
+    /// oder nicht verbunden ist (<see cref="Duopilo.Sim.SimClock"/>).
+    /// </summary>
     public DateTimeOffset TimeUtc { get; init; }
+
+    /// <summary>Echte Uhrzeit für den Funkverlauf (null = <see cref="TimeUtc"/>, z. B. in Tests).</summary>
+    public DateTimeOffset? WallUtc { get; init; }
 
     public bool? OnGround { get; init; }
 

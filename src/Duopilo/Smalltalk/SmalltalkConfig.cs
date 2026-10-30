@@ -30,6 +30,56 @@ public static class SmalltalkProviders
     };
 }
 
+/// <summary>
+/// Denkaufwand für Reasoning-Modelle über die OpenAI-kompatible Schnittstelle ("reasoning_effort"). Andere Anbieter lehnen
+/// unbekannte Felder teils ab – deshalb sendet "auto" ihn nur bei Modellen, die ihn sicher kennen (gpt-oss).
+/// </summary>
+public static class SmalltalkReasoning
+{
+    public const string Auto = "auto";
+    public const string Off = "off";
+    public const string Low = "low";
+    public const string Medium = "medium";
+    public const string High = "high";
+
+    public static readonly IReadOnlyList<string> All = [Auto, Off, Low, Medium, High];
+
+    /// <summary>Unbekannt oder leer = "auto".</summary>
+    public static string Normalize(string? value) => value?.Trim().ToLowerInvariant() switch
+    {
+        Off or "none" or "aus" => Off,
+        Low or "niedrig" => Low,
+        Medium or "mittel" => Medium,
+        High or "hoch" => High,
+        _ => Auto,
+    };
+
+    /// <summary>Gültige Eingabe (für die Einstellungsseite)?</summary>
+    public static bool IsValid(string? value) => All.Contains(value?.Trim().ToLowerInvariant() ?? "");
+
+    /// <summary>Wert für "reasoning_effort" – null = Feld nicht senden.</summary>
+    public static string? Effort(string provider, string reasoning, string model) => provider != SmalltalkProviders.OpenAi
+        ? null
+        : Normalize(reasoning) switch
+        {
+            Off => null,
+            Auto => model.Contains("gpt-oss", StringComparison.OrdinalIgnoreCase) ? Low : null,
+            var effort => effort,
+        };
+
+    /// <summary>
+    /// Spielraum im Tokenlimit für die Denk-Tokens (sie zählen zu max_tokens): ohne ihn bleibt bei kurzen Antworten nichts für den
+    /// Text übrig. Die Länge der Antwort begrenzen weiter der Systemprompt und die Kürzung auf MaxReplyWords.
+    /// </summary>
+    public static int Headroom(string? effort) => effort switch
+    {
+        Low => 512,
+        Medium => 1024,
+        High => 2048,
+        _ => 0,
+    };
+}
+
 /// <summary>Gültige, bereinigte Einstellungen für den Smalltalk (aus <see cref="SmalltalkOptions"/>).</summary>
 public sealed record SmalltalkConfig
 {
@@ -58,6 +108,12 @@ public sealed record SmalltalkConfig
 
     public int UnaddressedMaxWords { get; init; } = 12;
 
+    /// <summary>"auto", "off", "low", "medium", "high" (<see cref="SmalltalkReasoning"/>).</summary>
+    public string Reasoning { get; init; } = SmalltalkReasoning.Auto;
+
+    /// <summary>Wert für "reasoning_effort" in der Anfrage – null = nicht senden (auch bei Claude und Ollama).</summary>
+    public string? ReasoningEffort => SmalltalkReasoning.Effort(Provider, Reasoning, EffectiveModel);
+
     public bool Enabled => Provider != SmalltalkProviders.Off;
 
     public bool HasApiKey => ApiKey.Length > 0;
@@ -76,8 +132,14 @@ public sealed record SmalltalkConfig
     /// <summary>Rechner, an den die Gespräche gehen (für den Datenschutzhinweis), null ohne gültige Adresse.</summary>
     public string? Host => Uri.TryCreate(EffectiveUrl, UriKind.Absolute, out var uri) ? uri.Host : null;
 
-    /// <summary>Höchstzahl der Tokens in der Antwort – grob zwei pro Wort, damit der Satz nicht abreißt.</summary>
-    public int MaxTokens => Math.Clamp((MaxReplyWords * 2) + 24, 64, 600);
+    /// <summary>Tokens für den Antworttext – grob zwei pro Wort, damit der Satz nicht abreißt.</summary>
+    public int AnswerTokens => Math.Clamp((MaxReplyWords * 2) + 24, 64, 600);
+
+    /// <summary>
+    /// Höchstzahl der Tokens in der Antwort (max_tokens): der Antworttext, bei Reasoning dazu Spielraum für die Denk-Tokens
+    /// (<see cref="SmalltalkReasoning.Headroom"/>).
+    /// </summary>
+    public int MaxTokens => AnswerTokens + SmalltalkReasoning.Headroom(ReasoningEffort);
 
     /// <summary>Was fehlt, damit Anfragen gehen (in der eingestellten Sprache) – null = vollständig.</summary>
     public string? Problem() => Provider switch
@@ -103,6 +165,7 @@ public sealed record SmalltalkConfig
             RequestsPerMinute = Math.Clamp(o.RequestsPerMinute, 1, 30),
             TimeoutSec = Math.Clamp(o.TimeoutSec, 2, 30),
             UnaddressedMaxWords = Math.Clamp(o.UnaddressedMaxWords, 0, 40),
+            Reasoning = SmalltalkReasoning.Normalize(o.Reasoning),
         };
     }
 
@@ -116,7 +179,8 @@ public sealed record SmalltalkConfig
         && string.IsNullOrEmpty(uri.Query);
 
     /// <summary>Ohne Schlüssel – für Log und Status.</summary>
-    public override string ToString() => $"{Provider} {EffectiveModel} @ {Host ?? "-"} (key {(HasApiKey ? "set" : "not set")})";
+    public override string ToString() =>
+        $"{Provider} {EffectiveModel} @ {Host ?? "-"} (key {(HasApiKey ? "set" : "not set")}, reasoning {Reasoning}{(ReasoningEffort is { } effort ? " → " + effort : "")}, max_tokens {MaxTokens})";
 }
 
 /// <summary>Gültige Einstellungen für den First Officer (aus <see cref="FirstOfficerOptions"/>).</summary>

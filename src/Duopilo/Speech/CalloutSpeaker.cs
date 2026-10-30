@@ -63,6 +63,7 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
     private volatile bool _preempted;
     private volatile VoiceOutputOptions _voice = VoiceOutputOptions.Default;
     private volatile bool _pilotSpeaking;
+    private volatile string? _suspended;
     private long _lastSpeechEndTicks;
     private long _lastAtcSpeechEndTicks;
     private long _pilotSpeakingSinceTicks;
@@ -70,6 +71,7 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
     private DateTimeOffset? _holdSinceUtc;
     private CancellationTokenSource? _currentCts;
     private volatile bool _atcWantsKokoro;
+    private volatile bool _previewWantsKokoro;
     private string? _lastSpoken;
     private bool _windowsHasEnglish;
 
@@ -190,7 +192,36 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
     /// <summary>Sim pausiert (laut letztem Monitoring-Takt).</summary>
     private bool SimPaused => _monitoring.LastSnapshot?.Paused == true;
 
-    private bool Silenced => _voice.SilentWhenPaused && SimPaused;
+    private bool Silenced => _suspended is not null || (_voice.SilentWhenPaused && SimPaused);
+
+    /// <summary>Sprachschleife inaktiv (Sim nicht verbunden, kein Flug, pausiert) – siehe <see cref="IVoiceOutput.Suspend"/>.</summary>
+    public void Suspend(string? reason)
+    {
+        var was = _suspended;
+        _suspended = reason;
+        if (reason is null)
+        {
+            if (was is not null)
+            {
+                _signal.Release();
+            }
+
+            return;
+        }
+
+        if (was is not null)
+        {
+            return;
+        }
+
+        // Laufende Ansage abbrechen; ein Funkspruch kommt nach der Pause einmal erneut, alles andere verfällt
+        _queue.Drop(i => i.Priority != SpeechPriority.Atc);
+        if (_current is { } current)
+        {
+            _preempted = current.Priority == SpeechPriority.Atc;
+            CancelCurrent();
+        }
+    }
 
     public void ConfigureVoice(VoiceOutputOptions options)
     {
@@ -321,6 +352,60 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
         }
     }
 
+    /// <summary>
+    /// Eine Kokoro-Stimme probehören (Dashboard, Auswahl der Stimme des First Officers): sofort, an der Warteschlange vorbei wie der
+    /// Test-Knopf. Rückgabe: Fehler in der eingestellten Sprache oder null. Lädt Kokoro bei Bedarf (dann erst beim nächsten Mal).
+    /// </summary>
+    public async Task<string?> PreviewVoiceAsync(string voice, string text, CancellationToken ct)
+    {
+        var speech = _speech;
+        if (speech is null)
+        {
+            return Loc.T("speech.playbackUnavailable");
+        }
+
+        if (!KokoroSpeechEngine.IsEnglishVoice(voice))
+        {
+            return Loc.T("speech.preview.unknownVoice", voice);
+        }
+
+        if (_kokoroState != KokoroState.Ready)
+        {
+            _previewWantsKokoro = true;
+            EnsureKokoroIfNeeded();
+            return _kokoroState == KokoroState.Failed ? Loc.T("speech.status.kokoroFailed", _kokoroError) : Loc.T("speech.preview.kokoroLoading");
+        }
+
+        Interlocked.Increment(ref _speakingNow);
+        try
+        {
+            var settings = _settings;
+            var clip = await Task.Run(() => _kokoro.Synthesize(text, voice, settings.Rate), ct);
+            if (clip.Samples.Length == 0)
+            {
+                return null;
+            }
+
+            var wav = WavEncoder.Encode(clip.Samples, clip.SampleRate, settings.Volume * _voice.KopilotVolume);
+            await _engineLock.WaitAsync(ct);
+            try
+            {
+                await speech.PlayWavAsync(wav, ct);
+            }
+            finally
+            {
+                _engineLock.Release();
+            }
+
+            return null;
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _speakingNow);
+            Interlocked.Exchange(ref _lastSpeechEndTicks, DateTimeOffset.UtcNow.UtcTicks);
+        }
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _stopping = stoppingToken;
@@ -367,7 +452,7 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
     /// <summary>Lädt Kokoro im Hintergrund, wenn die Einstellung es braucht (einmalig; nach einem Fehler erst nach Neustart).</summary>
     private void EnsureKokoroIfNeeded()
     {
-        if (_speech is null || !(SpeechEngines.NeedsKokoro(_settings.Engine, _windowsHasEnglish) || _atcWantsKokoro))
+        if (_speech is null || !(SpeechEngines.NeedsKokoro(_settings.Engine, _windowsHasEnglish) || _atcWantsKokoro || _previewWantsKokoro))
         {
             return;
         }
@@ -748,7 +833,7 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
             foreach (var e in events)
             {
                 // Sprachschleife: aktive Callouts aus voice-settings.json, bei Pause gar nichts (auch nicht "Sim paused")
-                if (!voice.SpeaksRule(e.Rule) || (voice.SilentWhenPaused && (SimPaused || e.Rule == Rules.SimPaused)))
+                if (!voice.SpeaksRule(e.Rule) || _suspended is not null || (voice.SilentWhenPaused && (SimPaused || e.Rule == Rules.SimPaused)))
                 {
                     continue;
                 }

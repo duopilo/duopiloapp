@@ -345,7 +345,8 @@ public sealed class VoiceSettingsStore(string dataDirectory, string? templateDir
     /// Schalter und Mikrofon ändern (Dashboard). Nur diese Werte werden in der Datei ersetzt – Kommentare und alle anderen
     /// Einstellungen bleiben, wie sie sind. null = unverändert lassen. Geschrieben wird erst, wenn das Ergebnis gültig ist.
     /// </summary>
-    public VoiceSettings Update(bool? enabled, string? microphone)
+    /// <param name="kopilotVoice">Feste Stimme des Kopiloten (voices.kopilot), "" = automatisch, null = unverändert.</param>
+    public VoiceSettings Update(bool? enabled, string? microphone, string? kopilotVoice = null)
     {
         if (!File.Exists(FilePath))
         {
@@ -362,6 +363,11 @@ public sealed class VoiceSettingsStore(string dataDirectory, string? templateDir
         if (microphone is not null)
         {
             text = JsonTextPatcher.Set(text, ["microphone", "device"], JsonTextPatcher.Quote(microphone.Trim()));
+        }
+
+        if (kopilotVoice is not null)
+        {
+            text = JsonTextPatcher.Set(text, ["voices", "kopilot"], JsonTextPatcher.Quote(kopilotVoice.Trim()));
         }
 
         var parsed = Parse(text);

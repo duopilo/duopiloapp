@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Duopilo.Atc;
@@ -74,6 +75,155 @@ public static partial class FirstOfficerNames
         return words.Length > 0 && words[0].Length >= 2 && Letters().IsMatch(words[0]) && words[0] != "kopilot" ? words[0] : null;
     }
 
+    /// <summary>
+    /// Häufige englische und deutsche Wörter, die einem Namen der Listen zum Verwechseln ähnlich sind (gleiche Schreibform oder ein
+    /// Buchstabe Unterschied: "been"/Ben, "pull"/Paul, "nice"/Nico, "klar"/Clara) – sie gelten nie als Anrede, nur der genaue Name.
+    /// Ermittelt gegen die häufigsten Wörter beider Sprachen; dazu das NATO-Alphabet.
+    /// </summary>
+    public static readonly IReadOnlySet<string> CommonWords = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "and", "any", "ans", "aha", "ant", "anal", "aka", "aua", "era", "eta", "sarg", "saga", "july", "juli", "lend", "lens", "lent", "lenk",
+        "nine", "ninth", "ninja", "sorry", "soft", "sowie", "sofa", "soy", "soggy", "sony", "klar", "klare", "klaro", "marry", "mafia",
+        "mania", "elend", "hand", "hang", "haha", "list", "liga", "lira", "north", "nor", "norm", "nord", "nova", "alive", "alike", "luck",
+        "lucky", "lucid", "looky", "elf", "eel", "eels", "elk", "elm", "ell", "been", "luchs", "not", "now", "nah", "noon", "non", "nod",
+        "nook", "nos", "tombs", "martyr", "margin", "martini", "martian", "pull", "pal", "pail", "pall", "pater", "penner", "pepper",
+        "potter", "pester", "putter", "epic", "eerie", "ethik", "ethic", "feelin", "olive", "olives", "oliven", "summon", "aryan", "mark",
+        "march", "marks", "markt", "marke", "huge", "hug", "hugs", "nice", "nick", "nich", "nike", "lesson", "lion", "lemon", "lean",
+        "lern", "loon", "lehn",
+        "alpha", "alfa", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india", "juliet", "juliett", "kilo", "lima",
+        "mike", "november", "oscar", "papa", "quebec", "romeo", "sierra", "tango", "uniform", "victor", "whiskey", "whisky", "xray",
+        "yankee", "zulu",
+    };
+
+    /// <summary>
+    /// Ist <paramref name="word"/> (normalisiert, ein Wort) die Anrede <paramref name="addressWord"/>? Whisper schreibt Namen oft
+    /// anders ("Erik" → "Eric", "Nico" → "Niko", "Hannah" → "Hanna"): Gleich ist, was nach <see cref="SpellingKey"/> gleich
+    /// aussieht (k/c, ph/f, th/t, y/i, doppelte Buchstaben, stummes h am Ende), bei Namen ab 4 Buchstaben auch ein Buchstabe
+    /// Unterschied bei gleichem Anfang ("Jonah" → Jonas). Normale Wörter zählen dabei nie (<see cref="CommonWords"/>, Befehle,
+    /// Abfragen, Ansprachewörter) – der genaue Name dagegen immer.
+    /// </summary>
+    public static bool IsAddress(string? word, string? addressWord)
+    {
+        if (string.IsNullOrEmpty(word) || string.IsNullOrEmpty(addressWord))
+        {
+            return false;
+        }
+
+        if (word == addressWord)
+        {
+            return true;
+        }
+
+        if (word.Length < 2 || !Letters().IsMatch(word) || CommonWords.Contains(word) || word is "kopilot" or "copilot"
+            || VoiceIntents.Recognize(word, ["kopilot"]).Kind != IntentKind.Unknown)
+        {
+            return false;
+        }
+
+        var heard = SpellingKey(word);
+        var name = SpellingKey(addressWord);
+        if (heard.Length == 0 || name.Length == 0)
+        {
+            return false;
+        }
+
+        if (heard == name)
+        {
+            return true;
+        }
+
+        return addressWord.Length >= 4 && word.Length >= 3 && heard[0] == name[0] && AtMostOneEdit(heard, name);
+    }
+
+    /// <summary>
+    /// Schreibform eines Namens, in der Varianten zusammenfallen: klein, ohne Akzente, ph→f, th→t, ck/c→k, y→i, "ie" am Ende → i,
+    /// h nach einem Vokal am Ende weg, doppelte Buchstaben einfach ("Sophie" → "sofi", "Hannah" → "hana", "Erick" → "erik").
+    /// </summary>
+    public static string SpellingKey(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return "";
+        }
+
+        var folded = new StringBuilder(name.Length);
+        foreach (var c in name.Trim().ToLowerInvariant().Normalize(NormalizationForm.FormD))
+        {
+            if (char.IsLetter(c))
+            {
+                folded.Append(c);
+            }
+        }
+
+        var w = folded.ToString()
+            .Replace("ph", "f", StringComparison.Ordinal)
+            .Replace("th", "t", StringComparison.Ordinal)
+            .Replace("ck", "k", StringComparison.Ordinal)
+            .Replace('c', 'k')
+            .Replace('y', 'i');
+        if (w.EndsWith("ie", StringComparison.Ordinal))
+        {
+            w = w[..^1];
+        }
+
+        if (w.Length > 2 && w[^1] == 'h' && w[^2] is 'a' or 'e' or 'i' or 'o' or 'u')
+        {
+            w = w[..^1];
+        }
+
+        var sb = new StringBuilder(w.Length);
+        foreach (var c in w)
+        {
+            if (sb.Length == 0 || sb[^1] != c)
+            {
+                sb.Append(c);
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>Höchstens ein Buchstabe anders, zu viel oder zu wenig (Levenshtein ≤ 1).</summary>
+    private static bool AtMostOneEdit(string a, string b)
+    {
+        if (Math.Abs(a.Length - b.Length) > 1)
+        {
+            return false;
+        }
+
+        if (a.Length > b.Length)
+        {
+            (a, b) = (b, a);
+        }
+
+        var i = 0;
+        var j = 0;
+        var edits = 0;
+        while (i < a.Length && j < b.Length)
+        {
+            if (a[i] == b[j])
+            {
+                i++;
+                j++;
+                continue;
+            }
+
+            if (++edits > 1)
+            {
+                return false;
+            }
+
+            if (a.Length == b.Length)
+            {
+                i++;
+            }
+
+            j++;
+        }
+
+        return edits + (b.Length - j) + (a.Length - i) <= 1;
+    }
+
     [GeneratedRegex(@"^\p{L}+$")]
     private static partial Regex Letters();
 }
@@ -84,11 +234,26 @@ public static partial class FirstOfficerNames
 /// </summary>
 public static class FirstOfficerCasting
 {
+    /// <summary>
+    /// Weibliche Stimmen für den First Officer: nur gute laut VOICES.md von hexgrad/Kokoro-82M (Note C+ oder besser). Nicht
+    /// af_nicole (Flüster-/ASMR-Stimme, B−), die übrigen weiblichen Stimmen liegen bei C oder darunter.
+    /// </summary>
+    public static readonly IReadOnlyList<string> FemaleVoices = ["af_heart", "af_bella", "bf_emma", "af_aoede", "af_kore", "af_sarah"];
+
+    /// <summary>Männliche Stimmen für den First Officer (C+). Nicht am_liam, am_eric, am_echo, am_onyx, am_adam, am_santa (D und schlechter).</summary>
+    public static readonly IReadOnlyList<string> MaleVoices = ["am_michael", "am_fenrir", "am_puck"];
+
+    /// <summary>Reserve (C), nur wenn die männlichen Stimmen oben fehlen oder alle schon eine ATC-Station hat.</summary>
+    public static readonly IReadOnlyList<string> MaleReserve = ["bm_george", "bm_fable"];
+
+    /// <summary>Alle Stimmen, die der First Officer bekommen kann (Auswahl im Dashboard).</summary>
+    public static IReadOnlyList<string> Voices { get; } = [.. FemaleVoices, .. MaleVoices, .. MaleReserve];
+
     /// <summary>Ersatz, wenn keine Kokoro-Stimmen neben der Duopilo.exe liegen (Entwicklung, Tests).</summary>
     public static readonly IReadOnlyList<string> DefaultVoices =
     [
-        "bf_emma", "af_heart", "bf_isabella", "af_bella", "bf_alice", "af_nicole", "af_sarah", "bf_lily",
-        "bm_george", "bm_lewis", "am_michael", "bm_daniel", "am_adam", "bm_fable", "am_eric", "am_liam",
+        "af_heart", "af_bella", "bf_emma", "af_aoede", "af_kore", "af_sarah", "bf_isabella", "bf_alice", "bf_lily",
+        "am_michael", "am_fenrir", "am_puck", "bm_george", "bm_fable", "bm_lewis", "bm_daniel", "am_adam", "am_eric", "am_liam",
     ];
 
     /// <summary>Geschlecht einer Kokoro-Stimme: zweiter Buchstabe f/m ("bf_emma" → weiblich).</summary>
@@ -140,23 +305,37 @@ public static class FirstOfficerCasting
         return new FirstOfficerPersona(flightKey, name, gender, voice, now, hasFixedName, voiceGender is not null);
     }
 
-    /// <summary>Zufällige Kokoro-Stimme des Geschlechts, keine der ATC-Stationen (gibt es keine freie mehr, irgendeine passende).</summary>
+    /// <summary>
+    /// Zufällige gute Kokoro-Stimme des Geschlechts (<see cref="FemaleVoices"/>, <see cref="MaleVoices"/>, dann
+    /// <see cref="MaleReserve"/>), keine der ATC-Stationen. Hat ATC alle, irgendeine gute – neue Stationen meiden sie dann.
+    /// </summary>
     public static string PickVoice(VoiceGender gender, IReadOnlyCollection<string> installed, IReadOnlyCollection<string> avoid, Random random)
     {
-        var all = (installed.Count > 0 ? installed : DefaultVoices)
-            .Where(v => GenderOfVoice(v) == gender)
-            .Distinct(StringComparer.Ordinal)
-            .OrderBy(v => v, StringComparer.Ordinal)
-            .ToList();
-        if (all.Count == 0)
+        var have = installed.Count > 0 ? new HashSet<string>(installed, StringComparer.Ordinal) : null;
+        var tiers = gender == VoiceGender.Female
+            ? new IReadOnlyList<string>[] { FemaleVoices }
+            : new IReadOnlyList<string>[] { MaleVoices, MaleReserve };
+        foreach (var tier in tiers)
         {
-            all = DefaultVoices.Where(v => GenderOfVoice(v) == gender).ToList();
+            var free = tier.Where(v => (have is null || have.Contains(v)) && !avoid.Contains(v, StringComparer.Ordinal)).ToList();
+            if (free.Count > 0)
+            {
+                return free[random.Next(free.Count)];
+            }
         }
 
-        var free = all.Where(v => !avoid.Contains(v, StringComparer.Ordinal)).ToList();
-        var pool = free.Count > 0 ? free : all;
-        return pool[random.Next(pool.Count)];
+        var any = tiers.SelectMany(t => t).Where(v => have is null || have.Contains(v)).ToList();
+        if (any.Count == 0)
+        {
+            any = [.. tiers[0]];
+        }
+
+        return any[random.Next(any.Count)];
     }
+
+    /// <summary>Satz zum Probehören einer Stimme im Dashboard (englisch, wie Callouts und Funk).</summary>
+    public static string PreviewText(string? name) =>
+        Loc.En("voice.firstOfficer.introduction", string.IsNullOrWhiteSpace(name) ? "Alex" : name.Trim()) + " Flaps one, speed checked.";
 
     /// <summary>Vorstellung beim Briefing in der Sprache des Smalltalks ("Hi, I'm Sam, I'll be your first officer today.").</summary>
     public static string Introduction(string name, string language) =>
@@ -268,6 +447,17 @@ public sealed class FirstOfficerRoster(FirstOfficerStore? store = null, TimeProv
             }
         }
 
+        // Nur die Stimme geändert (andere feste Stimme gleichen Geschlechts, fest ↔ automatisch): Name und Vorstellung bleiben
+        if (Current is { } same && (same.FlightKey == flightKey || flightKey == Unplanned || same.FlightKey == Unplanned)
+            && NameMatches(same, config) && GenderMatches(same, config, fixedVoice) && same.Name.Length > 0
+            && (fixedVoice is null || FirstOfficerCasting.GenderOfVoice(fixedVoice) == same.Gender))
+        {
+            var voice = fixedVoice ?? FirstOfficerCasting.PickVoice(same.Gender, installed, avoid, _random);
+            Current = same with { Voice = voice, FixedVoice = fixedVoice is not null, FlightKey = flightKey == Unplanned ? same.FlightKey : flightKey };
+            store?.Save(Current);
+            return (Current, true);
+        }
+
         Current = FirstOfficerCasting.Create(flightKey, config, fixedVoice, engineGender, installed, avoid, _random, now);
         store?.Save(Current);
         return (Current, true);
@@ -286,10 +476,14 @@ public sealed class FirstOfficerRoster(FirstOfficerStore? store = null, TimeProv
     /// <summary>Passt der gespeicherte First Officer noch zu den Einstellungen (fester Name, Geschlecht, feste Stimme)?</summary>
     private static bool Matches(FirstOfficerPersona p, FirstOfficerConfig config, string? fixedVoice)
     {
-        var nameOk = config.Name.Length > 0 ? p.FixedName && p.Name == config.Name : !p.FixedName;
         var voiceOk = fixedVoice is not null ? p.FixedVoice && p.Voice == fixedVoice : !p.FixedVoice;
-        var genderOk = config.Name.Length == 0 || fixedVoice is not null || config.Gender == FirstOfficerConfig.Auto
-                       || (config.Gender == FirstOfficerConfig.Female) == (p.Gender == VoiceGender.Female);
-        return nameOk && voiceOk && genderOk && KokoroSpeechEngine.IsEnglishVoice(p.Voice) && p.Name.Length > 0;
+        return NameMatches(p, config) && voiceOk && GenderMatches(p, config, fixedVoice) && KokoroSpeechEngine.IsEnglishVoice(p.Voice) && p.Name.Length > 0;
     }
+
+    private static bool NameMatches(FirstOfficerPersona p, FirstOfficerConfig config) =>
+        config.Name.Length > 0 ? p.FixedName && p.Name == config.Name : !p.FixedName;
+
+    private static bool GenderMatches(FirstOfficerPersona p, FirstOfficerConfig config, string? fixedVoice) =>
+        config.Name.Length == 0 || fixedVoice is not null || config.Gender == FirstOfficerConfig.Auto
+        || (config.Gender == FirstOfficerConfig.Female) == (p.Gender == VoiceGender.Female);
 }

@@ -129,6 +129,13 @@ public sealed partial class AtcSession
         _input = input;
         UpdateRoute(input);
         UpdateMotion(input);
+
+        // Notfall: keine automatischen Übergaben, Freigaben und Prüfungen (Squawk, Frequenz) – der Pilot bestimmt
+        if (Emergency is not null || CheckEmergencySquawk(input, output))
+        {
+            return output;
+        }
+
         Resync(input, output);
 
         switch (Phase)
@@ -182,6 +189,13 @@ public sealed partial class AtcSession
         var forOceanic = IsForOceanic(heard);
         var target = forOceanic ? OceanicStation() : Station;
         Record(output, "pilot", target, "pilot", text.Trim(), text.Trim(), addToOutput: false);
+
+        // Notruf (Mayday, Pan Pan, cancel) und jeder Funkspruch im Notfall: Vorrang vor Say again, Radio Check, Oceanic,
+        // falscher Station, Readbacks und Quittungen
+        if (HandleEmergencyTransmission(text, heard, input, output))
+        {
+            return output;
+        }
 
         if (heard.Tokens.Count == 0)
         {
@@ -1120,7 +1134,8 @@ public sealed partial class AtcSession
 
     private void Record(List<AtcTransmission> output, string from, AtcStation station, string messageId, string text, string spoken, bool addToOutput = true)
     {
-        var t = new AtcTransmission(++_nextId, _input.TimeUtc, from, station.Key, station.Name, station.Frequency.Written, from == "atc" ? station.Voice : "", messageId, text, spoken);
+        // Funkverlauf in echter Uhrzeit (die Sprachschleife vergleicht sie mit ihren Ansagen), Fristen in Sim-Zeit
+        var t = new AtcTransmission(++_nextId, _input.WallUtc ?? _input.TimeUtc, from, station.Key, station.Name, station.Frequency.Written, from == "atc" ? station.Voice : "", messageId, text, spoken);
         _transcript.Add(t);
         if (_transcript.Count > TranscriptLimit)
         {
