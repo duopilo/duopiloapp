@@ -375,7 +375,7 @@ public sealed partial class InputTests
     }
 
     [Fact]
-    public void ADIRS_aus_nur_mit_Rueckfrage()
+    public void ADIRS_aus_im_Flug_gesperrt_am_Boden_mit_Rueckfrage()
     {
         var profile = new AircraftProfile
         {
@@ -394,10 +394,17 @@ public sealed partial class InputTests
         ProfileStore.ValidateActions(profile, []);
         Assert.Single(profile.Actions);
 
+        // Im Flug irreversibel (kein Ausrichten in der Luft): fest gesperrt, auch wenn unklar ist, ob am Boden
         var air = Judge(profile, "adirs.ir1", "off", Air());
-        Assert.Equal(Ask, air.Outcome);
-        Assert.Contains("no realignment", air.Cautions[0].Spoken);
-        Assert.Equal("ADIRS_OFF", Assert.Single(Judge(profile, "adirs.ir1", "off", Ground()).Cautions).Code);
+        Assert.Equal(Locked, air.Outcome);
+        Assert.Contains("Ausrichten", air.Reason);
+        Assert.Equal(Locked, Judge(profile, "adirs.ir1", "off", Air() with { OnGround = null }).Outcome);
+
+        // Am Boden nur mit Rückfrage
+        var ground = Judge(profile, "adirs.ir1", "off", Ground());
+        Assert.Equal(Ask, ground.Outcome);
+        Assert.Equal("ADIRS_OFF", Assert.Single(ground.Cautions).Code);
+
         Assert.Equal(Allowed, Judge(profile, "adirs.ir1", "nav", Air()).Outcome);
     }
 

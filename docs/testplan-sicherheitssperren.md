@@ -73,7 +73,7 @@ Legende: **erlaubt** = normaler Readback, ein „confirm“ führt aus · **gesp
 ## Nur per Unit-Test (nicht im Flug)
 
 - „Gear disagree“ / „Flaps disagree“ (Bein bleibt hängen, Klappen bewegen sich nicht) – optional über die Failures im FBW-EFB nachstellen.
-- Batterien aus im Flug (nur A339-Profil hat `elec.battery`), ADIRS aus (kein Profil hat ADIRS-Aktionen).
+- Batterien aus im Flug (nur A339-Profil hat `elec.battery`), ADIRS aus (im Flug gesperrt, am Boden Rückfrage – kein Profil hat ADIRS-Aktionen).
 - Fehlende Grenzwerte im Profil (Rückfrage + „Grenzwert fehlt“ im Protokoll).
 
 ## Offene Punkte, auf die der Flug antworten soll

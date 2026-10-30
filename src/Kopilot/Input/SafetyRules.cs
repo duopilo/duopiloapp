@@ -40,8 +40,8 @@ public sealed record SafetyVerdict(string? Refusal, IReadOnlyList<SafetyCaution>
 /// <list type="bullet">
 /// <item>Sperren: gear.down nur unter der Höchsthöhe (A330: 25 000 ft; VLO prüft <see cref="Interlocks.GearSpeed"/>),
 /// Speedbrake nicht in den gesperrten Klappenstellungen, Batterien aus und beide Packs aus nur am Boden,
-/// APU Master aus nicht bei APU Bleed an.</item>
-/// <item>Rückfrage: Transponder STBY, ALT RPTG aus und TCAS STBY im Flug, Squawk 7500/7600/7700, ADIRS aus, AP/ATHR aus im Flug,
+/// APU Master aus nicht bei APU Bleed an, ADIRS aus nur am Boden (im Flug irreversibel: kein Ausrichten in der Luft).</item>
+/// <item>Rückfrage: Transponder STBY, ALT RPTG aus und TCAS STBY im Flug, Squawk 7500/7600/7700, ADIRS aus am Boden, AP/ATHR aus im Flug,
 /// FCU-Höhe unter MSA oder außerhalb der ATC-Freigabe.</item>
 /// <item>Fehlt ein Grenzwert oder eine Quelle im Profil (Höchsthöhe Fahrwerk, Speedbrake-Klappen, MSA-Quelle): nur mit Rückfrage,
 /// vermerkt im Log.</item>
@@ -86,7 +86,7 @@ public static class SafetyRules
         "xpdr.code" => "7500/7600/7700 nur mit Rückfrage",
         "fcu.ap1" or "fcu.ap2" or "fcu.athr" => "aus im Flug nur mit Rückfrage",
         "fcu.altitude" => "unter MSA (Profil: msaSource) oder außerhalb der ATC-Freigabe nur mit Rückfrage",
-        _ when id.StartsWith("adirs.", StringComparison.OrdinalIgnoreCase) => "aus nur mit Rückfrage",
+        _ when id.StartsWith("adirs.", StringComparison.OrdinalIgnoreCase) => "aus im Flug gesperrt, am Boden nur mit Rückfrage",
         _ => null,
     };
 
@@ -234,14 +234,20 @@ public static class SafetyRules
             cautions.Add(new SafetyCaution($"SQUAWK_{code}", squawk.Spoken, $"Squawk {code} ist der Code für {squawk.Meaning} – löst bei ATC Alarm aus."));
         }
 
-        // ---------------- Rückfragen: ADIRS, Autopilot, Autothrust
+        // ---------------- ADIRS aus: im Flug gesperrt (irreversibel, kein Ausrichten in der Luft), am Boden nur mit Rückfrage
         if (id.StartsWith("adirs.", StringComparison.Ordinal) && IsOff(option))
         {
-            cautions.Add(inFlight
-                ? new SafetyCaution("ADIRS_OFF_IN_FLIGHT", "ADIRS off in flight, no realignment in flight",
-                    "ADIRS aus im Flug – Lage- und Navigationsdaten weg, in der Luft kein neues Ausrichten möglich.")
-                : new SafetyCaution("ADIRS_OFF", "ADIRS off", "ADIRS aus – danach neu ausrichten (ca. 7–10 min)."));
+            if (inFlight)
+            {
+                return Refuse(s.OnGround is null
+                    ? "Unklar, ob das Flugzeug am Boden ist – ADIRS bleiben an."
+                    : "ADIRS aus im Flug ist gesperrt – Lage- und Navigationsdaten weg, in der Luft kein neues Ausrichten möglich.");
+            }
+
+            cautions.Add(new SafetyCaution("ADIRS_OFF", "ADIRS off", "ADIRS aus – danach neu ausrichten (ca. 7–10 min)."));
         }
+
+        // ---------------- Rückfragen: Autopilot, Autothrust
 
         if (id is "fcu.ap1" or "fcu.ap2" && IsOff(option) && inFlight)
         {

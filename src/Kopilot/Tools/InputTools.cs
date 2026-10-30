@@ -12,7 +12,7 @@ public static class InputTools
         "Two-step rule: prepare_action returns a readback. Say exactly that readback to the pilot and ask for confirmation. " +
         "Only call confirm_action after the pilot clearly answers 'confirm' (or 'affirm', 'yes', 'correct'). " +
         "If the pilot corrects, hesitates or says no, call cancel_action. Never confirm on your own initiative, never chain prepare and confirm without the pilot's answer in between. " +
-        "Critical actions (transponder/TCAS standby or ALT RPTG off in flight, squawk 7500/7600/7700, ADIRS off, AP/ATHR off in flight, " +
+        "Critical actions (transponder/TCAS standby or ALT RPTG off in flight, squawk 7500/7600/7700, ADIRS off on ground (refused in flight), AP/ATHR off in flight, " +
         "FCU altitude below MSA or outside the ATC clearance, missing aircraft limits) need a second confirmation: after the first confirm_action " +
         "the status is 'awaiting_caution_confirmation' – read the 'caution' text to the pilot word for word and call confirm_action again with the same token " +
         "only after the pilot confirms again.";
