@@ -2,32 +2,19 @@ name: Bench (temporary)
 on:
   push:
     branches: ["bench/voice-after-beta"]
-    paths: ["tools/supertonic/**", ".github/workflows/bench.yml"]
+    paths: [".github/workflows/bench.yml"]
 permissions:
   contents: write
 jobs:
-  supertonic:
-    runs-on: windows-latest
-    timeout-minutes: 45
+  hashes:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: '10.0.x'
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-      - name: Supertonic-3-Gewichte
-        shell: pwsh
+      - name: Supertonic-3-Dateien
         run: |
-          python -m pip install --quiet huggingface_hub
-          python -c "from huggingface_hub import snapshot_download; snapshot_download('supertone-oss-archive/supertonic-3', revision='aafc6e32416a594460b32413efc49d7fe4ce6d46', local_dir=r'${{ runner.temp }}\st')"
-          Get-ChildItem -Recurse "${{ runner.temp }}\st" | Select-Object FullName, Length | Format-Table -AutoSize
-      - name: Check
-        run: dotnet run -c Release --project tools/supertonic/Supertonic.Check.csproj -- "${{ runner.temp }}\st" "${{ runner.temp }}\work" results/supertonic
-      - name: Ergebnis ins Repo
-        if: always()
-        shell: pwsh
-        run: |
-          git config user.name "bench"; git config user.email "bench@users.noreply.github.com"
-          git add results; git commit -m "Supertonic-Ergebnis"; git push origin HEAD:bench/voice-after-beta
+          python3 -m pip install --quiet huggingface_hub
+          python3 -c "from huggingface_hub import snapshot_download; snapshot_download('supertone-oss-archive/supertonic-3', revision='aafc6e32416a594460b32413efc49d7fe4ce6d46', local_dir='st')"
+          mkdir -p results
+          (cd st && find . -type f -not -path './.cache/*' -printf '%s %p\n' | sort -k2 && echo && find . -type f -not -path './.cache/*' -exec sha256sum {} \; | sort -k2 && echo && head -c 600 onnx/tts.json && echo && python3 -c "import json;d=json.load(open('onnx/tts.json'));print(json.dumps({k:d[k] for k in d if k in ('ae','ttl','dp')},indent=1)[:3000])") > results/supertonic-files.txt
+          git config user.name bench; git config user.email bench@users.noreply.github.com
+          git add results; git commit -m "Supertonic-Dateien"; git push origin HEAD:bench/voice-after-beta
