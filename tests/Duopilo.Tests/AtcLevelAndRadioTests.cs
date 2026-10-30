@@ -457,8 +457,13 @@ public sealed class AtcLevelAndRadioTests
             Assert.Empty(flight.Run(nm, 10));
         }
 
-        flight.Transponder = "7700";
+        // Notfallcodes: nie "check squawk"; bei 7700 fragt ATC stattdessen einmal nach dem Notfall (AtcTests.Emergency)
+        flight.Transponder = "7600";
         Assert.Empty(flight.Run(nm, 60));
+        Assert.Null(session.SquawkDeviation);
+
+        flight.Transponder = "7700";
+        Assert.Equal(AtcMessageIds.EmergencyConfirmSquawk, Assert.Single(flight.Run(nm, 60)).MessageId);
         Assert.Null(session.SquawkDeviation);
 
         flight.Transponder = WrongSquawk(assigned);
