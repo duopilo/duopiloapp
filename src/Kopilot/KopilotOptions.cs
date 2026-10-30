@@ -50,6 +50,12 @@ public sealed class KopilotOptions
     /// <summary>Ordner für Caches (ECAM-Tabellen). Leer = %LOCALAPPDATA%\Kopilot.</summary>
     public string DataDirectory { get; set; } = "";
 
+    /// <summary>
+    /// Nach einem Absturz startet Windows die Tray-Instanz neu (RegisterApplicationRestart, erst nach 60 s Laufzeit).
+    /// Die ATC-Sitzung kommt dabei aus der Sitzungsdatei zurück.
+    /// </summary>
+    public bool RestartAfterCrash { get; set; } = true;
+
     public string ResolveDataDirectory() =>
         string.IsNullOrWhiteSpace(DataDirectory)
             ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Kopilot")
@@ -240,6 +246,18 @@ public sealed class AtcOptions
 
     /// <summary>Funksprüche mit den Kokoro-Stimmen der Stationen sprechen (nur Tray-Instanz).</summary>
     public bool Speak { get; set; } = true;
+
+    public const string DefaultSessionFile = "atc-session.json";
+
+    /// <summary>
+    /// Die laufende ATC-Sitzung wird hier gesichert (relativ = im DataDirectory) und nach einem Neustart oder Absturz von
+    /// Kopilot wiederhergestellt, solange der SimBrief-Plan derselbe ist. Leer = nicht sichern.
+    /// Die stdio-Instanz nimmt automatisch eine eigene Datei (atc-session-stdio.json).
+    /// </summary>
+    public string SessionFile { get; set; } = DefaultSessionFile;
+
+    /// <summary>Ältere Sicherungen werden nicht wiederhergestellt (Stunden).</summary>
+    public double SessionMaxAgeHours { get; set; } = 24;
 }
 
 public sealed class InputOptions

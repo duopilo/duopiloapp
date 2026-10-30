@@ -253,6 +253,8 @@ Auf Kurzstrecken ohne Oceanic-Fixes (Koordinaten wie `55N020W` oder eine FIR, di
 
 **Stimmen:** Jede Station (z. B. Frankfurt Delivery, Langen Radar, Shanwick Oceanic) bekommt pro Flug zufällig eine Stimme aus `voices.pool` – möglichst jede eine andere, nie die Stimme der Callouts. Nach einem Neustart von Kopilot bleiben die Stimmen im selben Flug gleich. Feste Stimmen unter `voices.stations`, z. B. `"EDDF/tower": "bf_emma"`, `"FIR/EGGX": "bm_daniel"` oder `"delivery": "af_heart"` für alle Delivery-Stationen. Für ATC lädt Kopilot Kokoro auch dann, wenn die Callouts die Windows-Stimme nehmen; solange Kokoro lädt, spricht die englische Windows-Stimme. Eine Warning unterbricht einen laufenden Funkspruch. Gesprochen wird nur von der Tray-Instanz (HTTP-Modus); über die stdio-Instanz von Claude Desktop gibt es die Antwort nur als Text.
 
+**Sitzung sichern:** Kopilot sichert die laufende ATC-Sitzung laufend in `%LOCALAPPDATA%\Kopilot\atc-session.json` (Station, Phase, freigegebene Höhe, Oceanic-Freigabe, Werte von Hand wie das Gate, Stimmen, Funkverlauf). Nach einem Neustart oder Absturz geht es im selben Flug (gleicher SimBrief-Plan) weiter, sobald MSFS verbunden ist – ohne neuen Erstanruf. Ein beim Absturz noch offenes Readback gilt als erledigt; eine angeforderte, aber nicht zurückgelesene Oceanic-Freigabe fordert der Pilot neu an. `atc_control stop` oder `restart` löscht die Sicherung, ein neuer SimBrief-Plan beginnt eine neue Sitzung. Einstellungen: `Kopilot:Atc:SessionFile` (leer = aus), `Kopilot:Atc:SessionMaxAgeHours` (Standard 24). Die stdio-Instanz von Claude Desktop sichert in eine eigene Datei (`atc-session-stdio.json`). `get_atc_controller` zeigt unter `persistence`, wann zuletzt gesichert und ob fortgesetzt wurde.
+
 **Vorlagen bearbeiten:** Alle Texte stehen in `atc-templates.json` neben der `Kopilot.exe`. Eigene Änderungen am besten in einer Kopie unter `%LOCALAPPDATA%\Kopilot\atc-templates.json` – die hat Vorrang und überschreibt `update.cmd` nicht. Danach `atc_control` mit `reload` (oder Kopilot neu starten).
 
 ```jsonc
@@ -288,7 +290,13 @@ Mikrofon → Silero VAD (Satzgrenzen) → Whisper (Abschrift) → Router ─┬�
                                      Sprachausgabe (Kokoro) ←───────┘   Warnungen > Callouts > Antworten > ATC
 ```
 
-**Einschalten:** in `%LOCALAPPDATA%\Kopilot\voice-settings.json` (legt Kopilot beim ersten Start aus der Vorlage an) `"enabled": true` setzen und Kopilot neu starten. Beim ersten Start lädt Kopilot das Whisper-Modell (`base-q5_1`, ~60 MB) und Silero VAD (~2 MB) nach `%LOCALAPPDATA%\Kopilot\models`. Für Befehle muss außerdem die Eingabe im Dashboard freigegeben sein. Status: `http://127.0.0.1:5155/voice` (zuletzt erkannter Satz, Zuordnung, Antwort, Rechenzeit).
+**Einschalten:** im Dashboard unter **Ansagen → Stimme → Sprachschleife** den Haken setzen und das Mikrofon wählen – das gilt sofort, ohne Neustart von Kopilot. Gespeichert wird in `%LOCALAPPDATA%\Kopilot\voice-settings.json` (legt Kopilot beim ersten Start aus der Vorlage an); dort geht es auch von Hand mit `"enabled": true` und anschließendem Neustart. **Nicht** die `voice-settings.json` neben der `Kopilot.exe` bearbeiten – das ist nur die Vorlage, `update.cmd` überschreibt sie (Kopilot warnt im Log, wenn dort etwas anderes steht). Beim ersten Start lädt Kopilot das Whisper-Modell (`base-q5_1`, ~60 MB) und Silero VAD (~2 MB) nach `%LOCALAPPDATA%\Kopilot\models`. Für Befehle muss außerdem die Eingabe im Dashboard freigegeben sein. Die Sprachschleife läuft nur in der Tray-Instanz, nicht in der stdio-Instanz von Claude Desktop.
+
+**Mikrofon:** leer = Windows-Standardaufnahmegerät, sonst ein Teil des Gerätenamens (`microphone.device`). Die vorhandenen Geräte stehen im Dashboard, in `kopilot_status` und beim Start im Log („Aufnahmegeräte: …“). Fehlt das gewählte Gerät (z. B. VR-Brille noch aus), nimmt Kopilot das Standardgerät und wechselt automatisch, sobald es auftaucht.
+
+**Status:** `kopilot_status` → `voiceLoop` (läuft sie, Mikrofon, Pegel, Sätze erkannt/verworfen, zuletzt erkannter Satz, Zuordnung, Antwort), im Dashboard neben dem Mikrofon, roh unter `http://127.0.0.1:5155/voice`.
+
+**Log:** Start, Einstellungen, Geräte, Modell-Download, erster Audioblock, jeder erkannte Satz mit Rechenzeit und Ziel (Kopilot oder ATC), verworfene Sätze mit Grund (Sim pausiert, stumm, Whisper zu langsam, nichts erkannt) und alle 5 Minuten ein Lagebericht. Kommen keine Daten oder nur digitale Stille vom Mikrofon (stummgeschaltet, Windows-Datenschutz „Desktop-Apps Zugriff auf das Mikrofon“ aus), steht eine Warnung im Log. Noch genauer (jede Satzgrenze, rohe Whisper-Abschrift): in `appsettings.Local.json` auf oberster Ebene `"Logging": { "LogLevel": { "Kopilot.Voice": "Debug" } }`.
 
 **So läuft es:**
 - Das Mikrofon ist dauerhaft offen. Silero VAD erkennt, wann du sprichst; nach 0,7 s Stille geht der Satz an Whisper.
@@ -407,6 +415,8 @@ Das Dashboard läuft im Browser, nur lokal auf dem Sim-PC (über den Tunnel ist 
 Der Regler „Helligkeit“ dimmt nur die Anzeigen – für Nachtflüge.
 
 **Log:** ohne Konsolenfenster schreibt Kopilot nach `%LOCALAPPDATA%\Kopilot\logs\kopilot.log` (die stdio-Instanz von Claude Desktop nach `kopilot-stdio.log`). Zur Fehlersuche gibt es weiterhin eine Konsole: `Kopilot.exe --console`. Ohne Tray-Symbol: `--no-tray`.
+
+**Abstürze:** Unbehandelte Ausnahmen stehen sofort in `logs\crash.log`. Harte Abstürze (z. B. eine AccessViolation in SimConnect) kann .NET nicht abfangen – dafür führt die Tray-Instanz ein kleines Journal (`logs\journal-http.bin`), das auch einen harten Absturz übersteht. Beim nächsten Start meldet Kopilot im Log und in `crash.log`, dass der letzte Lauf nicht sauber endete, was zuletzt lief (z. B. „SimConnect.ReceiveMessage“, die letzten Verkehrsabfragen mit `dwSize`) und die Ausnahme samt Stacktrace aus der Windows-Ereignisanzeige. Windows startet die Tray-Instanz nach einem Absturz neu (`RestartAfterCrash`, erst nach 60 s Laufzeit, damit kein Absturz-Kreislauf entsteht); die ATC-Sitzung kommt dabei zurück.
 
 Ein zweiter Start von Kopilot öffnet nur das Dashboard der laufenden Instanz.
 
@@ -639,6 +649,7 @@ Jede Variable hat eine eigene SimConnect-Data-Definition. Ist ein Name in MSFS u
 - [x] ATC-Modul: Zustandsmaschine mit Textvorlagen (Delivery bis Ground, Oceanic), Readback-Prüfung, Stimme je Station
 - [ ] ATC: Rollroutenberechnung aus dem Taxiway-Graphen der Facilities-API (`ITaxiRouteProvider`), Gate aus der Parkposition
 - [x] v0.9: Lokale Sprachschleife (Silero VAD, Whisper, feste Befehlsmuster, Readback und Bestätigung per Sprache), Prioritäts-Warteschlange, Taxi-Speed-Warnung, Funk an das ATC-Modul
+- [x] v0.9.1: Sprachschleife im Dashboard ein- und ausschalten, Mikrofonauswahl, Status in `kopilot_status`, ausführliches Log; ATC-Sitzung übersteht Neustarts; Absturz-Journal und Neustart nach Absturz
 - [ ] Sprachschleife: Testflug in VR, Aktionen für den iniBuilds A321LR
 - [ ] Eingabe-Modul: im Sim prüfen, NAV & LOGO über Input Events, weitere Flugzeuge
 - [ ] WASimCommander-Anbindung (L:-Variablen auflisten, Events)

@@ -307,7 +307,11 @@ public sealed partial class SimConnectClient : BackgroundService
             {
                 if (signaled == 0)
                 {
+                    // Für das Absturz-Journal: Ein harter Absturz beim Auspacken einer Nachricht (AccessViolation im
+                    // SimConnect-Marshaling) lässt diesen Zustand stehen – beim nächsten Start sichtbar.
+                    Kopilot.Hosting.CrashJournal.State("SimConnect.ReceiveMessage");
                     _sc!.ReceiveMessage();
+                    Kopilot.Hosting.CrashJournal.State(null);
                 }
 
                 if (_quitRequested)
