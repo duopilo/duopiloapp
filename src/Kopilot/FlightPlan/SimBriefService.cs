@@ -34,12 +34,43 @@ public sealed class SimBriefService
 
     public string? LastError { get; private set; }
 
+    /// <summary>Gesetzter Username (leer = keiner).</summary>
+    public string Username => _options.Username;
+
+    /// <summary>Gesetzte Pilot-ID (leer = keine).</summary>
+    public string PilotId => _options.PilotId;
+
+    /// <summary>
+    /// Konto aus den Dashboard-Einstellungen übernehmen – gilt sofort, ohne Neustart. Hat sich das Konto geändert, wird der
+    /// geladene Plan verworfen (er gehört zum alten Konto); der nächste <see cref="GetAsync"/> holt den neuen.
+    /// </summary>
+    /// <returns>true, wenn sich das Konto geändert hat.</returns>
+    public bool ChangeAccount(string username, string pilotId)
+    {
+        username = username.Trim();
+        pilotId = pilotId.Trim();
+        if (string.Equals(username, _options.Username.Trim(), StringComparison.OrdinalIgnoreCase)
+            && string.Equals(pilotId, _options.PilotId.Trim(), StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        _options.Username = username;
+        _options.PilotId = pilotId;
+        _current = null;
+        _legHint = null;
+        _fetchedUtc = default;
+        LastError = null;
+        _log.LogInformation("SimBrief-Konto geändert (Dashboard): {Account}", pilotId.Length > 0 ? $"Pilot-ID {pilotId}" : username.Length > 0 ? username : "keins");
+        return true;
+    }
+
     /// <summary>OFP holen – aus dem Cache, solange er jünger als CacheMinutes ist, sonst von SimBrief.</summary>
     public async Task<Ofp?> GetAsync(bool refresh, CancellationToken ct)
     {
         if (!IsConfigured)
         {
-            LastError = "SimBrief ist nicht eingerichtet. In appsettings.Local.json unter Kopilot:SimBrief den Username oder die PilotId eintragen.";
+            LastError = "SimBrief ist nicht eingerichtet. Im Dashboard unter Einstellungen → SimBrief (oder in appsettings.Local.json unter Kopilot:SimBrief) den Username oder die Pilot-ID eintragen.";
             return null;
         }
 

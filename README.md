@@ -392,7 +392,7 @@ Lizenzen: Whisper.net und whisper.cpp (MIT), Silero VAD (MIT), NAudio (MIT).
 
 ## SimBrief
 
-Die Airliner-FMS (iniBuilds, FlyByWire) geben ihre Route nicht über SimConnect heraus. Kopilot holt deshalb das letzte OFP von SimBrief (öffentliche API, kein Login). In `appsettings.Local.json`:
+Die Airliner-FMS (iniBuilds, FlyByWire) geben ihre Route nicht über SimConnect heraus. Kopilot holt deshalb das letzte OFP von SimBrief (öffentliche API, kein Login). Am einfachsten im Dashboard unter **Einstellungen → SimBrief** (gilt sofort), oder in `appsettings.Local.json`:
 
 ```jsonc
 "Kopilot": { "SimBrief": { "Username": "dein-simbrief-name" } }   // oder "PilotId": "123456"
@@ -463,7 +463,7 @@ Der Produktname für Installer, ZIP und Release steht zentral als `<Product>` in
 
 Das Symbol im Infobereich zeigt den Zustand am Punkt unten rechts: grau = wartet auf MSFS, grün = verbunden, gelb = Caution aktiv, rot = Warning aktiv. Rechtsklick öffnet das Menü: Dashboard, Profile neu laden, Logdatei, Programmordner, **Mit Windows starten** und Beenden.
 
-Das Dashboard läuft im Browser, nur lokal auf dem Sim-PC (über den Tunnel ist es gesperrt). Es zeigt:
+Das Dashboard läuft im Browser, nur lokal auf dem Sim-PC (über den Tunnel ist es gesperrt). Oben rechts sitzen **Fehler melden** und **Einstellungen** (beides unten erklärt). Es zeigt:
 
 - FMA-Zeile (Schub, vertikal, lateral, AP/FD/A-THR) in den Airbus-Farben
 - Flugdaten mit Speed- und Höhenziel, Master Warning/Caution als Tasten oben rechts
@@ -472,6 +472,25 @@ Das Dashboard läuft im Browser, nur lokal auf dem Sim-PC (über den Tunnel ist 
 - „Einrichtung und Diagnose“: alle Profil-Bindings mit Status geprüft/ungeprüft und aktuellem Wert, Log, Knöpfe zum Neuladen
 
 Der Regler „Helligkeit“ dimmt nur die Anzeigen – für Nachtflüge.
+
+### Einstellungen
+
+`http://127.0.0.1:5155/#einstellungen` (Knopf **Einstellungen**) – statt `appsettings.Local.json` von Hand zu bearbeiten:
+
+| Bereich | Inhalt | Gilt |
+|---|---|---|
+| **Verbindung zu Claude** | lokaler MCP-Endpunkt, öffentliche Adresse des Tunnels, Freigabe-Passwort (Claude-Connector), Bearer-Token neu erzeugen oder entfernen, Tunnel prüfen | nach Neustart |
+| **SimBrief** | Username oder Pilot-ID, lädt danach gleich den Plan | sofort |
+| **Mikrofon** | Aufnahmegerät der Sprachschleife mit Pegel | sofort |
+| **Module** | Monitoring, Eingabe (zweimal klicken), ATC, Sprachschleife | Monitoring/ATC nach Neustart, sonst sofort |
+
+Geschrieben wird in die vorhandenen Dateien: `appsettings.Local.json` neben der `Kopilot.exe` (Kommentare und Reihenfolge bleiben erhalten, vorher landet eine Sicherung in `%LOCALAPPDATA%\Kopilot\appsettings.Local.backup.json`), Eingabe und Sprachschleife wie bisher in `input.json` bzw. `voice-settings.json`. Was erst beim Start gelesen wird, zeigt die Seite als „gilt nach Neustart“ – der Knopf **Kopilot neu starten** startet die Tray-Instanz neu (die ATC-Sitzung kommt aus der Sicherung zurück). Passwort und Token gehen nie an den Browser zurück; ein neu erzeugter Token wird genau einmal zum Kopieren angezeigt. Setzt eine Umgebungsvariable (`Kopilot__…`) denselben Wert, weist die Seite darauf hin – die Variable hat Vorrang vor der Datei.
+
+### Fehler melden
+
+Der Knopf hält sofort fest, was Kopilot gerade weiß – Position (mit Kartenlink), Höhe und Flugfläche, Station, FIR und Frequenz laut Kopilot (samt Herkunft: MSFS, Vorlage oder Platzhalter), COM1 aktiv/standby, Transponder gegen Kopilot-Squawk, Uhrzeit (echt und Sim), Version, Flug und die letzten Funksprüche. Danach Art wählen (FIR-Grenze/Station, Frequenz, Airline/Rufzeichen, Programmfehler), kurz beschreiben, was falsch ist und was richtig wäre, und **Auf GitHub melden**: Es öffnet sich ein vorausgefülltes Issue mit der Vorlage `.github/ISSUE_TEMPLATE/kopilot-meldung.yml` und den Labels `data/fir`, `data/frequency`, `data/airline` bzw. `bug` – dort nur noch absenden. Jede Meldung liegt zusätzlich als Markdown in `%LOCALAPPDATA%\Kopilot\reports` (auch ohne GitHub-Konto oder Internet, **Nur lokal speichern**).
+
+Datenkorrekturen werden nach Prüfung eingepflegt; die Datenbasis bleiben VAT-Spy/VATSIM-Sektoren und die Facilities-API, Meldungen sind Stichproben. Wird der Link zu lang (viele Funksprüche, langer Text), kürzt Kopilot ihn – vollständig steht alles in der lokalen Kopie und in der Zwischenablage (**Text kopieren**). Die Labels setzt der Link direkt nur für Leute mit Triage-Rechten; für alle anderen setzt die Action `issue-labels.yml` sie anhand einer unsichtbaren Markierung im Kontext. Repository und Vorlage stehen unter `Kopilot:Reports` (`GitHubRepository` leer = nur lokal).
 
 **Log:** ohne Konsolenfenster schreibt Kopilot nach `%LOCALAPPDATA%\Kopilot\logs\kopilot.log` (die stdio-Instanz von Claude Desktop nach `kopilot-stdio.log`). Zur Fehlersuche gibt es weiterhin eine Konsole: `Kopilot.exe --console`. Ohne Tray-Symbol: `--no-tray`.
 
@@ -548,6 +567,8 @@ C:\Tools\Kopilot\Kopilot.exe --generate-secret | more
 ```
 
 Das gibt einen zufälligen Bearer-Token aus. (`| more` sorgt dafür, dass die Eingabeaufforderung auf die Ausgabe wartet – Kopilot ist eine Windows-Anwendung ohne eigene Konsole.) Das Freigabe-Passwort denkst du dir selbst aus, mindestens 12 Zeichen.
+
+> Einfacher: Dashboard → **Einstellungen → Verbindung zu Claude**. Dort öffentliche Adresse und Passwort eintragen, den Token mit **Neu erzeugen** anlegen und Kopilot über den Knopf neu starten. Die Schritte unten machen dasselbe von Hand.
 
 Dann `appsettings.Local.example.json` im Ordner `C:\Tools\Kopilot` nach **`appsettings.Local.json`** kopieren und ausfüllen:
 

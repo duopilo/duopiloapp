@@ -86,15 +86,17 @@ public static class JsonTextPatcher
             throw new JsonException("Kein JSON-Objekt gefunden.");
         }
 
-        // Fehlende Teile des Pfads als neue Eigenschaft direkt hinter der "{" des tiefsten vorhandenen Objekts einfügen
-        var indent = new string(' ', 2 * (deepestPrefix + 1));
+        // Fehlende Teile des Pfads als neue Eigenschaft direkt hinter der "{" des tiefsten vorhandenen Objekts einfügen,
+        // fehlende Zwischenobjekte mehrzeilig mit zwei Leerzeichen je Ebene (so liest sich die Datei auch von Hand)
+        static string Indent(int level) => new(' ', 2 * level);
+        var nl = Environment.NewLine;
         var value = rawJsonValue;
         for (var i = path.Count - 1; i > deepestPrefix; i--)
         {
-            value = $"{{ {Quote(path[i])}: {value} }}";
+            value = $"{{{nl}{Indent(i + 1)}{Quote(path[i])}: {value}{nl}{Indent(i)}}}";
         }
 
-        var insert = $"{Environment.NewLine}{indent}{Quote(path[deepestPrefix])}: {value},";
+        var insert = $"{nl}{Indent(deepestPrefix + 1)}{Quote(path[deepestPrefix])}: {value},";
         var at = (int)deepestBrace + 1;
         return Encoding.UTF8.GetString(bytes, 0, at) + insert + Encoding.UTF8.GetString(bytes, at, bytes.Length - at);
     }

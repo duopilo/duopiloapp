@@ -1,0 +1,36 @@
+name: Meldung aus Kopilot
+description: Datenfehler (FIR-Grenze, Station, Frequenz, Airline) oder Programmfehler – am einfachsten über „Fehler melden“ im Kopilot-Dashboard, das den Kontext mitschickt.
+title: "[Meldung] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Kommt die Meldung aus dem Dashboard („Fehler melden“), sind die Felder schon ausgefüllt und die Labels gesetzt.
+        Datenkorrekturen bitte möglichst mit Quelle (Sim-ATC, Karte, AIP), sie werden nach Prüfung eingepflegt.
+  - type: dropdown
+    id: art
+    attributes:
+      label: Art der Meldung
+      description: Nur nötig, wenn du das Issue von Hand anlegst – aus dem Dashboard kommt die Art schon mit.
+      multiple: true
+      options:
+        - FIR-Grenze / Station
+        - Frequenz
+        - Airline / Rufzeichen
+        - Programmfehler
+    validations:
+      required: false
+  - type: textarea
+    id: beschreibung
+    attributes:
+      label: Was ist falsch, was wäre richtig?
+      description: Was Kopilot gemacht hat, was richtig gewesen wäre und woher du das weißt (z. B. „Sim-ATC übergibt hier an Montreal Center 132.25“).
+    validations:
+      required: true
+  - type: textarea
+    id: kontext
+    attributes:
+      label: Kontext aus Kopilot
+      description: Füllt das Dashboard aus (Position, Höhe, Station und Frequenz laut Kopilot, COM1, Uhrzeit, Version, letzte Funksprüche). Bitte nicht löschen.
+    validations:
+      required: false

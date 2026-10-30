@@ -4,6 +4,7 @@ using Kopilot.Hosting;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Kopilot.Tests;
 
@@ -20,7 +21,8 @@ internal sealed class TestApp : IAsyncDisposable
 
     public WebApplication App { get; }
 
-    public static async Task<TestApp> StartAsync(string stateFile, Dictionary<string, string?>? overrides = null)
+    /// <param name="services">Dienste ersetzen (z. B. die Einstellungsdatei auf einen Temp-Pfad legen).</param>
+    public static async Task<TestApp> StartAsync(string stateFile, Dictionary<string, string?>? overrides = null, Action<IServiceCollection>? services = null)
     {
         var settings = new Dictionary<string, string?>
         {
@@ -43,6 +45,7 @@ internal sealed class TestApp : IAsyncDisposable
         builder.Configuration.AddInMemoryCollection(settings);
         builder.WebHost.UseTestServer();
         HttpHost.AddServices(builder);
+        services?.Invoke(builder.Services);
 
         var app = builder.Build();
         HttpHost.Configure(app);

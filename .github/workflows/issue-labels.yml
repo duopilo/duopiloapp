@@ -1,0 +1,63 @@
+name: Labels für Meldungen
+
+# Meldungen aus dem Kopilot-Dashboard tragen ihre Art als unsichtbare Markierung im Kontext
+# (<!-- kopilot-meldung labels: data/frequency,bug -->). Der Link aus dem Dashboard setzt die Labels zwar auch direkt,
+# das wirkt aber nur für Leute mit Triage-Rechten. Diese Action setzt sie für alle anderen – und bei Issues, die von
+# Hand über die Vorlage angelegt wurden, anhand von „Art der Meldung“.
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Labels aus der Meldung setzen
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.issue.number }}
+          BODY: ${{ github.event.issue.body }}
+        shell: bash
+        run: |
+          # Nur diese Labels sind erlaubt – alles andere aus dem Text wird ignoriert
+          declare -A COLORS=( ["data/fir"]="1d76db" ["data/frequency"]="0e8a16" ["data/airline"]="5319e7" ["bug"]="d73a4a" )
+          declare -A DESCRIPTIONS=(
+            ["data/fir"]="Datenfehler: FIR-Grenze, Sektor oder Station"
+            ["data/frequency"]="Datenfehler: Frequenz"
+            ["data/airline"]="Datenfehler: Airline oder Rufzeichen"
+            ["bug"]="Something isn't working"
+          )
+
+          wanted=()
+          marker=$(printf '%s' "$BODY" | grep -oE 'kopilot-meldung labels:[^>]*' | head -n1 | sed -E 's/^kopilot-meldung labels:[[:space:]]*//; s/[[:space:]]*-*$//')
+          IFS=',' read -ra from_marker <<< "$marker"
+          for label in "${from_marker[@]}"; do
+            label=$(printf '%s' "$label" | tr -d '[:space:]')
+            [[ -n "${COLORS[$label]:-}" ]] && wanted+=("$label")
+          done
+
+          # Von Hand über die Vorlage: Abschnitt „Art der Meldung“
+          art=$(printf '%s' "$BODY" | awk '/^### Art der Meldung/{flag=1; next} /^### /{flag=0} flag')
+          grep -q 'FIR-Grenze' <<< "$art" && wanted+=("data/fir")
+          grep -q 'Frequenz' <<< "$art" && wanted+=("data/frequency")
+          grep -q 'Airline' <<< "$art" && wanted+=("data/airline")
+          grep -q 'Programmfehler' <<< "$art" && wanted+=("bug")
+
+          if [[ ${#wanted[@]} -eq 0 ]]; then
+            echo "Keine Meldung aus Kopilot – nichts zu tun."
+            exit 0
+          fi
+
+          mapfile -t unique < <(printf '%s\n' "${wanted[@]}" | sort -u)
+          for label in "${unique[@]}"; do
+            # Fehlende Labels anlegen (vorhandene bleiben unverändert)
+            gh label create "$label" --color "${COLORS[$label]}" --description "${DESCRIPTIONS[$label]}" 2>/dev/null || true
+          done
+
+          gh issue edit "$NUMBER" $(printf -- '--add-label %s ' "${unique[@]}")
+          echo "Labels gesetzt: ${unique[*]}"

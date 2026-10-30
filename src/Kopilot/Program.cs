@@ -90,12 +90,17 @@ else
     var dashboardUrl = url.TrimEnd('/') + "/";
 
     // Nur eine Instanz im HTTP-Modus: Ein zweiter Start öffnet einfach das Dashboard der laufenden Instanz.
+    // Ausnahme: Neustart aus dem Dashboard (--replace) – dann auf das Ende der alten Instanz warten.
+    var replacing = Has(args, AppRestart.ReplaceSwitch);
     using var instance = new Mutex(initiallyOwned: true, $"Local\\Kopilot-{new Uri(url).Port}", out var firstInstance);
-    if (!firstInstance)
+    if (!firstInstance && !(replacing && AppRestart.WaitForPrevious(instance, AppRestart.WaitForPreviousTimeout)))
     {
         OpenBrowser(dashboardUrl);
         return;
     }
+
+    // Neustart aus dem Dashboard (Einstellungen) – die Argumente braucht die neue Instanz
+    builder.Services.AddSingleton(sp => new AppRestart(args, sp.GetRequiredService<IHostApplicationLifetime>(), sp.GetRequiredService<ILogger<AppRestart>>()));
 
     // Sprachausgabe nur in dieser (Tray-)Instanz – die stdio-Instanz von Claude Desktop würde sonst doppelt sprechen
     builder.Services.AddSingleton<Kopilot.Speech.KokoroSpeechEngine>();
@@ -109,7 +114,8 @@ else
 
     if (OperatingSystem.IsWindows() && !Has(args, "--no-tray"))
     {
-        builder.Services.AddSingleton(new DesktopInfo(dashboardUrl, logFile, Has(args, "--autostart")));
+        // Nach einem Neustart aus dem Dashboard keine Begrüßungs-Sprechblase – das Dashboard ist ja schon offen
+        builder.Services.AddSingleton(new DesktopInfo(dashboardUrl, logFile, Has(args, "--autostart") || replacing));
         builder.Services.AddHostedService<TrayService>();
     }
 

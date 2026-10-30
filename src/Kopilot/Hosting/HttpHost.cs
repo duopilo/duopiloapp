@@ -4,6 +4,8 @@ using Kopilot.Ecam;
 using Kopilot.FlightPlan;
 using Kopilot.Monitoring;
 using Kopilot.Remote;
+using Kopilot.Reports;
+using Kopilot.Settings;
 using Kopilot.Sim;
 using Kopilot.Tools;
 using Microsoft.AspNetCore.HostFiltering;
@@ -35,6 +37,12 @@ public static class HttpHost
         builder.Services.AddKopilotCore(builder.Configuration);
         builder.Services.TryAddSingleton(new LogBuffer());
         builder.Services.AddSingleton<DashboardData>();
+
+        // Einstellungsseite und „Fehler melden“ im Dashboard
+        builder.Services.AddSingleton(sp => LocalSettingsStore.ForApplication(sp.GetRequiredService<IOptions<KopilotOptions>>().Value));
+        builder.Services.AddSingleton<SettingsService>();
+        builder.Services.AddSingleton<BugReportService>();
+
         builder.Services.AddSingleton<OAuthStore>();
         builder.Services.AddSingleton<LoginThrottle>();
 
@@ -63,6 +71,8 @@ public static class HttpHost
 
         // Prüfseiten für den Browser – nur lokal, über den Tunnel nicht erreichbar.
         app.MapDashboard();
+        app.MapSettings();
+        app.MapReports();
         app.MapGet("/status", (SimConnectClient sim, ProfileStore profiles, MonitoringService monitoring, SimBriefService simBrief, EcamCatalog ecam, AlertBus alerts, Kopilot.Input.InputService input, Kopilot.Voice.IVoiceStatusSource voice) =>
             JsonText(KopilotTools.Status(sim, profiles, monitoring, simBrief, ecam, alerts, input, voice))).LocalOnly();
         app.MapGet("/state", (SimConnectClient sim, AlertBus alerts) => JsonText(KopilotTools.GetFlightState(sim, alerts))).LocalOnly();

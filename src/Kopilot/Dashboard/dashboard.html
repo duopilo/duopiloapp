@@ -48,7 +48,7 @@ body {
   font: 15px/1.45 var(--sans);
   min-height: 100vh;
 }
-button, select, input { font: inherit; color: inherit; }
+button, select, input, textarea { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 [hidden] { display: none !important; }
 
@@ -291,6 +291,101 @@ select.btn { padding: 4px 6px; max-width: 190px; }
   position: fixed; inset: auto 16px 16px 16px; padding: 14px 18px; border-radius: 8px;
   background: #3a1d1b; border: 1px solid var(--red); color: var(--white);
 }
+.offline.restarting { background: #3a2e17; border-color: var(--amber); }
+
+/* ------------------------------------------------------------------ Kopfzeile: Fehler melden, Einstellungen */
+.hnav { display: flex; gap: 8px; align-items: center; }
+.hbtn {
+  display: inline-block; padding: 6px 12px; border-radius: 6px; cursor: pointer; text-decoration: none;
+  background: #20272e; border: 1px solid var(--panel-edge); color: var(--panel-text); font-size: 13px;
+}
+.hbtn:hover { border-color: var(--cyan); color: var(--white); }
+.hbtn[aria-current="page"] { border-color: var(--cyan); color: var(--cyan); }
+.route a, .hero a { color: var(--cyan); }
+
+/* ------------------------------------------------------------------ Einstellungen (auf dem Panel, keine Displays) */
+.settings { padding: var(--gap) var(--gap) 32px; }
+.settings-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; margin: 4px 0 14px; }
+.settings-head h1 { margin: 0; font-size: 20px; color: var(--white); }
+.settings-head .file { font: 12px var(--mono); color: var(--panel-dim); overflow-wrap: anywhere; }
+.settings .btn { background: var(--panel); border-color: var(--panel-edge); padding: 6px 12px; }
+.settings .btn:disabled { opacity: .5; cursor: default; }
+.btn.primary { border-color: var(--cyan); color: var(--white); background: #183845; }
+.btn.danger { color: var(--amber); }
+.restart-bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 0 0 var(--gap); padding: 10px 14px;
+  border-radius: 8px; background: #3a2e17; border: 1px solid var(--amber); color: var(--white);
+}
+.restart-bar span { flex: 1 1 320px; }
+.set-warn { margin: 0 0 var(--gap); color: var(--amber); font-size: 13px; }
+.set-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gap); align-items: start; }
+.card { min-width: 0; padding: 16px 18px 18px; border-radius: 10px; background: var(--panel-raised); border: 1px solid var(--panel-edge); }
+.card h2 { margin: 0 0 4px; font-size: 16px; color: var(--white); }
+.card h3 { margin: 16px 0 6px; font-size: 13px; color: var(--white); }
+.card .hint { margin: 0 0 14px; max-width: 72ch; font-size: 13px; color: var(--panel-dim); }
+.kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 14px; margin: 0 0 16px; font-size: 13px; }
+.kv dt { color: var(--panel-dim); }
+.kv dd { margin: 0; color: var(--white); overflow-wrap: anywhere; }
+.kv code, .card code { font: 12px var(--mono); }
+.field { display: flex; flex-direction: column; gap: 4px; margin: 0 0 12px; font-size: 13px; color: var(--panel-dim); }
+.field input, .field select, .field textarea {
+  min-width: 0; padding: 7px 9px; border-radius: 6px; background: #1b232a; border: 1px solid var(--panel-edge); color: var(--white);
+}
+.field input::placeholder, .field textarea::placeholder { color: #6c7a86; }
+.field input[readonly] { font: 13px var(--mono); }
+.fields-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; }
+.check { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font-size: 13px; }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.msg { font-size: 13px; color: var(--green); }
+.msg.err { color: var(--amber); }
+.state-line { margin: 10px 0 0; font-size: 13px; color: var(--panel-dim); }
+.state-line b { color: var(--white); font-weight: 400; }
+.pill { display: inline-block; padding: 1px 8px; border-radius: 4px; font: 700 12px var(--mono); border: 1px solid currentColor; }
+.pill.on { color: var(--green); } .pill.off { color: var(--panel-dim); } .pill.pend { color: var(--amber); }
+.token-box { margin-top: 8px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--cyan); background: #16303a; }
+.token-box p { margin: 6px 0 0; font-size: 12px; color: var(--panel-text); }
+.token-box .field { flex: 1 1 280px; margin: 0; }
+.card .row { font-size: 13px; }
+.card .level { display: inline-block; width: 140px; height: 6px; background: #1b232a; border-radius: 3px; overflow: hidden; vertical-align: middle; }
+.card .level i { display: block; height: 100%; width: 0; background: var(--cyan); }
+.modules { list-style: none; margin: 0; padding: 0; }
+.modules li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 14px; align-items: center; padding: 11px 0; border-top: 1px solid var(--panel-edge); }
+.modules li:first-child { border-top: 0; padding-top: 2px; }
+.modules .name { color: var(--white); font-weight: 700; }
+.modules .what { display: block; font-size: 13px; color: var(--panel-dim); }
+.modules .note { grid-column: 1 / -1; font-size: 12px; color: var(--panel-dim); }
+.modules .note.pend { color: var(--amber); }
+/* Schalter wie ein beleuchteter Taster: ON grün, OFF dunkel, Rückfrage amber */
+.switch {
+  min-width: 70px; padding: 7px 10px; border-radius: 6px; cursor: pointer;
+  font: 700 12px/1 var(--mono); letter-spacing: .04em; background: #20272e; border: 2px solid #11161b; color: #6c7a86;
+}
+.switch[aria-checked="true"] { color: var(--green); border-color: #1f5f34; }
+.switch.arm { color: var(--amber); border-color: var(--amber); }
+.switch:disabled { opacity: .45; cursor: default; }
+
+/* ------------------------------------------------------------------ Fehler melden (Dialog) */
+dialog.report {
+  width: min(760px, calc(100vw - 24px)); max-height: calc(100vh - 32px); padding: 18px 20px 20px; border-radius: 12px;
+  background: var(--panel-raised); color: var(--panel-text); border: 1px solid var(--panel-edge);
+}
+dialog.report::backdrop { background: rgba(5, 8, 11, .7); }
+.report h2 { margin: 0; font-size: 18px; color: var(--white); }
+.report .when { margin: 4px 0 14px; font: 13px var(--mono); color: var(--panel-dim); }
+.kinds { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; padding: 0; border: 0; }
+.kinds legend { padding: 0; margin: 0 0 8px; font-size: 13px; color: var(--panel-dim); }
+.kind { display: inline-flex; align-items: center; gap: 7px; padding: 7px 11px; border-radius: 6px; cursor: pointer; background: var(--panel); border: 1px solid var(--panel-edge); font-size: 13px; }
+.kind:has(input:checked) { border-color: var(--cyan); color: var(--white); background: #183845; }
+.kind small { color: var(--panel-dim); font: 11px var(--mono); }
+.report details { margin: 0 0 14px; font-size: 13px; }
+.report summary { cursor: pointer; color: var(--panel-dim); }
+.report pre { margin: 8px 0 0; max-height: 240px; overflow: auto; padding: 10px 12px; border-radius: 6px; background: #1b232a; border: 1px solid var(--panel-edge); font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.report .result { margin-top: 14px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--green); background: #17301f; font-size: 13px; }
+.report .result.err { border-color: var(--amber); background: #3a2e17; }
+.report .result p { margin: 0 0 6px; }
+.report .result p:last-child { margin-bottom: 0; }
+.report .result a { color: var(--cyan); }
+.report .result code { font: 12px var(--mono); overflow-wrap: anywhere; }
 
 /* ------------------------------------------------------------------ schmalere Bildschirme */
 @media (max-width: 1180px) {
@@ -300,6 +395,7 @@ select.btn { padding: 4px 6px; max-width: 190px; }
   }
   .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .setup-grid { grid-template-columns: 1fr; }
+  .set-grid { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 720px) {
   .ft-table th:nth-child(5), .ft-table td:nth-child(5), .ft-table th:nth-child(6), .ft-table td:nth-child(6) { display: none; }
@@ -313,6 +409,9 @@ select.btn { padding: 4px 6px; max-width: 190px; }
   .brt input { width: 80px; }
   select.btn { max-width: 150px; }
   .aircraft { max-width: 100%; }
+  .fields-2 { grid-template-columns: minmax(0, 1fr); }
+  .kv { grid-template-columns: minmax(0, 1fr); gap: 2px 0; }
+  .kv dd { margin-bottom: 6px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .ag.lit.flash { animation: none; }
@@ -335,6 +434,10 @@ select.btn { padding: 4px 6px; max-width: 190px; }
   <div class="aircraft" id="aircraft"></div>
   <span class="paused-pill" id="paused" hidden>Sim pausiert</span>
   <span class="spacer"></span>
+  <nav class="hnav" aria-label="Kopilot">
+    <button class="hbtn" id="reportOpen" type="button" title="Hält Position, Höhe, ATC-Station, Frequenzen und die letzten Funksprüche jetzt fest – dann beschreiben und als GitHub-Issue melden">Fehler melden</button>
+    <a class="hbtn" id="settingsLink" href="#einstellungen">Einstellungen</a>
+  </nav>
   <div class="attention">
     <button class="ag warn" id="agWarn" type="button" title="Master Warning – Klick quittiert das Blinken">MASTER<br>WARN</button>
     <button class="ag caut" id="agCaut" type="button" title="Master Caution – Klick quittiert das Blinken">MASTER<br>CAUT</button>
@@ -493,6 +596,125 @@ select.btn { padding: 4px 6px; max-width: 190px; }
     </div>
   </details>
 </section>
+
+<section class="settings" id="settings" aria-labelledby="settingsTitle" hidden>
+  <div class="settings-head">
+    <h1 id="settingsTitle">Einstellungen</h1>
+    <a class="hbtn" href="#">Zurück zum Cockpit</a>
+    <span class="file" id="setFile"></span>
+  </div>
+  <div class="restart-bar" id="restartBar" role="status" hidden>
+    <span id="restartText"></span>
+    <button class="btn primary" id="restartBtn" type="button">Kopilot neu starten</button>
+  </div>
+  <p class="set-warn" id="setEnv" hidden></p>
+
+  <div class="set-grid">
+    <section class="card" aria-labelledby="hClaude">
+      <h2 id="hClaude">Verbindung zu Claude</h2>
+      <p class="hint">Claude Desktop und Claude Code auf diesem PC verbinden sich lokal. Für claude.ai, die Handy-App und den Sprachmodus braucht Kopilot einen Cloudflare Tunnel mit öffentlicher Adresse (Anleitung: docs/cloudflared.md im Repository).</p>
+      <dl class="kv">
+        <dt>Lokal (MCP)</dt><dd><code id="clMcp"></code></dd>
+        <dt>Claude-Connector</dt><dd id="clOauth"></dd>
+        <dt>Bearer-Token</dt><dd id="clBearer"></dd>
+        <dt>Tunnel</dt><dd><span id="clTunnel">nicht geprüft</span> <button class="btn" id="clCheck" type="button">Prüfen</button></dd>
+      </dl>
+      <form id="clForm" autocomplete="off">
+        <label class="field">Öffentliche Adresse (Tunnel)
+          <input id="clUrl" type="url" inputmode="url" placeholder="https://kopilot.example.com" spellcheck="false">
+        </label>
+        <label class="field">Freigabe-Passwort für den Claude-Connector
+          <input id="clPwd" type="password" autocomplete="new-password" spellcheck="false">
+        </label>
+        <label class="check" id="clPwdRemoveRow" hidden><input type="checkbox" id="clPwdRemove"> Passwort entfernen (Connector aus)</label>
+        <div class="row">
+          <button class="btn primary" type="submit">Speichern</button>
+          <span class="msg" id="clMsg" role="status"></span>
+        </div>
+      </form>
+      <h3>Bearer-Token für Claude Code und andere Clients</h3>
+      <div class="row">
+        <button class="btn" id="tokNew" type="button">Neu erzeugen</button>
+        <button class="btn danger" id="tokRemove" type="button">Entfernen</button>
+        <span class="msg" id="tokMsg" role="status"></span>
+      </div>
+      <div class="token-box" id="tokBox" hidden>
+        <div class="row">
+          <label class="field">Neuer Token
+            <input id="tokValue" readonly spellcheck="false">
+          </label>
+          <button class="btn" id="tokCopy" type="button">Kopieren</button>
+        </div>
+        <p>Nur jetzt sichtbar. In Claude Code als Header <code>Authorization: Bearer …</code> eintragen. Der alte Token gilt bis zum Neustart.</p>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="hSimBrief">
+      <h2 id="hSimBrief">SimBrief</h2>
+      <p class="hint">Für Route, Fortschritt, Fuel Check und ATC. Username oder Pilot-ID (simbrief.com → Account Settings) – die Pilot-ID hat Vorrang. Gilt sofort.</p>
+      <form id="sbForm" autocomplete="off">
+        <div class="fields-2">
+          <label class="field">Username <input id="sbUser" spellcheck="false"></label>
+          <label class="field">Pilot-ID <input id="sbPilot" inputmode="numeric" spellcheck="false"></label>
+        </div>
+        <div class="row">
+          <button class="btn primary" type="submit">Speichern und Plan laden</button>
+          <span class="msg" id="sbMsg" role="status"></span>
+        </div>
+      </form>
+      <p class="state-line" id="sbState"></p>
+    </section>
+
+    <section class="card" aria-labelledby="hMic">
+      <h2 id="hMic">Mikrofon</h2>
+      <p class="hint">Für die Sprachschleife (Befehle und Funk ohne Claude). Fehlt das Gerät (VR-Brille aus), nimmt Kopilot das Windows-Standardgerät und wechselt, sobald es auftaucht. Gilt sofort.</p>
+      <label class="field">Aufnahmegerät <select id="micSel"></select></label>
+      <div class="row"><span>Pegel</span> <span class="level" title="Spitzenpegel der letzten Sekunden"><i id="micLevel"></i></span> <span id="micLevelText"></span></div>
+      <p class="state-line" id="micState"></p>
+      <p class="msg err" id="micErr" hidden></p>
+    </section>
+
+    <section class="card" aria-labelledby="hModules">
+      <h2 id="hModules">Module</h2>
+      <p class="hint">Monitoring und ATC lesen ihre Einstellung beim Start – nach dem Umschalten Kopilot neu starten. Eingabe und Sprachschleife gelten sofort.</p>
+      <ul class="modules">
+        <li><span><span class="name">Monitoring</span><span class="what">Callouts und Warnungen als Pilot Monitoring</span></span>
+          <button class="switch" id="modMonitoring" type="button" role="switch" aria-checked="false" aria-label="Monitoring">OFF</button>
+          <span class="note" id="modMonitoringNote"></span></li>
+        <li><span><span class="name">Eingabe</span><span class="what">Kopilot bedient Schalter – nur nach Readback und Bestätigung</span></span>
+          <button class="switch" id="modInput" type="button" role="switch" aria-checked="false" aria-label="Eingabe">OFF</button>
+          <span class="note" id="modInputNote"></span></li>
+        <li><span><span class="name">ATC</span><span class="what">Fluglotsen von Kopilot (Funk, Übergaben, Freigaben)</span></span>
+          <button class="switch" id="modAtc" type="button" role="switch" aria-checked="false" aria-label="ATC">OFF</button>
+          <span class="note" id="modAtcNote"></span></li>
+        <li><span><span class="name">Sprachschleife</span><span class="what">Mikrofon dauerhaft offen, Befehle und Funk direkt an Kopilot</span></span>
+          <button class="switch" id="modVoice" type="button" role="switch" aria-checked="false" aria-label="Sprachschleife">OFF</button>
+          <span class="note" id="modVoiceNote"></span></li>
+      </ul>
+      <p class="msg" id="modMsg" role="status"></p>
+    </section>
+  </div>
+</section>
+
+<dialog class="report" id="report" aria-labelledby="reportTitle">
+  <form id="reportForm" novalidate>
+    <h2 id="reportTitle">Fehler melden</h2>
+    <p class="when" id="rpWhen"></p>
+    <fieldset class="kinds" id="rpKinds"><legend>Was stimmt nicht?</legend></fieldset>
+    <label class="field">Titel <input id="rpTitle" maxlength="200" spellcheck="true"></label>
+    <label class="field">Was ist falsch, was wäre richtig?
+      <textarea id="rpText" rows="5" placeholder="z. B. Sim-ATC übergibt erst hier an Montreal Center, Frequenz 132.25 – Kopilot schon 260 NM vorher bei HOIST."></textarea>
+    </label>
+    <details id="rpDetails"><summary>Kontext, der mitgeschickt wird</summary><pre id="rpContext"></pre></details>
+    <div class="row">
+      <button class="btn primary" id="rpGithub" type="submit">Auf GitHub melden</button>
+      <button class="btn" id="rpLocal" type="button">Nur lokal speichern</button>
+      <button class="btn" id="rpClose" type="button">Abbrechen</button>
+      <span class="msg err" id="rpErr" role="alert"></span>
+    </div>
+    <div class="result" id="rpResult" role="status" hidden></div>
+  </form>
+</dialog>
 
 <div class="offline" id="offline" role="alert" hidden>Kopilot antwortet nicht. Läuft Kopilot noch? Das Symbol im Infobereich zeigt es – sonst Kopilot.exe neu starten.</div>
 
@@ -687,7 +909,7 @@ function renderCallouts(d) {
     if (hero.className !== "hero quiet") hero.className = "hero quiet";
     const phase = PHASES[d.monitoring.phase] || d.monitoring.phase;
     setText("heroCallout", d.monitoring.enabled ? "Keine Meldungen" : "Monitoring ist aus", d.monitoring.enabled ? "g" : "a");
-    setText("heroMsg", !d.monitoring.enabled ? "In appsettings.Local.json unter Kopilot → Monitoring → Enabled einschalten."
+    setText("heroMsg", !d.monitoring.enabled ? "Einschalten unter Einstellungen → Module, danach Kopilot neu starten."
       : d.monitoring.quietForSec > 0 ? `Ruhezeit nach dem Laden: noch ${d.monitoring.quietForSec} s.`
       : `Monitoring läuft. Phase: ${phase}.`);
     setText("heroWhen", "");
@@ -925,7 +1147,7 @@ function renderRoute(d) {
   if (!p.configured) {
     reload.hidden = true;
     $("routeInfo").textContent = "";
-    setHtml("routeBody", `<p class="empty">SimBrief ist nicht eingerichtet. Trag in <span class="mono w">appsettings.Local.json</span> unter Kopilot → SimBrief deinen Username oder deine Pilot-ID ein und starte Kopilot neu.</p>`);
+    setHtml("routeBody", `<p class="empty">SimBrief ist nicht eingerichtet. Trag unter <a href="#einstellungen">Einstellungen → SimBrief</a> deinen Username oder deine Pilot-ID ein.</p>`);
     return;
   }
   reload.hidden = false;
@@ -1294,6 +1516,342 @@ const applyBrt = () => document.documentElement.style.setProperty("--brt", Strin
 brt.addEventListener("input", () => { applyBrt(); save("brt", Number(brt.value)); });
 applyBrt();
 
+/* ------------------------------------------------------------------ gemeinsame Helfer für Einstellungen und Meldungen */
+async function postJson(url, body) {
+  const r = await fetch(url, { method: "POST", headers: { "X-Kopilot": "1", "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return r.json();
+}
+function showMsg(id, text, error) {
+  const el = $(id);
+  el.textContent = text || "";
+  el.classList.toggle("err", !!error);
+  clearTimeout(el._timer);
+  if (text && !error) el._timer = setTimeout(() => { el.textContent = ""; }, 8000);
+}
+async function copyText(text, button) {
+  try { await navigator.clipboard.writeText(text); } catch { return false; }
+  if (button) { const was = button.textContent; button.textContent = "Kopiert"; setTimeout(() => { button.textContent = was; }, 2000); }
+  return true;
+}
+const clockZ = (iso) => (iso ? new Date(iso).toISOString().slice(11, 19) + "Z" : "");
+
+/* ------------------------------------------------------------------ Einstellungen (#einstellungen) */
+const settingsUi = { data: null, timer: null, inputArm: 0, filled: false };
+
+function route() {
+  const show = location.hash === "#einstellungen";
+  $("settings").hidden = !show;
+  document.querySelector("main").hidden = show;
+  document.querySelector(".setup").hidden = show;
+  if (show) { $("settingsLink").setAttribute("aria-current", "page"); } else { $("settingsLink").removeAttribute("aria-current"); }
+  clearTimeout(settingsUi.timer);
+  if (show) { settingsUi.filled = false; loadSettings(); loadMic(); window.scrollTo(0, 0); }
+}
+window.addEventListener("hashchange", route);
+
+async function loadSettings() {
+  try {
+    const r = await fetch("/api/settings", { cache: "no-store" });
+    settingsUi.data = await r.json();
+    renderSettings();
+  } catch { /* der Abruf im Hintergrund zeigt "Kopilot antwortet nicht" */ }
+}
+function applySettings(j, msgId) {
+  if (!j) return;
+  if (j.settings) { settingsUi.data = j.settings; renderSettings(); }
+  if (msgId) showMsg(msgId, j.error || j.message, !!j.error);
+}
+async function saveSettings(url, body, msgId) {
+  try { const j = await postJson(url, body); applySettings(j, msgId); return j; }
+  catch { showMsg(msgId, "Kopilot hat nicht geantwortet.", true); return null; }
+}
+
+function renderSettings() {
+  const s = settingsUi.data;
+  if (!s) return;
+  $("setFile").textContent = s.file + (s.fileExists ? "" : " (wird beim ersten Speichern angelegt)");
+
+  const bar = $("restartBar");
+  bar.hidden = !s.restart.required || restartUi.active;
+  $("restartText").textContent = `Gespeichert, aber erst nach einem Neustart wirksam: ${s.restart.changes.join(", ")}.`
+    + (s.restart.available ? "" : " Neustart über das Symbol im Infobereich (Beenden) und Kopilot.exe.");
+  $("restartBtn").hidden = !s.restart.available;
+  const env = $("setEnv");
+  env.hidden = !s.environmentOverrides.length;
+  env.textContent = s.environmentOverrides.length
+    ? `Umgebungsvariablen überschreiben die Datei: ${s.environmentOverrides.join(", ")} – Änderungen an diesen Werten wirken erst, wenn die Variable weg ist.` : "";
+
+  // Claude
+  const c = s.claude;
+  $("clMcp").textContent = c.mcpUrl;
+  $("clOauth").innerHTML = c.oauth.active
+    ? `${span("aktiv", "pill on")} ${c.connectorUrl ? `<code>${esc(c.connectorUrl)}</code> <button class="btn" type="button" data-copy="${esc(c.connectorUrl)}">Kopieren</button>` : ""}`
+    : c.oauth.configured ? span("nach Neustart aktiv", "pill pend") + (c.connectorUrl ? ` <code>${esc(c.connectorUrl)}</code>` : "")
+    : span("aus", "pill off") + ` <span class="dim">braucht öffentliche Adresse und Passwort (mind. ${c.consentPassword.minLength} Zeichen)</span>`;
+  $("clBearer").innerHTML = c.bearer.active === c.bearer.configured
+    ? (c.bearer.active ? span("aktiv", "pill on") : span("aus", "pill off"))
+    : span(c.bearer.configured ? "neu – nach Neustart aktiv" : "entfernt – nach Neustart aus", "pill pend");
+  const t = c.tunnel;
+  $("clTunnel").innerHTML = !t ? `<span class="dim">nicht geprüft</span>`
+    : span(t.state === "ok" ? "steht" : t.state === "off" ? "aus" : t.state === "blocked" ? "gesperrt" : "Fehler", "pill " + (t.state === "ok" ? "on" : t.state === "off" ? "off" : "pend"))
+      + ` <span class="dim">${esc(t.message)}</span>`;
+  $("clCheck").disabled = !c.publicUrl;
+  if (!settingsUi.filled) $("clUrl").value = c.publicUrl || "";
+  $("clPwd").placeholder = c.consentPassword.set ? "gesetzt – leer lassen, um es zu behalten" : `nicht gesetzt (mind. ${c.consentPassword.minLength} Zeichen)`;
+  $("clPwdRemoveRow").hidden = !c.consentPassword.set;
+  $("tokRemove").disabled = !c.bearer.configured;
+
+  // SimBrief
+  const b = s.simBrief;
+  if (!settingsUi.filled) { $("sbUser").value = b.username || ""; $("sbPilot").value = b.pilotId || ""; }
+  $("sbState").innerHTML = !b.configured ? "Kein Konto eingetragen."
+    : b.plan ? `Plan geladen: <b>${esc([b.plan.callsign, b.plan.origin && b.plan.destination ? b.plan.origin + " → " + b.plan.destination : ""].filter(Boolean).join("  "))}</b>${b.plan.fetchedUtc ? " · " + esc(clockZ(b.plan.fetchedUtc)) : ""}`
+    : b.error ? `<span class="a">${esc(b.error)}</span>` : "Noch kein Plan geladen.";
+
+  // Module
+  const m = s.modules;
+  const restartNote = (x) => (x.enabled !== x.running
+    ? [`${x.enabled ? "Eingeschaltet" : "Ausgeschaltet"} – gilt nach dem Neustart, bis dahin ${x.running ? "läuft es weiter" : "bleibt es aus"}.`, true]
+    : [x.running ? "Läuft." : "Aus.", false]);
+  setSwitch("modMonitoring", m.monitoring.enabled, restartNote(m.monitoring));
+  setSwitch("modAtc", m.atc.enabled, restartNote(m.atc));
+  const arming = !m.input.enabled && Date.now() < settingsUi.inputArm;
+  setSwitch("modInput", m.input.enabled, [m.input.enabled ? "Freigegeben – Kopilot darf nach Bestätigung schalten." : "Gesperrt.", false], arming);
+  const voice = m.voice;
+  $("modVoice").disabled = !voice.available;
+  setSwitch("modVoice", !!voice.enabled, [!voice.available ? "Nur in der Tray-Instanz." : voice.enabled ? `Zustand: ${VOICE_STATE[voice.state] || voice.state}.` : "Aus.", false]);
+  settingsUi.filled = true;
+}
+function setSwitch(id, on, note, arming) {
+  const b = $(id);
+  b.setAttribute("aria-checked", on ? "true" : "false");
+  b.classList.toggle("arm", !!arming);
+  b.textContent = arming ? "SURE?" : on ? "ON" : "OFF";
+  const n = $(id + "Note");
+  n.textContent = note[0];
+  n.classList.toggle("pend", !!note[1]);
+}
+
+$("settings").addEventListener("click", (e) => {
+  const copy = e.target.closest("[data-copy]");
+  if (copy) copyText(copy.dataset.copy, copy);
+});
+$("clForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const body = { publicUrl: $("clUrl").value.trim(), consentPassword: $("clPwd").value, removeConsentPassword: $("clPwdRemove").checked };
+  const j = await saveSettings("/api/settings/claude", body, "clMsg");
+  if (j && j.ok) { $("clPwd").value = ""; $("clPwdRemove").checked = false; }
+});
+$("clCheck").addEventListener("click", async () => {
+  $("clCheck").disabled = true;
+  $("clTunnel").innerHTML = `<span class="dim">prüfe …</span>`;
+  try { applySettings(await postJson("/api/settings/claude/check")); } catch { $("clTunnel").textContent = "Kopilot hat nicht geantwortet."; }
+  $("clCheck").disabled = false;
+});
+$("tokNew").addEventListener("click", async () => {
+  const j = await saveSettings("/api/settings/claude/token", { action: "new" }, "tokMsg");
+  if (j && j.token) { $("tokValue").value = j.token; $("tokBox").hidden = false; $("tokValue").select(); }
+});
+$("tokRemove").addEventListener("click", async () => {
+  const j = await saveSettings("/api/settings/claude/token", { action: "remove" }, "tokMsg");
+  if (j && j.ok) { $("tokBox").hidden = true; $("tokValue").value = ""; }
+});
+$("tokCopy").addEventListener("click", () => copyText($("tokValue").value, $("tokCopy")));
+$("sbForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const j = await saveSettings("/api/settings/simbrief", { username: $("sbUser").value.trim(), pilotId: $("sbPilot").value.trim() }, "sbMsg");
+  if (!j || !j.ok || !j.settings.simBrief.configured) return;
+  showMsg("sbMsg", "Lade Plan …");
+  try {
+    const p = await postJson("/api/simbrief/refresh");
+    showMsg("sbMsg", p.loaded && !p.error ? "Gespeichert, Plan geladen." : (p.error || "Kein Plan gefunden."), !!p.error || !p.loaded);
+  } catch { showMsg("sbMsg", "Kopilot hat nicht geantwortet.", true); }
+  loadSettings();
+});
+const toggleModule = (key, value) => saveSettings("/api/settings/modules", { [key]: value }, "modMsg");
+$("modMonitoring").addEventListener("click", () => toggleModule("monitoring", $("modMonitoring").getAttribute("aria-checked") !== "true"));
+$("modAtc").addEventListener("click", () => toggleModule("atc", $("modAtc").getAttribute("aria-checked") !== "true"));
+$("modVoice").addEventListener("click", () => toggleModule("voice", $("modVoice").getAttribute("aria-checked") !== "true"));
+$("modInput").addEventListener("click", () => {
+  // Wie im Cockpit-Teil: Freigeben braucht einen zweiten Klick, Sperren geht sofort
+  const on = $("modInput").getAttribute("aria-checked") === "true";
+  if (on) { toggleModule("input", false); return; }
+  if (Date.now() < settingsUi.inputArm) { settingsUi.inputArm = 0; toggleModule("input", true); return; }
+  settingsUi.inputArm = Date.now() + 4000;
+  renderSettings();
+  setTimeout(renderSettings, 4100);
+});
+
+/* Mikrofon: die Sprachschleife hat schon eine API (/api/voice) – hier nur Gerät, Pegel und Zustand */
+async function loadMic() {
+  clearTimeout(settingsUi.timer);
+  if ($("settings").hidden) return;
+  let d = null;
+  try { d = await (await fetch("/api/voice", { cache: "no-store" })).json(); } catch { /* nächster Versuch */ }
+  renderMic(d);
+  const st = (d && d.status) || {};
+  settingsUi.timer = setTimeout(loadMic, st.state === "listening" || st.state === "loading" ? 1000 : 4000);
+}
+function renderMic(d) {
+  const sel = $("micSel");
+  const err = $("micErr");
+  if (!d || !d.available) {
+    sel.disabled = true;
+    setHtml("micSel", `<option>nicht verfügbar</option>`);
+    $("micState").textContent = (d && d.error) || "Kopilot hat nicht geantwortet.";
+    return;
+  }
+  sel.disabled = false;
+  const st = d.status || {};
+  const mics = d.microphones || [];
+  const configured = d.settings.microphone || "";
+  const known = !configured || mics.some((x) => x.name === configured);
+  if (document.activeElement !== sel) {
+    setHtml("micSel",
+      `<option value="">Windows-Standardgerät${st.defaultMicrophone ? " (" + esc(st.defaultMicrophone) + ")" : ""}</option>` +
+      mics.map((x) => `<option value="${esc(x.name)}">${esc(x.fullName)}${x.isDefault ? " – Standard" : ""}</option>`).join("") +
+      (known ? "" : `<option value="${esc(configured)}">${esc(configured)} (nicht gefunden)</option>`));
+    sel.value = configured;
+  }
+  const level = st.levelDbfs;
+  $("micLevel").style.width = level == null ? "0" : Math.max(0, Math.min(100, (level + 60) / 60 * 100)) + "%";
+  $("micLevelText").textContent = level == null ? (d.settings.enabled ? DASH : "nur bei eingeschalteter Sprachschleife") : `${Math.round(level)} dBFS`;
+  const info = [`Sprachschleife: ${VOICE_STATE[st.state] || st.state || DASH}`];
+  if (st.microphone) info.push(`nimmt auf von ${st.microphone}`);
+  if (st.lastTranscript) info.push(`zuletzt gehört: „${st.lastTranscript}“`);
+  $("micState").textContent = info.join(" · ");
+  const problem = d.error || st.error || (st.microphoneFound === false ? `„${st.microphoneConfigured}“ nicht gefunden – es läuft das Standardgerät.` : "");
+  err.hidden = !problem;
+  err.textContent = problem || "";
+}
+$("micSel").addEventListener("change", async (e) => {
+  try { renderMic(await postJson("/api/voice", { microphone: e.target.value })); } catch { $("micState").textContent = "Kopilot hat nicht geantwortet."; }
+});
+
+/* Neustart: neue Instanz starten, alte beendet sich – das Dashboard verbindet sich danach von selbst wieder */
+const restartUi = { active: false, sawOffline: false, timer: null };
+const OFFLINE_TEXT = $("offline").textContent;
+function showOffline() {
+  const box = $("offline");
+  box.classList.toggle("restarting", restartUi.active);
+  box.textContent = restartUi.active ? "Kopilot startet neu …" : OFFLINE_TEXT;
+  box.hidden = false;
+}
+$("restartBtn").addEventListener("click", async () => {
+  $("restartBtn").disabled = true;
+  try {
+    const j = await postJson("/api/restart");
+    if (!j.ok) { $("restartText").textContent = j.error; $("restartBtn").disabled = false; return; }
+  } catch { $("restartBtn").disabled = false; return; }
+  restartUi.active = true;
+  restartUi.sawOffline = false;
+  $("restartBar").hidden = true;
+  showOffline();
+  clearTimeout(restartUi.timer);
+  restartUi.timer = setTimeout(() => { restartUi.active = false; $("restartBtn").disabled = false; }, 120000);
+});
+function restartFinished() {
+  restartUi.active = false;
+  clearTimeout(restartUi.timer);
+  $("restartBtn").disabled = false;
+  if (!$("settings").hidden) { settingsUi.filled = false; loadSettings(); loadMic(); showMsg("modMsg", "Kopilot wurde neu gestartet."); }
+  loadServerSpeech();
+}
+
+/* ------------------------------------------------------------------ Fehler melden */
+const reportUi = { id: null, categories: [], titleEdited: false, busy: false, done: false };
+
+$("reportOpen").addEventListener("click", async () => {
+  const button = $("reportOpen");
+  button.disabled = true;
+  let j;
+  try { j = await postJson("/api/report/capture"); } catch { button.disabled = false; showOffline(); return; }
+  button.disabled = false;
+  reportUi.id = j.id;
+  reportUi.categories = j.categories;
+  reportUi.titleEdited = false;
+  reportUi.done = false;
+  reportUi.repository = j.repository;
+  const parts = [`Momentaufnahme ${clockZ(j.capturedUtc)}`];
+  if (j.summary.station) parts.push(j.summary.station);
+  if (n(j.summary.com1) !== null) parts.push("COM1 " + Number(j.summary.com1).toFixed(3));
+  if (n(j.summary.altitudeFt) !== null) parts.push(Math.round(j.summary.altitudeFt) + " ft");
+  if (!j.summary.simConnected) parts.push("Sim nicht verbunden");
+  $("rpWhen").textContent = parts.join(" · ");
+  const kinds = $("rpKinds");
+  kinds.querySelectorAll(".kind").forEach((k) => k.remove());
+  for (const c of j.categories) {
+    const label = document.createElement("label");
+    label.className = "kind";
+    label.innerHTML = `<input type="checkbox" value="${esc(c.id)}"> ${esc(c.name)} <small>${esc(c.label)}</small>`;
+    kinds.appendChild(label);
+  }
+  reportUi.genericTitle = j.title;
+  $("rpTitle").value = j.title;
+  $("rpText").value = "";
+  $("rpContext").textContent = j.context;
+  $("rpDetails").open = false;
+  $("rpErr").textContent = "";
+  $("rpResult").hidden = true;
+  $("rpGithub").hidden = !j.repository;
+  $("rpLocal").hidden = false;
+  $("rpLocal").textContent = j.repository ? "Nur lokal speichern" : "Speichern";
+  $("rpClose").textContent = "Abbrechen";
+  [$("rpGithub"), $("rpLocal")].forEach((b) => { b.disabled = false; });
+  $("report").showModal();
+  kinds.querySelector("input").focus();
+});
+$("rpKinds").addEventListener("change", () => {
+  if (reportUi.titleEdited) return;
+  const picked = selectedKinds();
+  const first = reportUi.categories.find((c) => c.id === picked[0]);
+  const names = reportUi.categories.filter((c) => picked.includes(c.id)).map((c) => c.name);
+  // Vorschlag vom Server für die erste Art, mit allen gewählten Arten im Präfix
+  $("rpTitle").value = first ? first.title.replace(/^\[[^\]]*\]/, "[" + names.join(", ") + "]") : reportUi.genericTitle;
+});
+$("rpTitle").addEventListener("input", () => { reportUi.titleEdited = true; });
+const selectedKinds = () => [...$("rpKinds").querySelectorAll("input:checked")].map((i) => i.value);
+
+async function sendReport(openGithub) {
+  if (reportUi.busy || reportUi.done) return;
+  reportUi.busy = true;
+  $("rpErr").textContent = "";
+  [$("rpGithub"), $("rpLocal")].forEach((b) => { b.disabled = true; });
+  let j = null;
+  try {
+    j = await postJson("/api/report", { id: reportUi.id, categories: selectedKinds(), title: $("rpTitle").value, description: $("rpText").value });
+  } catch { j = { ok: false, error: "Kopilot hat nicht geantwortet." }; }
+  reportUi.busy = false;
+  if (!j.ok) {
+    $("rpErr").textContent = j.error;
+    [$("rpGithub"), $("rpLocal")].forEach((b) => { b.disabled = false; });
+    return;
+  }
+  reportUi.done = true;
+  [$("rpGithub"), $("rpLocal")].forEach((b) => { b.hidden = true; });
+  if (openGithub && j.url) window.open(j.url, "_blank", "noopener,noreferrer");
+  const box = $("rpResult");
+  box.className = "result" + (j.fileError ? " err" : "");
+  box.replaceChildren();
+  const p = (html) => { const el = document.createElement("p"); el.innerHTML = html; box.appendChild(el); return el; };
+  p(j.file ? `Gespeichert unter <code>${esc(j.file)}</code>` : esc(j.fileError || "Nicht lokal gespeichert."));
+  if (j.url) {
+    p(`${openGithub ? "GitHub sollte sich in einem neuen Tab geöffnet haben – dort nur noch absenden. Kein Tab? " : ""}<a href="${esc(j.url)}" target="_blank" rel="noopener noreferrer">Issue auf GitHub öffnen</a>`
+      + (j.truncated ? ` <span class="dim">(Link gekürzt – vollständiger Text in der lokalen Kopie)</span>` : ""));
+  }
+  const copy = p(`<button class="btn" type="button">Text kopieren</button> <span class="dim">Labels: ${esc(j.labels.join(", ") || "keine")}</span>`).querySelector("button");
+  copy.addEventListener("click", () => copyText(`${j.title}\n\n${j.body}`, copy));
+  box.hidden = false;
+  $("rpClose").textContent = "Schließen";
+}
+$("reportForm").addEventListener("submit", (e) => { e.preventDefault(); sendReport(!!reportUi.repository); });
+$("rpLocal").addEventListener("click", () => sendReport(false));
+$("rpClose").addEventListener("click", () => $("report").close());
+$("rpText").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); sendReport(!!reportUi.repository); }
+});
+
 /* ------------------------------------------------------------------ Abfrage-Schleife */
 let logTick = 0;
 async function poll() {
@@ -1303,9 +1861,11 @@ async function poll() {
     if (!r.ok) throw new Error("HTTP " + r.status);
     const d = await r.json();
     $("offline").hidden = true;
+    if (restartUi.active && restartUi.sawOffline) restartFinished();
     render(d);
   } catch {
-    $("offline").hidden = false;
+    if (restartUi.active) restartUi.sawOffline = true;
+    showOffline();
   } finally {
     setTimeout(poll, 500);
   }
@@ -1331,6 +1891,7 @@ function render(d) {
   renderSetup(d);
 }
 $("setup").addEventListener("toggle", () => { logTick = 0; });
+route();
 poll();
 </script>
 </body>
