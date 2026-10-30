@@ -1,8 +1,8 @@
 **English** | [Deutsch](aircraft.de.md)
 
-# Aircraft: what Kopilot can read
+# Aircraft: what Duopilo can read
 
-As of Kopilot 0.5, test flights on 2026-10-28. **Verified** means: compared against the cockpit in the sim. **Docs** means: name taken from the developer documentation, not yet checked in the sim (`"verified": false` in the profile).
+As of version 0.5 (then still called Kopilot), test flights on 2026-10-28. **Verified** means: compared against the cockpit in the sim. **Docs** means: name taken from the developer documentation, not yet checked in the sim (`"verified": false` in the profile).
 
 ## FlyByWire A32NX
 
@@ -77,7 +77,7 @@ Derived from `fbw-a32nx/docs/a320-events.md`, `a320-simvars.md`, the FBW presets
 | Transponder, TCAS | `XPNDR_SET` (BCD), `L:A32NX_TRANSPONDER_MODE`, `L:A32NX_SWITCH_ATC_ALT`, `L:A32NX_SWITCH_TCAS_Position`, `_Traffic_Position` | same |
 | COM 1 | `COM_STBY_RADIO_SET_HZ`, `COM1_RADIO_SWAP` | `COM STANDBY FREQUENCY:1` |
 
-Not included: NAV & LOGO (only `B:A32NX_OVH_LIGHTS_NAV_LOGO_SW`). For toggle buttons, Kopilot reads the state first and only presses when needed.
+Not included: NAV & LOGO (only `B:A32NX_OVH_LIGHTS_NAV_LOGO_SW`). For toggle buttons, Duopilo reads the state first and only presses when needed.
 
 ## FlyByWire A380X
 
@@ -133,7 +133,7 @@ Inputs: all actions of the A32NX profile, plus `elec.battery`, `lights.nav` and 
 | Area | Status |
 |---|---|
 | FCU, lights, anti-ice, external power, APU master/start | tested in the sim |
-| Seatbelts | adjusted, unverified: three-position switch `L:XMLVAR_SWITCH_OVHD_INTLT_SEATBELT_Position` (0 ON, 1 AUTO, 2 OFF). For ON/OFF Kopilot also sets `CABIN SEATBELTS ALERT SWITCH`; in AUTO the aircraft does. |
+| Seatbelts | adjusted, unverified: three-position switch `L:XMLVAR_SWITCH_OVHD_INTLT_SEATBELT_Position` (0 ON, 1 AUTO, 2 OFF). For ON/OFF Duopilo also sets `CABIN SEATBELTS ALERT SWITCH`; in AUTO the aircraft does. |
 | No Smoking | adjusted, unverified: the position is read with the unit `Enum` (that's how the FWC reads it too) |
 | Landing lights | adjusted, unverified: checked via the light `LIGHT LANDING:2` (circuit 18). The switch only knows ON/OFF. |
 | Managed NAV | adjusted, unverified: the check waits up to 10 s |
@@ -157,7 +157,7 @@ iniBuilds doesn't publish a list of its L: variables (around 3000), the MCDU/FMS
 
 ## Autoflight callouts (v0.9.2)
 
-The callouts from the KLAX approach in testlog 0.9 depend on these bindings. Without a binding Kopilot doesn't guess – the callout stays off for that aircraft. `get_aircraft_profile` → `callouts` shows the same status live.
+The callouts from the KLAX approach in testlog 0.9 depend on these bindings. Without a binding Duopilo doesn't guess – the callout stays off for that aircraft. `get_aircraft_profile` → `callouts` shows the same status live.
 
 | Rule | Needs | A32NX | A330-900neo | A380X | A321LR |
 |---|---|---|---|---|---|
@@ -177,7 +177,7 @@ New A32NX bindings (names from the FBW documentation, not yet checked in the sim
 | `ATC RUNWAY SELECTED` | verified (0 → 1 after runway assignment) |
 | `ATC RUNWAY AIRPORT NAME` | text SimVar; `read_simvar` detects it as text automatically |
 | Runway number | from `ATC RUNWAY HEADING DEGREES TRUE` minus magnetic variation |
-| L/C/R | not available as a SimVar – Kopilot takes it from the SimBrief plan if the number matches |
+| L/C/R | not available as a SimVar – Duopilo takes it from the SimBrief plan if the number matches |
 | `ATC CLEARED IFR`, `ATC CLEARED LANDING` | stayed 0 in the test |
 | Assigned altitude, heading, squawk | **not** available as SimVars |
 | `ATC CURRENT WAYPOINT ALTITUDE`, `ATC FLIGHTPLAN DIFF …` | in `get_atc` under `experimental` – meaning still to be checked in flight |
@@ -186,7 +186,7 @@ External ATC programs (BeyondATC, SayIntentions) aren't visible through SimConne
 
 ## Texts in profiles
 
-Profiles are language-neutral: IDs, variable names, units and limits (speeds in knots). Texts the pilot sees come from the language files (`src/Kopilot/i18n/<code>.json`, see [i18n.md](i18n.md)).
+Profiles are language-neutral: IDs, variable names, units and limits (speeds in knots). Texts the pilot sees come from the language files (`src/Duopilo/i18n/<code>.json`, see [i18n.md](i18n.md)).
 
 - **Conditions (`requires`)** of an input action reference their refusal text by key:
   ```json
@@ -195,11 +195,11 @@ Profiles are language-neutral: IDs, variable names, units and limits (speeds in 
   ]
   ```
   The text is stored under `profile.requires.<name>` in the language files and follows the language setting. Other fields: `unit` (default `number`), `tolerance` (default 0.5), `only` (check only for these choices, e.g. `[ "on" ]`).
-- **Your own profiles** can still use `"message": "literal text"` instead of `messageKey`. Kopilot shows that text as is, in any language.
+- **Your own profiles** can still use `"message": "literal text"` instead of `messageKey`. Duopilo shows that text as is, in any language.
 - `description` on bindings and `notes` in the profile are technical metadata in English; they aren't translated.
 
 ## General observations
 
-- **Pause:** Kopilot uses the SimConnect event `Pause_EX1` (normal pause, active pause, sim pause). `paused: true` appears in `get_flight_state` and `kopilot_status`.
+- **Pause:** Duopilo uses the SimConnect event `Pause_EX1` (normal pause, active pause, sim pause). `paused: true` appears in `get_flight_state` and `duopilo_status`.
 - **Extreme weather** (e.g. −100 °C) makes EGT implausible. `get_systems` reports this under `plausibility`.
 - **Air start:** Values are inconsistent in the first seconds. Monitoring stays silent for 10 seconds after loading.

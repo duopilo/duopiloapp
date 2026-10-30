@@ -1,5 +1,0 @@
-<Solution>
-  <Project Path="src/Kopilot/Kopilot.csproj" />
-  <Project Path="src/SimConnectStub/SimConnectStub.csproj" />
-  <Project Path="tests/Kopilot.Tests/Kopilot.Tests.csproj" />
-</Solution>

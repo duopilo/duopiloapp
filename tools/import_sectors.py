@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Erzeugt src/Kopilot/data/sectors/atc-sectors.json aus dem VATGlasses-Datenprojekt (VATSIM-Sektordaten).
+Erzeugt src/Duopilo/data/sectors/atc-sectors.json aus dem VATGlasses-Datenprojekt (VATSIM-Sektordaten).
 
-Kopilot braucht davon nur die Streckensektoren (Positionen vom Typ CTR/FSS mit VHF-Frequenz): Polygon, Höhenband,
+Duopilo braucht davon nur die Streckensektoren (Positionen vom Typ CTR/FSS mit VHF-Frequenz): Polygon, Höhenband,
 Frequenz, Rufname der Station und die FIR, zu der der Sektor gehört. Die FIR-Grenzen selbst kommen aus VAT-Spy
-(src/Kopilot/data/vatspy), die Zuordnung Sektor → FIR läuft über die Gruppe des Sektors, das Rufzeichen-Präfix der
+(src/Duopilo/data/vatspy), die Zuordnung Sektor → FIR läuft über die Gruppe des Sektors, das Rufzeichen-Präfix der
 Position (VATSpy.dat) oder – als letzte Möglichkeit – über die Lage des Sektors.
 
 Aufruf (Python 3.9+, keine weiteren Pakete):
@@ -183,9 +183,9 @@ def main() -> int:
     repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--vatglasses", required=True, help="Checkout von github.com/lennycolton/vatglasses-data")
-    parser.add_argument("--vatspy", default=os.path.join(repo, "src", "Kopilot", "data", "vatspy"),
+    parser.add_argument("--vatspy", default=os.path.join(repo, "src", "Duopilo", "data", "vatspy"),
                         help="Ordner mit VATSpy.dat und Boundaries.geojson (Standard: die mitgelieferten)")
-    parser.add_argument("--out", default=os.path.join(repo, "src", "Kopilot", "data", "sectors", "atc-sectors.json"))
+    parser.add_argument("--out", default=os.path.join(repo, "src", "Duopilo", "data", "sectors", "atc-sectors.json"))
     parser.add_argument("--tolerance", type=float, default=0.002, help="Vereinfachung der Polygone in Grad (Standard 0.002 ≈ 0,12 NM)")
     args = parser.parse_args()
 

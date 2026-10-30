@@ -1,12 +1,12 @@
 # Hard-coded texts before i18n (inventory)
 
-Snapshot of string literals with German text on `main` before the i18n PR, found heuristically. "kept" = still literally in the code: speech-recognition patterns (German and English words the pilot may say) and Whisper hallucination filters. Everything else moved to src/Kopilot/i18n/*.json. Generated for PR feature/i18n.
+Snapshot of string literals with German text on `main` before the i18n PR (product name, renamed files and tool names updated to Duopilo with the rename from Kopilot; line numbers are from the snapshot), found heuristically. "kept" = still literally in the code: speech-recognition patterns (German and English words the pilot may say) and Whisper hallucination filters. Everything else moved to src/Duopilo/i18n/*.json. Generated for PR feature/i18n.
 
 ## Startup
 
 | File:line | Kind | Text | Status |
 |---|---|---|---|
-| `Program.cs:135` | log | Kopilot wurde nach einem Absturz von Windows neu gestartet. | moved |
+| `Program.cs:135` | log | Duopilo wurde nach einem Absturz von Windows neu gestartet. | moved |
 | `Program.cs:175` | text | Logdatei nicht verfügbar ({mode}): {ex.Message} | moved |
 
 ## Remote access / OAuth
@@ -26,7 +26,7 @@ Snapshot of string literals with German text on `main` before the i18n PR, found
 | `Remote/OAuthEndpoints.cs:210` | log | OAuth: Zugriff freigegeben für {Client} | moved |
 | `Remote/OAuthEndpoints.cs:247` | text | Nur authorization_code und refresh_token. | moved |
 | `Remote/OAuthEndpoints.cs:313` | text | Zu viele falsche Passwörter. Freigabe gesperrt bis {until.ToLocalTime():HH:mm} Uhr. | moved |
-| `Remote/McpAuthMiddleware.cs:55` | text | Kopilot: Zugriff nur mit gültigem Token. | moved |
+| `Remote/McpAuthMiddleware.cs:55` | text | Duopilo: Zugriff nur mit gültigem Token. | moved |
 | `Remote/OAuthStore.cs:119` | text | code und code_verifier sind Pflicht. | moved |
 | `Remote/OAuthStore.cs:124` | text | Code ungültig, abgelaufen oder schon benutzt. | moved |
 | `Remote/OAuthStore.cs:129` | text | Code gehört zu einem anderen Client. | moved |
@@ -39,8 +39,8 @@ Snapshot of string literals with German text on `main` before the i18n PR, found
 | `Remote/OAuthStore.cs:247` | log | OAuth-Zustand konnte nicht gelesen werden, starte leer: {File} | moved |
 | `Remote/OAuthStore.cs:264` | log | OAuth-Zustand konnte nicht gespeichert werden: {File} | moved |
 | `Remote/ConsentPage.cs:14` | text | <p class="warn">Die Weiterleitung geht an eine lokale Adresse. Das ist normal für Claude Code – gib nur fre… | moved |
-| `Remote/ConsentPage.cs:18` | text |              <h1>Zugriff auf Kopilot freigeben?</h1>             <p><strong>{E(clientName)}</strong> möchte… | moved |
-| `Remote/ConsentPage.cs:39` | text | Kopilot – Fehler | moved |
+| `Remote/ConsentPage.cs:18` | text |              <h1>Zugriff auf Duopilo freigeben?</h1>             <p><strong>{E(clientName)}</strong> möchte… | moved |
+| `Remote/ConsentPage.cs:39` | text | Duopilo – Fehler | moved |
 | `Remote/ConsentPage.cs:39` | text | <h1>Das hat nicht geklappt</h1><p class="error">{E(message)}</p> | moved |
 
 ## Voice loop
@@ -116,7 +116,7 @@ Snapshot of string literals with German text on `main` before the i18n PR, found
 | `Voice/VoiceLoop.cs:404` | log | Whisper-Modell {Model} fehlt – lade nach {Path} … | moved |
 | `Voice/VoiceLoop.cs:426` | exception | Whisper-Modell nicht gefunden: {whisperPath} | moved |
 | `Voice/VoiceLoop.cs:465` | log | Sprachschleife: {Problem} | moved |
-| `Voice/VoiceLoop.cs:496` | log | Mikrofon "{Device}" nicht gefunden – nehme {Fallback}. Vorhanden: {Devices}. Kopilot wechselt, sobald es da… | moved |
+| `Voice/VoiceLoop.cs:496` | log | Mikrofon "{Device}" nicht gefunden – nehme {Fallback}. Vorhanden: {Devices}. Duopilo wechselt, sobald es da… | moved |
 | `Voice/VoiceLoop.cs:503` | log | Mikrofon offen: {Device} (WinMM-Gerät {Number}, 16 kHz mono). | moved |
 | `Voice/VoiceLoop.cs:526` | log | Mikrofon "{Device}" ist jetzt verfügbar – wechsle. | moved |
 | `Voice/VoiceLoop.cs:538` | log | Mikrofon {Device}: Aufnahme beendet – öffne es erneut. | moved |
@@ -176,9 +176,9 @@ Snapshot of string literals with German text on `main` before the i18n PR, found
 | `Reports/BugReport.cs:290` | text | Letzte Funksprüche: | moved |
 | `Reports/BugReport.cs:300` | text | ({c.Transcript.Count - lines.Count} ältere Funksprüche in der lokalen Kopie) | moved |
 | `Reports/BugReport.cs:375` | text | ### Was ist falsch, was wäre richtig? | moved |
-| `Reports/BugReport.cs:376` | text | ### Kontext aus Kopilot | moved |
+| `Reports/BugReport.cs:376` | text | ### Kontext aus Duopilo | moved |
 | `Reports/BugReport.cs:399` | text |  … (gekürzt, vollständig in der lokalen Kopie) | moved |
-| `Reports/ReportEndpoints.cs:69` | text | Die Momentaufnahme ist nicht mehr da (Kopilot neu gestartet?). Bitte „Fehler melden“ noch einmal drücken. | moved |
+| `Reports/ReportEndpoints.cs:69` | text | Die Momentaufnahme ist nicht mehr da (Duopilo neu gestartet?). Bitte „Fehler melden“ noch einmal drücken. | moved |
 | `Reports/ReportEndpoints.cs:76` | text | Bitte eine Art wählen oder kurz beschreiben, was nicht stimmt. | moved |
 
 ## Speech output
@@ -230,14 +230,14 @@ Snapshot of string literals with German text on `main` before the i18n PR, found
 | `Atc/Controller/AtcService.cs:291` | text | Vorlagen mit Fehlern:  | moved |
 | `Atc/Controller/AtcService.cs:312` | text | Keine ATC-Sitzung – zuerst einen Funkspruch senden oder atc_control start. | moved |
 | `Atc/Controller/AtcService.cs:319` | text | {key} zurückgesetzt. | moved |
-| `Atc/Controller/AtcService.cs:326` | log | ATC ist ausgeschaltet (Kopilot:Atc:Enabled). | moved |
+| `Atc/Controller/AtcService.cs:326` | log | ATC ist ausgeschaltet (Duopilo:Atc:Enabled). | moved |
 | `Atc/Controller/AtcService.cs:339` | log | Luftraumdaten nicht geladen | moved |
 | `Atc/Controller/AtcService.cs:392` | log | Fehler in der ATC-Zustandsmaschine | moved |
 | `Atc/Controller/AtcService.cs:428` | log | ATC-Sitzung nicht fortgesetzt: {Reason} | moved |
 | `Atc/Controller/AtcService.cs:433` | log | ATC-Sitzung nicht fortgesetzt: {Message} | moved |
 | `Atc/Controller/AtcService.cs:458` | log | ATC-Sitzungssicherung von {Saved:u} ist zu alt ({Hours:0.0} h) – neue Sitzung. | moved |
 | `Atc/Controller/AtcService.cs:464` | log | ATC-Sitzungssicherung gehört zu einem anderen Flug ({Saved}) – neue Sitzung. | moved |
-| `Atc/Controller/AtcService.cs:515` | text | ATC ist ausgeschaltet (Kopilot:Atc:Enabled). | moved |
+| `Atc/Controller/AtcService.cs:515` | text | ATC ist ausgeschaltet (Duopilo:Atc:Enabled). | moved |
 | `Atc/Controller/AtcService.cs:527` | text | ATC-Vorlagen fehlen oder sind ungültig:  | moved |
 | `Atc/Controller/AtcService.cs:552` | text | keine passende Sicherung für diesen Flug. | moved |
 | `Atc/Controller/AtcService.cs:567` | text | freigegeben {Cleared} ft, Squawk {Squawk}, {Lines} Funksprüche{Note} | moved |
@@ -263,11 +263,11 @@ Snapshot of string literals with German text on `main` before the i18n PR, found
 
 | File:line | Kind | Text | Status |
 |---|---|---|---|
-| `Hosting/KopilotConfiguration.cs:53` | text | Ungültige HttpUrl: '{url}'. | moved |
-| `Hosting/KopilotConfiguration.cs:59` | text | HttpUrl '{url}' bindet nicht an localhost. Erlaubt sind nur 127.0.0.1, localhost und [::1] –  | moved |
-| `Hosting/KopilotConfiguration.cs:60` | text | der Zugang von außen läuft ausschließlich über den Cloudflare Tunnel. | moved |
+| `Hosting/DuopiloConfiguration.cs:53` | text | Ungültige HttpUrl: '{url}'. | moved |
+| `Hosting/DuopiloConfiguration.cs:59` | text | HttpUrl '{url}' bindet nicht an localhost. Erlaubt sind nur 127.0.0.1, localhost und [::1] –  | moved |
+| `Hosting/DuopiloConfiguration.cs:60` | text | der Zugang von außen läuft ausschließlich über den Cloudflare Tunnel. | moved |
 | `Hosting/HttpHost.cs:116` | log | Zugriffsschutz: Bearer-Token aktiv. | moved |
-| `Hosting/HttpHost.cs:120` | log | Bearer-Token ist kürzer als {Min} Zeichen und wird ignoriert. Neuen erzeugen mit: Kopilot.exe --generate-se… | moved |
+| `Hosting/HttpHost.cs:120` | log | Bearer-Token ist kürzer als {Min} Zeichen und wird ignoriert. Neuen erzeugen mit: Duopilo.exe --generate-se… | moved |
 | `Hosting/HttpHost.cs:125` | log | Zugriffsschutz: OAuth aktiv. Connector-URL für Claude: {Url} | moved |
 | `Hosting/HttpHost.cs:130` | text | PublicUrl muss eine https-Adresse ohne Pfad sein | moved |
 | `Hosting/HttpHost.cs:132` | log | OAuth ist NICHT aktiv: {Reason}. | moved |
@@ -276,17 +276,17 @@ Snapshot of string literals with German text on `main` before the i18n PR, found
 | `Hosting/AppRestart.cs:54` | log | Neustart nicht möglich: {Message} | moved |
 | `Hosting/AppRestart.cs:55` | log | Neustart nicht möglich: {ex.Message} | moved |
 | `Hosting/CrashReporter.cs:22` | text | Ereignisanzeige nicht lesbar | moved |
-| `Hosting/CrashReporter.cs:41` | text | Nicht beobachtete Task-Ausnahme (Kopilot läuft weiter) | moved |
+| `Hosting/CrashReporter.cs:41` | text | Nicht beobachtete Task-Ausnahme (Duopilo läuft weiter) | moved |
 | `Hosting/CrashReporter.cs:61` | log | Absturz-Journal nicht verfügbar ({Path}): {Message} | moved |
 | `Hosting/CrashReporter.cs:88` | log | Neustart nach Absturz nicht registriert (HRESULT 0x{Hr:X8}). | moved |
 | `Hosting/CrashReporter.cs:93` | log | Neustart nach Absturz nicht verfügbar: {Message} | moved |
 | `Hosting/CrashReporter.cs:104` | text | (keine Ausnahme übergeben) | moved |
-| `Hosting/CrashReporter.cs:131` | log | Kopilot wurde zuletzt NICHT sauber beendet: Lauf mit PID {Pid}, gestartet {Start:HH:mm:ss}Z, letztes Lebens… | moved |
+| `Hosting/CrashReporter.cs:131` | log | Duopilo wurde zuletzt NICHT sauber beendet: Lauf mit PID {Pid}, gestartet {Start:HH:mm:ss}Z, letztes Lebens… | moved |
 | `Hosting/CrashReporter.cs:132` | text | Vermutlich ein Absturz – Details folgen und stehen in {CrashLog}. | moved |
 | `Hosting/CrashReporter.cs:141` | text |  Bericht nach Neustart: Lauf PID  | moved |
 | `Hosting/CrashReporter.cs:149` | text | Letzte Einträge im Journal: | moved |
 | `Hosting/CrashReporter.cs:156` | log | Letzte Einträge vor dem Absturz: {Entries} | moved |
-| `Hosting/CrashReporter.cs:180` | text | Ereignisanzeige: kein passender Eintrag für Kopilot gefunden. | moved |
+| `Hosting/CrashReporter.cs:180` | text | Ereignisanzeige: kein passender Eintrag für Duopilo gefunden. | moved |
 | `Hosting/CrashReporter.cs:190` | log | {File} nicht geschrieben: {Message} | moved |
 
 ## Settings
@@ -294,16 +294,16 @@ Snapshot of string literals with German text on `main` before the i18n PR, found
 | File:line | Kind | Text | Status |
 |---|---|---|---|
 | `Settings/SettingsEndpoints.cs:69` | text | Neustart gibt es nur in der Tray-Instanz (HTTP-Modus). | moved |
-| `Settings/LocalSettingsStore.cs:93` | text | {KopilotConfiguration.LocalSettingsFile} ist kein gültiges JSON ({ex.Message}). Bitte die Datei von Hand ko… | moved |
+| `Settings/LocalSettingsStore.cs:93` | text | {DuopiloConfiguration.LocalSettingsFile} ist kein gültiges JSON ({ex.Message}). Bitte die Datei von Hand ko… | moved |
 | `Settings/LocalSettingsStore.cs:108` | exception | {FilePath} nicht lesbar: {ex.Message} | moved |
-| `Settings/LocalSettingsStore.cs:134` | text | Keine Schreibrechte für {FilePath}. Liegt Kopilot in einem geschützten Ordner (z. B. C:\\Program Files) ohn… | moved |
-| `Settings/LocalSettingsStore.cs:135` | text | vom Installer, lege {KopilotConfiguration.LocalSettingsFile} einmal von Hand an oder gib deinem Benutzer Sc… | moved |
+| `Settings/LocalSettingsStore.cs:134` | text | Keine Schreibrechte für {FilePath}. Liegt Duopilo in einem geschützten Ordner (z. B. C:\\Program Files) ohn… | moved |
+| `Settings/LocalSettingsStore.cs:135` | text | vom Installer, lege {DuopiloConfiguration.LocalSettingsFile} einmal von Hand an oder gib deinem Benutzer Sc… | moved |
 | `Settings/LocalSettingsStore.cs:140` | exception | {FilePath} nicht geschrieben: {ex.Message} | moved |
 | `Settings/SettingsService.cs:36` | text | Öffentliche Adresse (Tunnel) | moved |
 | `Settings/SettingsService.cs:175` | text | Der SimBrief-Username ist zu lang (höchstens 64 Zeichen). | moved |
 | `Settings/SettingsService.cs:180` | text | Die Pilot-ID besteht nur aus Ziffern (simbrief.com → Account Settings). | moved |
 | `Settings/SettingsService.cs:192` | text | SimBrief unverändert ({account}). | moved |
-| `Settings/SettingsService.cs:208` | text | Die öffentliche Adresse muss mit https:// beginnen und darf keinen Pfad haben, z. B. https://kopilot.exampl… | moved |
+| `Settings/SettingsService.cs:208` | text | Die öffentliche Adresse muss mit https:// beginnen und darf keinen Pfad haben, z. B. https://duopilo.exampl… | moved |
 | `Settings/SettingsService.cs:233` | text | Nichts geändert. | moved |
 | `Settings/SettingsService.cs:242` | log | Einstellungen (Dashboard): Zugang für Claude geändert ({Keys}) – gilt nach Neustart. | moved |
 | `Settings/SettingsService.cs:243` | text | Zugang für Claude gespeichert | moved |
@@ -315,28 +315,28 @@ Snapshot of string literals with German text on `main` before the i18n PR, found
 | `Settings/SettingsService.cs:326` | text | Sprachschleife an | moved |
 | `Settings/SettingsService.cs:326` | text | Sprachschleife aus | moved |
 | `Settings/SettingsService.cs:331` | text | Nichts geändert. | moved |
-| `Settings/SettingsService.cs:349` | text | Keine öffentliche Adresse eingetragen – Claude erreicht Kopilot nur lokal (Claude Desktop, Claude Code). | moved |
+| `Settings/SettingsService.cs:349` | text | Keine öffentliche Adresse eingetragen – Claude erreicht Duopilo nur lokal (Claude Desktop, Claude Code). | moved |
 | `Settings/SettingsService.cs:350` | text | Die öffentliche Adresse ist ungültig (https:// ohne Pfad). | moved |
 | `Settings/SettingsService.cs:366` | text | Cloudflare blockt diesen Rechner (HTTP 403) – vermutlich die WAF-Regel, die /mcp nur für Claude öffnet.  | moved |
 | `Settings/SettingsService.cs:367` | text | Das ist so gewollt; von hier lässt sich der Tunnel dann nicht prüfen. | moved |
-| `Settings/SettingsService.cs:368` | text | Kopilot hat den Hostnamen abgelehnt (HTTP 400). Passt die öffentliche Adresse zum Hostnamen des Tunnels? | moved |
-| `Settings/SettingsService.cs:370` | text | Cloudflare erreicht Kopilot nicht (HTTP {code}). Läuft cloudflared, und zeigt der Tunnel auf {_options.Http… | moved |
+| `Settings/SettingsService.cs:368` | text | Duopilo hat den Hostnamen abgelehnt (HTTP 400). Passt die öffentliche Adresse zum Hostnamen des Tunnels? | moved |
+| `Settings/SettingsService.cs:370` | text | Cloudflare erreicht Duopilo nicht (HTTP {code}). Läuft cloudflared, und zeigt der Tunnel auf {_options.Http… | moved |
 | `Settings/SettingsService.cs:376` | text | {url} nicht erreichbar: {ex.Message} – DNS-Eintrag und Tunnel prüfen. | moved |
 | `Settings/SettingsService.cs:380` | text | Keine Antwort von {url} nach 10 s. | moved |
-| `Settings/SettingsService.cs:393` | text | {text} – gilt nach einem Neustart von Kopilot. | moved |
+| `Settings/SettingsService.cs:393` | text | {text} – gilt nach einem Neustart von Duopilo. | moved |
 | `Settings/SettingsService.cs:406` | log | Einstellungen nicht gespeichert: {Message} | moved |
 
 ## Tray icon
 
 | File:line | Kind | Text | Status |
 |---|---|---|---|
-| `Desktop/TrayService.cs:52` | log | Tray-Symbol konnte nicht erstellt werden – Kopilot läuft ohne weiter. | moved |
+| `Desktop/TrayService.cs:52` | log | Tray-Symbol konnte nicht erstellt werden – Duopilo läuft ohne weiter. | moved |
 | `Desktop/TrayService.cs:121` | text | Dashboard öffnen | moved |
 | `Desktop/TrayService.cs:131` | text | Logdatei öffnen | moved |
 | `Desktop/TrayService.cs:132` | text | Programmordner öffnen | moved |
-| `Desktop/TrayService.cs:164` | text | Kopilot läuft | moved |
-| `Desktop/TrayService.cs:165` | text | Kopilot sitzt jetzt hier im Infobereich. Doppelklick öffnet das Dashboard. | moved |
-| `Desktop/TrayService.cs:188` | text | Kopilot – wartet auf MSFS | moved |
+| `Desktop/TrayService.cs:164` | text | Duopilo läuft | moved |
+| `Desktop/TrayService.cs:165` | text | Duopilo sitzt jetzt hier im Infobereich. Doppelklick öffnet das Dashboard. | moved |
+| `Desktop/TrayService.cs:188` | text | Duopilo – wartet auf MSFS | moved |
 | `Desktop/TrayService.cs:207` | text | Wartet auf Microsoft Flight Simulator | moved |
 | `Desktop/TrayService.cs:220` | text | {_profiles.All.Count} Profile geladen, {errors} mit Fehlern – Details im Dashboard. | moved |
 | `Desktop/TrayService.cs:232` | text | Konnte den Autostart nicht ändern: {ex.Message} | moved |
@@ -348,13 +348,13 @@ Snapshot of string literals with German text on `main` before the i18n PR, found
 
 | File:line | Kind | Text | Status |
 |---|---|---|---|
-| `Tools/KopilotTools.cs:19` | text | Keine Verbindung zu Microsoft Flight Simulator. Kopilot verbindet sich automatisch, sobald MSFS läuft. | moved |
-| `Tools/KopilotTools.cs:201` | text | ENG {i}: EGT {egt:0} °C bei laufendem Triebwerk – unplausibel (extremes Wetter oder Air-Start?). | moved |
-| `Tools/KopilotTools.cs:207` | text | ENG {i}: Fuel Flow 0 bei laufendem Triebwerk – Variable fuelFlowKgh im Profil {profile.Name} prüfen. | moved |
-| `Tools/KopilotTools.cs:208` | text | ENG {i}: Fuel Flow 0 bei laufendem Triebwerk – für dieses Flugzeug gibt es kein Profil, und die generische … | moved |
-| `Tools/KopilotTools.cs:309` | text | Die GPS-Flugplanvariablen des Sims sind leer – das FMS dieses Flugzeugs speist sie nicht. Für Route und For… | moved |
-| `Tools/KopilotTools.cs:380` | text | Für dieses Flugzeug gibt es kein Profil. Profile liegen in {profiles.DirectoryPath}. | moved |
-| `Tools/KopilotTools.cs:546` | text | Generische SimVars – bei Study-Level-Airlinern evtl. nicht aussagekräftig. A/THR-Status ist ohne Profil unb… | moved |
+| `Tools/DuopiloTools.cs:19` | text | Keine Verbindung zu Microsoft Flight Simulator. Duopilo verbindet sich automatisch, sobald MSFS läuft. | moved |
+| `Tools/DuopiloTools.cs:201` | text | ENG {i}: EGT {egt:0} °C bei laufendem Triebwerk – unplausibel (extremes Wetter oder Air-Start?). | moved |
+| `Tools/DuopiloTools.cs:207` | text | ENG {i}: Fuel Flow 0 bei laufendem Triebwerk – Variable fuelFlowKgh im Profil {profile.Name} prüfen. | moved |
+| `Tools/DuopiloTools.cs:208` | text | ENG {i}: Fuel Flow 0 bei laufendem Triebwerk – für dieses Flugzeug gibt es kein Profil, und die generische … | moved |
+| `Tools/DuopiloTools.cs:309` | text | Die GPS-Flugplanvariablen des Sims sind leer – das FMS dieses Flugzeugs speist sie nicht. Für Route und For… | moved |
+| `Tools/DuopiloTools.cs:380` | text | Für dieses Flugzeug gibt es kein Profil. Profile liegen in {profiles.DirectoryPath}. | moved |
+| `Tools/DuopiloTools.cs:546` | text | Generische SimVars – bei Study-Level-Airlinern evtl. nicht aussagekräftig. A/THR-Status ist ohne Profil unb… | moved |
 | `Tools/AtcControllerTools.cs:88` | text | Die Sitzung beginnt mit dem ersten Funkspruch (atc_transmit) oder atc_control start.  | moved |
 | `Tools/AtcControllerTools.cs:89` | text | Eine gesicherte Sitzung desselben Flugs wird dabei fortgesetzt. | moved |
 | `Tools/AtcTools.cs:41` | text | Nicht jede Freigabe setzt die Variable – im Testflug blieben IFR und LANDING auf 0. | moved |
@@ -363,14 +363,14 @@ Snapshot of string literals with German text on `main` before the i18n PR, found
 | `Tools/FlightPlanTools.cs:110` | text | Der SimBrief-Plan enthält keine verwertbare Route. | moved |
 | `Tools/FlightPlanTools.cs:171` | text | Das FMS fliegt einen Punkt an, der nicht im SimBrief-Plan steht – nächster Fix und Distanzen kommen aus dem… | moved |
 | `Tools/FlightPlanTools.cs:172` | text | Im SID/STAR- oder Flughafenbereich weicht die Flugbahn oft vom Plan ab (Vektoren). | moved |
-| `Tools/InputTools.cs:47` | text | Eingaben sind gesperrt – der Pilot kann sie im Kopilot-Dashboard freigeben. | moved |
+| `Tools/InputTools.cs:47` | text | Eingaben sind gesperrt – der Pilot kann sie im Duopilo-Dashboard freigeben. | moved |
 | `Tools/InputTools.cs:72` | text | Parameter 'action' fehlt – siehe list_actions. | moved |
 | `Tools/InputTools.cs:119` | text | A confirmation or state word (confirm, check, on, off, avail, läuft) or the action's name is enough, as lon… | kept |
 | `Tools/InputTools.cs:143` | text | Interner Fehler in {tool}: {ex.Message} | moved |
 | `Tools/TrafficTools.cs:51` | text | Radius auf {Nm(TrafficService.MaxRadiusNm)} NM (200 km) begrenzt – mehr nimmt SimConnect nicht an. | moved |
 | `Tools/TrafficTools.cs:64` | text | Kein Flug geladen (Hauptmenü oder Ladebildschirm). | moved |
 | `Tools/TrafficTools.cs:128` | text | Eigene Position unbekannt – Verkehr kann nicht relativ zum Flugzeug berechnet werden. | moved |
-| `Tools/TrafficTools.cs:129` | text | MSFS hat nicht auf die Verkehrsabfrage geantwortet. Läuft ein Flug? Sonst kopilot_status prüfen. | moved |
+| `Tools/TrafficTools.cs:129` | text | MSFS hat nicht auf die Verkehrsabfrage geantwortet. Läuft ein Flug? Sonst duopilo_status prüfen. | moved |
 | `Tools/TrafficTools.cs:134` | text | MSFS hat nicht vollständig geantwortet – evtl. fehlen Ziele. | moved |
 | `Tools/TrafficTools.cs:140` | text | Kein Verkehr im Umkreis von {radius} NM. Falls das nicht stimmen kann: KI-Verkehr bzw. Multiplayer ist im S… | moved |
 | `Tools/TrafficTools.cs:144` | text | Kein Verkehr in der Luft im Umkreis von {radius} NM (nur Flugzeuge am Boden). | moved |
@@ -380,7 +380,7 @@ Snapshot of string literals with German text on `main` before the i18n PR, found
 
 | File:line | Kind | Text | Status |
 |---|---|---|---|
-| `Monitoring/MonitoringService.cs:91` | log | Monitoring ist ausgeschaltet (Kopilot:Monitoring:Enabled). | moved |
+| `Monitoring/MonitoringService.cs:91` | log | Monitoring ist ausgeschaltet (Duopilo:Monitoring:Enabled). | moved |
 | `Monitoring/MonitoringService.cs:95` | log | Monitoring aktiv ({Interval} ms, {Rules} Regeln). | moved |
 | `Monitoring/MonitoringService.cs:153` | log | Fehler im Monitoring | moved |
 | `Monitoring/MonitorEngine.cs:151` | text | Kein Flug geladen. | moved |
@@ -440,8 +440,8 @@ Snapshot of string literals with German text on `main` before the i18n PR, found
 | `Input/ActionSafety.cs:138` | text | Variable ohne Namen | moved |
 | `Input/ActionSafety.cs:144` | text | {n}: Es dürfen nur L:-Variablen geschrieben werden | moved |
 | `Input/ActionSafety.cs:148` | text | {n} ist gesperrt (Triebwerk, Feuer, Treibstoff, MCDU, Sim-Steuerung; Fahrwerk/Klappen/Spoiler nur über ihre… | moved |
-| `Input/ActionSafety.cs:157` | text | Bereich {action.Area} ist gesperrt (Triebwerk, Treibstoff, Feuer, Hydraulik, IDG – nie über Kopilot) | moved |
-| `Input/ActionSafety.cs:161` | text | {action.Id} ist gesperrt (Triebwerk, Treibstoff, Feuer, Hydraulik, IDG – nie über Kopilot) | moved |
+| `Input/ActionSafety.cs:157` | text | Bereich {action.Area} ist gesperrt (Triebwerk, Treibstoff, Feuer, Hydraulik, IDG – nie über Duopilo) | moved |
+| `Input/ActionSafety.cs:161` | text | {action.Id} ist gesperrt (Triebwerk, Treibstoff, Feuer, Hydraulik, IDG – nie über Duopilo) | moved |
 | `Input/ActionSafety.cs:184` | text | {raw.Trim()} ({what}) nur unter {string.Join( | moved |
 | `Input/ActionSafety.cs:184` | text | , ids)} – dort greifen die Sicherheitssperren | moved |
 | `Input/ActionSafety.cs:237` | text | {step.Event} braucht die Sperre "{needed}" | moved |
@@ -495,7 +495,7 @@ Snapshot of string literals with German text on `main` before the i18n PR, found
 | `Input/InputService.cs:284` | log | Eingabe: prepare_action {Action} = {Value} vom Client abgebrochen | moved |
 | `Input/InputService.cs:285` | text | Aufruf abgebrochen – es wurde keine Aktion vorbereitet. Neu mit prepare_action. | moved |
 | `Input/InputService.cs:290` | text | Interner Fehler: {ex.Message} | moved |
-| `Input/InputService.cs:298` | text | Eingaben sind gesperrt. Freigabe im Kopilot-Dashboard (Eingabe) oder Kopilot:Input:Enabled. | moved |
+| `Input/InputService.cs:298` | text | Eingaben sind gesperrt. Freigabe im Duopilo-Dashboard (Eingabe) oder Duopilo:Input:Enabled. | moved |
 | `Input/InputService.cs:322` | text | Aktion "{actionId}" gibt es für {profile.Name} nicht – siehe list_actions. | moved |
 | `Input/InputService.cs:353` | text | Inzwischen wurde eine neuere Aktion angefordert – diese Vorbereitung ist verworfen und hat keinen Token. | moved |
 | `Input/InputService.cs:357` | text | Aufruf abgebrochen – es wurde keine Aktion vorbereitet. Neu mit prepare_action. | moved |
@@ -543,7 +543,7 @@ Snapshot of string literals with German text on `main` before the i18n PR, found
 | `Input/InputService.cs:1020` | text |  Offen ist jetzt {p.Plan.Summary} – deren Readback dem Piloten vorlesen und seine Antwort abwarten. | moved |
 | `Input/InputService.cs:1021` | text |  Neu mit prepare_action. | moved |
 | `Input/InputService.cs:1025` | text | Token {t} gehört zu {retired.Summary} – {retired.Fate}.{open} | moved |
-| `Input/InputService.cs:1030` | text | Token {t} gehört zu {foreign.Action} in einer anderen Kopilot-Instanz – confirm_action über dieselbe Verbin… | moved |
+| `Input/InputService.cs:1030` | text | Token {t} gehört zu {foreign.Action} in einer anderen Duopilo-Instanz – confirm_action über dieselbe Verbin… | moved |
 | `Input/InputService.cs:1057` | log | input-pending.json nicht geschrieben: {Message} | moved |
 | `Input/SafetyRules.cs:68` | text | Entführung | moved |
 | `Input/SafetyRules.cs:76` | text | nur unter VLO und unter der Höchsthöhe (Profil: maxGearAltitudeFt); danach Callout three green / gear disagree | moved |
@@ -612,7 +612,7 @@ Snapshot of string literals with German text on `main` before the i18n PR, found
 | `Sim/SimConnectClient.cs:222` | exception | Keine Verbindung zu MSFS. | moved |
 | `Sim/SimConnectClient.cs:247` | exception | MSFS hat den Befehl nicht rechtzeitig angenommen. | moved |
 | `Sim/SimConnectClient.cs:282` | log | SimConnect-Bibliothek konnte nicht geladen werden. Siehe README, Abschnitt 'SimConnect-SDK'. | moved |
-| `Sim/SimConnectClient.cs:289` | log | Kopilot wartet auf Microsoft Flight Simulator … | moved |
+| `Sim/SimConnectClient.cs:289` | log | Duopilo wartet auf Microsoft Flight Simulator … | moved |
 | `Sim/SimConnectClient.cs:327` | log | SimConnect-Verbindung abgebrochen: {Message} | moved |
 | `Sim/SimConnectClient.cs:332` | log | Unerwarteter Fehler im SimConnect-Thread – Verbindung wird neu aufgebaut. | moved |
 | `Sim/SimConnectClient.cs:372` | log | SimConnect kann nicht gestartet werden: {Message} | moved |
@@ -625,7 +625,7 @@ Snapshot of string literals with German text on `main` before the i18n PR, found
 | `Sim/SimConnectClient.cs:626` | log | Sim läuft weiter. | moved |
 | `Sim/TrafficConnection.cs:75` | log | Verkehrs-Nachrichtenlog nicht verfügbar: {Message} | moved |
 | `Sim/TrafficConnection.cs:95` | text | Keine Verbindung zu MSFS. | moved |
-| `Sim/TrafficConnection.cs:114` | text | Kopilot wird beendet | moved |
+| `Sim/TrafficConnection.cs:114` | text | Duopilo wird beendet | moved |
 | `Sim/TrafficConnection.cs:133` | text | MSFS-Verbindung wurde neu aufgebaut | moved |
 | `Sim/TrafficConnection.cs:145` | text | MSFS hat die Verkehrsverbindung beendet. | moved |
 | `Sim/TrafficConnection.cs:163` | text | MSFS hat die Verkehrsverbindung beendet. | moved |
@@ -690,7 +690,7 @@ Snapshot of string literals with German text on `main` before the i18n PR, found
 | 479 | html | Ansagen aus | moved |
 | 480 | attr | Stimme im Browser | moved |
 | 481 | html | Stimme | moved |
-| 483 | attr | Eingaben: Kopilot darf nach Readback und Bestätigung Schalter bedienen | moved |
+| 483 | attr | Eingaben: Duopilo darf nach Readback und Bestätigung Schalter bedienen | moved |
 | 483 | html | Eingabe gesperrt | moved |
 | 489 | html | Windows-Stimme | moved |
 | 492 | html | Windows-Stimme | moved |
@@ -701,14 +701,14 @@ Snapshot of string literals with German text on `main` before the i18n PR, found
 | 497 | html | Ansagen | moved |
 | 498 | html | alle | moved |
 | 500 | html | nur Warnings | moved |
-| 502 | html | Radiohöhen, Minimum und Retard auch von Kopilot (nur für Flugzeuge ohne eigene Ansagen) | moved |
-| 506 | html | Sprachschleife (Mikrofon → Kopilot und ATC) | moved |
+| 502 | html | Radiohöhen, Minimum und Retard auch von Duopilo (nur für Flugzeuge ohne eigene Ansagen) | moved |
+| 506 | html | Sprachschleife (Mikrofon → Duopilo und ATC) | moved |
 | 507 | html | Sprachschleife an – Mikrofon dauerhaft offen, Befehle und Funk ohne Claude | moved |
 | 508 | html | Mikrofon | moved |
 | 509 | attr | Spitzenpegel der letzten Sekunden | moved |
 | 509 | html | Pegel | moved |
 | 516 | html | Abbrechen | moved |
-| 519 | html | Verbinde mit Kopilot … | moved |
+| 519 | html | Verbinde mit Duopilo … | moved |
 | 528 | attr | Warnungen | moved |
 | 529 | html | Warnungen | moved |
 | 537 | attr | Route | moved (word also used in English) |
@@ -752,26 +752,26 @@ Snapshot of string literals with German text on `main` before the i18n PR, found
 | 654 | html | Für Route, Fortschritt, Fuel Check und ATC. Username oder Pilot-ID (simbrief.com → Account Settings) – die … | moved |
 | 661 | html | Speichern und Plan laden | moved |
 | 669 | html | Mikrofon | moved |
-| 670 | html | Für die Sprachschleife (Befehle und Funk ohne Claude). Fehlt das Gerät (VR-Brille aus), nimmt Kopilot das W… | moved |
+| 670 | html | Für die Sprachschleife (Befehle und Funk ohne Claude). Fehlt das Gerät (VR-Brille aus), nimmt Duopilo das W… | moved |
 | 671 | html | Aufnahmegerät | moved |
 | 672 | attr | Spitzenpegel der letzten Sekunden | moved |
 | 672 | html | Pegel | moved |
 | 678 | html | Module | moved (word also used in English) |
-| 679 | html | Monitoring und ATC lesen ihre Einstellung beim Start – nach dem Umschalten Kopilot neu starten. Eingabe und… | moved |
+| 679 | html | Monitoring und ATC lesen ihre Einstellung beim Start – nach dem Umschalten Duopilo neu starten. Eingabe und… | moved |
 | 681 | html | Callouts und Warnungen als Pilot Monitoring | moved |
 | 684 | html | Eingabe | moved |
-| 684 | html | Kopilot bedient Schalter – nur nach Readback und Bestätigung | moved |
+| 684 | html | Duopilo bedient Schalter – nur nach Readback und Bestätigung | moved |
 | 685 | attr | Eingabe | moved |
-| 687 | html | Fluglotsen von Kopilot (Funk, Übergaben, Freigaben) | moved |
-| 690 | html | Mikrofon dauerhaft offen, Befehle und Funk direkt an Kopilot | moved |
+| 687 | html | Fluglotsen von Duopilo (Funk, Übergaben, Freigaben) | moved |
+| 690 | html | Mikrofon dauerhaft offen, Befehle und Funk direkt an Duopilo | moved |
 | 701 | html | Fehler melden | moved |
 | 703 | html | Was stimmt nicht? | moved |
 | 704 | html | Titel | moved |
 | 705 | html | Was ist falsch, was wäre richtig? | moved |
-| 706 | attr | z. B. Sim-ATC übergibt erst hier an Montreal Center, Frequenz 132.25 – Kopilot schon 260 NM vorher bei HOIST. | moved |
+| 706 | attr | z. B. Sim-ATC übergibt erst hier an Montreal Center, Frequenz 132.25 – Duopilo schon 260 NM vorher bei HOIST. | moved |
 | 708 | html | Kontext, der mitgeschickt wird | moved |
 | 712 | html | Abbrechen | moved |
-| 719 | html | Kopilot antwortet nicht. Läuft Kopilot noch? Das Symbol im Infobereich zeigt es – sonst Kopilot.exe neu sta… | moved |
+| 719 | html | Duopilo antwortet nicht. Läuft Duopilo noch? Das Symbol im Infobereich zeigt es – sonst Duopilo.exe neu sta… | moved |
 | 729 | js | keine Daten | moved |
 | 729 | js | nicht verbunden | moved |
 | 774 | js | Wartet auf MSFS | moved |
@@ -780,7 +780,7 @@ Snapshot of string literals with German text on `main` before the i18n PR, found
 | 782 | js | Flugzeug unbekannt | moved |
 | 782 | js | <span class="tag">Profil ${esc(ac.profile)}</span> | moved |
 | 782 | js | <span class="tag">ohne Profil</span> | moved |
-| 789 | js | <strong>Warte auf Microsoft Flight Simulator.</strong> Kopilot verbindet sich automatisch, sobald MSFS läuft. | moved |
+| 789 | js | <strong>Warte auf Microsoft Flight Simulator.</strong> Duopilo verbindet sich automatisch, sobald MSFS läuft. | moved |
 | 792 | js | <strong>Kein Flug geladen.</strong> Sobald ein Flug läuft, erscheinen hier die Werte. | moved |
 | 838 | js | Für dieses Flugzeug sind keine FMA-Variablen im Profil – AP-Status aus den generischen SimVars, Schub und M… | moved |
 | 844 | js | <li><span class="t"></span><span class="at">Noch keine FMA-Wechsel aufgezeichnet.</span></li> | moved |
@@ -788,14 +788,14 @@ Snapshot of string literals with German text on `main` before the i18n PR, found
 | 852 | js |  gewählt | moved |
 | 911 | js | Keine Meldungen | moved |
 | 911 | js | Monitoring ist aus | moved |
-| 912 | js | Einschalten unter Einstellungen → Module, danach Kopilot neu starten. | moved |
+| 912 | js | Einschalten unter Einstellungen → Module, danach Duopilo neu starten. | moved |
 | 913 | js | Ruhezeit nach dem Laden: noch ${d.monitoring.quietForSec} s. | moved |
 | 914 | js | Monitoring läuft. Phase: ${phase}. | moved |
 | 924 | js | <li><span class="t"></span><span class="ms">Noch keine Meldungen in dieser Sitzung.</span></li> | moved |
 | 939 | js | <option value="">Keine englische Stimme</option> | moved |
 | 960 | js | Ansagen an | moved |
 | 960 | js | Ansagen aus | moved |
-| 961 | js | Kopilot spricht über Windows | moved |
+| 961 | js | Duopilo spricht über Windows | moved |
 | 972 | js | <option value="">Keine Stimme gefunden</option> | moved |
 | 975 | js | <option value="">Windows-Standardgerät</option> | moved |
 | 983 | js | <option value="">keine Stimmen gefunden</option> | moved |
@@ -810,7 +810,7 @@ Snapshot of string literals with German text on `main` before the i18n PR, found
 | 1086 | js | Modell lädt ${Math.round(st.downloadProgress * 100)} % | moved |
 | 1088 | js | ${st.recognized}/${st.utterances} Sätze erkannt${st.dropped ?  | moved |
 | 1092 | js | Mikrofon „${st.microphoneConfigured}“ nicht gefunden – es läuft das Standardgerät. | moved |
-| 1130 | js | <li class="msg dim">Für dieses Flugzeug liest Kopilot kein ECAM. Master Warning und Master Caution erschein… | moved |
+| 1130 | js | <li class="msg dim">Für dieses Flugzeug liest Duopilo kein ECAM. Master Warning und Master Caution erschein… | moved |
 | 1150 | js | <p class="empty">SimBrief ist nicht eingerichtet. Trag unter <a href="#einstellungen">Einstellungen → SimBr… | moved |
 | 1156 | js | <p class="empty">Noch kein Flugplan geladen.${p.error ? " " + esc(p.error) : ""} Erzeuge den OFP auf simbri… | moved |
 | 1164 | js | <p class="empty">Position noch nicht auf der Route – sobald der Sim Werte liefert, erscheint hier der Forts… | moved |
@@ -831,19 +831,19 @@ Snapshot of string literals with German text on `main` before the i18n PR, found
 | 1434 | js | Keine Verbindung zum Sim. | moved |
 | 1435 | js | Für „${ac.title \|\| "dieses Flugzeug"}“ gibt es kein Profil. Pfad: ${ac.path \|\| "unbekannt"} | moved |
 | 1438 | js | <tr><td>${esc(x.key)}</td><td class="var">${esc(x.variable)}</td><td><span class="state ${x.verified ? "ok"… | moved |
-| 1458 | js | Kopilot hat nicht geantwortet. | moved |
+| 1458 | js | Duopilo hat nicht geantwortet. | moved |
 | 1462 | js | Profile neu geladen. | moved |
 | 1463 | js | SimBrief-Plan geladen. | moved |
 | 1477 | js | Eingabe frei | moved |
 | 1477 | js | Eingabe gesperrt | moved |
-| 1481 | js | Kopilot darf ${inp.actions} Aktionen nach Bestätigung ausführen – klicken zum Sperren | moved |
-| 1481 | js | Kopilot darf nichts bedienen – zweimal klicken zum Freigeben | moved |
+| 1481 | js | Duopilo darf ${inp.actions} Aktionen nach Bestätigung ausführen – klicken zum Sperren | moved |
+| 1481 | js | Duopilo darf nichts bedienen – zweimal klicken zum Freigeben | moved |
 | 1487 | js | Wartet auf „confirm“ – noch ${p.expiresInSec} s · ${p.action}${p.value ? " = " + p.value : ""}${p.other ? "… | moved |
-| 1558 | js | Kopilot antwortet nicht | moved |
-| 1567 | js | Kopilot hat nicht geantwortet. | moved |
+| 1558 | js | Duopilo antwortet nicht | moved |
+| 1567 | js | Duopilo hat nicht geantwortet. | moved |
 | 1573 | js |  (wird beim ersten Speichern angelegt) | moved |
 | 1577 | js | Gespeichert, aber erst nach einem Neustart wirksam: ${s.restart.changes.join(", ")}. | moved |
-| 1578 | js |  Neustart über das Symbol im Infobereich (Beenden) und Kopilot.exe. | moved |
+| 1578 | js |  Neustart über das Symbol im Infobereich (Beenden) und Duopilo.exe. | moved |
 | 1583 | js | Umgebungsvariablen überschreiben die Datei: ${s.environmentOverrides.join(", ")} – Änderungen an diesen Wer… | moved |
 | 1590 | js | nach Neustart aktiv | moved |
 | 1591 | js |  <span class="dim">braucht öffentliche Adresse und Passwort (mind. ${c.consentPassword.minLength} Zeichen)<… | moved |
@@ -855,26 +855,26 @@ Snapshot of string literals with German text on `main` before the i18n PR, found
 | 1609 | js | Plan geladen: <b>${esc([b.plan.callsign, b.plan.origin && b.plan.destination ? b.plan.origin + " → " + b.pl… | moved |
 | 1610 | js | Noch kein Plan geladen. | moved |
 | 1615 | js | ${x.enabled ? "Eingeschaltet" : "Ausgeschaltet"} – gilt nach dem Neustart, bis dahin ${x.running ? "läuft e… | moved |
-| 1620 | js | Freigegeben – Kopilot darf nach Bestätigung schalten. | moved |
+| 1620 | js | Freigegeben – Duopilo darf nach Bestätigung schalten. | moved |
 | 1623 | js | Nur in der Tray-Instanz. | moved |
 | 1648 | js | <span class="dim">prüfe …</span> | moved |
-| 1649 | js | Kopilot hat nicht geantwortet. | moved |
+| 1649 | js | Duopilo hat nicht geantwortet. | moved |
 | 1665 | js | Lade Plan … | moved |
 | 1668 | js | Gespeichert, Plan geladen. | moved |
 | 1668 | js | Kein Plan gefunden. | moved |
-| 1669 | js | Kopilot hat nicht geantwortet. | moved |
+| 1669 | js | Duopilo hat nicht geantwortet. | moved |
 | 1701 | js | <option>nicht verfügbar</option> | moved |
-| 1702 | js | Kopilot hat nicht geantwortet. | moved |
+| 1702 | js | Duopilo hat nicht geantwortet. | moved |
 | 1712 | js | <option value="">Windows-Standardgerät${st.defaultMicrophone ? " (" + esc(st.defaultMicrophone) + ")" : ""}… | moved |
 | 1714 | js | <option value="${esc(configured)}">${esc(configured)} (nicht gefunden)</option> | moved |
 | 1719 | js | nur bei eingeschalteter Sprachschleife | moved |
 | 1721 | js | nimmt auf von ${st.microphone} | moved |
 | 1722 | js | zuletzt gehört: „${st.lastTranscript}“ | moved |
 | 1724 | js | „${st.microphoneConfigured}“ nicht gefunden – es läuft das Standardgerät. | moved |
-| 1729 | js | Kopilot hat nicht geantwortet. | moved |
-| 1758 | js | Kopilot wurde neu gestartet. | moved |
+| 1729 | js | Duopilo hat nicht geantwortet. | moved |
+| 1758 | js | Duopilo wurde neu gestartet. | moved |
 | 1780 | js | Sim nicht verbunden | moved |
-| 1824 | js | Kopilot hat nicht geantwortet. | moved |
+| 1824 | js | Duopilo hat nicht geantwortet. | moved |
 | 1840 | js | ${openGithub ? "GitHub sollte sich in einem neuen Tab geöffnet haben – dort nur noch absenden. Kein Tab? " … | moved |
 | 1841 | js |  <span class="dim">(Link gekürzt – vollständiger Text in der lokalen Kopie)</span> | moved |
 | 1843 | js | <button class="btn" type="button">Text kopieren</button> <span class="dim">Labels: ${esc(j.labels.join(", "… | moved |

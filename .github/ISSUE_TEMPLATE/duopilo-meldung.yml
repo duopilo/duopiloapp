@@ -1,0 +1,37 @@
+name: Report from Duopilo
+description: Data error (FIR boundary, station, frequency, airline) or bug – easiest via “Report a problem” in the Duopilo dashboard, which sends the context along.
+title: "[Report] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If the report comes from the dashboard (“Report a problem”), the fields are already filled in and the labels are set.
+        For data corrections, please add a source if you can (sim ATC, chart, AIP) – they are added after review.
+  # The ids (art, beschreibung, kontext) are filled in by the dashboard link – keep them as they are.
+  - type: dropdown
+    id: art
+    attributes:
+      label: Type of report
+      description: Only needed if you create the issue by hand – from the dashboard the type comes along.
+      multiple: true
+      options:
+        - FIR boundary / station
+        - Frequency
+        - Airline / callsign
+        - Bug
+    validations:
+      required: false
+  - type: textarea
+    id: beschreibung
+    attributes:
+      label: What is wrong, and what would be right?
+      description: What Duopilo did, what would have been right, and how you know (e.g. “Sim ATC hands over to Montreal Center 132.25 here”).
+    validations:
+      required: true
+  - type: textarea
+    id: kontext
+    attributes:
+      label: Context from Duopilo
+      description: Filled in by the dashboard (position, altitude, station and frequency per Duopilo, COM1, time, version, last radio calls). Please don't delete it.
+    validations:
+      required: false

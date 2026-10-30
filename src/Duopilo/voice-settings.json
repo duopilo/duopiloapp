@@ -1,0 +1,125 @@
+{
+  // Duopilo – Sprachschleife (Mikrofon → Whisper → Befehle an den Kopiloten / ATC → Sprachausgabe), komplett lokal, ohne Sprachmodell.
+  // First Officer (Name und Stimme pro Flug) und optionaler Smalltalk über ein Sprachmodell: im Dashboard unter
+  // Einstellungen → First Officer und Smalltalk (appsettings.Local.json), nicht hier.
+  // ACHTUNG: Diese Datei neben der Duopilo.exe ist nur die VORLAGE und wird von update.cmd überschrieben.
+  // Duopilo kopiert sie beim ersten Start nach %LOCALAPPDATA%\Duopilo\voice-settings.json – nur DIESE Datei gilt.
+  // (Bis 0.9.x hieß der Ordner %LOCALAPPDATA%\Kopilot – Duopilo übernimmt ihn beim ersten Start mitsamt dieser Datei.)
+  // Einfacher: im Dashboard unter Ansagen → Stimme die Sprachschleife einschalten und das Mikrofon wählen (gilt sofort).
+  // Andere Änderungen von Hand gelten nach einem Neustart von Duopilo.
+  // Status zur Laufzeit: duopilo_status (Abschnitt voiceLoop) oder http://127.0.0.1:5155/voice
+  // Alles hier gilt nur mit "enabled": true – sonst verhalten sich die Callouts wie ohne Sprachschleife.
+
+  // Mikrofon dauerhaft offen, Befehle per Sprache. Standard: aus.
+  "enabled": false,
+
+  "microphone": {
+    // Teil des Gerätenamens, z. B. "Headset", "Quest" oder "Index". Leer = Windows-Standardmikrofon.
+    // Die vorhandenen Geräte stehen beim Start im Log ("Aufnahmegeräte: …"), in duopilo_status und im Dashboard.
+    // Fehlt das Gerät (VR-Brille aus), nimmt Duopilo das Standardgerät und wechselt, sobald es auftaucht.
+    "device": "",
+    // VAD-Empfindlichkeit (Silero, 0,1–0,95): kleiner = empfindlicher, größer = nur deutliche Sprache.
+    "threshold": 0.5,
+    // So viel Sprache muss mindestens kommen (ms), sonst war es ein Geräusch.
+    "minSpeechMs": 200,
+    // So viel Stille beendet einen Satz (ms).
+    "silenceMs": 700,
+    // Vorlauf vor dem Sprachbeginn (ms).
+    "preRollMs": 300,
+    // Längere Sätze werden abgeschnitten (s).
+    "maxUtteranceSec": 12,
+    // Nach einer Ansage bleibt das Mikrofon noch so lange stumm (ms) – mehr, wenn über Lautsprecher statt Headset.
+    "echoTailMs": 350
+  },
+
+  "recognition": {
+    // Whisper-Modell: tiny, base, small – auch quantisiert (-q5_1, -q8_0). base-q5_1 ≈ 60 MB, small-q5_1 ≈ 190 MB.
+    "model": "base-q5_1",
+    // Eigene Modelldatei (ggml-*.bin). Leer = wird nach %LOCALAPPDATA%\Duopilo\models geladen.
+    "modelPath": "",
+    // "cpu" oder "gpu" (CUDA, sonst Vulkan, sonst CPU). Die GPU braucht MSFS – CPU ist meist die bessere Wahl.
+    "device": "cpu",
+    "threads": 4,
+    // "auto" (je Satz Deutsch oder Englisch), "de" oder "en". Fest eingestellt ist die Erkennung schneller.
+    "language": "auto",
+    // Wortschatz-Hinweis für Whisper. Leer = eingebaute Funk- und Cockpit-Begriffe.
+    "prompt": "",
+    // Audio-Kontext (0 = voll). 768 rechnet etwa doppelt so schnell und reicht für Sätze bis 15 s.
+    "audioContext": 0
+  },
+
+  "voices": {
+    // Feste Kokoro-Stimme des Kopiloten (Callouts und Antworten), z. B. "bm_george". Leer = Stimme des First Officers
+    // (pro Flug, passend zu seinem Namen), ist er aus: Stimme aus dem Dashboard. Eine feste Stimme bestimmt das Geschlecht des Namens.
+    "kopilot": "",
+    // Lautstärke (Faktor auf die Lautstärke im Dashboard). Die Stimmen der ATC-Stationen vergibt das ATC-Modul (atc-templates.json).
+    "kopilotVolume": 1.0,
+    "atcVolume": 1.0
+  },
+
+  "hotkeys": {
+    // Spracheingabe stumm/an, systemweit (auch wenn MSFS vorne ist). Leer = kein Tastenkürzel.
+    // Per Sprache: "Kopilot Pause" / "Kopilot weiter".
+    "mute": "Ctrl+Alt+K"
+  },
+
+  "commands": {
+    // Anrede, z. B. "Kopilot, Gear up". Optional – außer requireWakeWord ist true. „Kopilot“ ist das feste Ansprachewort;
+    // „Duopilo, …“ zählt zusätzlich, wenn Whisper es eindeutig so abschreibt.
+    "wakeWords": [ "kopilot", "copilot" ],
+    // Befehle nur mit Anrede – hilft, wenn im Raum geredet wird. "Confirm" nach dem Readback braucht keine Anrede.
+    "requireWakeWord": false,
+    // So lange wartet ein Readback auf "Confirm" / "Correct" / "Affirm" (s), ab dem Ende des Readbacks. "Ja" / "OK" bestätigen nicht.
+    "confirmTimeoutSec": 60,
+    // Unbekannte Sätze bis zu so vielen Wörtern bekommen "Say again", längere werden still verworfen.
+    "sayAgainMaxWords": 8,
+    // "Ausführen + Callout": sicher erkannte Befehle sofort ausführen und danach ansagen ("Speed 250 set", "Flaps 2") – wie der PM.
+    // Readback mit "Confirm" nur bei unsicherer Erkennung und bei Aktionen mit Rückfrage (z. B. Transponder STBY im Flug).
+    // false = jeder Befehl mit Readback und "Confirm" (wie bis 0.9.1).
+    "executeWithCallout": true,
+    // Darunter gilt die Erkennung als unsicher (0–1, Mittel der Whisper-Token-Wahrscheinlichkeiten) → Readback mit "Confirm".
+    "minConfidence": 0.6
+  },
+
+  "acknowledge": {
+    // Bestätigungspflicht: wichtige Meldungen erwarten "check" oder "copy" (auch "checked", "copied", "correcting").
+    // Ohne Antwort einmal wiederholen, danach Warnton und Eintrag im Dashboard – nie endlos.
+    "enabled": true,
+    // Wartezeit bis zur Wiederholung und noch einmal bis zur Eskalation (s, 5–60).
+    "repeatAfterSec": 10,
+    // Meldungen (ab Caution), die eine Quittung brauchen. Leer = Standardliste.
+    "rules": [
+      "FUEL_WARNING", "ATC_SQUAWK", "ATC_FREQUENCY", "TCAS_RA",
+      "MASTER_WARNING", "MASTER_CAUTION", "STALL", "OVERSPEED", "GEAR_SPEED", "FLAP_SPEED", "SINK_RATE", "BANK_ANGLE",
+      "GEAR_DOWN_HIGH", "SPEED_LIMIT_FL100", "SPEED_DEVIATION", "TRAFFIC_PROXIMITY", "LANDING_CHECK",
+      "ATHR_OFF", "APPR_NOT_ACTIVE", "LOC_DEVIATION", "GS_DEVIATION"
+    ]
+  },
+
+  "atc": {
+    // Rufzeichen und Stationen des Flugs kennt das ATC-Modul schon (SimBrief-Plan, atc-templates.json). Hier nur Ergänzungen:
+    // weitere eigene Rufzeichen in gesprochener Form, z. B. [ "Lufthansa 4AB" ].
+    "callsigns": [ ],
+    // Weitere Stationsnamen (zusätzlich zu "<Ort> Tower/Ground/Radar/…", den FIRs aus atc-templates.json und Shanwick, Gander …).
+    "stations": [ ],
+    // Rufzeichen auch aus MSFS (ATC AIRLINE + ATC FLIGHT NUMBER, ATC ID).
+    "useSimCallsign": true
+  },
+
+  "callouts": {
+    // Monitoring-Callouts sprechen (V1, Rotate, Positive climb, 1000 to go, Speed limit …).
+    "enabled": true,
+    // Gesprochene Regeln, "*" = alle. Beispiel: [ "PM_V1", "PM_ROTATE", "TAXI_SPEED" ]
+    "active": [ "*" ],
+    // Nie gesprochene Regeln, z. B. [ "SPEED_DEVIATION" ].
+    "muted": [ ],
+    // Sim pausiert → nichts sprechen.
+    "silentWhenPaused": true,
+    // Warnung "Taxi speed", wenn am Boden zu schnell gerollt wird (Groundspeed).
+    "taxiSpeed": {
+      "enabled": true,
+      "thresholdKt": 25,
+      "cooldownSec": 30
+    }
+  }
+}

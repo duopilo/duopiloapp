@@ -2,7 +2,7 @@
 
   <!--
     Platzhalter für Microsoft.FlightSimulator.SimConnect.dll aus dem MSFS-2024-SDK.
-    Bildet nur die Teile der API nach, die Kopilot benutzt, damit der Build ohne SDK (z. B. in GitHub Actions) klappt.
+    Bildet nur die Teile der API nach, die Duopilo benutzt, damit der Build ohne SDK (z. B. in GitHub Actions) klappt.
     Eine Verbindung zu MSFS ist damit NICHT möglich.
   -->
   <PropertyGroup>

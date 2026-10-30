@@ -1,0 +1,423 @@
+{
+  "_hinweis": "Templates for the Duopilo ATC. Best make your own changes in a copy at %LOCALAPPDATA%\\Duopilo\\atc-templates.json – it takes precedence and is not overwritten by updates. Then run atc_control reload. Variables are written in {braces}; with several variants, the first one whose variables are all known wins. Duopilo speaks numbers digit by digit, speeds in knots only.",
+  "_hinweise": {
+    "voices": "Each station gets a random voice from pool for each flight. Fixed voices go under stations, e.g. \"EDDF/tower\": \"bf_emma\", \"FIR/EGGX\": \"bm_daniel\", or for a whole station type \"delivery\": \"af_heart\".",
+    "airports": "Spoken airport name, climb altitude of the IFR clearance ({initialAlt}), station names that differ from the default and fixed frequencies (\"frequencies\": { \"tower\": \"118.775\" } – these take precedence over the Facilities API).",
+    "telephony": "Exceptions and corrections only – all other callsigns come from the OpenFlights database (data/openflights/airlines.dat). An entry here takes precedence.",
+    "firs": "FIR (ICAO) → name and frequency of the control unit. Boundaries come from VAT-Spy (data/vatspy), sectors with their own frequencies from the VATSIM sector data (data/sectors); frequency only applies where the sector data has none. oceanic: true = position reports, oceanic clearance beforehand. oceanicFir: identifier of the oceanic unit of a FIR with a domestic and an oceanic part (Gander: CZQX → CZQO). members: further units whose sectors count towards this FIR. Without FIR data in the OFP, the North Atlantic uses EGGX east of 30°W and CZQO west of it. FIRs without an entry of their own are named as in VAT-Spy plus the suffix from firSuffixes (Winnipeg Center), otherwise OCEANIC or CENTER (generic station). There is no VATSIM sector data for KZMP, KZDV and KZLA – their frequencies are those of the MSFS ATC at the FIR boundary in test flight CFG2205.",
+    "firSuffixes": "ICAO prefix → station type for FIRs without an entry of their own. The longest matching prefix wins, \"\" for all others.",
+    "rules": "Thresholds of the state machine: altitudes in ft, distances in nm, times in seconds or minutes. sectorMinNm: sectors the route touches for a shorter distance don't get a handoff of their own. offerStepClimbs/stepClimbLeadNm: step climbs from the OFP are cleared by ATC on its own (\"when ready climb and maintain …\") this far before the step point. levelRequestUnablePercent: share of level requests answered with \"unable due traffic, expect … in levelRequestDelayMinutes minutes\" (0 = never) – the clearance then follows on its own. checkSquawk/checkFrequency: compare transponder code and COM1 with the assignment; a deviation has to last deviationSeconds (after a handoff frequencyGraceSeconds as well) before ATC says \"check squawk/frequency, should be …\", repeated every deviationRepeatSeconds, at most deviationMaxCalls times.",
+    "words": "Words the state machine inserts for {levelVerb}: climb/descend/maintain in corrections, climbAndMaintain/descendAndMaintain/maintain in level clearances.",
+    "messages": "from: atc = Duopilo speaks, pilot = expected pilot call (hint). readback: variables the pilot has to read back.",
+    "corrections": "What is said after \"negative\", per readback item."
+  },
+  "version": 2,
+
+  "voices": {
+    "pool": [
+      "bf_emma", "bm_lewis", "am_michael", "bf_isabella", "bm_daniel", "af_heart", "am_adam", "bf_alice",
+      "bm_fable", "af_bella", "am_eric", "bf_lily", "am_liam", "af_nicole", "am_onyx", "af_sarah", "af_jessica", "bm_george"
+    ],
+    "stations": {},
+    "avoidCalloutVoice": true
+  },
+
+  "telephony": {
+    "_hinweis": "Deviations from OpenFlights: missing there, outdated or wrong (spelling of KLM/UPS).",
+    "AFR": "Airfrance",
+    "ASA": "Alaska",
+    "AVA": "Avianca",
+    "BEL": "Beeline",
+    "BOX": "German Cargo",
+    "EDV": "Endeavor",
+    "EJU": "Alpine",
+    "EZS": "Topswiss",
+    "GJS": "Lindbergh",
+    "ITY": "Itarrow",
+    "KLM": "KLM",
+    "MXY": "Moxy",
+    "POE": "Porter",
+    "QXE": "Horizon",
+    "ROU": "Rouge",
+    "TFL": "Orange",
+    "THY": "Turkish",
+    "TSC": "Air Transat",
+    "TUI": "Tuifly",
+    "UPS": "UPS",
+    "VXP": "Avelo"
+  },
+
+  "firSuffixes": {
+    "": "Control",
+    "K": "Center",
+    "P": "Center",
+    "C": "Center",
+    "Y": "Center",
+    "ED": "Radar",
+    "EH": "Radar",
+    "EP": "Radar",
+    "LK": "Radar",
+    "LO": "Radar",
+    "LS": "Radar"
+  },
+
+  "stationTypes": {
+    "delivery": { "name": "Delivery", "placeholderFrequency": "121.900" },
+    "ground": { "name": "Ground", "placeholderFrequency": "121.800" },
+    "tower": { "name": "Tower", "placeholderFrequency": "118.700" },
+    "departure": { "name": "Departure", "placeholderFrequency": "124.350" },
+    "center": { "name": "Control", "placeholderFrequency": "132.600" },
+    "oceanic": { "name": "Oceanic", "placeholderFrequency": "127.650" },
+    "approach": { "name": "Approach", "placeholderFrequency": "119.100" }
+  },
+
+  "airports": {
+    "EDDF": { "name": "Frankfurt", "initialClimbFt": 5000 },
+    "EDDL": { "name": "Düsseldorf", "initialClimbFt": 5000 },
+    "EDDK": { "name": "Cologne", "initialClimbFt": 5000 },
+    "EDDM": { "name": "Munich", "initialClimbFt": 5000 },
+    "EDDB": { "name": "Berlin", "initialClimbFt": 5000 },
+    "EDDH": { "name": "Hamburg", "initialClimbFt": 5000 },
+    "EDDS": { "name": "Stuttgart", "initialClimbFt": 5000 },
+    "EGLL": { "name": "Heathrow", "initialClimbFt": 6000 },
+    "EHAM": { "name": "Schiphol", "initialClimbFt": 6000 },
+    "LSZH": { "name": "Zurich", "initialClimbFt": 5000 },
+    "LOWW": { "name": "Vienna", "initialClimbFt": 5000 },
+    "KJFK": { "name": "Kennedy", "initialClimbFt": 5000, "stations": { "departure": "New York Departure", "approach": "New York Approach" } },
+    "KEWR": { "name": "Newark", "initialClimbFt": 2500, "stations": { "departure": "New York Departure", "approach": "New York Approach" } },
+    "KBOS": { "name": "Boston", "initialClimbFt": 5000 },
+    "KLGA": { "name": "La Guardia", "initialClimbFt": 5000, "stations": { "departure": "New York Departure", "approach": "New York Approach" } },
+    "KLAX": { "name": "Los Angeles", "initialClimbFt": 5000, "stations": { "departure": "SoCal Departure", "approach": "SoCal Approach" } },
+    "KSAN": { "name": "San Diego", "stations": { "departure": "SoCal Departure", "approach": "SoCal Approach" } },
+    "KSFO": { "name": "San Francisco", "stations": { "departure": "NorCal Departure", "approach": "NorCal Approach" } },
+    "KOAK": { "name": "Oakland", "stations": { "departure": "NorCal Departure", "approach": "NorCal Approach" } }
+  },
+
+  "firs": {
+    "EDGG": { "name": "Langen Radar" },
+    "EDWW": { "name": "Bremen Radar" },
+    "EDMM": { "name": "Munich Radar" },
+    "EDUU": { "name": "Rhein Radar" },
+    "EDVV": { "name": "Bremen Radar", "members": [ "EDYY", "EDWW", "EDGG" ] },
+    "EDYY": { "name": "Maastricht Radar" },
+    "EHAA": { "name": "Amsterdam Radar" },
+    "EBBU": { "name": "Brussels Control" },
+    "LFFF": { "name": "Paris Control" },
+    "LFRR": { "name": "Brest Control" },
+    "LSAS": { "name": "Swiss Radar" },
+    "LOVV": { "name": "Wien Radar" },
+    "EKDK": { "name": "Copenhagen Control" },
+    "EGTT": { "name": "London Control" },
+    "EGPX": { "name": "Scottish Control" },
+    "EISN": { "name": "Shannon Control" },
+    "EGGX": { "name": "Shanwick Oceanic", "oceanic": true },
+    "CZQO": { "name": "Gander Oceanic", "oceanic": true },
+    "BIRD": { "name": "Reykjavik Control", "oceanic": true },
+    "KZWY": { "name": "New York Oceanic", "oceanic": true },
+    "LPPO": { "name": "Santa Maria Oceanic", "oceanic": true },
+    "OCEANIC": { "name": "Oceanic", "oceanic": true },
+    "CENTER": { "name": "Center" },
+    "CZQX": { "name": "Gander Center", "oceanicFir": "CZQO" },
+    "CZQM": { "name": "Moncton Center" },
+    "CZUL": { "name": "Montreal Center" },
+    "CZYZ": { "name": "Toronto Center" },
+    "KZBW": { "name": "Boston Center" },
+    "KZNY": { "name": "New York Center" },
+    "KZDC": { "name": "Washington Center" },
+    "KZMP": { "name": "Minneapolis Center", "frequency": "119.100" },
+    "KZDV": { "name": "Denver Center", "frequency": "132.700" },
+    "KZLA": { "name": "Los Angeles Center", "frequency": "124.200" }
+  },
+
+  "rules": {
+    "initialClimbFt": 5000,
+    "departureClimbFt": 15000,
+    "departureHandoffBelowFt": 2000,
+    "offerDirect": true,
+    "directMinAltitudeFt": 7000,
+    "towerHandoffAglFt": 1500,
+    "centerDescentFt": 11000,
+    "approachDescentFt": 5000,
+    "topOfDescentLeadNm": 5,
+    "approachHandoffNm": 40,
+    "approachClearanceNm": 20,
+    "towerHandoffNm": 12,
+    "landingClearanceFallbackNm": 4,
+    "vacateSpeedKt": 40,
+    "oceanicRequestMinutes": 30,
+    "holdShortSeconds": 8,
+    "takeoffClearanceMaxSeconds": 60,
+    "defaultApproach": "ILS",
+    "sectorMinNm": 20,
+    "offerStepClimbs": true,
+    "stepClimbLeadNm": 10,
+    "levelRequestUnablePercent": 0,
+    "levelRequestDelayMinutes": 10,
+    "checkSquawk": true,
+    "checkFrequency": true,
+    "deviationSeconds": 15,
+    "frequencyGraceSeconds": 60,
+    "deviationRepeatSeconds": 120,
+    "deviationMaxCalls": 3
+  },
+
+  "messages": {
+    "delivery.request": {
+      "from": "pilot",
+      "variants": [ "{station}, {callsign}, request IFR clearance to {dest}" ]
+    },
+    "delivery.clearance": {
+      "variants": [
+        "{callsign}, cleared to {dest}, {sid} departure, runway {runway}, climb {initialAlt}, squawk {squawk}",
+        "{callsign}, cleared to {dest}, runway {runway}, climb {initialAlt}, squawk {squawk}"
+      ],
+      "readback": [ "sid", "initialAlt", "squawk" ]
+    },
+    "delivery.readbackCorrect": {
+      "variants": [ "{callsign}, readback correct, contact Ground {freq}" ]
+    },
+
+    "ground.pushRequest": {
+      "from": "pilot",
+      "variants": [ "{station}, {callsign}, gate {gate}, request push and start", "{station}, {callsign}, request push and start" ]
+    },
+    "ground.pushApproved": {
+      "variants": [ "{callsign}, push and start approved, facing {direction}", "{callsign}, push and start approved" ]
+    },
+    "ground.taxiRequest": {
+      "from": "pilot",
+      "variants": [ "{station}, {callsign}, request taxi" ]
+    },
+    "ground.taxi": {
+      "variants": [
+        "{callsign}, taxi to holding point {holdingPoint} runway {runway} via {taxiRoute}",
+        "{callsign}, taxi to holding point {holdingPoint} runway {runway}",
+        "{callsign}, taxi to holding point runway {runway}"
+      ],
+      "readback": [ "holdingPoint", "runway" ]
+    },
+    "ground.handoffTower": {
+      "variants": [ "{callsign}, contact Tower {freq}" ]
+    },
+
+    "tower.readyRequest": {
+      "from": "pilot",
+      "variants": [
+        "{station}, {callsign}, holding point {holdingPoint} runway {runway}, ready for departure",
+        "{station}, {callsign}, holding point runway {runway}, ready for departure"
+      ]
+    },
+    "tower.lineUp": {
+      "variants": [ "{callsign}, line up and wait runway {runway}" ],
+      "readback": [ "runway" ]
+    },
+    "tower.takeoff": {
+      "variants": [ "{callsign}, wind {wind}, runway {runway}, cleared for takeoff", "{callsign}, runway {runway}, cleared for takeoff" ],
+      "readback": [ "runway" ]
+    },
+    "tower.handoffDeparture": {
+      "variants": [ "{callsign}, contact Departure {freq}" ]
+    },
+
+    "departure.contact": {
+      "from": "pilot",
+      "variants": [ "{station}, {callsign}, passing {altitude}, climbing {initialAlt}" ]
+    },
+    "departure.identified": {
+      "variants": [ "{callsign}, identified, climb {level}" ],
+      "readback": [ "level" ]
+    },
+    "departure.direct": {
+      "variants": [ "{callsign}, proceed direct {fix}" ],
+      "readback": [ "fix" ]
+    },
+    "departure.handoff": {
+      "variants": [ "{callsign}, contact {nextCenter} {freq}" ]
+    },
+
+    "center.contactClimbing": {
+      "from": "pilot",
+      "variants": [ "{station}, {callsign}, passing {altitude}, climbing {level}" ]
+    },
+    "center.contactLevel": {
+      "from": "pilot",
+      "variants": [ "{station}, {callsign}, maintaining {altitude}" ]
+    },
+    "center.contactDescending": {
+      "from": "pilot",
+      "variants": [ "{station}, {callsign}, passing {altitude}, descending {level}" ]
+    },
+    "center.climb": {
+      "variants": [ "{callsign}, climb {level}" ],
+      "readback": [ "level" ]
+    },
+    "center.descend": {
+      "variants": [ "{callsign}, descend {level}" ],
+      "readback": [ "level" ]
+    },
+    "center.descendQnh": {
+      "variants": [ "{callsign}, descend {level}, {qnh}", "{callsign}, descend {level}" ],
+      "readback": [ "level", "qnh" ]
+    },
+    "center.descendVia": {
+      "variants": [ "{callsign}, descend via {star} arrival", "{callsign}, descend {level}" ],
+      "readback": [ "star" ]
+    },
+    "center.descendViaQnh": {
+      "variants": [ "{callsign}, descend via {star} arrival, {qnh}", "{callsign}, descend {level}, {qnh}" ],
+      "readback": [ "star", "qnh" ]
+    },
+    "center.identified": {
+      "variants": [ "{callsign}, identified, maintain {level}", "{callsign}, identified" ]
+    },
+    "center.handoff": {
+      "variants": [ "{callsign}, contact {nextCenter} {freq}" ]
+    },
+    "center.handoffApproach": {
+      "variants": [ "{callsign}, contact {nextCenter} {freq}" ]
+    },
+    "center.levelRequest": {
+      "from": "pilot",
+      "variants": [ "{station}, {callsign}, request {levelVerb} {level}" ]
+    },
+    "center.levelChange": {
+      "variants": [ "{callsign}, {levelVerb} {level}" ],
+      "readback": [ "level" ]
+    },
+    "center.levelChangeQnh": {
+      "variants": [ "{callsign}, {levelVerb} {level}, {qnh}", "{callsign}, {levelVerb} {level}" ],
+      "readback": [ "level", "qnh" ]
+    },
+    "center.levelWhenReady": {
+      "variants": [ "{callsign}, when ready {levelVerb} {level}" ],
+      "readback": [ "level" ]
+    },
+    "center.levelUnable": {
+      "variants": [
+        "{callsign}, unable {requested} due traffic, maintain {level}, expect {requested} in {minutes} minutes",
+        "{callsign}, unable {requested} due traffic, maintain {level}"
+      ]
+    },
+
+    "oceanic.request": {
+      "from": "pilot",
+      "variants": [
+        "{station}, {callsign}, request oceanic clearance, estimating {entryFix} at {eta}, requesting {level}, speed {speedKt} knots",
+        "{station}, {callsign}, request oceanic clearance, estimating {entryFix} at {eta}, requesting {level}"
+      ]
+    },
+    "oceanic.clearance": {
+      "variants": [
+        "{callsign}, cleared to {dest} via {entryFix}, {route}, maintain {level}, speed {speedKt} knots",
+        "{callsign}, cleared to {dest} via {entryFix}, maintain {level}, speed {speedKt} knots",
+        "{callsign}, cleared to {dest} via {entryFix}, maintain {level}"
+      ],
+      "readback": [ "entryFix", "level", "speedKt" ]
+    },
+    "oceanic.readbackCorrect": {
+      "variants": [ "{callsign}, readback correct" ]
+    },
+    "oceanic.position": {
+      "from": "pilot",
+      "variants": [
+        "{station}, {callsign}, position {fix} at {time}, {level}, estimating {nextFix} at {eta}",
+        "{station}, {callsign}, position {fix} at {time}, {level}"
+      ]
+    },
+    "oceanic.roger": {
+      "variants": [ "{callsign}, roger" ]
+    },
+    "oceanic.handoff": {
+      "variants": [ "{callsign}, contact {nextCenter} {freq}" ]
+    },
+
+    "approach.contact": {
+      "from": "pilot",
+      "variants": [ "{station}, {callsign}, descending {level}", "{station}, {callsign}, {altitude}" ]
+    },
+    "approach.descend": {
+      "variants": [
+        "{callsign}, descend {level}, {star} arrival, expect {approach} runway {runway}, {qnh}",
+        "{callsign}, descend {level}, expect {approach} runway {runway}, {qnh}",
+        "{callsign}, descend {level}, expect {approach} runway {runway}"
+      ],
+      "readback": [ "level", "runway", "qnh" ]
+    },
+    "approach.cleared": {
+      "variants": [ "{callsign}, cleared {approach} runway {runway}" ],
+      "readback": [ "approach", "runway" ]
+    },
+    "approach.handoff": {
+      "variants": [ "{callsign}, contact Tower {freq}" ]
+    },
+
+    "tower.landingContact": {
+      "from": "pilot",
+      "variants": [ "{station}, {callsign}, {approach} runway {runway}" ]
+    },
+    "tower.landing": {
+      "variants": [ "{callsign}, wind {wind}, runway {runway}, cleared to land", "{callsign}, runway {runway}, cleared to land" ],
+      "readback": [ "runway" ]
+    },
+    "tower.vacate": {
+      "variants": [ "{callsign}, vacate via next exit, contact Ground {freq}" ]
+    },
+
+    "ground.arrivalContact": {
+      "from": "pilot",
+      "variants": [ "{station}, {callsign}, runway {runway} vacated" ]
+    },
+    "ground.taxiToGate": {
+      "variants": [ "{callsign}, taxi to gate {gate} via {taxiRoute}", "{callsign}, taxi to gate {gate}", "{callsign}, taxi to parking" ],
+      "readback": [ "gate" ]
+    },
+
+    "common.negative": {
+      "variants": [ "{callsign}, negative, {corrections}" ]
+    },
+    "common.roger": {
+      "variants": [ "{callsign}, roger" ]
+    },
+    "common.sayAgain": {
+      "variants": [ "{callsign}, say again" ]
+    },
+    "common.radioCheck": {
+      "variants": [ "{callsign}, read you five" ]
+    },
+    "common.checkSquawk": {
+      "variants": [ "{callsign}, check squawk, should be {squawk}" ]
+    },
+    "common.checkFrequency": {
+      "variants": [ "{callsign}, check frequency, should be {station} {freq}" ]
+    },
+    "common.wrongStation": {
+      "variants": [ "{callsign}, this is {station}, say again" ]
+    }
+  },
+
+  "corrections": {
+    "sid": "{sid} departure",
+    "star": "{star} arrival",
+    "approach": "{approach} approach",
+    "runway": "runway {runway}",
+    "initialAlt": "climb {initialAlt}",
+    "level": "{levelVerb} {level}",
+    "squawk": "squawk {squawk}",
+    "freq": "{freq}",
+    "holdingPoint": "holding point {holdingPoint}",
+    "gate": "gate {gate}",
+    "speedKt": "speed {speedKt} knots",
+    "entryFix": "via {entryFix}",
+    "heading": "heading {heading}",
+    "qnh": "{qnh}",
+    "fix": "direct {fix}"
+  },
+
+  "words": {
+    "climb": "climb",
+    "descend": "descend",
+    "maintain": "maintain",
+    "climbAndMaintain": "climb and maintain",
+    "descendAndMaintain": "descend and maintain"
+  }
+}

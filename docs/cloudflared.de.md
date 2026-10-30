@@ -1,19 +1,22 @@
 [English](cloudflared.md) | **Deutsch**
 
-# Cloudflare Tunnel für Kopilot einrichten
+# Cloudflare Tunnel für Duopilo einrichten
 
-Ziel: `https://kopilot.flo210500.com` zeigt über einen **Named Tunnel** auf Kopilot (`http://127.0.0.1:5155`) auf dem Sim-PC. cloudflared läuft als **Windows-Dienst**. Am Router und an der Windows-Firewall wird **kein Port geöffnet**, cloudflared baut die Verbindung von innen nach außen auf.
+Ziel: `https://duopilo.example.com` zeigt über einen **Named Tunnel** auf Duopilo (`http://127.0.0.1:5155`) auf dem Sim-PC. cloudflared läuft als **Windows-Dienst**. Am Router und an der Windows-Firewall wird **kein Port geöffnet**, cloudflared baut die Verbindung von innen nach außen auf.
 
 ```
-Claude (Cloud) ──https──▶ Cloudflare ──Tunnel──▶ cloudflared (Dienst) ──▶ http://127.0.0.1:5155 ──▶ Kopilot ──▶ MSFS
+Claude (Cloud) ──https──▶ Cloudflare ──Tunnel──▶ cloudflared (Dienst) ──▶ http://127.0.0.1:5155 ──▶ Duopilo ──▶ MSFS
 ```
+
+> **Von Kopilot umgestiegen?** Ein vorhandener Tunnel funktioniert nach der Umbenennung weiter – sein Name und Hostname
+> (z. B. `kopilot.…`) spielen keine Rolle, nur `PublicUrl` muss passen. Nur der Connector in Claude muss neu eingetragen werden (siehe README).
 
 Die Anleitung folgt der offiziellen Cloudflare-Doku für [lokal verwaltete Tunnel als Windows-Dienst](https://developers.cloudflare.com/tunnel/advanced/local-management/as-a-service/windows/).
 
 ## Voraussetzungen
 
-- Die Domain **flo210500.com** liegt mit ihrem DNS bei Cloudflare. Im Cloudflare-Dashboard steht bei der Domain der Status *Aktiv*.
-- Kopilot läuft im HTTP-Modus mit `PublicUrl = https://kopilot.flo210500.com` (siehe [README](../README.de.md), „Remote-Betrieb“).
+- Deine Domain (in dieser Anleitung **example.com**) liegt mit ihrem DNS bei Cloudflare. Im Cloudflare-Dashboard steht bei der Domain der Status *Aktiv*.
+- Duopilo läuft im HTTP-Modus mit `PublicUrl = https://duopilo.example.com` (siehe [README](../README.de.md), „Remote-Betrieb“).
 - Eine **Eingabeaufforderung als Administrator**. Alle Befehle unten sind für `cmd.exe`.
 
 ## 1. cloudflared installieren
@@ -37,12 +40,12 @@ Die Anleitung folgt der offiziellen Cloudflare-Doku für [lokal verwaltete Tunne
 cloudflared.exe tunnel login
 ```
 
-Es öffnet sich der Browser. Dort **flo210500.com** auswählen und bestätigen. Das Zertifikat landet in `%USERPROFILE%\.cloudflared\cert.pem`.
+Es öffnet sich der Browser. Dort **example.com** (deine Domain) auswählen und bestätigen. Das Zertifikat landet in `%USERPROFILE%\.cloudflared\cert.pem`.
 
 ## 3. Tunnel anlegen
 
 ```bat
-cloudflared.exe tunnel create kopilot
+cloudflared.exe tunnel create duopilo
 ```
 
 Die Ausgabe enthält die **Tunnel-ID** (eine UUID). Schreib sie dir auf, unten steht sie als `<TUNNEL-ID>`. Die Zugangsdatei liegt danach in `%USERPROFILE%\.cloudflared\<TUNNEL-ID>.json`.
@@ -50,10 +53,10 @@ Die Ausgabe enthält die **Tunnel-ID** (eine UUID). Schreib sie dir auf, unten s
 ## 4. Subdomain auf den Tunnel zeigen lassen
 
 ```bat
-cloudflared.exe tunnel route dns kopilot kopilot.flo210500.com
+cloudflared.exe tunnel route dns duopilo duopilo.example.com
 ```
 
-Das legt bei Cloudflare den DNS-Eintrag `kopilot` als CNAME auf den Tunnel an.
+Das legt bei Cloudflare den DNS-Eintrag `duopilo` als CNAME auf den Tunnel an.
 
 ## 5. Dateien für den Dienst bereitstellen
 
@@ -75,13 +78,13 @@ credentials-file: C:\Windows\System32\config\systemprofile\.cloudflared\<TUNNEL-
 logfile: C:\Cloudflared\cloudflared.log
 
 ingress:
-  - hostname: kopilot.flo210500.com
+  - hostname: duopilo.example.com
     service: http://127.0.0.1:5155
   - service: http_status:404
 ```
 
 Wichtig:
-- **Kein `httpHostHeader` setzen.** Kopilot braucht den öffentlichen Hostnamen, um Tunnel-Aufrufe von lokalen Aufrufen zu unterscheiden.
+- **Kein `httpHostHeader` setzen.** Duopilo braucht den öffentlichen Hostnamen, um Tunnel-Aufrufe von lokalen Aufrufen zu unterscheiden.
 - Die letzte Regel (`http_status:404`) fängt alle anderen Hostnamen ab.
 
 Die Regeln prüfen:
@@ -92,7 +95,7 @@ cloudflared.exe tunnel --config C:\Windows\System32\config\systemprofile\.cloudf
 
 ## 7. Probelauf im Vordergrund
 
-Kopilot muss laufen. Dann den Tunnel testweise im Fenster starten:
+Duopilo muss laufen. Dann den Tunnel testweise im Fenster starten:
 
 ```bat
 cloudflared.exe tunnel --config C:\Windows\System32\config\systemprofile\.cloudflared\config.yml run
@@ -101,13 +104,13 @@ cloudflared.exe tunnel --config C:\Windows\System32\config\systemprofile\.cloudf
 In einem **zweiten** Fenster prüfen:
 
 ```bat
-curl https://kopilot.flo210500.com/.well-known/oauth-protected-resource
-curl -i https://kopilot.flo210500.com/mcp
-curl -i https://kopilot.flo210500.com/state
+curl https://duopilo.example.com/.well-known/oauth-protected-resource
+curl -i https://duopilo.example.com/mcp
+curl -i https://duopilo.example.com/state
 ```
 
 Erwartet:
-1. JSON mit `"resource":"https://kopilot.flo210500.com/mcp"`
+1. JSON mit `"resource":"https://duopilo.example.com/mcp"`
 2. `401 Unauthorized` mit `WWW-Authenticate: Bearer resource_metadata="…"`
 3. `404 Not Found`, denn die Prüfseiten sind über den Tunnel gesperrt.
 
@@ -141,10 +144,10 @@ Danach die drei `curl`-Tests aus Schritt 7 wiederholen.
 
 Claudes Server greifen aus dem Bereich `160.79.104.0/21` zu ([Anthropic IP-Adressen](https://platform.claude.com/docs/en/api/ip-addresses)). Mit einer WAF-Regel kannst du alles andere blocken. Ausgenommen bleibt nur die Freigabeseite `/authorize`, die du selbst im Browser öffnest.
 
-Cloudflare-Dashboard → flo210500.com → **Security → WAF → Custom rules → Create rule**, Ausdruck bearbeiten:
+Cloudflare-Dashboard → example.com → **Security → WAF → Custom rules → Create rule**, Ausdruck bearbeiten:
 
 ```
-(http.host eq "kopilot.flo210500.com" and not ip.src in {160.79.104.0/21} and http.request.uri.path ne "/authorize")
+(http.host eq "duopilo.example.com" and not ip.src in {160.79.104.0/21} and http.request.uri.path ne "/authorize")
 ```
 
 Aktion: **Block**.
@@ -156,7 +159,7 @@ Folge: Über die öffentliche URL kommen dann nur noch Claudes Server durch. Cla
 | Symptom | Ursache |
 |---|---|
 | Cloudflare-Fehler **1033** | Der Tunnel läuft nicht. Prüfen mit `sc query cloudflared` und im Log `C:\Cloudflared\cloudflared.log`. |
-| **502 Bad Gateway** | Der Tunnel läuft, aber Kopilot nicht, oder Kopilot nicht im HTTP-Modus bzw. auf einem anderen Port. |
-| **400 Bad Request** (leere Seite) | Kopilots Host-Filter kennt den Hostnamen nicht. `PublicUrl` in `appsettings.Local.json` muss genau `https://kopilot.flo210500.com` sein. |
-| `/.well-known/…` liefert **404** | OAuth ist in Kopilot nicht aktiv. Das Kopilot-Log sagt beim Start, warum (z. B. Passwort zu kurz). |
+| **502 Bad Gateway** | Der Tunnel läuft, aber Duopilo nicht, oder Duopilo nicht im HTTP-Modus bzw. auf einem anderen Port. |
+| **400 Bad Request** (leere Seite) | Der Host-Filter von Duopilo kennt den Hostnamen nicht. `PublicUrl` in `appsettings.Local.json` muss genau `https://duopilo.example.com` sein. |
+| `/.well-known/…` liefert **404** | OAuth ist in Duopilo nicht aktiv. Das Duopilo-Log sagt beim Start, warum (z. B. Passwort zu kurz). |
 | Dienst startet nicht | `ImagePath` prüfen (Pfad zur EXE, keine Extra-Leerzeichen), dann `config.yml` mit `ingress validate` testen. |
