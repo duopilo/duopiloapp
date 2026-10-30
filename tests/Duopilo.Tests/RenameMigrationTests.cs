@@ -364,8 +364,8 @@ public sealed class WakeWordTests
     public void Whisper_kennt_beide_Ansprachewoerter_und_verwirft_das_Echo_des_Hinweises()
     {
         Assert.StartsWith("Kopilot, Duopilo.", WhisperRecognizer.DefaultPrompt);
-        Assert.Equal("", WhisperRecognizer.Clean(WhisperRecognizer.DefaultPrompt));
-        Assert.Equal("", WhisperRecognizer.Clean("Kopilot. Gear up, gear down, flaps one, flaps full."));
-        Assert.Equal("Duopilo, gear up.", WhisperRecognizer.Clean("Duopilo, gear up."));
+        Assert.Equal("", TranscriptFilter.Clean(WhisperRecognizer.DefaultPrompt));
+        Assert.Equal("", TranscriptFilter.Clean("Kopilot. Gear up, gear down, flaps one, flaps full."));
+        Assert.Equal("Duopilo, gear up.", TranscriptFilter.Clean("Duopilo, gear up."));
     }
 }

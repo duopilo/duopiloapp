@@ -432,7 +432,7 @@ public static class Autostart
     }
 
     /// <summary>Startet der Befehl eine Kopilot.exe? (z. B. "C:\Tools\Kopilot\Kopilot.exe" --autostart)</summary>
-    internal static bool IsLegacyCommand(string command)
+    public static bool IsLegacyCommand(string command)
     {
         var text = command.Trim();
         var end = text.StartsWith('"') ? text.IndexOf('"', 1) : -1;
