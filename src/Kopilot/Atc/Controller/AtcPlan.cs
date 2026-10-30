@@ -160,7 +160,7 @@ public sealed partial class AtcPlan
             Oceanic = oceanic,
             DirectFix = DirectCandidate(ofp.Fixes),
             TodNm = TodDistance(points, distances),
-            StepClimbs = StepClimbs(ofp.Fixes, points, distances, cruise),
+            StepClimbs = FindStepClimbs(ofp.Fixes, points, distances, cruise),
             FlightKey = ofp.RequestId ?? $"{ofp.Origin.Icao}-{ofp.Destination.Icao}-{ofp.GeneratedUtc?.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture)}",
             Airspace = airspace,
         };
@@ -499,7 +499,7 @@ public sealed partial class AtcPlan
     /// Stufensteigflüge: Fixe im Reiseflug (SimBrief-Stage "CRZ", ohne Stages zwischen TOC und TOD), deren geplante Höhe
     /// mindestens 1000 ft über der bisherigen Reiseflughöhe liegt. Ein Stufensinkflug setzt die Basis nur herunter.
     /// </summary>
-    private static List<AtcStepClimb> StepClimbs(IReadOnlyList<OfpFix> fixes, IReadOnlyList<RoutePoint> points, IReadOnlyList<double> distances, int cruise)
+    private static List<AtcStepClimb> FindStepClimbs(IReadOnlyList<OfpFix> fixes, IReadOnlyList<RoutePoint> points, IReadOnlyList<double> distances, int cruise)
     {
         var result = new List<AtcStepClimb>();
         var withStages = fixes.Any(f => !string.IsNullOrWhiteSpace(f.Stage));
