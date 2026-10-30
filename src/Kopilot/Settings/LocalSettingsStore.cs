@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using Kopilot.Hosting;
+using Kopilot.Localization;
 using Kopilot.Voice;
 
 namespace Kopilot.Settings;
@@ -89,9 +90,7 @@ public sealed class LocalSettingsStore(string filePath, string? backupPath = nul
         }
         catch (JsonException ex)
         {
-            throw new SettingsWriteException(
-                $"{KopilotConfiguration.LocalSettingsFile} ist kein gültiges JSON ({ex.Message}). Bitte die Datei von Hand korrigieren – Kopilot ändert sie so nicht.",
-                ex);
+            throw new SettingsWriteException(Loc.T("settings.file.invalidJson", KopilotConfiguration.LocalSettingsFile, ex.Message), ex);
         }
 
         return text;
@@ -105,7 +104,7 @@ public sealed class LocalSettingsStore(string filePath, string? backupPath = nul
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            throw new SettingsWriteException($"{FilePath} nicht lesbar: {ex.Message}", ex);
+            throw new SettingsWriteException(Loc.T("settings.file.notReadable", FilePath, ex.Message), ex);
         }
     }
 
@@ -130,14 +129,11 @@ public sealed class LocalSettingsStore(string filePath, string? backupPath = nul
         }
         catch (UnauthorizedAccessException ex)
         {
-            throw new SettingsWriteException(
-                $"Keine Schreibrechte für {FilePath}. Liegt Kopilot in einem geschützten Ordner (z. B. C:\\Program Files) ohne die Datei " +
-                $"vom Installer, lege {KopilotConfiguration.LocalSettingsFile} einmal von Hand an oder gib deinem Benutzer Schreibrechte darauf.",
-                ex);
+            throw new SettingsWriteException(Loc.T("settings.file.noWriteAccess", FilePath, KopilotConfiguration.LocalSettingsFile), ex);
         }
         catch (IOException ex)
         {
-            throw new SettingsWriteException($"{FilePath} nicht geschrieben: {ex.Message}", ex);
+            throw new SettingsWriteException(Loc.T("settings.file.notWritten", FilePath, ex.Message), ex);
         }
     }
 

@@ -168,7 +168,7 @@ public sealed class MonitorEngineTests
         Assert.Empty(Feed(engine, bank(12)));
         var e = Assert.Single(Feed(engine, bank(13.1)), x => x.Rule == Rules.BankAngle);
         Assert.Equal("Bank angle", e.Callout);
-        Assert.Contains("links", e.Message);
+        Assert.Contains("left", e.Message);
     }
 
     [Fact]

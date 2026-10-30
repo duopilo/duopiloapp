@@ -1,3 +1,5 @@
+using Kopilot.Localization;
+
 namespace Kopilot.Voice;
 
 /// <summary>Lädt ein Modell einmalig in den Datenordner (Zwischendatei, Größenprüfung, Abbruch bei hängender Verbindung).</summary>
@@ -46,7 +48,7 @@ public static class ModelDownloader
             if ((total is > 0 && length != total) || length < minBytes)
             {
                 File.Delete(temp);
-                throw new IOException($"Download von {Path.GetFileName(path)} unvollständig ({length / 1048576.0:0.0} MB).");
+                throw new IOException(Loc.T("voice.download.incomplete", Path.GetFileName(path), length / 1048576.0));
             }
         }
 
@@ -64,7 +66,7 @@ public static class ModelDownloader
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            throw new TimeoutException("Download hängt seit einer Minute.");
+            throw new TimeoutException(Loc.T("voice.download.stalled"));
         }
     }
 }

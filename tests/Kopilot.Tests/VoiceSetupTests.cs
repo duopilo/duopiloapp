@@ -120,7 +120,7 @@ public sealed class VoiceSetupTests
 
             // Jemand schaltet die Vorlage neben der exe ein – Kopilot weist darauf hin
             File.WriteAllText(Path.Combine(exe, VoiceSettingsStore.FileName), JsonTextPatcher.Set(RepoTemplate(), ["enabled"], "true"));
-            Assert.Contains("Vorlage", store.TemplateMismatch(store.Load().Settings));
+            Assert.Contains("template", store.TemplateMismatch(store.Load().Settings));
 
             // Dashboard: einschalten und Mikrofon wählen → im Datenordner, Kommentare bleiben
             var saved = store.Update(true, "Quest");
@@ -203,7 +203,7 @@ public sealed class VoiceSetupTests
 
         Assert.False(status.Available);
         Assert.Equal("unavailable", status.State);
-        Assert.Contains("Tray-Instanz", status.Note);
+        Assert.Contains("tray instance", status.Note);
     }
 
     [Fact]

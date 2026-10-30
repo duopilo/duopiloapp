@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using Kopilot.Atc;
+using Kopilot.Localization;
 using Microsoft.FlightSimulator.SimConnect;
 
 namespace Kopilot.Sim;
@@ -25,7 +26,7 @@ public sealed partial class SimConnectClient
     {
         if (!_connection.IsConnected)
         {
-            throw new InvalidOperationException("Keine Verbindung zu MSFS.");
+            throw new InvalidOperationException(Loc.T("sim.notConnected"));
         }
 
         var request = new FacilityRequest(icao.Trim().ToUpperInvariant());
@@ -96,7 +97,7 @@ public sealed partial class SimConnectClient
         if (_facilityActive is { } active)
         {
             _facilityActive = null;
-            _log.LogInformation("Facilities: {Count} Frequenzen für {Icao}", active.Frequencies.Count, active.Icao);
+            _log.LogInformation(Loc.Log("log.sim.facilityFrequencies"), active.Frequencies.Count, active.Icao);
             active.Completion.TrySetResult(active.Frequencies);
         }
 
@@ -109,7 +110,7 @@ public sealed partial class SimConnectClient
         if (_facilityActive is { } active && DateTimeOffset.UtcNow - active.StartedUtc > FacilityTimeout)
         {
             _facilityActive = null;
-            active.Completion.TrySetException(new TimeoutException($"Keine Facility-Daten für {active.Icao}."));
+            active.Completion.TrySetException(new TimeoutException(Loc.T("sim.facilities.timeout", active.Icao)));
             if (_sc is { } sc)
             {
                 StartNextFacilityRequest(sc);
@@ -120,11 +121,11 @@ public sealed partial class SimConnectClient
     private void ResetFacilities()
     {
         _facilityDefined = false;
-        _facilityActive?.Completion.TrySetException(new InvalidOperationException("Verbindung zu MSFS getrennt."));
+        _facilityActive?.Completion.TrySetException(new InvalidOperationException(Loc.T("sim.disconnected")));
         _facilityActive = null;
         while (_facilityQueue.TryDequeue(out var queued))
         {
-            queued.Completion.TrySetException(new InvalidOperationException("Verbindung zu MSFS getrennt."));
+            queued.Completion.TrySetException(new InvalidOperationException(Loc.T("sim.disconnected")));
         }
     }
 

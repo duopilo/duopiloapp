@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Kopilot.Localization;
 
 namespace Kopilot.Atc;
 
@@ -57,7 +58,7 @@ public sealed class AtcSessionStore
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or NotSupportedException)
         {
-            LastError = $"{Path.GetFileName(FilePath)} unlesbar: {ex.Message}";
+            LastError = Loc.T("atc.session.unreadable", Path.GetFileName(FilePath), ex.Message);
             return null;
         }
     }
@@ -85,7 +86,7 @@ public sealed class AtcSessionStore
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                LastError = $"{Path.GetFileName(FilePath)} nicht gesichert: {ex.Message}";
+                LastError = Loc.T("atc.session.notSaved", Path.GetFileName(FilePath), ex.Message);
                 return false;
             }
         }
@@ -108,7 +109,7 @@ public sealed class AtcSessionStore
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                LastError = $"{Path.GetFileName(FilePath)} nicht gelöscht: {ex.Message}";
+                LastError = Loc.T("atc.session.notDeleted", Path.GetFileName(FilePath), ex.Message);
             }
         }
     }

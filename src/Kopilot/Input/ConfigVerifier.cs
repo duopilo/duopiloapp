@@ -1,5 +1,6 @@
 using System.Globalization;
 using Kopilot.Aircraft;
+using Kopilot.Localization;
 using Kopilot.Monitoring;
 
 namespace Kopilot.Input;
@@ -23,9 +24,9 @@ public sealed record VerificationJob(
     public FlapsVerification? Flaps { get; init; }
 
     /// <summary>Kurzbeschreibung für die Antwort an Claude.</summary>
-    public string Describe() =>
-        $"{(Item == ConfigCalloutClaims.Gear ? "Fahrwerk" : "Klappen")} wird nachgelesen – Callout \"{SuccessCallout}\" bei erreichter Stellung, " +
-        $"sonst nach {Timeout.TotalSeconds:0} s \"{FailCallout}\".";
+    public string Describe() => Item == ConfigCalloutClaims.Gear
+        ? Loc.T("input.verify.followUpGear", SuccessCallout, FailCallout, Timeout.TotalSeconds)
+        : Loc.T("input.verify.followUpFlaps", SuccessCallout, FailCallout, Timeout.TotalSeconds);
 }
 
 /// <summary>Ergebnis des Nachlesens. <see cref="Readable"/> false = Variablen nicht lesbar, nichts angesagt.</summary>
@@ -129,12 +130,12 @@ public sealed class ConfigVerifier
         }
         catch (OperationCanceledException) when (cts.IsCancellationRequested)
         {
-            return new VerificationOutcome(false, true, null, "Durch einen neuen Befehl ersetzt.", Superseded: true);
+            return new VerificationOutcome(false, true, null, Loc.T("input.verify.superseded"), Superseded: true);
         }
         catch (Exception ex)
         {
-            _log.LogWarning(ex, "Nachlesen {Item} fehlgeschlagen", job.Item);
-            var outcome = new VerificationOutcome(false, false, null, $"Nachlesen fehlgeschlagen: {ex.Message}");
+            _log.LogWarning(ex, Loc.Log("log.input.verifyFailed"), job.Item);
+            var outcome = new VerificationOutcome(false, false, null, Loc.T("input.verify.failed", ex.Message));
             Publish(job, outcome);
             return outcome;
         }
@@ -172,19 +173,20 @@ public sealed class ConfigVerifier
             {
                 var callout = job.SuccessCallout;
                 return new VerificationOutcome(true, true, callout, down
-                    ? $"Fahrwerk unten und verriegelt ({values.Length}/{values.Length})."
-                    : "Fahrwerk eingefahren.");
+                    ? Loc.T("input.verify.gearDownLocked", values.Length)
+                    : Loc.T("input.verify.gearRetracted"));
             }
 
             if (now >= deadline)
             {
                 if (!everRead)
                 {
-                    return new VerificationOutcome(false, false, null, "Fahrwerksstellung nicht lesbar – keine Ansage. Profil: verification.gear prüfen.");
+                    return new VerificationOutcome(false, false, null, Loc.T("input.verify.gearUnreadable"));
                 }
 
-                return new VerificationOutcome(false, true, job.FailCallout,
-                    $"Fahrwerk nach {job.Timeout.TotalSeconds:0} s nicht {(down ? "unten verriegelt" : "eingefahren")}: {Values(job, values)}.");
+                return new VerificationOutcome(false, true, job.FailCallout, down
+                    ? Loc.T("input.verify.gearNotDown", job.Timeout.TotalSeconds, Values(job, values))
+                    : Loc.T("input.verify.gearNotUp", job.Timeout.TotalSeconds, Values(job, values)));
             }
 
             await Task.Delay(PollInterval, _time, ct);
@@ -242,18 +244,19 @@ public sealed class ConfigVerifier
             var allRetracted = retract && readable.Count > 0 && readable.All(v => v <= 1);
             if (readable.Count > 0 && (moved || allRetracted) && now - lastChange >= settle)
             {
-                return new VerificationOutcome(true, true, job.SuccessCallout, $"Klappen {job.Target} erreicht ({Values(job, current)}).");
+                return new VerificationOutcome(true, true, job.SuccessCallout, Loc.T("input.verify.flapsReached", job.Target, Values(job, current)));
             }
 
             if (now >= deadline)
             {
                 if (!everRead)
                 {
-                    return new VerificationOutcome(false, false, null, "Klappenstellung nicht lesbar – keine Ansage. Profil: verification.flaps prüfen.");
+                    return new VerificationOutcome(false, false, null, Loc.T("input.verify.flapsUnreadable"));
                 }
 
-                return new VerificationOutcome(false, true, job.FailCallout,
-                    $"Klappen {job.Target} nach {job.Timeout.TotalSeconds:0} s nicht erreicht ({(moved ? "noch in Bewegung" : "keine Bewegung")}: {Values(job, current)}).");
+                return new VerificationOutcome(false, true, job.FailCallout, moved
+                    ? Loc.T("input.verify.flapsStillMoving", job.Target, job.Timeout.TotalSeconds, Values(job, current))
+                    : Loc.T("input.verify.flapsNoMovement", job.Target, job.Timeout.TotalSeconds, Values(job, current)));
             }
 
             await Task.Delay(PollInterval, _time, ct);
@@ -279,7 +282,7 @@ public sealed class ConfigVerifier
     {
         var now = _time.GetUtcNow();
         _claims?.Release(job.Item, now);
-        _log.LogInformation("Nachlesen {Item} {Target}: {Callout} – {Message}", job.Item, job.Target, outcome.Callout ?? "(keine Ansage)", outcome.Message);
+        _log.LogInformation(Loc.Log("log.input.verifyResult"), job.Item, job.Target, outcome.Callout ?? Loc.T("input.verify.noCallout"), outcome.Message);
         _bus?.Publish([new AlertEvent(0, now, job.Rule, outcome.Ok || !outcome.Readable ? AlertSeverity.Info : AlertSeverity.Caution, AlertKind.Event, outcome.Callout, outcome.Message)]);
     }
 

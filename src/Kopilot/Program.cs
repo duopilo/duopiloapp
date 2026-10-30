@@ -1,6 +1,7 @@
 using Kopilot;
 using Kopilot.Desktop;
 using Kopilot.Hosting;
+using Kopilot.Localization;
 using Kopilot.Remote;
 using Microsoft.Extensions.Options;
 
@@ -129,10 +130,10 @@ else
         return;
     }
 
-    app.Logger.LogInformation("Kopilot {Version} HTTP-Modus: Dashboard {Dashboard}, MCP-Endpunkt {McpUrl}", typeof(KopilotOptions).Assembly.GetName().Version?.ToString(3), dashboardUrl, url.TrimEnd('/') + "/mcp");
+    app.Logger.LogInformation(Loc.Log("log.program.httpStarted"), typeof(KopilotOptions).Assembly.GetName().Version?.ToString(3), dashboardUrl, url.TrimEnd('/') + "/mcp");
     if (Has(args, "--restarted"))
     {
-        app.Logger.LogWarning("Kopilot wurde nach einem Absturz von Windows neu gestartet.");
+        app.Logger.LogWarning(Loc.Log("log.program.restartedAfterCrash"));
     }
 
     // Absturz-Journal (nur Tray-Instanz – es gibt nur eine) und Neustart durch Windows nach einem Absturz
@@ -172,7 +173,7 @@ static string? AddFileLog(ILoggingBuilder logging, IConfiguration configuration,
     }
     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
     {
-        Console.Error.WriteLine($"Logdatei nicht verfügbar ({mode}): {ex.Message}");
+        Console.Error.WriteLine(Loc.T("program.logFileUnavailable", mode, ex.Message));
         return null;
     }
 }

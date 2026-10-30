@@ -228,7 +228,7 @@ public sealed class FlightTestFixesTests
 
         var land = log.Update(Final(2, 350) with { Fma = approach with { Vertical = "LAND", Lateral = "LAND" } });
         Assert.NotNull(land);
-        Assert.Contains("vertikal: G/S → LAND", land.Changes);
+        Assert.Contains("vertical: G/S → LAND", land.Changes);
         Assert.Contains("lateral: LOC → LAND", land.Changes);
 
         log.Update(Final(3, 0) with { OnGround = true, Fma = approach with { Vertical = "ROLL OUT", Lateral = "ROLL OUT", Thrust = "" } });

@@ -259,8 +259,8 @@ public sealed class TrafficMessageTests
         var d = new TrafficMessageStats().Snapshot();
 
         Assert.Equal(0, d.Messages);
-        Assert.StartsWith("noch keine", d.EmptyReplyVerdict);
-        Assert.StartsWith("noch keine", d.ShortBlockVerdict);
+        Assert.StartsWith("no empty reply", d.EmptyReplyVerdict);
+        Assert.StartsWith("no data message", d.ShortBlockVerdict);
         Assert.Equal(368, d.LegacyDwSize);
     }
 
@@ -278,8 +278,8 @@ public sealed class TrafficMessageTests
         Assert.Equal(40u, d.EmptyMinDwSize);
         Assert.Equal(44u, d.EmptyMaxDwSize);
         Assert.Equal(T0, d.SinceUtc);
-        Assert.Equal("bestätigt: 2 leere Antworten mit dwSize 40–44 Byte statt 368 – bis 0.9 wurde darüber hinaus gelesen", d.EmptyReplyVerdict);
-        Assert.Equal("bisher nicht beobachtet (1 Datennachrichten, dwSize 112 Byte)", d.ShortBlockVerdict);
+        Assert.Equal("confirmed: 2 empty replies with dwSize 40–44 bytes instead of 368 – up to 0.9 Kopilot read past the end", d.EmptyReplyVerdict);
+        Assert.Equal("not observed so far (1 data messages, dwSize 112 bytes)", d.ShortBlockVerdict);
     }
 
     [Fact]
@@ -293,8 +293,8 @@ public sealed class TrafficMessageTests
         var d = stats.Snapshot();
         Assert.Equal(1, d.ShortMessages);
         Assert.Equal(200, d.ShortMinPayloadBytes);
-        Assert.Equal("bestätigt: 1 von 2 Datennachrichten zu kurz (kleinster Datenblock 200 Byte)", d.ShortBlockVerdict);
-        Assert.StartsWith("widerlegt", d.EmptyReplyVerdict);
+        Assert.Equal("confirmed: 1 of 2 data messages too short (smallest data block 200 bytes)", d.ShortBlockVerdict);
+        Assert.StartsWith("refuted", d.EmptyReplyVerdict);
     }
 
     // ------------------------------------------------------------------ Nachrichtenlog

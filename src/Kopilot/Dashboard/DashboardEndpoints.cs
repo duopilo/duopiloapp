@@ -89,7 +89,7 @@ public static class DashboardEndpoints
             NoCache(context);
             var speech = context.RequestServices.GetService<ISpeechOutput>();
             return speech is null
-                ? Results.Content(Json.Serialize(new { available = false, error = "Sprachausgabe gibt es nur in der Tray-Instanz (HTTP-Modus)." }), "application/json")
+                ? Results.Content(Json.Serialize(new { available = false, error = Loc.T("dashdata.speech.trayOnly") }), "application/json")
                 : Results.Content(Json.Serialize(SpeechView(await speech.RefreshAsync(ct))), "application/json");
         }).LocalOnly();
 
@@ -128,7 +128,7 @@ public static class DashboardEndpoints
             NoCache(context);
             if (context.RequestServices.GetService<VoiceLoop>() is not { } loop)
             {
-                return Results.Content(Json.Serialize(new { available = false, error = VoiceUnavailable }), "application/json");
+                return Results.Content(Json.Serialize(new { available = false, error = Loc.T("settings.voice.trayOnly") }), "application/json");
             }
 
             loop.RefreshDevices();
@@ -150,11 +150,12 @@ public static class DashboardEndpoints
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
             {
                 return Results.Content(
-                    Json.Serialize(new { available = true, error = $"{VoiceSettingsStore.FileName} nicht geschrieben: {ex.Message}" }),
+                    Json.Serialize(new { available = true, error = Loc.T("settings.file.notWritten", VoiceSettingsStore.FileName, ex.Message) }),
                     "application/json");
             }
 
-            loop.Reload($"Dashboard: Sprachschleife {(saved.Enabled ? "an" : "aus")}, Mikrofon \"{(saved.Microphone.Device.Length > 0 ? saved.Microphone.Device : "Windows-Standardgerät")}\"");
+            var microphone = saved.Microphone.Device.Length > 0 ? saved.Microphone.Device : Loc.T("dashdata.voice.defaultMicrophone");
+            loop.Reload(saved.Enabled ? Loc.T("dashdata.voice.reloadOn", microphone) : Loc.T("dashdata.voice.reloadOff", microphone));
             return Results.Content(Json.Serialize(VoiceView(loop, saved)), "application/json");
         }).LocalOnly();
 
@@ -176,7 +177,7 @@ public static class DashboardEndpoints
                 return Results.BadRequest();
             }
 
-            var result = input.CancelEverywhere("Abgebrochen (Dashboard)");
+            var result = input.CancelEverywhere(Loc.T("dashdata.input.cancelled"));
             return Results.Content(Json.Serialize(new { status = result.Status, action = result.Action }), "application/json");
         }).LocalOnly();
 
@@ -197,8 +198,6 @@ public static class DashboardEndpoints
 
     /// <summary>Body von POST /api/voice. null = unverändert; Mikrofon "" = Windows-Standardgerät.</summary>
     public sealed record VoiceToggle(bool? Enabled, string? Microphone);
-
-    private const string VoiceUnavailable = "Die Sprachschleife gibt es nur in der Tray-Instanz (HTTP-Modus).";
 
     /// <param name="saved">Gerade gespeicherte Einstellungen (der Neustart der Schleife läuft noch) – sonst der aktuelle Stand.</param>
     private static object VoiceView(VoiceLoop loop, VoiceSettings? saved)

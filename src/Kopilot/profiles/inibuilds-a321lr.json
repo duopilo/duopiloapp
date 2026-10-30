@@ -11,7 +11,7 @@
     { "path": [ "inibuilds", "a321" ] },
     { "title": [ "A321" ] }
   ],
-  "notes": "Generische AP-Selected-Werte sind korrekt. FMA, A/THR, ECAM: noch keine L:-Variablen. Das FMS speist keine GPS-Flugplanvariablen, für Route/Fortschritt get_flight_plan/get_progress (SimBrief) nutzen. Keine Fire-Variable gefunden, kein Failure-Menü.",
+  "notes": "Generic AP selected values are correct. FMA, A/THR, ECAM: no L: variables yet. The FMS doesn't feed the GPS flight plan variables – use get_flight_plan/get_progress (SimBrief) for route/progress. No fire variable found, no failure menu.",
   "bindings": {},
   "limits": {
     // A321neo – bitte prüfen

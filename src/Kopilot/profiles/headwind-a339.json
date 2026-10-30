@@ -13,7 +13,7 @@
     { "path": [ "headwind_a330neo" ] },
     { "title": [ "A330-900neo" ] }
   ],
-  "notes": "Basiert auf FlyByWire. FCU-Werte kommen aus den älteren FBW-Variablen (AUTOPILOT_SPEED_SELECTED, FCU_HEADING_SELECTED, ALTITUDE LOCK VAR:3). Thrust-Modus (THR CLB, SPEED) und ALT CRZ sind noch offen. ECAM mit der Headwind-Meldungstabelle, Elektrik und Treibstoffpumpen in get_systems. Eingaben wie beim A32NX plus Batterien und NAV & LOGO; FCU, Lights, Anti-Ice, External Power und APU im Sim getestet, der Rest ungeprüft.",
+  "notes": "Based on FlyByWire. FCU values come from the older FBW variables (AUTOPILOT_SPEED_SELECTED, FCU_HEADING_SELECTED, ALTITUDE LOCK VAR:3). Thrust mode (THR CLB, SPEED) and ALT CRZ are still open. ECAM with the Headwind message table, electrics and fuel pumps in get_systems. Inputs as on the A32NX plus batteries and NAV & LOGO; FCU, lights, anti-ice, external power and APU tested in the sim, the rest unverified.",
   "bindings": {
     "ap1": { "name": "L:A32NX_AUTOPILOT_1_ACTIVE", "type": "bool", "verified": true },
     "ap2": { "name": "L:A32NX_AUTOPILOT_2_ACTIVE", "type": "bool", "verified": true },
@@ -34,7 +34,7 @@
     },
     "fmaVertical": {
       "name": "L:A32NX_FMA_VERTICAL_MODE", "type": "enum", "verified": true,
-      "description": "ALT CRZ wird hier nicht gemeldet (0) – noch offen",
+      "description": "ALT CRZ is not reported here (0) – still open",
       "values": {
         "0": "", "10": "ALT", "11": "ALT*", "12": "OP CLB", "13": "OP DES", "14": "V/S", "15": "FPA",
         "20": "ALT CST", "21": "ALT CST*", "22": "CLB", "23": "DES", "24": "FINAL", "30": "G/S*", "31": "G/S",
@@ -50,22 +50,22 @@
       "values": { "0": "OFF", "1": "LO", "2": "MED", "3": "MAX" }
     },
     "masterWarning": { "name": "L:A32NX_MASTER_WARNING", "type": "bool", "verified": true },
-    "masterCaution": { "name": "L:A32NX_MASTER_CAUTION", "type": "bool", "verified": false, "description": "0 geprüft, Auslösen auf 1 noch nicht" },
-    "speedManaged": { "name": "L:A32NX_FCU_SPD_MANAGED_DOT", "type": "bool", "verified": true, "description": "Managed-Punkt im SPD-Fenster" },
-    "selectedSpeed": { "name": "L:A32NX_AUTOPILOT_SPEED_SELECTED", "type": "number", "verified": true, "description": "Gewählte Speed in kt, −1 bei managed" },
-    "selectedHeading": { "name": "L:A32NX_FCU_HEADING_SELECTED", "type": "number", "verified": true, "description": "Gewählter Kurs" },
-    "selectedHeadingDashes": { "name": "L:A32NX_FCU_HDG_MANAGED_DASHES", "type": "bool", "verified": true, "description": "HDG-Fenster zeigt Striche (managed)" },
-    "selectedAltitude": { "name": "AUTOPILOT ALTITUDE LOCK VAR:3", "unit": "feet", "type": "number", "verified": true, "description": "FCU-Höhe (Index 3)" },
-    "fuelFlowKgh": { "name": "L:A32NX_ENGINE_FF:{i}", "type": "number", "verified": false, "description": "Fuel Flow je Triebwerk – liefert Werte, Einheit vermutlich kg/h" },
-    "egtC": { "name": "L:A32NX_ENGINE_EGT:{i}", "type": "number", "verified": true, "description": "EGT je Triebwerk in °C" },
+    "masterCaution": { "name": "L:A32NX_MASTER_CAUTION", "type": "bool", "verified": false, "description": "0 verified, triggering to 1 not yet" },
+    "speedManaged": { "name": "L:A32NX_FCU_SPD_MANAGED_DOT", "type": "bool", "verified": true, "description": "Managed dot in the SPD window" },
+    "selectedSpeed": { "name": "L:A32NX_AUTOPILOT_SPEED_SELECTED", "type": "number", "verified": true, "description": "Selected speed in kt, −1 when managed" },
+    "selectedHeading": { "name": "L:A32NX_FCU_HEADING_SELECTED", "type": "number", "verified": true, "description": "Selected heading" },
+    "selectedHeadingDashes": { "name": "L:A32NX_FCU_HDG_MANAGED_DASHES", "type": "bool", "verified": true, "description": "HDG window shows dashes (managed)" },
+    "selectedAltitude": { "name": "AUTOPILOT ALTITUDE LOCK VAR:3", "unit": "feet", "type": "number", "verified": true, "description": "FCU altitude (index 3)" },
+    "fuelFlowKgh": { "name": "L:A32NX_ENGINE_FF:{i}", "type": "number", "verified": false, "description": "Fuel flow per engine – returns values, unit probably kg/h" },
+    "egtC": { "name": "L:A32NX_ENGINE_EGT:{i}", "type": "number", "verified": true, "description": "EGT per engine in °C" },
     "parkingBrake": { "name": "L:A32NX_PARK_BRAKE_LEVER_POS", "type": "bool", "verified": true },
     "apuMaster": { "name": "L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", "type": "bool", "verified": true },
     "apuStart": { "name": "L:A32NX_OVHD_APU_START_PB_IS_ON", "type": "bool", "verified": true },
     "apuAvailable": { "name": "L:A32NX_OVHD_APU_START_PB_IS_AVAILABLE", "type": "bool", "verified": true },
-    "apuN": { "name": "L:A32NX_APU_N", "type": "arinc429", "verified": true, "description": "APU N (%) aus dem ECB" },
-    "apuBleed": { "name": "L:A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", "type": "bool", "verified": false, "description": "APU BLEED Pushbutton (aus dem A330-Modell; im Flug mit APU aus 0 gelesen)" },
-    "apuEgt": { "name": "L:A32NX_APU_EGT", "type": "arinc429", "verified": false, "description": "APU EGT (°C) aus dem ECB – im Flug mit APU aus nur ungültiges Wort (SSM 0)" },
-    "apuFlapOpen": { "name": "L:A32NX_APU_FLAP_OPEN_PERCENTAGE", "unit": "percent", "type": "number", "verified": false, "description": "APU-Lufteinlassklappe offen (%)" },
+    "apuN": { "name": "L:A32NX_APU_N", "type": "arinc429", "verified": true, "description": "APU N (%) from the ECB" },
+    "apuBleed": { "name": "L:A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", "type": "bool", "verified": false, "description": "APU BLEED pushbutton (from the A330 model; read 0 in flight with the APU off)" },
+    "apuEgt": { "name": "L:A32NX_APU_EGT", "type": "arinc429", "verified": false, "description": "APU EGT (°C) from the ECB – in flight with the APU off only an invalid word (SSM 0)" },
+    "apuFlapOpen": { "name": "L:A32NX_APU_FLAP_OPEN_PERCENTAGE", "unit": "percent", "type": "number", "verified": false, "description": "APU air intake flap open (%)" },
     "spoilersArmed": { "name": "L:A32NX_SPOILERS_ARMED", "type": "bool", "verified": false },
     "vls": { "name": "L:A32NX_SPEEDS_VLS", "type": "number", "verified": false },
     "v1": { "name": "L:AIRLINER_V1_SPEED", "unit": "knots", "type": "number", "verified": false },
@@ -108,24 +108,24 @@
   "electrical": [
     { "key": "gen1Volt", "name": "L:A32NX_ELEC_ENG_GEN_1_POTENTIAL", "description": "GEN 1 (V)" },
     { "key": "gen1Hz", "name": "L:A32NX_ELEC_ENG_GEN_1_FREQUENCY", "description": "GEN 1 (Hz)" },
-    { "key": "gen1Load", "name": "L:A32NX_ELEC_ENG_GEN_1_LOAD", "unit": "percent", "description": "GEN 1 Last (%)" },
+    { "key": "gen1Load", "name": "L:A32NX_ELEC_ENG_GEN_1_LOAD", "unit": "percent", "description": "GEN 1 load (%)" },
     { "key": "gen2Volt", "name": "L:A32NX_ELEC_ENG_GEN_2_POTENTIAL", "description": "GEN 2 (V)" },
     { "key": "gen2Hz", "name": "L:A32NX_ELEC_ENG_GEN_2_FREQUENCY", "description": "GEN 2 (Hz)" },
-    { "key": "gen2Load", "name": "L:A32NX_ELEC_ENG_GEN_2_LOAD", "unit": "percent", "description": "GEN 2 Last (%)" },
+    { "key": "gen2Load", "name": "L:A32NX_ELEC_ENG_GEN_2_LOAD", "unit": "percent", "description": "GEN 2 load (%)" },
     { "key": "apuGenOn", "name": "APU GENERATOR SWITCH:1", "unit": "Bool", "description": "APU GEN Pushbutton", "values": { "0": "OFF", "1": "ON" } },
     { "key": "apuGenVolt", "name": "L:A32NX_ELEC_APU_GEN_1_POTENTIAL", "description": "APU GEN (V)" },
     { "key": "apuGenHz", "name": "L:A32NX_ELEC_APU_GEN_1_FREQUENCY", "description": "APU GEN (Hz)" },
-    { "key": "apuGenLoad", "name": "L:A32NX_ELEC_APU_GEN_1_LOAD", "unit": "percent", "description": "APU GEN Last (%)" },
+    { "key": "apuGenLoad", "name": "L:A32NX_ELEC_APU_GEN_1_LOAD", "unit": "percent", "description": "APU GEN load (%)" },
     { "key": "extPwrVolt", "name": "L:A32NX_ELEC_EXT_PWR_POTENTIAL", "description": "EXT PWR (V)" },
     { "key": "bat1Volt", "name": "L:A32NX_ELEC_BAT_1_POTENTIAL", "description": "BAT 1 (V)" },
     { "key": "bat2Volt", "name": "L:A32NX_ELEC_BAT_2_POTENTIAL", "description": "BAT 2 (V)" },
-    { "key": "ac1Powered", "name": "L:A32NX_ELEC_AC_1_BUS_IS_POWERED", "description": "AC BUS 1", "values": { "0": "aus", "1": "versorgt" } },
-    { "key": "ac2Powered", "name": "L:A32NX_ELEC_AC_2_BUS_IS_POWERED", "description": "AC BUS 2", "values": { "0": "aus", "1": "versorgt" } },
-    { "key": "acEssPowered", "name": "L:A32NX_ELEC_AC_ESS_BUS_IS_POWERED", "description": "AC ESS BUS", "values": { "0": "aus", "1": "versorgt" } },
-    { "key": "dc1Powered", "name": "L:A32NX_ELEC_DC_1_BUS_IS_POWERED", "description": "DC BUS 1", "values": { "0": "aus", "1": "versorgt" } },
-    { "key": "dc2Powered", "name": "L:A32NX_ELEC_DC_2_BUS_IS_POWERED", "description": "DC BUS 2", "values": { "0": "aus", "1": "versorgt" } },
-    { "key": "dcEssPowered", "name": "L:A32NX_ELEC_DC_ESS_BUS_IS_POWERED", "description": "DC ESS BUS", "values": { "0": "aus", "1": "versorgt" } },
-    { "key": "dcBatPowered", "name": "L:A32NX_ELEC_DC_BAT_BUS_IS_POWERED", "description": "DC BAT BUS", "values": { "0": "aus", "1": "versorgt" } }
+    { "key": "ac1Powered", "name": "L:A32NX_ELEC_AC_1_BUS_IS_POWERED", "description": "AC BUS 1", "values": { "0": "unpowered", "1": "powered" } },
+    { "key": "ac2Powered", "name": "L:A32NX_ELEC_AC_2_BUS_IS_POWERED", "description": "AC BUS 2", "values": { "0": "unpowered", "1": "powered" } },
+    { "key": "acEssPowered", "name": "L:A32NX_ELEC_AC_ESS_BUS_IS_POWERED", "description": "AC ESS BUS", "values": { "0": "unpowered", "1": "powered" } },
+    { "key": "dc1Powered", "name": "L:A32NX_ELEC_DC_1_BUS_IS_POWERED", "description": "DC BUS 1", "values": { "0": "unpowered", "1": "powered" } },
+    { "key": "dc2Powered", "name": "L:A32NX_ELEC_DC_2_BUS_IS_POWERED", "description": "DC BUS 2", "values": { "0": "unpowered", "1": "powered" } },
+    { "key": "dcEssPowered", "name": "L:A32NX_ELEC_DC_ESS_BUS_IS_POWERED", "description": "DC ESS BUS", "values": { "0": "unpowered", "1": "powered" } },
+    { "key": "dcBatPowered", "name": "L:A32NX_ELEC_DC_BAT_BUS_IS_POWERED", "description": "DC BAT BUS", "values": { "0": "unpowered", "1": "powered" } }
   ],
   // Treibstoffpumpen: keine L:-Variablen – das A330-Modell (FBW_Airbus_Fuel_Pump / FBW_Airbus_Fuel_Jet_Pump) nutzt die MSFS-Pumpen und -Ventile:
   // L TK 1 = Pumpe 2, L TK 2 = 5, R TK 1 = 3, R TK 2 = 6; CTR TK XFR L/R = Ventil 9/10, X FEED = Ventil 3. Im Flug gelesen: Pumpen 2 und 6 an und aktiv, Ventil 9 offen.
@@ -134,13 +134,13 @@
     { "key": "pumpL2", "name": "FUELSYSTEM PUMP SWITCH:5", "unit": "Enum", "description": "L TK PUMP 2", "values": { "0": "OFF", "1": "ON", "2": "AUTO" } },
     { "key": "pumpR1", "name": "FUELSYSTEM PUMP SWITCH:3", "unit": "Enum", "description": "R TK PUMP 1", "values": { "0": "OFF", "1": "ON", "2": "AUTO" } },
     { "key": "pumpR2", "name": "FUELSYSTEM PUMP SWITCH:6", "unit": "Enum", "description": "R TK PUMP 2", "values": { "0": "OFF", "1": "ON", "2": "AUTO" } },
-    { "key": "pumpL1Running", "name": "FUELSYSTEM PUMP ACTIVE:2", "unit": "Bool", "description": "L TK PUMP 1 läuft", "values": { "0": "nein", "1": "ja" } },
-    { "key": "pumpL2Running", "name": "FUELSYSTEM PUMP ACTIVE:5", "unit": "Bool", "description": "L TK PUMP 2 läuft", "values": { "0": "nein", "1": "ja" } },
-    { "key": "pumpR1Running", "name": "FUELSYSTEM PUMP ACTIVE:3", "unit": "Bool", "description": "R TK PUMP 1 läuft", "values": { "0": "nein", "1": "ja" } },
-    { "key": "pumpR2Running", "name": "FUELSYSTEM PUMP ACTIVE:6", "unit": "Bool", "description": "R TK PUMP 2 läuft", "values": { "0": "nein", "1": "ja" } },
+    { "key": "pumpL1Running", "name": "FUELSYSTEM PUMP ACTIVE:2", "unit": "Bool", "description": "L TK PUMP 1 running", "values": { "0": "no", "1": "yes" } },
+    { "key": "pumpL2Running", "name": "FUELSYSTEM PUMP ACTIVE:5", "unit": "Bool", "description": "L TK PUMP 2 running", "values": { "0": "no", "1": "yes" } },
+    { "key": "pumpR1Running", "name": "FUELSYSTEM PUMP ACTIVE:3", "unit": "Bool", "description": "R TK PUMP 1 running", "values": { "0": "no", "1": "yes" } },
+    { "key": "pumpR2Running", "name": "FUELSYSTEM PUMP ACTIVE:6", "unit": "Bool", "description": "R TK PUMP 2 running", "values": { "0": "no", "1": "yes" } },
     { "key": "ctrXfrL", "name": "FUELSYSTEM VALVE SWITCH:9", "unit": "Bool", "description": "CTR TK XFR L", "values": { "0": "OFF", "1": "ON" } },
     { "key": "ctrXfrR", "name": "FUELSYSTEM VALVE SWITCH:10", "unit": "Bool", "description": "CTR TK XFR R", "values": { "0": "OFF", "1": "ON" } },
-    { "key": "xfeedOpen", "name": "FUELSYSTEM VALVE OPEN:3", "unit": "Bool", "description": "X FEED Ventil", "values": { "0": "zu", "1": "offen" } }
+    { "key": "xfeedOpen", "name": "FUELSYSTEM VALVE OPEN:3", "unit": "Bool", "description": "X FEED valve", "values": { "0": "closed", "1": "open" } }
   ],
   "variables": [
     { "key": "bat1Auto", "name": "L:A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO", "description": "BAT 1", "values": { "0": "OFF", "1": "AUTO" } },
@@ -161,7 +161,7 @@
       "id": "fcu.speed",
       "area": "FCU",
       "label": "FCU speed",
-      "description": "Setzt die Speed (kt) und zieht den Knopf (selected). Im Mach-Modus wird vorher auf Knoten umgeschaltet.",
+      "description": "Sets the speed (kt) and pulls the knob (selected). In Mach mode it switches to knots first.",
       "parameter": { "min": 100, "max": 399, "step": 1, "unit": "kt" },
       "steps": [
         {
@@ -210,7 +210,7 @@
       "readback": "Heading {value} selected",
       "check": { "variable": "L:A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE", "expect": "{value}", "modulo": 360 },
       "requires": [
-        { "variable": "L:A32NX_FCU_AFS_DISPLAY_TRK_FPA_MODE", "equalTo": 0, "message": "FCU steht auf TRK/FPA – erst auf HDG/VS umschalten." }
+        { "variable": "L:A32NX_FCU_AFS_DISPLAY_TRK_FPA_MODE", "equalTo": 0, "messageKey": "profile.requires.trkFpaMode" }
       ],
       "verified": true
     },
@@ -222,7 +222,7 @@
         { "event": "A32NX.FCU_HDG_PUSH" }
       ],
       "readback": "Heading managed",
-      "description": "HDG-Knopf drücken. NAV braucht beim A330 einige Sekunden – deshalb wartet die Prüfung bis zu 10 s.",
+      "description": "Pushes the HDG knob. NAV takes a few seconds on the A330 – so the check waits up to 10 s.",
       "check": { "variable": "L:A32NX_FCU_AFS_DISPLAY_HDG_TRK_MANAGED", "expect": 1, "timeoutMs": 10000 },
       "verified": false
     },
@@ -230,7 +230,7 @@
       "id": "fcu.altitude",
       "area": "FCU",
       "label": "FCU altitude",
-      "description": "Stellt nur die Höhe am FCU ein – für Steig-/Sinkflug danach fcu.altitudePull oder fcu.altitudePush.",
+      "description": "Only sets the FCU altitude – to climb or descend, follow with fcu.altitudePull or fcu.altitudePush.",
       "parameter": { "min": 100, "max": 49000, "step": 100, "unit": "ft", "format": "altitude" },
       "steps": [
         {
@@ -307,7 +307,7 @@
         "tolerance": 50
       },
       "requires": [
-        { "variable": "L:A32NX_FCU_AFS_DISPLAY_TRK_FPA_MODE", "equalTo": 0, "message": "FCU steht auf TRK/FPA – erst auf HDG/VS umschalten." }
+        { "variable": "L:A32NX_FCU_AFS_DISPLAY_TRK_FPA_MODE", "equalTo": 0, "messageKey": "profile.requires.trkFpaMode" }
       ],
       "verified": true
     },
@@ -459,7 +459,7 @@
       "id": "efis.baro",
       "area": "EFIS",
       "label": "QNH",
-      "description": "QNH in hPa auf beiden Seiten. Nur im QNH-Modus – aus STD erst efis.baroMode QNH.",
+      "description": "QNH in hPa on both sides. Only in QNH mode – from STD, efis.baroMode QNH first.",
       "parameter": { "min": 900, "max": 1100, "step": 1, "unit": "hPa" },
       "steps": [
         {
@@ -474,7 +474,7 @@
         }
       ],
       "readback": "QNH {value} set",
-    "requires": [ { "variable": "L:A32NX_FCU_EFIS_L_DISPLAY_BARO_MODE", "equalTo": 1, "message": "Höhenmesser steht auf STD (oder QFE) – erst efis.baroMode QNH." } ],
+    "requires": [ { "variable": "L:A32NX_FCU_EFIS_L_DISPLAY_BARO_MODE", "equalTo": 1, "messageKey": "profile.requires.baroNotQnh" } ],
       "check": {
         "variable": "L:A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE",
         "expect": "{value}",
@@ -653,7 +653,7 @@
       "id": "flaps",
       "area": "Config",
       "label": "Flaps lever",
-      "description": "Klappenhebel. Am Boden ist 1 die Startstellung 1+F.",
+      "description": "Flaps lever. On the ground, 1 is the takeoff setting 1+F.",
       "parameter": {
         "type": "choice",
         "options": { "0": 0, "1": 1, "2": 2, "3": 3, "FULL": 4 },
@@ -740,7 +740,7 @@
       "label": "Autobrake",
       // Eigene Events je Stellung statt A32NX.AUTOBRAKE_SET: Dessen Wert geht laut Systems-WASM (autobrakes.rs) 1:1 nach
       // AUTOBRAKES_ARMED_MODE_SET (0 = aus, 1 = LO, 2 = MED, 3 = MAX) – die Doku nennt 1–4, MAX = 4 wurde als "aus" gelesen.
-      "description": "Autobrake LO, MED oder MAX bzw. aus. MAX nimmt das Flugzeug nur am Boden an (Start). Armen geht nur mit Druck an den normalen Bremsen (grünes Hydrauliksystem) und Anti-Skid – vorher bleibt die Anzeige auf aus.",
+      "description": "Autobrake LO, MED or MAX, or off. The aircraft only accepts MAX on the ground (takeoff). Arming needs pressure on the normal brakes (green hydraulic system) and anti-skid – until then the indication stays off.",
       "parameter": {
         "type": "choice",
         "options": { "off": 0, "lo": 1, "med": 2, "max": 3 },
@@ -754,7 +754,7 @@
       ],
       "readback": "Autobrake {value}",
       "requires": [
-        { "variable": "SIM ON GROUND", "unit": "Bool", "equalTo": 1, "only": [ "max" ], "message": "Autobrake MAX gibt es nur am Boden (Start) – in der Luft nimmt das Flugzeug MAX nicht an." }
+        { "variable": "SIM ON GROUND", "unit": "Bool", "equalTo": 1, "only": [ "max" ], "messageKey": "profile.requires.autobrakeMaxGroundOnly" }
       ],
       "check": {
         "variable": "L:A32NX_AUTOBRAKES_ARMED_MODE",
@@ -846,7 +846,7 @@
       "id": "lights.landing",
       "area": "Lights",
       "label": "Landing lights",
-      "description": "Beide Landescheinwerfer. Der A330-Schalter kennt nur ON und OFF – retract wirkt wie off. Geprüft wird das Licht selbst (LIGHT LANDING:2, Stromkreis 18).",
+      "description": "Both landing lights. The A330 switch only has ON and OFF – retract acts like off. The check reads the light itself (LIGHT LANDING:2, circuit 18).",
       "parameter": {
         "type": "choice",
         "options": { "on": 0, "off": 1, "retract": 2 },
@@ -902,7 +902,7 @@
       "label": "Nose light",
       // Stellung L:LIGHTING_LANDING_1 wie im A330-Modell (ASOBO_LIGHTING_Switch_Light_Landing_Template, Tooltips 0/1/2): 0 = T.O, 1 = TAXI, 2 = OFF.
       // Im Flug gelesen: OFF = 2. Die Zuordnung ist also nicht vertauscht – stateAfter ist die rohe Stellung, stateAfterText der Name.
-      "description": "Nose light T.O, TAXI oder OFF. Die Schalterstellung zählt von oben: 0 = T.O, 1 = TAXI, 2 = OFF.",
+      "description": "Nose light T.O, TAXI or OFF. Switch positions count from the top: 0 = T.O, 1 = TAXI, 2 = OFF.",
       "parameter": {
         "type": "choice",
         "options": { "to": 0, "taxi": 1, "off": 2 },
@@ -974,7 +974,7 @@
       "id": "lights.nav",
       "area": "Lights",
       "label": "Nav & logo lights",
-      "description": "Schalter NAV & LOGO: schaltet Positionslichter und Logo-Licht zusammen, wie der Schalter im Cockpit. Im Flug mit eingefahrenen Klappen trennt das Flugzeug das Logo-Licht selbst vom Strom.",
+      "description": "NAV & LOGO switch: switches the navigation lights and the logo light together, like the switch in the cockpit. In flight with flaps retracted the aircraft itself cuts power to the logo light.",
       "parameter": {
         "type": "choice",
         "options": { "on": 1, "off": 0 }
@@ -995,7 +995,7 @@
       "id": "lights.logo",
       "area": "Lights",
       "label": "Logo light",
-      "description": "Nur das Logo-Licht. Beim A330 sitzt es auf dem Schalter NAV & LOGO, dessen Stellung LIGHT LOGO folgt – logo off zeigt den Schalter also auf OFF, auch wenn die Positionslichter an bleiben. Für beide zusammen lights.nav.",
+      "description": "Logo light only. On the A330 it sits on the NAV & LOGO switch, whose position follows LIGHT LOGO – so logo off shows the switch at OFF even though the navigation lights stay on. For both together use lights.nav.",
       "parameter": {
         "type": "choice",
         "options": { "on": 1, "off": 0 }
@@ -1017,7 +1017,7 @@
       "label": "Seat belts",
       // Stellung L:XMLVAR_SWITCH_OVHD_INTLT_SEATBELT_Position wie im A330-Modell (Tooltips 0/1/2): 0 = ON, 1 = AUTO, 2 = OFF.
       // Im Flug gelesen: OFF = 2 bei ausgeschaltetem Zeichen (CABIN SEATBELTS ALERT SWITCH 0). stateAfter 0 bei "on" ist also richtig.
-      "description": "Schalter mit drei Stellungen (ON, AUTO, OFF; Stellung 0 = ON, 1 = AUTO, 2 = OFF). Bei ON und OFF schaltet Kopilot das Zeichen mit – wie der Schalter im Cockpit. In AUTO steuert das Flugzeug es (Slats oder Fahrwerk).",
+      "description": "Three-position switch (ON, AUTO, OFF; position 0 = ON, 1 = AUTO, 2 = OFF). On ON and OFF Kopilot switches the sign as well – like the switch in the cockpit. In AUTO the aircraft controls it (slats or gear).",
       "parameter": {
         "type": "choice",
         "options": { "on": 0, "auto": 1, "off": 2 }
@@ -1064,7 +1064,7 @@
       "id": "signs.noSmoking",
       "area": "Signs",
       "label": "No smoking / no portable devices",
-      "description": "Schalterstellung wird als Enum gelesen – so liest sie auch die Headwind-FWC (als number kam immer 0).",
+      "description": "The switch position is read as Enum – the way the Headwind FWC reads it too (as number it always returned 0).",
       "parameter": {
         "type": "choice",
         "options": { "on": 0, "auto": 1, "off": 2 }
@@ -1236,7 +1236,7 @@
       "steps": [ { "set": "L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", "value": "{value}" } ],
       "readback": "APU master {value}",
       "requires": [
-        { "variable": "L:A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO", "equalTo": 1, "only": [ "on" ], "message": "BAT 1 ist aus – erst die Batterien einschalten." }
+        { "variable": "L:A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO", "equalTo": 1, "only": [ "on" ], "messageKey": "profile.requires.bat1Off" }
       ],
       "check": { "variable": "L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", "expect": "{value}" },
       "verified": true
@@ -1245,13 +1245,13 @@
       "id": "apu.start",
       "area": "APU",
       "label": "APU start",
-      "description": "Drückt APU START. Das ON-Licht muss 2,5 s an bleiben – ob die Headwind-APU es ohne Wirkung wie der A32NX zurücksetzt, ist ungeprüft.",
+      "description": "Presses APU START. The ON light has to stay on for 2.5 s – whether the Headwind APU resets it like the A32NX when the start has no effect is unverified.",
       "steps": [ { "set": "L:A32NX_OVHD_APU_START_PB_IS_ON", "value": 1 } ],
       "readback": "APU start",
       "requires": [
-        { "variable": "L:A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO", "equalTo": 1, "message": "BAT 1 ist aus – erst die Batterien einschalten." },
-        { "variable": "L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", "equalTo": 1, "message": "APU master ist aus – erst apu.master on." },
-        { "variable": "L:A32NX_OVHD_APU_START_PB_IS_AVAILABLE", "equalTo": 0, "message": "APU läuft schon (AVAIL)." }
+        { "variable": "L:A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO", "equalTo": 1, "messageKey": "profile.requires.bat1Off" },
+        { "variable": "L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", "equalTo": 1, "messageKey": "profile.requires.apuMasterOff" },
+        { "variable": "L:A32NX_OVHD_APU_START_PB_IS_AVAILABLE", "equalTo": 0, "messageKey": "profile.requires.apuAvailable" }
       ],
       "check": { "variable": "L:A32NX_OVHD_APU_START_PB_IS_ON", "expect": 1, "holdMs": 2500 },
       "verified": true
@@ -1283,7 +1283,7 @@
       "id": "elec.battery",
       "area": "Elec",
       "label": "Batteries",
-      "description": "BAT 1 und BAT 2 zusammen (on = AUTO). Ausschalten nur am Boden. Geprüft wird die Schalterstellung von BAT 2; BAT 1 prüft APU master vor dem Start.",
+      "description": "BAT 1 and BAT 2 together (on = AUTO). Switching off on the ground only. The check reads the BAT 2 switch position; APU master checks BAT 1 before starting.",
       "parameter": { "type": "choice", "options": { "on": 1, "off": 0 } },
       "steps": [
         { "set": "L:A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO", "value": "{value}", "delayMs": 1000 },
@@ -1291,7 +1291,7 @@
       ],
       "readback": "Batteries {value}",
       "requires": [
-        { "variable": "SIM ON GROUND", "unit": "Bool", "equalTo": 1, "only": [ "off" ], "message": "Batterien nur am Boden ausschalten." }
+        { "variable": "SIM ON GROUND", "unit": "Bool", "equalTo": 1, "only": [ "off" ], "messageKey": "profile.requires.batteriesOffGroundOnly" }
       ],
       "check": { "variable": "L:A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO", "expect": "{value}" },
       "verified": false
@@ -1300,7 +1300,7 @@
       "id": "elec.extPwr",
       "area": "Elec",
       "label": "External power",
-      "description": "EXT PWR Pushbutton, nur am Boden. Geprüft wird nur die Schalterstellung (Schütz-Variable beim A330 unbekannt).",
+      "description": "EXT PWR pushbutton, on the ground only. The check reads only the switch position (contactor variable unknown on the A330).",
       "parameter": { "type": "choice", "options": { "on": 1, "off": 0 } },
       "steps": [ { "set": "L:A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON", "value": "{value}" } ],
       "readback": "External power {value}",
@@ -1372,7 +1372,7 @@
       "label": "TCAS mode",
       // Der Drehschalter schreibt L:A32NX_SWITCH_TCAS_Position (Enum, 0 = STBY, 1 = TA, 2 = TA/RA). Der TCAS-Rechner übernimmt das nur,
       // wenn der Transponder nicht auf STBY steht, ALT RPTG an ist und TCAS Strom hat – sonst bleibt L:A32NX_TCAS_MODE auf STBY.
-      "description": "TCAS-Schalter STBY, TA oder TA/RA. Geprüft wird der Modus des TCAS-Rechners (L:A32NX_TCAS_MODE), nicht nur die Schalterstellung. TA und TA/RA brauchen Transponder AUTO/ON und ALT RPTG an.",
+      "description": "TCAS switch STBY, TA or TA/RA. The check reads the mode of the TCAS computer (L:A32NX_TCAS_MODE), not just the switch position. TA and TA/RA need transponder AUTO/ON and ALT RPTG on.",
       "parameter": {
         "type": "choice",
         "options": { "stby": 0, "ta": 1, "tara": 2 },
@@ -1389,11 +1389,11 @@
       "requires": [
         {
           "variable": "TRANSPONDER STATE:1", "equalTo": 4, "tolerance": 1.1, "only": [ "ta", "tara" ],
-          "message": "Transponder steht auf STBY – TCAS bliebe in STBY. Erst xpdr.mode auto oder on."
+          "messageKey": "profile.requires.xpdrStandby"
         },
         {
           "variable": "L:A32NX_SWITCH_ATC_ALT", "equalTo": 1, "only": [ "ta", "tara" ],
-          "message": "ALT RPTG ist aus – TCAS bliebe in STBY. Erst xpdr.altReporting on."
+          "messageKey": "profile.requires.altReportingOff"
         }
       ],
       "check": {
@@ -1430,7 +1430,7 @@
       "id": "com1.standby",
       "area": "Radio",
       "label": "COM 1 standby",
-      "description": "Standby-Frequenz COM 1 (RMP 1 auf VHF 1).",
+      "description": "COM 1 standby frequency (RMP 1 on VHF 1).",
       "parameter": { "min": 118, "max": 136.99, "step": 0.005, "unit": "MHz", "format": "frequency" },
       "steps": [
         {
@@ -1452,7 +1452,7 @@
       "id": "com1.swap",
       "area": "Radio",
       "label": "COM 1 swap",
-      "description": "Tauscht aktive und Standby-Frequenz von COM 1.",
+      "description": "Swaps the COM 1 active and standby frequencies.",
       "steps": [
         { "event": "COM1_RADIO_SWAP" }
       ],

@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Kopilot.Localization;
 
 namespace Kopilot.Voice;
 
@@ -62,12 +63,12 @@ public sealed partial class VoiceRouter
         var words = VoiceText.Words(normalized);
         if (words.Length == 0)
         {
-            return new VoiceRoute(VoiceTarget.Kopilot, Reason: "leer");
+            return new VoiceRoute(VoiceTarget.Kopilot, Reason: Loc.T("voice.route.empty"));
         }
 
         if (_wakeWords.Contains(words[0]))
         {
-            return new VoiceRoute(VoiceTarget.Kopilot, Reason: "Anrede");
+            return new VoiceRoute(VoiceTarget.Kopilot, Reason: Loc.T("voice.route.wakeWord"));
         }
 
         var known = stations is null ? _extraStations : Normalized(stations).Concat(_extraStations).Distinct().OrderByDescending(x => x.Length).ToList();
@@ -76,16 +77,16 @@ public sealed partial class VoiceRouter
         // Eigenes Rufzeichen: am Anfang (Erstanruf, Meldung) oder dahinter (Readback "…, Lufthansa four alpha bravo")
         if (MatchCallsign(normalized, ownCallsigns) is { } match)
         {
-            var reason = match.AtStart ? "Rufzeichen am Anfang" : station is not null ? "Station" : "Rufzeichen im Readback";
+            var reason = match.AtStart ? Loc.T("voice.route.callsignFirst") : station is not null ? Loc.T("voice.route.station") : Loc.T("voice.route.callsignInReadback");
             return new VoiceRoute(VoiceTarget.Atc, station, match.Callsign, reason);
         }
 
         if (station is not null)
         {
-            return new VoiceRoute(VoiceTarget.Atc, station, Reason: "Station");
+            return new VoiceRoute(VoiceTarget.Atc, station, Reason: Loc.T("voice.route.station"));
         }
 
-        return new VoiceRoute(VoiceTarget.Kopilot, Reason: "kein Stationsrufzeichen");
+        return new VoiceRoute(VoiceTarget.Kopilot, Reason: Loc.T("voice.route.noStation"));
     }
 
     /// <summary>Stationsrufzeichen im Satz, z. B. "frankfurt tower" – oder null.</summary>

@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using Kopilot.Atc;
 using Kopilot.FlightPlan;
+using Kopilot.Localization;
 using Kopilot.Monitoring;
 using Kopilot.Sim;
 using ModelContextProtocol.Server;
@@ -38,7 +39,7 @@ public static class AtcTools
                 taxi = sim.Bool("atcClearedTaxi"),
                 takeoff = sim.Bool("atcClearedTakeoff"),
                 landing = sim.Bool("atcClearedLanding"),
-                note = "Nicht jede Freigabe setzt die Variable – im Testflug blieben IFR und LANDING auf 0.",
+                note = Loc.T("tools.atc.clearanceNote"),
             },
             runwaySelected = sim.Bool("atcRunwaySelected"),
             assignedRunway = runway is null
@@ -54,7 +55,7 @@ public static class AtcTools
                     lengthFt = Fmt.Int(sim.Num("atcRunwayLengthFt")),
                     spoken = "runway " + runway.Spoken,
                     callout = $"Runway {runway.Spoken} assigned",
-                    note = runway.Designator is null ? "L/C/R ist über SimConnect nicht verfügbar und passt zu keiner Bahn im SimBrief-Plan." : null,
+                    note = runway.Designator is null ? Loc.T("tools.atc.designatorUnknown") : null,
                 },
             experimental = new
             {

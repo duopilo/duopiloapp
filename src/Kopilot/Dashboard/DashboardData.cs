@@ -388,6 +388,8 @@ public sealed class DashboardData(
             action = e.Action,
             value = e.Value,
             outcome = e.Outcome,
+            // Fester Code (InputOutcome) für die Farbe im Dashboard – outcome ist der Text in der eingestellten Sprache
+            code = e.Code,
             detail = e.Detail,
             verified = e.Verified,
         }),

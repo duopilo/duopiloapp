@@ -118,7 +118,7 @@ public sealed class FuelCheckTests
         Assert.Equal(AlertKind.Event, e.Kind);
         Assert.Equal("HENDY, fuel 17.0, 2.2 below plan", e.Callout);
         Assert.Contains("Fuel Check HENDY", e.Message);
-        Assert.Contains("−2.200 kg", e.Message);
+        Assert.Contains("−2,200 kg", e.Message);
 
         var entry = Assert.Single(engine.FuelChecks.Last(10));
         Assert.Equal(FuelCheckKind.Waypoint, entry.Kind);
@@ -169,7 +169,7 @@ public sealed class FuelCheckTests
         Assert.Equal(Rules.FuelWarning, e.Rule);
         Assert.Equal(AlertSeverity.Caution, e.Severity);
         Assert.Equal("Fuel 18.7, 0.6 below plan, deviation increased by 0.4", e.Callout);
-        Assert.Contains("Leck möglich", e.Message);
+        Assert.Contains("possible leak", e.Message);
 
         var entry = engine.FuelChecks.Last(1)[0];
         Assert.Equal(FuelCheckKind.Deviation, entry.Kind);
@@ -203,7 +203,7 @@ public sealed class FuelCheckTests
         var buffer = Assert.Single(Fuel(engine, At(ofp, 80, 1.7, -2000)));
         Assert.Equal(Rules.FuelWarning, buffer.Rule);
         Assert.Equal("Fuel 17.3, 2.0 below plan, landing fuel 15.6, minimum 15.2", buffer.Callout);
-        Assert.Contains("unter Minimum + Puffer", buffer.Message);
+        Assert.Contains("below minimum + buffer", buffer.Message);
         Assert.Equal(FuelCheckKind.Landing, engine.FuelChecks.Last(1)[0].Kind);
 
         // Nicht bei jedem Takt wiederholen
@@ -262,15 +262,15 @@ public sealed class FuelCheckTests
         var e = Assert.Single(events);
         Assert.Equal(Rules.FuelCheck, e.Rule);
         Assert.Null(e.Callout);
-        Assert.Contains("Nachtanken erkannt", e.Message);
-        Assert.Contains("+7.560 kg", e.Message);
+        Assert.Contains("Refuelling detected", e.Message);
+        Assert.Contains("+7,560 kg", e.Message);
         Assert.Equal(FuelCheckKind.Refuel, engine.FuelChecks.Last(1)[0].Kind);
 
         // Neuer Bezug nach dem Tanken: ein wenig Verbrauch danach ist keine Warnung, wohl aber ein Verlust von 400 kg
         Assert.Empty(Fuel(engine, At(ofp, 80, 1.6, 7100), At(ofp, 140, 1.7, 7050), At(ofp, 200, 1.75, 6900)));
         var warn = Assert.Single(Fuel(engine, At(ofp, 260, 1.8, 6750)));
         Assert.Equal(Rules.FuelWarning, warn.Rule);
-        Assert.Contains("seit dem Tanken", warn.Message);
+        Assert.Contains("since refuelling", warn.Message);
     }
 
     [Fact]
@@ -289,7 +289,7 @@ public sealed class FuelCheckTests
 
         Assert.Empty(events);
         var e = Assert.Single(Fuel(engine, At(ofp, 45, 0, 0, onGround: true, fuelKg: 5026), At(ofp, 46, 0, 0, onGround: true, fuelKg: 5026)));
-        Assert.Contains("3.530 kg → 5.030 kg", e.Message);
+        Assert.Contains("3,530 kg → 5,030 kg", e.Message);
         Assert.Null(e.Callout);
     }
 
@@ -302,7 +302,7 @@ public sealed class FuelCheckTests
         var e = Assert.Single(Fuel(engine, At(ofp, 13, 1.5, -3100)));
         Assert.Equal(Rules.FuelCheck, e.Rule);
         Assert.Null(e.Callout);
-        Assert.Contains("sprunghaft gesunken", e.Message);
+        Assert.Contains("Fuel dropped abruptly", e.Message);
         Assert.Equal(FuelCheckKind.Defuel, engine.FuelChecks.Last(1)[0].Kind);
 
         // Kein Leckverdacht für die 3 t: der Vergleich beginnt bei −3,1 t neu
@@ -357,9 +357,9 @@ public sealed class FuelCheckTests
     {
         Assert.Equal("Fuel 34.1, 2.2 below plan", FuelCheckText.Callout(null, 34120, -2180));
         Assert.Equal("HENDY, fuel 34.1, 2.2 below plan", FuelCheckText.Callout("HENDY", 34120, -2180));
-        Assert.Equal("34.120 kg", FuelCheckText.Kg(34123));
-        Assert.Equal("−2.180 kg", FuelCheckText.Kg(-2183));
-        Assert.Equal("+1.200 kg", FuelCheckText.SignedKg(1200));
+        Assert.Equal("34,120 kg", FuelCheckText.Kg(34123));
+        Assert.Equal("−2,180 kg", FuelCheckText.Kg(-2183));
+        Assert.Equal("+1,200 kg", FuelCheckText.SignedKg(1200));
         Assert.Equal("0 kg", FuelCheckText.Kg(-3));
     }
 

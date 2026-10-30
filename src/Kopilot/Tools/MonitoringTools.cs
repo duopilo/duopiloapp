@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using Kopilot.Ecam;
+using Kopilot.Localization;
 using Kopilot.Monitoring;
 using Kopilot.Sim;
 using ModelContextProtocol.Server;
@@ -40,7 +41,7 @@ public static class MonitoringTools
                     memos = ecam.Right.Select(l => new { text = l.Text, code = l.Code.ToString("D9", System.Globalization.CultureInfo.InvariantCulture), known = l.Known }),
                 }
                 : null,
-            message = ecam.Available ? null : "Für dieses Flugzeug sind keine ECAM-Zeilen im Profil hinterlegt – nur Master Warning/Caution.",
+            message = ecam.Available ? null : Loc.T("tools.monitor.noEcam"),
             activeAlerts = AlertView.Active(alerts),
         });
     }

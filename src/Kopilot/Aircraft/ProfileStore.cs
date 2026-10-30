@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Kopilot.Localization;
 using Microsoft.Extensions.Options;
 
 namespace Kopilot.Aircraft;
@@ -73,23 +74,23 @@ public sealed class ProfileStore
             string? problem = null;
             if (string.IsNullOrWhiteSpace(action.Id) || action.Steps.Count == 0)
             {
-                problem = $"Aktion \"{action.Id}\" ohne id oder Schritte";
+                problem = Loc.T("aircraft.action.noIdOrSteps", action.Id);
             }
             else if (!seen.Add(action.Id))
             {
-                problem = $"Aktion {action.Id} doppelt";
+                problem = Loc.T("aircraft.action.duplicate", action.Id);
             }
             else if (Kopilot.Input.ActionSafety.Problem(action) is { } unsafeStep)
             {
-                problem = $"Aktion {action.Id}: {unsafeStep}";
+                problem = Loc.T("aircraft.action.unsafe", action.Id, unsafeStep);
             }
             else if (hasUnknownInterlock)
             {
-                problem = $"Aktion {action.Id}: unbekannte Sperre \"{unknownInterlock}\"";
+                problem = Loc.T("aircraft.action.unknownInterlock", action.Id, unknownInterlock);
             }
             else if (flapsWithoutChoice)
             {
-                problem = $"Aktion {action.Id}: flapsSpeed braucht eine Auswahl der Klappenstellung";
+                problem = Loc.T("aircraft.action.flapsWithoutChoice", action.Id);
             }
 
             if (problem is null)
@@ -97,7 +98,7 @@ public sealed class ProfileStore
                 return false;
             }
 
-            errors.Add($"{file}: {problem} – entfernt");
+            errors.Add(Loc.T("aircraft.action.removed", file, problem));
             return true;
         });
 
@@ -117,12 +118,12 @@ public sealed class ProfileStore
         {
             if (limits.VloKt is null && limits.VleKt is null)
             {
-                yield return "limits.vloKt/vleKt fehlt – gear.down nur mit Rückfrage";
+                yield return Loc.T("aircraft.limits.vloMissing");
             }
 
             if (limits.MaxGearAltitudeFt is null)
             {
-                yield return "limits.maxGearAltitudeFt fehlt – gear.down in der Luft nur mit Rückfrage";
+                yield return Loc.T("aircraft.limits.maxGearAltitudeMissing");
             }
         }
 
@@ -131,24 +132,24 @@ public sealed class ProfileStore
             var missing = flaps.Parameter?.Options?.Keys.Where(o => o != "0" && limits.VfeFor(null, o) is null).ToList() ?? [];
             if (missing.Count > 0)
             {
-                yield return $"limits.vfeKt fehlt für {flaps.Id} {string.Join(", ", missing)} – nur mit Rückfrage";
+                yield return Loc.T("aircraft.limits.vfeMissing", flaps.Id, string.Join(", ", missing));
             }
         }
 
         if (Has("speedbrake") && limits.SpeedbrakeInhibitFlaps is null)
         {
-            yield return "limits.speedbrakeInhibitFlaps fehlt – Speedbrake mit ausgefahrenen Klappen nur mit Rückfrage";
+            yield return Loc.T("aircraft.limits.speedbrakeInhibitMissing");
         }
 
         if (Has("fcu.altitude"))
         {
             if (limits.MsaSource is null)
             {
-                yield return "limits.msaSource fehlt – FCU-Höhe nur mit Rückfrage";
+                yield return Loc.T("aircraft.limits.msaSourceMissing");
             }
             else if (!AircraftLimits.MsaSources.Contains(limits.MsaSource.Trim(), StringComparer.OrdinalIgnoreCase))
             {
-                yield return $"limits.msaSource \"{limits.MsaSource}\" unbekannt (möglich: {string.Join(", ", AircraftLimits.MsaSources)}) – FCU-Höhe nur mit Rückfrage";
+                yield return Loc.T("aircraft.limits.msaSourceUnknown", limits.MsaSource, string.Join(", ", AircraftLimits.MsaSources));
             }
         }
     }
@@ -168,7 +169,7 @@ public sealed class ProfileStore
                     var profile = JsonSerializer.Deserialize<AircraftProfile>(File.ReadAllText(file), ReadOptions);
                     if (profile is null)
                     {
-                        errors.Add($"{Path.GetFileName(file)}: leer");
+                        errors.Add(Loc.T("aircraft.profile.empty", Path.GetFileName(file)));
                         continue;
                     }
 
@@ -192,22 +193,22 @@ public sealed class ProfileStore
         }
         else
         {
-            errors.Add($"Profilordner nicht gefunden: {DirectoryPath}");
+            errors.Add(Loc.T("aircraft.profile.directoryMissing", DirectoryPath));
         }
 
         _profiles = profiles;
         _errors = errors;
         _warnings = warnings;
 
-        _log.LogInformation("{Count} Flugzeugprofil(e) geladen aus {Dir}", profiles.Count, DirectoryPath);
+        _log.LogInformation(Loc.Log("log.aircraft.profilesLoaded"), profiles.Count, DirectoryPath);
         foreach (var error in errors)
         {
-            _log.LogWarning("Profilfehler: {Error}", error);
+            _log.LogWarning(Loc.Log("log.aircraft.profileError"), error);
         }
 
         foreach (var warning in warnings)
         {
-            _log.LogWarning("Profil: Grenzwert fehlt – {Warning}", warning);
+            _log.LogWarning(Loc.Log("log.aircraft.limitMissing"), warning);
         }
     }
 }

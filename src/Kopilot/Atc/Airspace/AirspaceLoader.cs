@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using Kopilot.Localization;
 
 namespace Kopilot.Atc.Airspace;
 
@@ -35,7 +36,7 @@ public static class AirspaceLoader
             .FirstOrDefault(d => File.Exists(Path.Combine(d, VatSpyDat)) && File.Exists(Path.Combine(d, VatSpyBoundaries)));
         if (vatspy is null)
         {
-            messages.Add($"VAT-Spy-Daten ({VatSpyDat}, {VatSpyBoundaries}) nicht gefunden – FIR-Grenzen nur aus dem OFP.");
+            messages.Add(Loc.T("atc.airspace.vatSpyMissing", VatSpyDat, VatSpyBoundaries));
         }
         else
         {
@@ -43,7 +44,7 @@ public static class AirspaceLoader
             {
                 using var geo = File.OpenRead(Path.Combine(vatspy, VatSpyBoundaries));
                 firs = ParseVatSpy(File.ReadAllText(Path.Combine(vatspy, VatSpyDat)), geo);
-                sources.Add($"VAT-Spy: {vatspy} ({firs.Count(f => f.HasBoundary)} FIRs mit Grenzen)");
+                sources.Add(Loc.T("atc.airspace.vatSpySource", vatspy, firs.Count(f => f.HasBoundary)));
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException or FormatException or KeyNotFoundException)
             {
@@ -55,7 +56,7 @@ public static class AirspaceLoader
         var sectorFile = roots.Select(r => Path.Combine(r, SectorsFolder, SectorsFile)).FirstOrDefault(File.Exists);
         if (sectorFile is null)
         {
-            messages.Add($"{SectorsFile} nicht gefunden – keine Sektoren, eine Frequenz je FIR.");
+            messages.Add(Loc.T("atc.airspace.sectorsMissing", SectorsFile));
         }
         else
         {
@@ -64,7 +65,7 @@ public static class AirspaceLoader
                 using var stream = File.OpenRead(sectorFile);
                 var (parsed, info) = ParseSectors(stream, messages);
                 sectors = parsed;
-                sources.Add($"Sektoren: {sectorFile} ({sectors.Count}{(info is null ? "" : ", " + info)})");
+                sources.Add(Loc.T("atc.airspace.sectorsSource", sectorFile, sectors.Count, info is null ? "" : ", " + info));
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException or FormatException or KeyNotFoundException)
             {
@@ -81,7 +82,7 @@ public static class AirspaceLoader
         var file = roots.Select(r => Path.Combine(r, OpenFlightsFolder, AirlinesFile)).FirstOrDefault(File.Exists);
         if (file is null)
         {
-            messages.Add($"{AirlinesFile} (OpenFlights) nicht gefunden – Rufzeichen nur aus atc-templates.json.");
+            messages.Add(Loc.T("atc.airspace.airlinesMissing", AirlinesFile));
             return AirlineDirectory.Empty;
         }
 
@@ -270,7 +271,7 @@ public static class AirspaceLoader
 
         if (skipped > 0)
         {
-            messages.Add($"{SectorsFile}: {skipped} Sektoren unvollständig, übersprungen.");
+            messages.Add(Loc.T("atc.airspace.sectorsSkipped", SectorsFile, skipped));
         }
 
         var source = Str(root, "source");

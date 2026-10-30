@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
+using Kopilot.Localization;
 using Microsoft.Extensions.Options;
 
 namespace Kopilot.Ecam;
@@ -82,10 +83,10 @@ public sealed partial class EcamCatalog
     }
 
     public string StatusFor(string format) =>
-        _tables.TryGetValue(format, out var t) ? $"{t.Entries.Count} Meldungen ({t.Origin})"
-        : _errors.TryGetValue(format, out var e) ? $"Fehler: {e}"
-        : Sources.ContainsKey(format) ? "wird geladen"
-        : "unbekanntes Format";
+        _tables.TryGetValue(format, out var t) ? Loc.T("ecam.table.loaded", t.Entries.Count, t.Origin)
+        : _errors.TryGetValue(format, out var e) ? Loc.T("ecam.table.error", e)
+        : Sources.ContainsKey(format) ? Loc.T("ecam.table.loading")
+        : Loc.T("ecam.table.unknownFormat");
 
     private async Task LoadAsync(string format)
     {
@@ -107,7 +108,7 @@ public sealed partial class EcamCatalog
                 }
                 catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException)
                 {
-                    _log.LogWarning("ECAM-Tabelle {Format} konnte nicht geladen werden: {Message}", format, ex.Message);
+                    _log.LogWarning(Loc.Log("log.ecam.downloadFailed"), format, ex.Message);
                 }
             }
 
@@ -119,19 +120,19 @@ public sealed partial class EcamCatalog
 
             if (source is null)
             {
-                _errors[format] = "kein Download und kein Cache";
+                _errors[format] = Loc.T("ecam.table.noSource");
                 return;
             }
 
             var entries = Parse(source);
             _tables[format] = new EcamTable(entries, DateTimeOffset.UtcNow, origin);
             _errors.TryRemove(format, out _);
-            _log.LogInformation("ECAM-Tabelle {Format}: {Count} Meldungen ({Origin})", format, entries.Count, origin);
+            _log.LogInformation(Loc.Log("log.ecam.loaded"), format, entries.Count, origin);
         }
         catch (Exception ex)
         {
             _errors[format] = ex.Message;
-            _log.LogError(ex, "ECAM-Tabelle {Format} fehlerhaft", format);
+            _log.LogError(ex, Loc.Log("log.ecam.parseFailed"), format);
         }
         finally
         {

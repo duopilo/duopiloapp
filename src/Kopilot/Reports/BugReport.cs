@@ -1,11 +1,22 @@
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
+using Kopilot.Localization;
 
 namespace Kopilot.Reports;
 
-/// <summary>Art einer Meldung: Kennung fürs Dashboard, Label im GitHub-Repository, Anzeigename.</summary>
-public sealed record BugReportCategory(string Id, string Label, string Name);
+/// <summary>Art einer Meldung: Kennung fürs Dashboard, Label im GitHub-Repository, Anzeigename (in der eingestellten Sprache).</summary>
+public sealed record BugReportCategory(string Id, string Label)
+{
+    public string Name => Id switch
+    {
+        "fir" => Loc.T("report.category.fir"),
+        "frequency" => Loc.T("report.category.frequency"),
+        "airline" => Loc.T("report.category.airline"),
+        "bug" => Loc.T("report.category.bug"),
+        _ => Id,
+    };
+}
 
 /// <summary>ATC-Stand laut Kopilot im Moment der Meldung (null-Felder = unbekannt).</summary>
 /// <param name="FirHere">FIR laut Plan an der aktuellen Streckenposition.</param>
@@ -112,10 +123,10 @@ public static partial class BugReport
 
     public static readonly IReadOnlyList<BugReportCategory> Categories =
     [
-        new("fir", "data/fir", "FIR-Grenze / Station"),
-        new("frequency", "data/frequency", "Frequenz"),
-        new("airline", "data/airline", "Airline / Rufzeichen"),
-        new("bug", "bug", "Programmfehler"),
+        new("fir", "data/fir"),
+        new("frequency", "data/frequency"),
+        new("airline", "data/airline"),
+        new("bug", "bug"),
     ];
 
     private const string Nl = "\n";
@@ -130,14 +141,16 @@ public static partial class BugReport
     /// <summary>Titelvorschlag je nach Art, z. B. "[Frequenz] Montreal Center 132.600 bei 53.51 N 64.65 W".</summary>
     public static string SuggestTitle(IReadOnlyList<BugReportCategory> categories, BugReportContext c)
     {
-        var prefix = categories.Count == 0 ? "[Meldung]" : "[" + string.Join(", ", categories.Select(k => k.Name)) + "]";
-        var where = c.Lat is { } lat && c.Lon is { } lon ? " bei " + ShortPosition(lat, lon) : "";
+        var prefix = "[" + (categories.Count == 0 ? Loc.T("report.title.generic") : string.Join(", ", categories.Select(k => k.Name))) + "]";
+        var where = c.Lat is { } lat && c.Lon is { } lon ? " " + Loc.T("report.title.position", ShortPosition(lat, lon)) : "";
         var first = categories.FirstOrDefault()?.Id;
         var subject = first switch
         {
             "frequency" when c.Atc is { } a => $"{a.Station} {a.Frequency}",
             "fir" when c.Atc is { } a => a.FirHere is { Length: > 0 } fir && !a.Station.Contains(fir, StringComparison.OrdinalIgnoreCase) ? $"{a.Station} ({fir})" : a.Station,
-            "airline" => c.Atc?.SpokenCallsign is { Length: > 0 } spoken ? $"{c.Callsign} „{spoken}“" : c.Callsign ?? "Rufzeichen",
+            "airline" => c.Atc?.SpokenCallsign is { Length: > 0 } spoken
+                ? Loc.T("report.title.spokenCallsign", c.Callsign, spoken)
+                : c.Callsign ?? Loc.T("report.title.callsign"),
             "bug" => "",
             _ => c.Atc?.Station ?? "",
         };
@@ -161,16 +174,19 @@ public static partial class BugReport
         }
 
         var time = c.CapturedUtc.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) + "Z";
-        Line(s, "Zeit", time + (c.SimZulu is { } z ? $" (Sim {z}Z)" : "") + (c.Paused == true ? ", Sim pausiert" : ""));
-        Line(s, "Version", "Kopilot " + c.Version);
+        var simTime = c.SimZulu is { } z ? " " + Loc.T("report.context.simTime", z) : "";
+        var paused = c.Paused == true ? ", " + Loc.T("report.context.paused") : "";
+        Line(s, Loc.T("report.context.time"), time + simTime + paused);
+        Line(s, Loc.T("report.context.version"), "Kopilot " + c.Version);
         if (!c.SimConnected)
         {
-            Line(s, "Sim", "nicht verbunden");
+            Line(s, Loc.T("report.context.sim"), Loc.T("report.context.notConnected"));
         }
 
         if (c.Lat is { } lat && c.Lon is { } lon)
         {
-            Line(s, "Position", $"{Coordinate(lat, 'N', 'S')}, {Coordinate(lon, 'E', 'W')} ([Karte]({MapLink(lat, lon)}))");
+            var map = Loc.T("report.context.map", MapLink(lat, lon));
+            Line(s, Loc.T("report.context.position"), $"{Coordinate(lat, 'N', 'S')}, {Coordinate(lon, 'E', 'W')} {map}");
         }
 
         var height = new List<string>();
@@ -186,7 +202,7 @@ public static partial class BugReport
 
         if (c.OnGround == true)
         {
-            height.Add("am Boden");
+            height.Add(Loc.T("report.context.onGround"));
         }
 
         if (c.GroundSpeedKt is { } gs)
@@ -196,61 +212,64 @@ public static partial class BugReport
 
         if (c.HeadingDeg is { } hdg)
         {
-            height.Add($"Kurs {((Math.Round(hdg) % 360) + 360) % 360:000}°");
+            height.Add(Loc.T("report.context.heading", ((Math.Round(hdg) % 360) + 360) % 360));
         }
 
         if (height.Count > 0)
         {
-            Line(s, "Höhe", string.Join(" · ", height));
+            Line(s, Loc.T("report.context.altitude"), string.Join(" · ", height));
         }
 
         if (c.Atc is { } a)
         {
             var source = a.FrequencySource switch
             {
-                "facility" => "aus MSFS",
-                "sectors" => "aus VATSIM-Sektordaten",
-                "templates" => "aus atc-templates.json",
-                "placeholder" => "Platzhalter",
+                "facility" => Loc.T("report.source.facility"),
+                "sectors" => Loc.T("report.source.sectors"),
+                "templates" => Loc.T("report.source.templates"),
+                "placeholder" => Loc.T("report.source.placeholder"),
                 _ => a.FrequencySource,
             };
-            Line(s, "ATC laut Kopilot", $"{a.Station} ({Join(a.Facility, a.StationType)}) · {a.Frequency} ({source}) · Phase {a.Phase}/{a.Step}");
+            Line(s, Loc.T("report.context.atc"), Loc.T("report.context.atcValue", a.Station, Join(a.Facility, a.StationType), a.Frequency, source, a.Phase, a.Step));
 
             var fir = new List<string>();
             if (a.FirHere is { Length: > 0 } here)
             {
-                fir.Add(a.FirHereSinceNm is { } since ? $"{here} ab Meile {since:0}" : here);
+                fir.Add(a.FirHereSinceNm is { } since ? Loc.T("report.context.firFrom", here, since) : here);
             }
 
             if (a.NextFir is { Length: > 0 } next)
             {
-                fir.Add(a.NextFirNm is { } at ? $"nächste {next} bei Meile {at:0}" : $"nächste {next}");
+                fir.Add(a.NextFirNm is { } at ? Loc.T("report.context.nextFirAt", next, at) : Loc.T("report.context.nextFir", next));
             }
 
             if (fir.Count > 0)
             {
-                Line(s, "FIR laut Plan", string.Join(" · ", fir));
+                Line(s, Loc.T("report.context.fir"), string.Join(" · ", fir));
             }
         }
         else
         {
-            Line(s, "ATC laut Kopilot", "keine Sitzung");
+            Line(s, Loc.T("report.context.atc"), Loc.T("report.context.noSession"));
         }
 
         if (c.AlongTrackNm is { } along)
         {
-            Line(s, "Strecke", c.TotalNm is { } total ? $"Meile {along:0} von {total:0}" : $"Meile {along:0}");
+            Line(s, Loc.T("report.context.route"), c.TotalNm is { } total ? Loc.T("report.context.mileOf", along, total) : Loc.T("report.context.mile", along));
         }
 
         if (c.Com1ActiveMhz is { } com1)
         {
-            Line(s, "COM1", $"{com1.ToString("0.000", CultureInfo.InvariantCulture)} aktiv" +
-                            (c.Com1StandbyMhz is { } sby ? $" · {sby.ToString("0.000", CultureInfo.InvariantCulture)} standby" : ""));
+            Line(s, "COM1", Loc.T("report.context.com1Active", com1.ToString("0.000", CultureInfo.InvariantCulture)) +
+                            (c.Com1StandbyMhz is { } sby ? " · " + Loc.T("report.context.com1Standby", sby.ToString("0.000", CultureInfo.InvariantCulture)) : ""));
         }
 
         if (c.Transponder is not null || c.Atc?.Squawk is not null)
         {
-            Line(s, "Squawk", Join(c.Transponder is { } t ? $"Transponder {t}" : null, c.Atc?.Squawk is { } sq ? $"Kopilot vergibt {sq}" : null, " · "));
+            Line(s, "Squawk", Join(
+                c.Transponder is { } t ? Loc.T("report.context.transponder", t) : null,
+                c.Atc?.Squawk is { } sq ? Loc.T("report.context.assignedSquawk", sq) : null,
+                " · "));
         }
 
         if (c.Callsign is not null || c.Origin is not null)
@@ -258,36 +277,36 @@ public static partial class BugReport
             var flight = $"{c.Callsign} {c.Origin}–{c.Destination}".Trim();
             if (c.Atc?.SpokenCallsign is { Length: > 0 } spoken)
             {
-                flight += $", gesprochen „{spoken}“";
+                flight += ", " + Loc.T("report.context.spoken", spoken);
             }
 
             if (c.Atc?.ClearedAltitudeFt is { } cleared)
             {
-                flight += $", freigegeben {cleared} ft";
+                flight += ", " + Loc.T("report.context.cleared", cleared);
             }
 
-            Line(s, "Flug", flight);
+            Line(s, Loc.T("report.context.flight"), flight);
         }
 
         if (c.Aircraft is not null)
         {
-            Line(s, "Flugzeug", c.Aircraft + (c.Profile is { } p ? $" (Profil {p})" : " (ohne Profil)"));
+            Line(s, Loc.T("report.context.aircraft"), c.Aircraft + " " + (c.Profile is { } p ? Loc.T("report.context.profile", p) : Loc.T("report.context.noProfile")));
         }
 
         if (c.FlightPhase is { } phase)
         {
-            Line(s, "Phase (Monitoring)", phase);
+            Line(s, Loc.T("report.context.phase"), phase);
         }
 
         if (c.VoiceLast is { } voice)
         {
-            Line(s, "Sprachschleife zuletzt", voice);
+            Line(s, Loc.T("report.context.voice"), voice);
         }
 
         var lines = c.Transcript.TakeLast(Math.Max(0, transcriptLines)).ToList();
         if (lines.Count > 0)
         {
-            s.Append(Nl).Append("Letzte Funksprüche:").Append(Nl).Append(Nl).Append("```text").Append(Nl);
+            s.Append(Nl).Append(Loc.T("report.context.transcript")).Append(Nl).Append(Nl).Append("```text").Append(Nl);
             foreach (var line in lines)
             {
                 // Backticks würden den Codeblock beenden
@@ -297,7 +316,7 @@ public static partial class BugReport
             s.Append("```").Append(Nl);
             if (lines.Count < c.Transcript.Count)
             {
-                s.Append($"({c.Transcript.Count - lines.Count} ältere Funksprüche in der lokalen Kopie)").Append(Nl);
+                s.Append(Loc.T("report.context.olderCalls", c.Transcript.Count - lines.Count)).Append(Nl);
             }
         }
 
@@ -372,8 +391,8 @@ public static partial class BugReport
 
     /// <summary>Text des Issues wie ihn die Vorlage zusammensetzt – für die Zwischenablage und die lokale Kopie.</summary>
     public static string BodyText(string description, string context) =>
-        "### Was ist falsch, was wäre richtig?" + Nl + Nl + (description.Length > 0 ? description : "_keine Beschreibung_") + Nl + Nl +
-        "### Kontext aus Kopilot" + Nl + Nl + context;
+        "### " + Loc.T("report.body.description") + Nl + Nl + (description.Length > 0 ? description : Loc.T("report.body.noDescription")) + Nl + Nl +
+        "### " + Loc.T("report.body.context") + Nl + Nl + context;
 
     /// <summary>"Besitzer/Name" wie bei GitHub erlaubt.</summary>
     public static bool IsRepository(string? repository) => repository is not null && RepositoryPattern().IsMatch(repository);
@@ -396,7 +415,7 @@ public static partial class BugReport
     }
 
     private static string Shorten(string text, int length) =>
-        length >= text.Length ? text : text[..length].TrimEnd() + " … (gekürzt, vollständig in der lokalen Kopie)";
+        length >= text.Length ? text : text[..length].TrimEnd() + " " + Loc.T("report.body.shortened");
 
     private static void Line(StringBuilder s, string name, string value) => s.Append("- **").Append(name).Append(":** ").Append(value).Append(Nl);
 

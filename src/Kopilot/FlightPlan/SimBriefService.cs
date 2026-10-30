@@ -1,3 +1,4 @@
+using Kopilot.Localization;
 using Microsoft.Extensions.Options;
 
 namespace Kopilot.FlightPlan;
@@ -61,7 +62,9 @@ public sealed class SimBriefService
         _legHint = null;
         _fetchedUtc = default;
         LastError = null;
-        _log.LogInformation("SimBrief-Konto geändert (Dashboard): {Account}", pilotId.Length > 0 ? $"Pilot-ID {pilotId}" : username.Length > 0 ? username : "keins");
+        _log.LogInformation(
+            Loc.Log("log.flightplan.accountChanged"),
+            pilotId.Length > 0 ? Loc.T("flightplan.account.pilotId", pilotId) : username.Length > 0 ? username : Loc.T("flightplan.account.none"));
         return true;
     }
 
@@ -70,7 +73,7 @@ public sealed class SimBriefService
     {
         if (!IsConfigured)
         {
-            LastError = "SimBrief ist nicht eingerichtet. Im Dashboard unter Einstellungen → SimBrief (oder in appsettings.Local.json unter Kopilot:SimBrief) den Username oder die Pilot-ID eintragen.";
+            LastError = Loc.T("flightplan.simbrief.notConfigured");
             return null;
         }
 
@@ -91,7 +94,7 @@ public sealed class SimBriefService
             if (!response.IsSuccessStatusCode)
             {
                 // SimBrief antwortet bei unbekanntem Nutzer mit 400 und einer Fehlermeldung im JSON
-                LastError = $"SimBrief antwortet {(int)response.StatusCode}: {ExtractStatus(body) ?? response.ReasonPhrase}";
+                LastError = Loc.T("flightplan.simbrief.httpError", (int)response.StatusCode, ExtractStatus(body) ?? response.ReasonPhrase);
                 return _current;
             }
 
@@ -104,12 +107,12 @@ public sealed class SimBriefService
             _current = ofp;
             _fetchedUtc = DateTimeOffset.UtcNow;
             LastError = null;
-            _log.LogInformation("SimBrief-OFP geladen: {Orig} → {Dest} ({Fixes} Fixes)", ofp.Origin.Icao, ofp.Destination.Icao, ofp.Fixes.Count);
+            _log.LogInformation(Loc.Log("log.flightplan.ofpLoaded"), ofp.Origin.Icao, ofp.Destination.Icao, ofp.Fixes.Count);
             return ofp;
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException or SimBriefException)
         {
-            LastError = $"SimBrief nicht erreichbar oder Antwort ungültig: {ex.Message}";
+            LastError = Loc.T("flightplan.simbrief.fetchFailed", ex.Message);
             _log.LogWarning("SimBrief: {Message}", ex.Message);
             return _current;
         }

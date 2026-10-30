@@ -1,3 +1,5 @@
+using Kopilot.Localization;
+
 namespace Kopilot.Voice;
 
 /// <summary>Zustand der Sprachschleife für kopilot_status, /voice, das Dashboard und das Log.</summary>
@@ -90,12 +92,12 @@ public interface IVoiceStatusSource
 /// <summary>Platzhalter für Instanzen ohne Sprachschleife (stdio-Modus, Tests).</summary>
 public sealed class NoVoiceLoop : IVoiceStatusSource
 {
-    public VoiceStatus Status { get; } = new()
+    // Bei jedem Abruf neu, damit der Hinweis in der eingestellten Sprache kommt
+    public VoiceStatus Status => new()
     {
         Available = false,
         State = "unavailable",
-        Note = "Die Sprachschleife läuft nur in der Tray-Instanz (HTTP-Modus, Dashboard http://127.0.0.1:5155/), " +
-               "nicht in der stdio-Instanz von Claude Desktop.",
+        Note = Loc.T("voice.status.trayOnly"),
     };
 }
 

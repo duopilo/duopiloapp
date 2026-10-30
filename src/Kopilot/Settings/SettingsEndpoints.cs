@@ -1,5 +1,6 @@
 using Kopilot.Dashboard;
 using Kopilot.Hosting;
+using Kopilot.Localization;
 using Kopilot.Tools;
 
 namespace Kopilot.Settings;
@@ -72,10 +73,10 @@ public static class SettingsEndpoints
 
             if (context.RequestServices.GetService<AppRestart>() is not { } restart)
             {
-                return Results.Content(Json.Serialize(new { ok = false, error = "Neustart gibt es nur in der Tray-Instanz (HTTP-Modus)." }), "application/json");
+                return Results.Content(Json.Serialize(new { ok = false, error = Loc.T("settings.restart.trayOnly") }), "application/json");
             }
 
-            var error = restart.Restart("Dashboard-Einstellungen");
+            var error = restart.Restart(Loc.T("settings.restart.reason"));
             return Results.Content(Json.Serialize(new { ok = error is null, error }), "application/json");
         }).LocalOnly();
     }

@@ -77,19 +77,19 @@ public sealed class BugReportTests : IAsyncLifetime
         var text = BugReport.ContextMarkdown(Hoist(), labels: ["data/fir", "data/frequency"]);
 
         Assert.StartsWith("<!-- kopilot-meldung labels: data/fir,data/frequency -->", text);
-        Assert.Contains("2026-10-29 21:18:07Z (Sim 21:18:05Z)", text);
+        Assert.Contains("2026-10-29 21:18:07Z (sim 21:18:05Z)", text);
         Assert.Contains("Kopilot 0.9.1", text);
         Assert.Contains("53.5100 N, 64.6500 W", text);
         Assert.Contains("openstreetmap.org/?mlat=53.5100&mlon=-64.6500", text);
-        Assert.Contains("FL320 · 30630 ft · GS 480 kt · Kurs 268°", text);
-        Assert.Contains("Montreal Center (CZUL, Center) · 132.600 (Platzhalter) · Phase Center/CenterContact", text);
-        Assert.Contains("CZUL ab Meile 2377 · nächste CZYZ bei Meile 3010", text);
-        Assert.Contains("Meile 2390 von 5312", text);
-        Assert.Contains("124.725 aktiv · 133.300 standby", text);
-        Assert.Contains("Transponder 3172 · Kopilot vergibt 2340", text);
-        Assert.Contains("CFG2205 EDDF–KLAX, gesprochen „Condor two two zero five“", text);
+        Assert.Contains("FL320 · 30630 ft · GS 480 kt · HDG 268°", text);
+        Assert.Contains("Montreal Center (CZUL, Center) · 132.600 (placeholder) · phase Center/CenterContact", text);
+        Assert.Contains("CZUL from mile 2377 · next CZYZ at mile 3010", text);
+        Assert.Contains("Mile 2390 of 5312", text);
+        Assert.Contains("124.725 active · 133.300 standby", text);
+        Assert.Contains("Transponder 3172 · Kopilot assigned 2340", text);
+        Assert.Contains("CFG2205 EDDF–KLAX, spoken “Condor two two zero five”", text);
         Assert.Contains("```text\n21:11:00Z Pilot Gander Oceanic 127.650: Gander, Condor 2205, position report 1\n", text);
-        Assert.Contains("Sprachschleife zuletzt", text);
+        Assert.Contains("Voice loop, last heard", text);
     }
 
     [Fact]
@@ -97,8 +97,8 @@ public sealed class BugReportTests : IAsyncLifetime
     {
         var text = BugReport.ContextMarkdown(new BugReportContext { CapturedUtc = DateTimeOffset.UnixEpoch, Version = "0.9.1" });
 
-        Assert.Contains("**Sim:** nicht verbunden", text);
-        Assert.Contains("**ATC laut Kopilot:** keine Sitzung", text);
+        Assert.Contains("**Sim:** not connected", text);
+        Assert.Contains("**ATC per Kopilot:** no session", text);
         Assert.DoesNotContain("Position", text);
         Assert.DoesNotContain("```", text);
     }
@@ -114,10 +114,10 @@ public sealed class BugReportTests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData("frequency", "[Frequenz] Montreal Center 132.600 bei 53.51 N 64.65 W")]
-    [InlineData("fir", "[FIR-Grenze / Station] Montreal Center (CZUL) bei 53.51 N 64.65 W")]
-    [InlineData("airline", "[Airline / Rufzeichen] CFG2205 „Condor two two zero five“")]
-    [InlineData("bug", "[Programmfehler]")]
+    [InlineData("frequency", "[Frequency] Montreal Center 132.600 at 53.51 N 64.65 W")]
+    [InlineData("fir", "[FIR boundary / station] Montreal Center (CZUL) at 53.51 N 64.65 W")]
+    [InlineData("airline", "[Airline / callsign] CFG2205 “Condor two two zero five”")]
+    [InlineData("bug", "[Bug]")]
     public void Titelvorschlag_je_Art(string category, string expected)
     {
         Assert.Equal(expected, BugReport.SuggestTitle(BugReport.Resolve([category]), Hoist()));
@@ -143,9 +143,9 @@ public sealed class BugReportTests : IAsyncLifetime
         Assert.Contains("&beschreibung=" + Uri.EscapeDataString("Sim-ATC übergibt erst bei 64.65 W an Montreal 132.25"), url);
         Assert.Contains("&kontext=" + Uri.EscapeDataString("<!-- kopilot-meldung labels: data/fir,data/frequency -->"), url);
         Assert.False(issue.Truncated);
-        Assert.Equal("[FIR-Grenze / Station, Frequenz] Montreal Center (CZUL) bei 53.51 N 64.65 W", issue.Title);
-        Assert.Contains("### Was ist falsch, was wäre richtig?", issue.Body);
-        Assert.Contains("### Kontext aus Kopilot", issue.Body);
+        Assert.Equal("[FIR boundary / station, Frequency] Montreal Center (CZUL) at 53.51 N 64.65 W", issue.Title);
+        Assert.Contains("### What is wrong, and what would be right?", issue.Body);
+        Assert.Contains("### Context from Kopilot", issue.Body);
     }
 
     [Fact]
@@ -156,7 +156,7 @@ public sealed class BugReportTests : IAsyncLifetime
 
         Assert.True(issue.Truncated);
         Assert.True(issue.Url!.Length <= BugReport.MaxUrlLength, $"{issue.Url.Length} Zeichen");
-        Assert.Contains(Uri.EscapeDataString("(gekürzt, vollständig in der lokalen Kopie)"), issue.Url);
+        Assert.Contains(Uri.EscapeDataString("(shortened, full text in the local copy)"), issue.Url);
         Assert.Contains(description, issue.Body);
         Assert.Contains("position report 30", issue.Body);
         Assert.Contains("position report 1\n", issue.Body);
@@ -170,7 +170,7 @@ public sealed class BugReportTests : IAsyncLifetime
         Assert.True(issue.Truncated);
         Assert.Contains(Uri.EscapeDataString("position report 14"), issue.Url);
         Assert.DoesNotContain(Uri.EscapeDataString("position report 4\n"), issue.Url);
-        Assert.Contains(Uri.EscapeDataString("(4 ältere Funksprüche in der lokalen Kopie)"), issue.Url);
+        Assert.Contains(Uri.EscapeDataString("(4 older calls in the local copy)"), issue.Url);
     }
 
     [Theory]
@@ -207,7 +207,7 @@ public sealed class BugReportTests : IAsyncLifetime
         var copy = File.ReadAllText(file);
         Assert.Contains("Platzhalter 132.6 statt 132.25", copy);
         Assert.Contains("Labels: data/frequency", copy);
-        Assert.Contains("GitHub: [neues Issue", copy);
+        Assert.Contains("GitHub: [new issue", copy);
     }
 
     [Fact]
@@ -215,7 +215,7 @@ public sealed class BugReportTests : IAsyncLifetime
     {
         var unknown = await PostAsync("/api/report", """{"id":"gibtsnicht","categories":["bug"],"description":"x"}""");
         Assert.False(unknown.GetProperty("ok").GetBoolean());
-        Assert.Contains("Momentaufnahme", unknown.GetProperty("error").GetString());
+        Assert.Contains("snapshot", unknown.GetProperty("error").GetString());
 
         var id = (await PostAsync("/api/report/capture", "{}")).GetProperty("id").GetString();
         var empty = await PostAsync("/api/report", $$"""{"id":"{{id}}","categories":[],"description":"  "}""");

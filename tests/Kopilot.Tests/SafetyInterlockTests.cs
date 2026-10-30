@@ -128,7 +128,7 @@ public sealed partial class InputTests
 
         Assert.Equal(new[] { "antiice.engines", "lights.test" }, profile.Actions.Select(a => a.Id));
         Assert.Equal(6, errors.Count);
-        Assert.All(errors, e => Assert.Contains("gesperrt", e));
+        Assert.All(errors, e => Assert.Contains("blocked", e));
     }
 
     [Fact]
@@ -275,7 +275,7 @@ public sealed partial class InputTests
 
         var air = Judge(p, "elec.battery", "off", Flight());
         Assert.Equal(Locked, air.Outcome);
-        Assert.Contains("nur am Boden", air.Reason);
+        Assert.Contains("on the ground", air.Reason);
         Assert.Equal(Locked, Judge(p, "elec.battery", "off", Flight() with { OnGround = null }).Outcome);
     }
 
@@ -314,7 +314,7 @@ public sealed partial class InputTests
 
         var bleed = Judge(p, "apu.master", "off", OnGround(), Bleed(true));
         Assert.Equal(Locked, bleed.Outcome);
-        Assert.Contains("APU Bleed", bleed.Reason);
+        Assert.Contains("APU bleed", bleed.Reason);
 
         Assert.Equal(Ask, Judge(p, "apu.master", "off", OnGround(), Bleed(null)).Outcome);
 
@@ -397,7 +397,7 @@ public sealed partial class InputTests
         // Im Flug irreversibel (kein Ausrichten in der Luft): fest gesperrt, auch wenn unklar ist, ob am Boden
         var air = Judge(profile, "adirs.ir1", "off", Air());
         Assert.Equal(Locked, air.Outcome);
-        Assert.Contains("Ausrichten", air.Reason);
+        Assert.Contains("realignment", air.Reason);
         Assert.Equal(Locked, Judge(profile, "adirs.ir1", "off", Air() with { OnGround = null }).Outcome);
 
         // Am Boden nur mit Rückfrage
@@ -491,7 +491,7 @@ public sealed partial class InputTests
         Assert.Equal(prepared.Token, caution.Token);
         Assert.Empty(backend.Sent);
         Assert.True(input.Pending!.CautionStage);
-        Assert.Contains(input.History, e => e.Outcome == "Rückfrage");
+        Assert.Contains(input.History, e => e.Outcome == "caution");
 
         // Die Rückfrage muss erst gehört werden
         Assert.Equal(InputResult.Failed, (await input.ConfirmAsync(prepared.Token!, "confirm", default)).Status);
@@ -565,7 +565,7 @@ public sealed partial class InputTests
 
         var refused = await input.PrepareAsync("apu.master", "off", default);
         Assert.Equal(InputResult.Refused, refused.Status);
-        Assert.Contains("APU Bleed", refused.Reason);
+        Assert.Contains("APU bleed", refused.Reason);
 
         backend.State["L:A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON"] = 0;
         var ok = await input.PrepareAsync("apu.master", "off", default);
@@ -582,7 +582,7 @@ public sealed partial class InputTests
 
         var prepared = await input.PrepareAsync("gear.down", null, default);
         Assert.True(prepared.CautionFollows);
-        Assert.Contains(input.History, e => e.Outcome == "Grenzwert fehlt" && e.Detail!.Contains("maxGearAltitudeFt"));
+        Assert.Contains(input.History, e => e.Outcome == "limit missing" && e.Detail!.Contains("maxGearAltitudeFt"));
     }
 
     [Fact]
@@ -659,7 +659,7 @@ public sealed partial class InputTests
         Assert.Equal(Rules.PmGear, callout.Rule);
         Assert.Equal("Gear down, three green", callout.Callout);
         Assert.Equal(AlertSeverity.Info, callout.Severity);
-        Assert.Contains(input.History, e => e.Outcome == "nachgelesen");
+        Assert.Contains(input.History, e => e.Outcome == "checked");
     }
 
     [Fact]
@@ -683,7 +683,7 @@ public sealed partial class InputTests
         Assert.Equal("Gear disagree", callout.Callout);
         Assert.Equal(AlertSeverity.Caution, callout.Severity);
         Assert.Contains("right 60", callout.Message);
-        Assert.Contains(input.History, e => e.Outcome == "abweichend");
+        Assert.Contains(input.History, e => e.Outcome == "disagree");
     }
 
     [Fact]
@@ -764,7 +764,7 @@ public sealed partial class InputTests
 
         var callout = Assert.Single(bus.Since(0));
         Assert.Equal("Flaps disagree", callout.Callout);
-        Assert.Contains("keine Bewegung", callout.Message);
+        Assert.Contains("no movement", callout.Message);
     }
 
     [Fact]
@@ -781,7 +781,7 @@ public sealed partial class InputTests
 
         var e = Assert.Single(bus.Since(0));
         Assert.Null(e.Callout);
-        Assert.Contains("nicht lesbar", e.Message);
+        Assert.Contains("not readable", e.Message);
     }
 
     [Fact]

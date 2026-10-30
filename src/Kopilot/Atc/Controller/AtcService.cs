@@ -1,6 +1,7 @@
 using System.Threading.Channels;
 using Kopilot.Atc.Airspace;
 using Kopilot.FlightPlan;
+using Kopilot.Localization;
 using Kopilot.Sim;
 using Microsoft.Extensions.Options;
 
@@ -90,7 +91,7 @@ public sealed class AtcService : BackgroundService
             var sources = new List<string>(airspace?.Sources ?? []);
             if (airlines is { Count: > 0 })
             {
-                sources.Add($"Airlines: {airlines.Source} ({airlines.Count} Rufzeichen, OpenFlights)");
+                sources.Add(Loc.T("atc.airspace.airlines", airlines.Source, airlines.Count));
             }
 
             sources.AddRange(_airspaceMessages);
@@ -150,7 +151,7 @@ public sealed class AtcService : BackgroundService
         AtcTemplates? templates = null;
         if (basePath is null && userPath is null)
         {
-            errors.Add($"{AtcTemplateLoader.FileName} nicht gefunden.");
+            errors.Add(Loc.T("atc.templates.notFound", AtcTemplateLoader.FileName));
         }
         else
         {
@@ -182,19 +183,19 @@ public sealed class AtcService : BackgroundService
 
         foreach (var note in notes)
         {
-            _log.LogInformation("ATC-Vorlagen: {Note}", note);
+            _log.LogInformation(Loc.Log("log.atc.templateNote"), note);
         }
 
         if (errors.Count > 0)
         {
-            _log.LogWarning("ATC-Vorlagen ({Path}): {Errors}", userPath ?? basePath ?? AtcTemplateLoader.FileName, string.Join(" | ", errors));
+            _log.LogWarning(Loc.Log("log.atc.templateErrors"), userPath ?? basePath ?? AtcTemplateLoader.FileName, string.Join(" | ", errors));
         }
         else
         {
             _log.LogInformation(
-                "ATC-Vorlagen geladen: {Path}{Base} ({Count} Funksprüche, {Airlines} Airlines aus OpenFlights)",
+                Loc.Log("log.atc.templatesLoaded"),
                 userPath ?? basePath,
-                userPath is not null && basePath is not null ? $" über {basePath}" : "",
+                userPath is not null && basePath is not null ? " " + Loc.T("atc.templates.layeredOver", basePath) : "",
                 templates?.Messages.Count ?? 0,
                 templates?.Airlines.Count ?? 0);
         }
@@ -219,11 +220,11 @@ public sealed class AtcService : BackgroundService
             _airspaceMessages = _airspaceMessages.Concat(messages).ToList();
             foreach (var message in messages)
             {
-                _log.LogWarning("Luftraumdaten: {Message}", message);
+                _log.LogWarning(Loc.Log("log.atc.airspaceMessage"), message);
             }
 
             _log.LogInformation(
-                "Luftraumdaten geladen in {Ms} ms: {Sources}",
+                Loc.Log("log.atc.airspaceLoaded"),
                 (int)(DateTimeOffset.UtcNow - started).TotalMilliseconds,
                 string.Join(" | ", airspace.Sources));
             return airspace;
@@ -235,7 +236,7 @@ public sealed class AtcService : BackgroundService
     {
         if (string.IsNullOrWhiteSpace(text))
         {
-            return new AtcTransmitResult(false, "Kein Funkspruch übergeben.", []);
+            return new AtcTransmitResult(false, Loc.T("atc.service.noTransmission"), []);
         }
 
         if (await EnsureSessionAsync(ct) is { } error)
@@ -248,7 +249,7 @@ public sealed class AtcService : BackgroundService
         {
             if (_session is null)
             {
-                return new AtcTransmitResult(false, _lastError ?? "ATC-Sitzung nicht verfügbar.", []);
+                return new AtcTransmitResult(false, _lastError ?? Loc.T("atc.service.sessionUnavailable"), []);
             }
 
             responses = _session.PilotTransmission(text, BuildInput());
@@ -265,7 +266,7 @@ public sealed class AtcService : BackgroundService
         switch (action.Trim().ToLowerInvariant())
         {
             case "start":
-                return await EnsureSessionAsync(ct) ?? "ATC-Sitzung läuft.";
+                return await EnsureSessionAsync(ct) ?? Loc.T("atc.service.sessionRunning");
             case "restart":
                 lock (_lock)
                 {
@@ -275,7 +276,7 @@ public sealed class AtcService : BackgroundService
 
                 // Neu heißt neu: nicht aus der Sicherung fortsetzen
                 _store.Delete();
-                return await EnsureSessionAsync(ct) ?? "ATC-Sitzung neu gestartet.";
+                return await EnsureSessionAsync(ct) ?? Loc.T("atc.service.sessionRestarted");
             case "stop":
                 lock (_lock)
                 {
@@ -285,15 +286,15 @@ public sealed class AtcService : BackgroundService
                 }
 
                 _store.Delete();
-                return "ATC-Sitzung beendet.";
+                return Loc.T("atc.service.sessionStopped");
             case "reload":
                 var errors = ReloadTemplates();
-                return errors.Count == 0 ? $"Vorlagen neu geladen: {_templatesPath}" : "Vorlagen mit Fehlern: " + string.Join(" | ", errors);
+                return errors.Count == 0 ? Loc.T("atc.service.templatesReloaded", _templatesPath) : Loc.T("atc.service.templatesReloadErrors", string.Join(" | ", errors));
             case "say_again":
                 var result = await TransmitAsync("say again", ct);
-                return result.Ok ? "Letzter Funkspruch wiederholt." : result.Error ?? "Nichts zu wiederholen.";
+                return result.Ok ? Loc.T("atc.service.repeated") : result.Error ?? Loc.T("atc.service.nothingToRepeat");
             default:
-                return "Unbekannte Aktion. Erlaubt: start, stop, restart, reload, say_again.";
+                return Loc.T("atc.service.unknownAction");
         }
     }
 
@@ -302,28 +303,28 @@ public sealed class AtcService : BackgroundService
         var key = AtcSession.OverridableValues.FirstOrDefault(v => v.Equals(name?.Trim(), StringComparison.OrdinalIgnoreCase));
         if (key is null)
         {
-            return "Unbekannter Wert. Erlaubt: " + string.Join(", ", AtcSession.OverridableValues);
+            return Loc.T("atc.service.unknownValue", string.Join(", ", AtcSession.OverridableValues));
         }
 
         lock (_lock)
         {
             if (_session is null)
             {
-                return "Keine ATC-Sitzung – zuerst einen Funkspruch senden oder atc_control start.";
+                return Loc.T("atc.service.noSession");
             }
 
             _session.SetOverride(key, value);
         }
 
         SaveSession(force: true);
-        return string.IsNullOrWhiteSpace(value) ? $"{key} zurückgesetzt." : $"{key} = {value.Trim()}";
+        return string.IsNullOrWhiteSpace(value) ? Loc.T("atc.service.valueCleared", key) : $"{key} = {value.Trim()}";
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (!Enabled)
         {
-            _log.LogInformation("ATC ist ausgeschaltet (Kopilot:Atc:Enabled).");
+            _log.LogInformation(Loc.Log("log.atc.disabled"));
             return;
         }
 
@@ -336,7 +337,7 @@ public sealed class AtcService : BackgroundService
             }
             catch (Exception ex)
             {
-                _log.LogWarning(ex, "Luftraumdaten nicht geladen");
+                _log.LogWarning(ex, Loc.Log("log.atc.airspaceFailed"));
             }
         }, stoppingToken);
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
@@ -377,7 +378,7 @@ public sealed class AtcService : BackgroundService
             // Neuer SimBrief-Plan = neuer Flug: alte Sitzung endet
             if (_simBrief.Current is { } ofp && ofp.RequestId is not null && _sessionOfpId is not null && ofp.RequestId != _sessionOfpId)
             {
-                _log.LogInformation("Neuer SimBrief-Plan – ATC-Sitzung des alten Flugs beendet.");
+                _log.LogInformation(Loc.Log("log.atc.newPlan"));
                 _session = null;
                 _sessionOfpId = null;
                 return;
@@ -389,7 +390,7 @@ public sealed class AtcService : BackgroundService
             }
             catch (Exception ex)
             {
-                _log.LogError(ex, "Fehler in der ATC-Zustandsmaschine");
+                _log.LogError(ex, Loc.Log("log.atc.stateMachineError"));
             }
         }
 
@@ -425,12 +426,12 @@ public sealed class AtcService : BackgroundService
         {
             if (await EnsureSessionAsync(ct, restoreOnly: true) is { } error)
             {
-                _log.LogInformation("ATC-Sitzung nicht fortgesetzt: {Reason}", error);
+                _log.LogInformation(Loc.Log("log.atc.notRestored"), error);
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _log.LogWarning("ATC-Sitzung nicht fortgesetzt: {Message}", ex.Message);
+            _log.LogWarning(Loc.Log("log.atc.notRestoredError"), ex.Message);
         }
     }
 
@@ -441,7 +442,7 @@ public sealed class AtcService : BackgroundService
         {
             if (_store.LastError is { } error)
             {
-                _log.LogWarning("ATC-Sitzungssicherung: {Error}", error);
+                _log.LogWarning(Loc.Log("log.atc.storeError"), error);
             }
 
             return null;
@@ -455,13 +456,13 @@ public sealed class AtcService : BackgroundService
         var age = DateTimeOffset.UtcNow - snapshot.SavedUtc;
         if (age > TimeSpan.FromHours(Math.Max(0.1, _options.Atc.SessionMaxAgeHours)))
         {
-            _log.LogInformation("ATC-Sitzungssicherung von {Saved:u} ist zu alt ({Hours:0.0} h) – neue Sitzung.", snapshot.SavedUtc, age.TotalHours);
+            _log.LogInformation(Loc.Log("log.atc.backupTooOld"), snapshot.SavedUtc, age.TotalHours);
             return null;
         }
 
         if (flightKey is not null && !string.Equals(snapshot.FlightKey, flightKey, StringComparison.Ordinal))
         {
-            _log.LogInformation("ATC-Sitzungssicherung gehört zu einem anderen Flug ({Saved}) – neue Sitzung.", snapshot.FlightKey);
+            _log.LogInformation(Loc.Log("log.atc.backupOtherFlight"), snapshot.FlightKey);
             return null;
         }
 
@@ -501,7 +502,7 @@ public sealed class AtcService : BackgroundService
 
         if (!_store.Save(snapshot) && _store.LastError is { } error)
         {
-            _log.LogWarning("ATC-Sitzung: {Error}", error);
+            _log.LogWarning(Loc.Log("log.atc.saveError"), error);
         }
     }
 
@@ -512,7 +513,7 @@ public sealed class AtcService : BackgroundService
     {
         if (!Enabled)
         {
-            return "ATC ist ausgeschaltet (Kopilot:Atc:Enabled).";
+            return Loc.T("atc.service.disabled");
         }
 
         lock (_lock)
@@ -524,15 +525,15 @@ public sealed class AtcService : BackgroundService
 
             if (_templates is null)
             {
-                return "ATC-Vorlagen fehlen oder sind ungültig: " + string.Join(" | ", _templateErrors);
+                return Loc.T("atc.service.templatesInvalid", string.Join(" | ", _templateErrors));
             }
         }
 
         var ofp = _simBrief.Current ?? await _simBrief.GetAsync(refresh: false, ct);
         if (ofp is null)
         {
-            _lastError = _simBrief.LastError ?? "Kein SimBrief-Plan geladen.";
-            return "ATC braucht den SimBrief-Plan: " + _lastError;
+            _lastError = _simBrief.LastError ?? Loc.T("atc.service.noPlan");
+            return Loc.T("atc.service.needsPlan", _lastError);
         }
 
         var airspace = await Task.Run(() => Airspace(), ct);
@@ -549,7 +550,7 @@ public sealed class AtcService : BackgroundService
             var snapshot = RestorableSnapshot(plan.FlightKey);
             if (snapshot is null && restoreOnly)
             {
-                return "keine passende Sicherung für diesen Flug.";
+                return Loc.T("atc.service.noMatchingBackup");
             }
 
             var context = new AtcSessionContext(
@@ -563,8 +564,7 @@ public sealed class AtcService : BackgroundService
                 var note = session.Restore(snapshot, BuildInput());
                 _restoredFromUtc = snapshot.SavedUtc;
                 _log.LogInformation(
-                    "ATC-Sitzung fortgesetzt (Sicherung von {Saved:HH:mm:ss}Z): {Callsign} {Orig} → {Dest}, {Station}, Phase {Phase}/{Step}, " +
-                    "freigegeben {Cleared} ft, Squawk {Squawk}, {Lines} Funksprüche{Note}",
+                    Loc.Log("log.atc.sessionRestored"),
                     snapshot.SavedUtc,
                     plan.Callsign,
                     ofp.Origin.Icao,
@@ -582,14 +582,14 @@ public sealed class AtcService : BackgroundService
                 session.Start(BuildInput());
                 _restoredFromUtc = null;
                 _log.LogInformation(
-                    "ATC-Sitzung: {Callsign} {Orig} → {Dest}, Phase {Phase}, Squawk {Squawk}{Oceanic}, Stationen: {Stations}",
+                    Loc.Log("log.atc.sessionStarted"),
                     plan.Callsign,
                     ofp.Origin.Icao,
                     ofp.Destination.Icao,
                     session.Phase,
                     session.Squawk,
-                    plan.Oceanic is null ? "" : ", mit Oceanic-Teil",
-                    string.Join(" → ", plan.Firs.Select(f => FormattableString.Invariant($"{session.StationName(f)} {f.FrequencyMhz:0.000} ab {f.StartNm:0} nm"))));
+                    plan.Oceanic is null ? "" : ", " + Loc.T("atc.service.withOceanic"),
+                    string.Join(" → ", plan.Firs.Select(f => Loc.T("atc.service.stationFrom", session.StationName(f), f.FrequencyMhz, f.StartNm))));
             }
 
             _session = session;
@@ -632,7 +632,7 @@ public sealed class AtcService : BackgroundService
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    _log.LogWarning("ATC-Funkspruch nicht gesprochen: {Message}", ex.Message);
+                    _log.LogWarning(Loc.Log("log.atc.radioFailed"), ex.Message);
                 }
             }
         }
@@ -677,7 +677,7 @@ public sealed class AtcService : BackgroundService
             }
             catch (Exception ex)
             {
-                _log.LogDebug("Facilities für {Icao} nicht verfügbar: {Message}", icao, ex.Message);
+                _log.LogDebug(Loc.Log("log.atc.facilitiesFailed"), icao, ex.Message);
             }
         }
     }

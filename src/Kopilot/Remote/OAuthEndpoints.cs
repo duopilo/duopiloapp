@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Kopilot.Localization;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
 
@@ -85,19 +86,19 @@ public static class OAuthEndpoints
         }
         catch (JsonException)
         {
-            return RegistrationError("invalid_client_metadata", "Ungültiges JSON.");
+            return RegistrationError("invalid_client_metadata", Loc.T("remote.oauth.invalidJson"));
         }
 
         var redirectUris = request?.RedirectUris?.Where(u => !string.IsNullOrWhiteSpace(u)).ToList() ?? [];
         if (redirectUris.Count == 0)
         {
-            return RegistrationError("invalid_redirect_uri", "redirect_uris fehlt.");
+            return RegistrationError("invalid_redirect_uri", Loc.T("remote.oauth.redirectUrisMissing"));
         }
 
         var rejected = redirectUris.FirstOrDefault(u => !IsAllowedRedirectUri(u));
         if (rejected is not null)
         {
-            return RegistrationError("invalid_redirect_uri", $"Nicht erlaubte redirect_uri: {rejected}");
+            return RegistrationError("invalid_redirect_uri", Loc.T("remote.oauth.redirectUriNotAllowed", rejected));
         }
 
         var client = store.RegisterClient(request!.ClientName, redirectUris);
@@ -129,30 +130,30 @@ public static class OAuthEndpoints
         var client = store.FindClient(clientId);
         if (client is null)
         {
-            return ConsentPage.Error(context, "Unbekannter Client. Bitte die Verbindung in Claude neu starten.");
+            return ConsentPage.Error(context, Loc.T("remote.consent.unknownClient"));
         }
 
         // Ohne gültige Redirect-URI darf auf keinen Fall weitergeleitet werden.
         if (string.IsNullOrEmpty(redirectUri) || !RedirectMatches(client, redirectUri))
         {
-            return ConsentPage.Error(context, "Diese Weiterleitungsadresse ist für den Client nicht registriert.");
+            return ConsentPage.Error(context, Loc.T("remote.consent.redirectNotRegistered"));
         }
 
         if (query["response_type"] != "code")
         {
-            return RedirectWithError(redirectUri, state, "unsupported_response_type", "Nur response_type=code wird unterstützt.");
+            return RedirectWithError(redirectUri, state, "unsupported_response_type", Loc.T("remote.oauth.responseTypeCodeOnly"));
         }
 
         string? codeChallenge = query["code_challenge"];
         if (string.IsNullOrEmpty(codeChallenge) || query["code_challenge_method"] != "S256")
         {
-            return RedirectWithError(redirectUri, state, "invalid_request", "PKCE mit S256 ist Pflicht.");
+            return RedirectWithError(redirectUri, state, "invalid_request", Loc.T("remote.oauth.pkceRequired"));
         }
 
         string? resource = query["resource"].FirstOrDefault();
         if (!string.IsNullOrEmpty(resource) && !store.ResourceMatches(resource))
         {
-            return RedirectWithError(redirectUri, state, "invalid_target", "Unbekannte Ressource.");
+            return RedirectWithError(redirectUri, state, "invalid_target", Loc.T("remote.oauth.unknownResource"));
         }
 
         var requestId = store.AddPending(new PendingAuthorization(client.ClientId, client.ClientName, redirectUri, state, codeChallenge, resource));
@@ -169,7 +170,7 @@ public static class OAuthEndpoints
     {
         if (!context.Request.HasFormContentType)
         {
-            return ConsentPage.Error(context, "Ungültige Anfrage.");
+            return ConsentPage.Error(context, Loc.T("remote.consent.invalidRequest"));
         }
 
         var form = await context.Request.ReadFormAsync(context.RequestAborted);
@@ -177,13 +178,13 @@ public static class OAuthEndpoints
         var pending = store.PeekPending(requestId);
         if (pending is null)
         {
-            return ConsentPage.Error(context, "Die Anfrage ist abgelaufen. Bitte die Verbindung in Claude neu starten.");
+            return ConsentPage.Error(context, Loc.T("remote.consent.expired"));
         }
 
         if (form["action"] == "deny")
         {
             store.TakePending(requestId);
-            return RedirectWithError(pending.RedirectUri, pending.State, "access_denied", "Freigabe abgelehnt.");
+            return RedirectWithError(pending.RedirectUri, pending.State, "access_denied", Loc.T("remote.oauth.accessDenied"));
         }
 
         if (throttle.IsLocked(out var until))
@@ -196,18 +197,18 @@ public static class OAuthEndpoints
         if (!Secrets.FixedTimeEquals(password, options.Value.Remote.ConsentPassword))
         {
             throttle.RegisterFailure();
-            log.LogWarning("OAuth: Falsches Freigabe-Passwort für {Client}", pending.ClientName);
-            return ConsentPage.Render(context, requestId!, pending.ClientName, pending.RedirectUri, "Falsches Passwort.", StatusCodes.Status401Unauthorized);
+            log.LogWarning(Loc.Log("log.remote.oauth.wrongPassword"), pending.ClientName);
+            return ConsentPage.Render(context, requestId!, pending.ClientName, pending.RedirectUri, Loc.T("remote.consent.wrongPassword"), StatusCodes.Status401Unauthorized);
         }
 
         throttle.Reset();
         if (store.TakePending(requestId) is null)
         {
-            return ConsentPage.Error(context, "Die Anfrage ist abgelaufen. Bitte die Verbindung in Claude neu starten.");
+            return ConsentPage.Error(context, Loc.T("remote.consent.expired"));
         }
 
         var code = store.IssueCode(pending);
-        log.LogInformation("OAuth: Zugriff freigegeben für {Client}", pending.ClientName);
+        log.LogInformation(Loc.Log("log.remote.oauth.approved"), pending.ClientName);
         return Results.Redirect(QueryHelpers.AddQueryString(pending.RedirectUri, WithState(pending.State, ("code", code))));
     }
 
@@ -220,7 +221,7 @@ public static class OAuthEndpoints
 
         if (!context.Request.HasFormContentType)
         {
-            return TokenError("invalid_request", "Content-Type muss application/x-www-form-urlencoded sein.");
+            return TokenError("invalid_request", Loc.T("remote.oauth.formContentType"));
         }
 
         var form = await context.Request.ReadFormAsync(context.RequestAborted);
@@ -233,7 +234,7 @@ public static class OAuthEndpoints
             case "authorization_code":
                 if (store.FindClient(clientId) is null)
                 {
-                    return TokenError("invalid_client", "Unbekannter Client.", StatusCodes.Status401Unauthorized);
+                    return TokenError("invalid_client", Loc.T("remote.oauth.unknownClient"), StatusCodes.Status401Unauthorized);
                 }
 
                 result = store.RedeemCode(form["code"], clientId, form["redirect_uri"], form["code_verifier"], form["resource"].FirstOrDefault());
@@ -244,7 +245,7 @@ public static class OAuthEndpoints
                 break;
 
             default:
-                return TokenError("unsupported_grant_type", "Nur authorization_code und refresh_token.");
+                return TokenError("unsupported_grant_type", Loc.T("remote.oauth.grantTypes"));
         }
 
         if (!result.Ok)
@@ -310,7 +311,7 @@ public static class OAuthEndpoints
     // ------------------------------------------------------------------ Hilfen
 
     private static string LockedMessage(DateTimeOffset until) =>
-        $"Zu viele falsche Passwörter. Freigabe gesperrt bis {until.ToLocalTime():HH:mm} Uhr.";
+        Loc.T("remote.consent.locked", until.ToLocalTime());
 
     private static IResult RedirectWithError(string redirectUri, string? state, string error, string description) =>
         Results.Redirect(QueryHelpers.AddQueryString(redirectUri, WithState(state, ("error", error), ("error_description", description))));

@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using Kopilot.Localization;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
 
@@ -88,10 +89,10 @@ public sealed class MicrophoneCapture : IDisposable
                 }
             }
 
-            return (-1, "Standardgerät", false);
+            return (-1, Loc.T("voice.mic.defaultDevice"), false);
         }
 
-        return (-1, "Standardgerät", true);
+        return (-1, Loc.T("voice.mic.defaultDevice"), true);
     }
 
     public static MicrophoneCapture Start(string? device, Action<float[]> onSamples, Action<Exception?> onStopped, out bool found)
@@ -100,7 +101,7 @@ public sealed class MicrophoneCapture : IDisposable
         found = ok;
         if (number < 0 && DefaultDeviceName() is { } defaultName)
         {
-            name = $"Standardgerät ({defaultName})";
+            name = Loc.T("voice.mic.defaultDeviceNamed", defaultName);
         }
 
         var capture = new MicrophoneCapture(number, onSamples, onStopped) { DeviceName = name };

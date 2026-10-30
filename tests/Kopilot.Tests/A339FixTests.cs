@@ -121,7 +121,7 @@ public sealed partial class InputTests
         backend.State["SIM ON GROUND"] = 0;
         var air = await input.PrepareAsync("brakes.autobrake", "max", default);
         Assert.Equal(InputResult.Refused, air.Status);
-        Assert.Contains("nur am Boden", air.Reason);
+        Assert.Contains("on the ground", air.Reason);
         Assert.Equal(InputResult.AwaitingConfirmation, (await input.PrepareAsync("brakes.autobrake", "lo", default)).Status);
     }
 
@@ -361,7 +361,7 @@ public sealed partial class InputTests
         var result = await input.ConfirmAsync(first.Token!, "confirm", default);
 
         Assert.Equal(InputResult.Failed, result.Status);
-        Assert.Contains("ersetzt", result.Reason);
+        Assert.Contains("replaced", result.Reason);
         Assert.Contains("efis.ls", result.Reason);
         Assert.DoesNotContain(second.Token!, result.Reason);
         Assert.Empty(backend.Sent);
@@ -383,7 +383,7 @@ public sealed partial class InputTests
         time.Now += TimeSpan.FromSeconds(3);
         var result = await input.ConfirmAsync(open.Token!, "confirm", default);
         Assert.Equal(InputResult.Failed, result.Status);
-        Assert.Contains("ersetzt", result.Reason);
+        Assert.Contains("replaced", result.Reason);
         Assert.Empty(backend.Sent);
     }
 

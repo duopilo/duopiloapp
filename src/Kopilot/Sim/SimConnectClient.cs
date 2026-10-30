@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Kopilot.Aircraft;
 using Kopilot.Input;
+using Kopilot.Localization;
 using Microsoft.Extensions.Options;
 using Microsoft.FlightSimulator.SimConnect;
 
@@ -99,13 +100,13 @@ public sealed partial class SimConnectClient : BackgroundService
     {
         if (!_connection.IsConnected)
         {
-            return ReadResult.Fail("Keine Verbindung zu MSFS.");
+            return ReadResult.Fail(Loc.T("sim.notConnected"));
         }
 
         var normalized = SimVarSpec.NormalizeName(name);
         if (normalized.Length == 0)
         {
-            return ReadResult.Fail("Kein Variablenname angegeben.");
+            return ReadResult.Fail(Loc.T("sim.read.noName"));
         }
 
         var kind = SimVarSpec.KindFromUnit(unit);
@@ -151,7 +152,7 @@ public sealed partial class SimConnectClient : BackgroundService
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            return ReadResult.Fail("Keine Antwort von MSFS – Variablenname oder Einheit vermutlich ungültig.");
+            return ReadResult.Fail(Loc.T("sim.read.noResponse"));
         }
         catch (InvalidOperationException ex)
         {
@@ -219,7 +220,7 @@ public sealed partial class SimConnectClient : BackgroundService
     {
         if (!_connection.IsConnected)
         {
-            throw new InvalidOperationException("Keine Verbindung zu MSFS.");
+            throw new InvalidOperationException(Loc.T("sim.notConnected"));
         }
 
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -244,7 +245,7 @@ public sealed partial class SimConnectClient : BackgroundService
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(TimeSpan.FromMilliseconds(Math.Max(1000, _options.ReadTimeoutMs)));
-        using (timeout.Token.Register(() => tcs.TrySetException(new TimeoutException("MSFS hat den Befehl nicht rechtzeitig angenommen."))))
+        using (timeout.Token.Register(() => tcs.TrySetException(new TimeoutException(Loc.T("sim.command.timeout")))))
         {
             await tcs.Task;
         }
@@ -279,14 +280,14 @@ public sealed partial class SimConnectClient : BackgroundService
         catch (Exception ex) when (ex is FileNotFoundException or FileLoadException or BadImageFormatException or TypeLoadException or DllNotFoundException)
         {
             _lastConnectError = ex.Message;
-            _log.LogCritical(ex, "SimConnect-Bibliothek konnte nicht geladen werden. Siehe README, Abschnitt 'SimConnect-SDK'.");
+            _log.LogCritical(ex, Loc.Log("log.sim.libraryLoadFailed"));
         }
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void Run(CancellationToken ct)
     {
-        _log.LogInformation("Kopilot wartet auf Microsoft Flight Simulator …");
+        _log.LogInformation(Loc.Log("log.sim.waiting"));
         var handles = new WaitHandle[] { _messageEvent, _commandEvent, ct.WaitHandle };
 
         while (!ct.IsCancellationRequested)
@@ -324,12 +325,12 @@ public sealed partial class SimConnectClient : BackgroundService
             }
             catch (COMException ex)
             {
-                _log.LogWarning("SimConnect-Verbindung abgebrochen: {Message}", ex.Message);
+                _log.LogWarning(Loc.Log("log.sim.connectionLost"), ex.Message);
                 Disconnect();
             }
             catch (Exception ex)
             {
-                _log.LogError(ex, "Unerwarteter Fehler im SimConnect-Thread – Verbindung wird neu aufgebaut.");
+                _log.LogError(ex, Loc.Log("log.sim.threadError"));
                 Disconnect();
             }
 
@@ -369,7 +370,7 @@ public sealed partial class SimConnectClient : BackgroundService
             if (_lastConnectError != ex.Message)
             {
                 _lastConnectError = ex.Message;
-                _log.LogError(ex, "SimConnect kann nicht gestartet werden: {Message}", ex.Message);
+                _log.LogError(ex, Loc.Log("log.sim.startFailed"), ex.Message);
             }
 
             return false;
@@ -386,7 +387,7 @@ public sealed partial class SimConnectClient : BackgroundService
             }
             catch (Exception ex)
             {
-                _log.LogDebug(ex, "Fehler beim Schließen der SimConnect-Verbindung");
+                _log.LogDebug(ex, Loc.Log("log.sim.closeFailed"));
             }
 
             _sc = null;
@@ -394,7 +395,7 @@ public sealed partial class SimConnectClient : BackgroundService
 
         if (_connection.IsConnected)
         {
-            _log.LogInformation("Verbindung zu MSFS getrennt.");
+            _log.LogInformation(Loc.Log("log.sim.disconnected"));
         }
 
         _quitRequested = false;
@@ -416,7 +417,7 @@ public sealed partial class SimConnectClient : BackgroundService
         {
             if (_pending.TryRemove(id, out _))
             {
-                pending.Completion.TrySetException(new InvalidOperationException("Verbindung zu MSFS getrennt."));
+                pending.Completion.TrySetException(new InvalidOperationException(Loc.T("sim.disconnected")));
             }
         }
 
@@ -448,7 +449,7 @@ public sealed partial class SimConnectClient : BackgroundService
             }
             catch (Exception ex)
             {
-                _log.LogWarning(ex, "SimConnect-Befehl fehlgeschlagen");
+                _log.LogWarning(ex, Loc.Log("log.sim.commandFailed"));
             }
         }
     }
@@ -525,7 +526,7 @@ public sealed partial class SimConnectClient : BackgroundService
         _activeProfile = profile;
         if (profile is null)
         {
-            _log.LogInformation("Flugzeug: {Title} ({Path}) – kein Profil", title ?? "unbekannt", path ?? "Pfad unbekannt");
+            _log.LogInformation(Loc.Log("log.sim.aircraftNoProfile"), title ?? Loc.T("sim.aircraft.unknownTitle"), path ?? Loc.T("sim.aircraft.unknownPath"));
             return;
         }
 
@@ -567,9 +568,9 @@ public sealed partial class SimConnectClient : BackgroundService
         }
 
         _log.LogInformation(
-            "Flugzeug: {Title} ({Path}) → Profil {Profile} ({Bindings} Bindings, {Vars} Variablen)",
-            title ?? "unbekannt",
-            path ?? "Pfad unbekannt",
+            Loc.Log("log.sim.aircraftProfile"),
+            title ?? Loc.T("sim.aircraft.unknownTitle"),
+            path ?? Loc.T("sim.aircraft.unknownPath"),
             profile.Name,
             profile.Bindings.Count,
             profile.Variables.Count);
@@ -581,7 +582,7 @@ public sealed partial class SimConnectClient : BackgroundService
     {
         var version = $"{data.dwApplicationVersionMajor}.{data.dwApplicationVersionMinor}.{data.dwApplicationBuildMajor}.{data.dwApplicationBuildMinor}";
         _connection = new ConnectionInfo(true, data.szApplicationName, version, DateTimeOffset.UtcNow);
-        _log.LogInformation("Verbunden mit {App} {Version}", data.szApplicationName, version);
+        _log.LogInformation(Loc.Log("log.sim.connected"), data.szApplicationName, version);
 
         foreach (var spec in SimVarCatalog.All)
         {
@@ -595,20 +596,20 @@ public sealed partial class SimConnectClient : BackgroundService
         sender.RequestSystemState((SimRequestId)StateRequestAircraft, "AircraftLoaded");
         sender.RequestSystemState((SimRequestId)StateRequestSim, "Sim");
 
-        _log.LogInformation("{Count} SimVars abonniert.", SimVarCatalog.All.Count);
+        _log.LogInformation(Loc.Log("log.sim.subscribed"), SimVarCatalog.All.Count);
     }
 
     private void OnQuit(SimConnect sender, SIMCONNECT_RECV data)
     {
         // Nicht direkt hier trennen – wir stecken noch in ReceiveMessage(). Der Run-Loop räumt auf.
-        _log.LogInformation("MSFS wurde beendet.");
+        _log.LogInformation(Loc.Log("log.sim.quit"));
         _quitRequested = true;
     }
 
     private void OnException(SimConnect sender, SIMCONNECT_RECV_EXCEPTION data)
     {
         _log.LogWarning(
-            "SimConnect meldet {Exception} (SendID {SendId}, Index {Index})",
+            Loc.Log("log.sim.exception"),
             (SIMCONNECT_EXCEPTION)data.dwException,
             data.dwSendID,
             data.dwIndex);
@@ -623,11 +624,11 @@ public sealed partial class SimConnectClient : BackgroundService
                 var flags = data.dwData & ~2u; // Bit 2 (Legacy-Pause mit Ton) wird nicht mehr benutzt
                 if (flags != status.PauseFlags && flags == 0)
                 {
-                    _log.LogInformation("Sim läuft weiter.");
+                    _log.LogInformation(Loc.Log("log.sim.resumed"));
                 }
                 else if (flags != status.PauseFlags)
                 {
-                    _log.LogInformation("Sim pausiert (Flags {Flags}).", flags);
+                    _log.LogInformation(Loc.Log("log.sim.paused"), flags);
                 }
 
                 _simStatus = status with { Paused = flags != 0, PauseFlags = flags };

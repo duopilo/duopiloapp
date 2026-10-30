@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Text;
+using Kopilot.Localization;
 
 namespace Kopilot.Sim;
 
@@ -268,17 +269,17 @@ public sealed record TrafficMessageStatsSnapshot(
 {
     /// <summary>Hypothese 2: Die leere Antwort ist kürzer als Kopf + alte Struktur – die alte Bibliothek hätte darüber hinaus gelesen.</summary>
     public string EmptyReplyVerdict => EmptyReplies == 0
-        ? "noch keine leere Antwort (dwoutof = 0) empfangen"
+        ? Loc.T("traffic.verdict.emptyNone")
         : EmptyMinDwSize < LegacyDwSize
-            ? $"bestätigt: {EmptyReplies} leere Antworten mit dwSize {Range(EmptyMinDwSize, EmptyMaxDwSize)} Byte statt {LegacyDwSize} – bis 0.9 wurde darüber hinaus gelesen"
-            : $"widerlegt: leere Antworten haben dwSize {Range(EmptyMinDwSize, EmptyMaxDwSize)} Byte";
+            ? Loc.T("traffic.verdict.emptyConfirmed", EmptyReplies, Range(EmptyMinDwSize, EmptyMaxDwSize), LegacyDwSize)
+            : Loc.T("traffic.verdict.emptyRefuted", Range(EmptyMinDwSize, EmptyMaxDwSize));
 
     /// <summary>Hypothese 1: Live-Traffic liefert kürzere Datenblöcke als die Data Definition.</summary>
     public string ShortBlockVerdict => DataMessages == 0
-        ? "noch keine Datennachricht empfangen"
+        ? Loc.T("traffic.verdict.shortNone")
         : ShortMessages > 0
-            ? $"bestätigt: {ShortMessages} von {DataMessages} Datennachrichten zu kurz (kleinster Datenblock {ShortMinPayloadBytes} Byte)"
-            : $"bisher nicht beobachtet ({DataMessages} Datennachrichten, dwSize {Range(DataMinDwSize, DataMaxDwSize)} Byte)";
+            ? Loc.T("traffic.verdict.shortConfirmed", ShortMessages, DataMessages, ShortMinPayloadBytes)
+            : Loc.T("traffic.verdict.shortNotSeen", DataMessages, Range(DataMinDwSize, DataMaxDwSize));
 
     private static string Range(uint? min, uint? max) => min == max ? $"{min}" : $"{min}–{max}";
 }

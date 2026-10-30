@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Kopilot.Localization;
 
 namespace Kopilot.Input;
 
@@ -108,8 +109,11 @@ public sealed class StepCondition
 
     public double Tolerance { get; set; } = 0.5;
 
-    /// <summary>Für "requires": Grund, wenn die Bedingung nicht erfüllt ist.</summary>
+    /// <summary>Für "requires": Grund, wenn die Bedingung nicht erfüllt ist (wörtlicher Text, für eigene Profile).</summary>
     public string? Message { get; set; }
+
+    /// <summary>Für "requires": Schlüssel des Grunds in den Sprachdateien, z. B. "profile.requires.trkFpaMode" (Vorrang vor <see cref="Message"/>).</summary>
+    public string? MessageKey { get; set; }
 
     /// <summary>Für "requires": nur bei diesen Auswahlwerten prüfen (z. B. [ "on" ]). Leer = immer.</summary>
     public List<string>? Only { get; set; }
@@ -155,8 +159,8 @@ public sealed record ResolvedStep(
     int DelayMs)
 {
     public string Describe() => Event is not null
-        ? $"Event {Event} ({unchecked((int)EventData)})"
-        : $"Setze {Set} = {SetValue.ToString(System.Globalization.CultureInfo.InvariantCulture)} ({Unit})";
+        ? Loc.T("input.step.event", Event, unchecked((int)EventData))
+        : Loc.T("input.step.set", Set, SetValue.ToString(System.Globalization.CultureInfo.InvariantCulture), Unit);
 }
 
 public sealed record ResolvedCondition(string Variable, string Unit, double Value, double Tolerance, string? Message = null, double? Modulo = null)
@@ -211,7 +215,7 @@ public sealed record ActionPlan(
 /// </summary>
 /// <param name="Code">Kurzname, z. B. "XPDR_STBY_IN_FLIGHT" oder "LIMIT_MISSING_VLO".</param>
 /// <param name="Spoken">Englischer Warnhinweis zum Vorlesen (ohne "Caution"), z. B. "transponder standby in flight".</param>
-/// <param name="Reason">Erklärung auf Deutsch mit den Werten.</param>
+/// <param name="Reason">Erklärung mit den Werten in der eingestellten Sprache.</param>
 /// <param name="MissingLimit">true = ein Grenzwert oder eine Quelle fehlt im Profil (wird im Log vermerkt).</param>
 public sealed record SafetyCaution(string Code, string Spoken, string Reason, bool MissingLimit = false)
 {
@@ -253,14 +257,56 @@ public sealed record PendingAction(string Token, ActionPlan Plan, DateTimeOffset
     public string Prompt => CautionStage ? Plan.CautionPrompt : Plan.Readback;
 }
 
-/// <summary>Eintrag im Eingabe-Protokoll.</summary>
+/// <summary>Eintrag im Eingabe-Protokoll. <see cref="Outcome"/> ist der Text in der eingestellten Sprache, <see cref="Code"/> der feste Code (<see cref="InputOutcome"/>).</summary>
 public sealed record InputLogEntry(
     DateTimeOffset TimeUtc,
     string Action,
     string? Value,
     string Outcome,
     string? Detail,
-    bool? Verified);
+    bool? Verified)
+{
+    /// <summary>Fester Code des Ergebnisses (<see cref="InputOutcome"/>), unabhängig von der Sprache – für Logik und Dashboard-Farben.</summary>
+    public string Code { get; init; } = "";
+}
+
+/// <summary>Ergebnisse im Eingabe-Protokoll: feste Codes und ihr Text in der eingestellten Sprache.</summary>
+public static class InputOutcome
+{
+    public const string Prepared = "prepared";
+    public const string Executed = "executed";
+    public const string Verified = "verified";
+    public const string Refused = "refused";
+    public const string Failed = "failed";
+    public const string Expired = "expired";
+    public const string Cancelled = "cancelled";
+    public const string Replaced = "replaced";
+    public const string Discarded = "discarded";
+    public const string Caution = "caution";
+    public const string LimitMissing = "limitMissing";
+    public const string Checked = "checked";
+    public const string Disagree = "disagree";
+    public const string Unreadable = "unreadable";
+
+    public static string Text(string code) => code switch
+    {
+        Prepared => Loc.T("input.outcome.prepared"),
+        Executed => Loc.T("input.outcome.executed"),
+        Verified => Loc.T("input.outcome.verified"),
+        Refused => Loc.T("input.outcome.refused"),
+        Failed => Loc.T("input.outcome.failed"),
+        Expired => Loc.T("input.outcome.expired"),
+        Cancelled => Loc.T("input.outcome.cancelled"),
+        Replaced => Loc.T("input.outcome.replaced"),
+        Discarded => Loc.T("input.outcome.discarded"),
+        Caution => Loc.T("input.outcome.caution"),
+        LimitMissing => Loc.T("input.outcome.limitMissing"),
+        Checked => Loc.T("input.outcome.checked"),
+        Disagree => Loc.T("input.outcome.disagree"),
+        Unreadable => Loc.T("input.outcome.unreadable"),
+        _ => code,
+    };
+}
 
 /// <summary>Im Dashboard umschaltbar, gespeichert in input.json. Epoch zählt Sperren/Abbrüche – offene Aktionen älterer Epochen verfallen.</summary>
 public sealed record InputSettings

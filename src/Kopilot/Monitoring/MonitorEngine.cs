@@ -1,4 +1,5 @@
 using System.Globalization;
+using Kopilot.Localization;
 
 namespace Kopilot.Monitoring;
 
@@ -97,7 +98,7 @@ public sealed partial class MonitorEngine
     public MonitorEngine(MonitorSettings? settings = null)
     {
         _settings = settings ?? new MonitorSettings();
-        _pauseRule = new StateRule(Rules.SimPaused, AlertSeverity.Info, 0, 0, 0, s => s.Paused ? new RuleCheck("Sim paused", $"Simulator pausiert ({s.PauseKind ?? "pause"}).") : null);
+        _pauseRule = new StateRule(Rules.SimPaused, AlertSeverity.Info, 0, 0, 0, s => s.Paused ? new RuleCheck("Sim paused", Loc.T("monitor.alert.simPaused", s.PauseKind ?? "pause")) : null);
         _stateRules =
         [
             new(Rules.GearSpeed, AlertSeverity.Warning, 1, 2, 20, CheckGearSpeed),
@@ -148,7 +149,7 @@ public sealed partial class MonitorEngine
 
         if (!s.Connected || s.FlightRunning == false)
         {
-            ResetAll(events, now, s.Connected ? "Kein Flug geladen." : "Keine Verbindung zum Sim.");
+            ResetAll(events, now, s.Connected ? Loc.T("monitor.clear.noFlight") : Loc.T("monitor.clear.notConnected"));
             Phase = s.Connected ? "menu" : "offline";
             return events;
         }
@@ -156,7 +157,7 @@ public sealed partial class MonitorEngine
         // Neuer Flug, Flugzeugwechsel oder Air-Start: Werte springen – kurz nichts melden
         if (!_seenFlight || !string.Equals(s.AircraftKey, _aircraftKey, StringComparison.Ordinal))
         {
-            ResetAll(events, now, "Flugzeug geladen.");
+            ResetAll(events, now, Loc.T("monitor.clear.aircraftLoaded"));
             _seenFlight = true;
             _aircraftKey = s.AircraftKey;
             _suppressUntil = now + _settings.SuppressAfterLoad;
@@ -188,7 +189,7 @@ public sealed partial class MonitorEngine
             _wasPaused = false;
             if (_pauseRule.Active)
             {
-                Clear(_pauseRule, now, "Sim läuft wieder.", events);
+                Clear(_pauseRule, now, Loc.T("monitor.clear.resumed"), events);
             }
 
             Later(ref _suppressUntil, now + _settings.SuppressAfterUnpause);
@@ -232,12 +233,12 @@ public sealed partial class MonitorEngine
 
     private RuleCheck? CheckGearSpeed(FlightSnapshot s) =>
         s.Airborne && s.GearNotUp && s.Limits.VleKt is { } vle && s.IasKt is { } ias && ias > vle + 3
-            ? new RuleCheck("Gear speed", $"Fahrwerk nicht eingefahren bei {Kt(ias)}, VLE {Kt(vle)}.")
+            ? new RuleCheck("Gear speed", Loc.T("monitor.alert.gearSpeed", Kt(ias), Kt(vle)))
             : null;
 
     private RuleCheck? CheckFlapSpeed(FlightSnapshot s) =>
         s.Airborne && s.Limits.VfeFor(s.FlapsIndex, s.FlapsLabel) is { } vfe && s.IasKt is { } ias && ias > vfe + 3
-            ? new RuleCheck("Flap speed", $"Klappen {s.FlapsLabel ?? s.FlapsIndex?.ToString("0", CultureInfo.InvariantCulture)}: {Kt(ias)} über VFE {Kt(vfe)}.")
+            ? new RuleCheck("Flap speed", Loc.T("monitor.alert.flapSpeed", s.FlapsLabel ?? s.FlapsIndex?.ToString("0", CultureInfo.InvariantCulture), Kt(ias), Kt(vfe)))
             : null;
 
     private RuleCheck? CheckOverspeed(FlightSnapshot s)
@@ -249,15 +250,15 @@ public sealed partial class MonitorEngine
 
         if (s.Limits.VmoKt is { } vmo && ias > vmo + 4)
         {
-            return new RuleCheck("Overspeed", $"{Kt(ias)} über VMO {Kt(vmo)}.");
+            return new RuleCheck("Overspeed", Loc.T("monitor.alert.overspeedVmo", Kt(ias), Kt(vmo)));
         }
 
-        return s.OverspeedWarning == true ? new RuleCheck("Overspeed", $"Overspeed-Warnung des Sims bei {Kt(ias)}.") : null;
+        return s.OverspeedWarning == true ? new RuleCheck("Overspeed", Loc.T("monitor.alert.overspeedSim", Kt(ias))) : null;
     }
 
     private static RuleCheck? CheckStall(FlightSnapshot s) =>
         s.Airborne && s.StallWarning == true && s.RadioAltFt is null or > 50
-            ? new RuleCheck("Stall", $"Stall-Warnung bei {Kt(s.IasKt)}.")
+            ? new RuleCheck("Stall", Loc.T("monitor.alert.stall", Kt(s.IasKt)))
             : null;
 
     private static RuleCheck? CheckSinkRate(FlightSnapshot s)
@@ -270,7 +271,7 @@ public sealed partial class MonitorEngine
         // Unter 1000 ft RA ab 1500 ft/min, darüber linear bis 3000 ft/min bei 2500 ft RA
         var limit = ra < 1000 ? -1500 : -1500 - (ra - 1000) / 1500 * 1500;
         return vs < limit
-            ? new RuleCheck("Sink rate", $"Sinkrate {Math.Round(-vs):0} ft/min bei {Math.Round(ra):0} ft Radiohöhe.")
+            ? new RuleCheck("Sink rate", Loc.T("monitor.alert.sinkRate", Math.Round(-vs), Math.Round(ra)))
             : null;
     }
 
@@ -309,7 +310,7 @@ public sealed partial class MonitorEngine
         }
 
         return Math.Abs(bank) > limit
-            ? new RuleCheck("Bank angle", $"Querneigung {Math.Abs(bank):0}° {(bank > 0 ? "rechts" : "links")} (Grenze {limit:0}°).")
+            ? new RuleCheck("Bank angle", bank > 0 ? Loc.T("monitor.alert.bankAngleRight", Math.Abs(bank), limit) : Loc.T("monitor.alert.bankAngleLeft", Math.Abs(bank), limit))
             : null;
     }
 
@@ -337,14 +338,14 @@ public sealed partial class MonitorEngine
     private static RuleCheck? CheckGearDownHigh(FlightSnapshot s) =>
         s.Airborne && s.GearDown
         && ((s.AglFt is > 2000 && s.VerticalSpeedFpm is > 500) || s.PressureAltitudeFt is > 15000)
-            ? new RuleCheck("Gear still down", $"Fahrwerk ausgefahren in {Ft(s.AltitudeFt)}" + (s.VerticalSpeedFpm is > 500 ? " im Steigflug." : "."))
+            ? new RuleCheck("Gear still down", s.VerticalSpeedFpm is > 500 ? Loc.T("monitor.alert.gearDownClimbing", Ft(s.AltitudeFt)) : Loc.T("monitor.alert.gearDown", Ft(s.AltitudeFt)))
             : null;
 
     private static RuleCheck? CheckSpeedLimit(FlightSnapshot s)
     {
         var limit = s.Limits.SpeedLimitBelowFl100Kt;
         return s.Airborne && limit > 0 && s.AltitudeFt is < 9900 && s.AglFt is > 500 && s.IasKt is { } ias && ias > limit + 5
-            ? new RuleCheck("Speed limit", $"{Kt(ias)} unter FL100 (Limit {Kt(limit)}).")
+            ? new RuleCheck("Speed limit", Loc.T("monitor.alert.speedLimit", Kt(ias), Kt(limit)))
             : null;
     }
 
@@ -377,7 +378,7 @@ public sealed partial class MonitorEngine
 
         return new RuleCheck(
             "Speed",
-            $"IAS {Kt(ias)}, Ziel {Kt(target)} ({(dev > 0 ? "+" : "−")}{Math.Abs(Math.Round(dev)):0} kt).");
+            Loc.T("monitor.alert.speedDeviation", Kt(ias), Kt(target), (dev > 0 ? "+" : "−") + Math.Abs(Math.Round(dev)).ToString("0", CultureInfo.InvariantCulture)));
     }
 
     /// <summary>Nächstes Ziel in der Luft innerhalb des Warnradius und des Höhenbands (Verkehrslage aus der Hintergrundabfrage).</summary>
@@ -406,19 +407,21 @@ public sealed partial class MonitorEngine
         var diff = Math.Round(target.AltitudeDiffFt / 10) * 10;
         var where = diff switch
         {
-            > 0 => $"{diff.ToString("0", CultureInfo.InvariantCulture)} ft darüber",
-            < 0 => $"{(-diff).ToString("0", CultureInfo.InvariantCulture)} ft darunter",
-            _ => "gleiche Höhe",
+            > 0 => Loc.T("monitor.traffic.above", diff),
+            < 0 => Loc.T("monitor.traffic.below", -diff),
+            _ => Loc.T("monitor.traffic.sameAltitude"),
         };
         var trend = target.VerticalTrend switch
         {
-            "climbing" => "steigend",
-            "descending" => "sinkend",
-            _ => "im Horizontalflug",
+            "climbing" => Loc.T("monitor.traffic.climbing"),
+            "descending" => Loc.T("monitor.traffic.descending"),
+            _ => Loc.T("monitor.traffic.level"),
         };
         return new RuleCheck(
             target.Callout,
-            $"Verkehr {(who.Length > 0 ? who + " " : "")}auf {target.Clock} Uhr, {target.DistanceNm.ToString("0.0", CultureInfo.InvariantCulture)} NM, {where}, {trend}.");
+            who.Length > 0
+                ? Loc.T("monitor.alert.trafficIdent", who, target.Clock, target.DistanceNm, where, trend)
+                : Loc.T("monitor.alert.traffic", target.Clock, target.DistanceNm, where, trend));
     }
 
     // ------------------------------------------------------------------ Ereignisse
@@ -450,7 +453,7 @@ public sealed partial class MonitorEngine
                     if (!suppressed && s.Airborne && IsEnabled(Rules.ApDisconnect))
                     {
                         _lastApDisconnectUtc = now;
-                        events.Add(Event(now, Rules.ApDisconnect, AlertSeverity.Caution, AlertKind.Event, "Autopilot off", $"Autopilot getrennt in {Ft(s.AltitudeFt)}."));
+                        events.Add(Event(now, Rules.ApDisconnect, AlertSeverity.Caution, AlertKind.Event, "Autopilot off", Loc.T("monitor.alert.apDisconnect", Ft(s.AltitudeFt))));
                     }
                 }
 
@@ -484,7 +487,7 @@ public sealed partial class MonitorEngine
             _altArmed = false;
             if (!suppressed && IsEnabled(Rules.Alt1000ToGo))
             {
-                events.Add(Event(now, Rules.Alt1000ToGo, AlertSeverity.Info, AlertKind.Event, "One thousand to go", $"Noch 1000 ft bis {Ft(sel)}."));
+                events.Add(Event(now, Rules.Alt1000ToGo, AlertSeverity.Info, AlertKind.Event, "One thousand to go", Loc.T("monitor.alert.altitudeToGo", Ft(sel))));
             }
         }
     }
@@ -512,9 +515,15 @@ public sealed partial class MonitorEngine
         _announcedRunwayKey = key;
         if (IsEnabled(Rules.RunwayAssigned))
         {
-            var where = rwy.Airport is null ? "" : $" ({rwy.Airport})";
-            var designatorNote = rwy.Designator is null ? " L/C/R unbekannt." : "";
-            events.Add(Event(now, Rules.RunwayAssigned, AlertSeverity.Info, AlertKind.Event, $"Runway {rwy.Spoken} assigned", $"ATC hat Bahn {rwy.Ident}{where} zugewiesen.{designatorNote}"));
+            var message = rwy.Airport is null
+                ? Loc.T("monitor.alert.runwayAssigned", rwy.Ident)
+                : Loc.T("monitor.alert.runwayAssignedAt", rwy.Ident, rwy.Airport);
+            if (rwy.Designator is null)
+            {
+                message += " " + Loc.T("monitor.alert.designatorUnknown");
+            }
+
+            events.Add(Event(now, Rules.RunwayAssigned, AlertSeverity.Info, AlertKind.Event, $"Runway {rwy.Spoken} assigned", message));
         }
     }
 
@@ -546,7 +555,7 @@ public sealed partial class MonitorEngine
             var apOff = title.Contains("AP OFF", StringComparison.OrdinalIgnoreCase)
                 && _lastApDisconnectUtc is { } t && now - t < TimeSpan.FromSeconds(5);
             events.Add(Event(now, Rules.EcamMessage, warning ? AlertSeverity.Warning : AlertSeverity.Caution, AlertKind.Event,
-                apOff ? null : title, $"Neue ECAM-Meldung: {title}."));
+                apOff ? null : title, Loc.T("monitor.alert.ecamMessage", title)));
         }
     }
 
@@ -576,7 +585,7 @@ public sealed partial class MonitorEngine
             _todAnnounced = true;
             if (!suppressed && IsEnabled(Rules.TopOfDescent))
             {
-                events.Add(Event(now, Rules.TopOfDescent, AlertSeverity.Info, AlertKind.Event, "Top of descent", "FMS meldet T/D REACHED."));
+                events.Add(Event(now, Rules.TopOfDescent, AlertSeverity.Info, AlertKind.Event, "Top of descent", Loc.T("monitor.alert.todFms")));
             }
 
             return;
@@ -592,7 +601,7 @@ public sealed partial class MonitorEngine
                 _todPlanArmed = false;
                 if (!suppressed && IsEnabled(Rules.TopOfDescent))
                 {
-                    events.Add(Event(now, Rules.TopOfDescent, AlertSeverity.Info, AlertKind.Event, "Top of descent", "Top of Descent laut SimBrief-Plan erreicht."));
+                    events.Add(Event(now, Rules.TopOfDescent, AlertSeverity.Info, AlertKind.Event, "Top of descent", Loc.T("monitor.alert.todPlan")));
                 }
 
                 break;
@@ -624,17 +633,17 @@ public sealed partial class MonitorEngine
         var problems = new List<(string Callout, string Text)>();
         if (!s.GearDown)
         {
-            problems.Add(("Gear not down", "Fahrwerk nicht unten"));
+            problems.Add(("Gear not down", Loc.T("monitor.landing.gearNotDown")));
         }
 
         if (s.Limits.LandingFlaps.Count > 0 && !s.Limits.IsLandingFlaps(s.FlapsIndex, s.FlapsLabel))
         {
-            problems.Add(("Flaps not in landing configuration", $"Klappen {s.FlapsLabel ?? s.FlapsIndex?.ToString("0", CultureInfo.InvariantCulture)} statt {string.Join("/", s.Limits.LandingFlaps)}"));
+            problems.Add(("Flaps not in landing configuration", Loc.T("monitor.landing.flaps", s.FlapsLabel ?? s.FlapsIndex?.ToString("0", CultureInfo.InvariantCulture), string.Join("/", s.Limits.LandingFlaps))));
         }
 
         if (s.SpoilersArmed == false)
         {
-            problems.Add(("Spoilers not armed", "Ground Spoiler nicht armed"));
+            problems.Add(("Spoilers not armed", Loc.T("monitor.landing.spoilersNotArmed")));
         }
 
         if (crossed2000 && !_landingCheck2000Done)
@@ -646,15 +655,15 @@ public sealed partial class MonitorEngine
             }
 
             events.Add(problems.Count == 0
-                ? Event(now, Rules.LandingCheck, AlertSeverity.Info, AlertKind.Event, "Landing checklist complete", "2000 ft: Fahrwerk unten, Landeklappen gesetzt" + (s.SpoilersArmed == true ? ", Spoiler armed." : "."))
-                : Event(now, Rules.LandingCheck, AlertSeverity.Caution, AlertKind.Event, string.Join(", ", problems.Select(p => p.Callout)), "2000 ft: " + string.Join(", ", problems.Select(p => p.Text)) + "."));
+                ? Event(now, Rules.LandingCheck, AlertSeverity.Info, AlertKind.Event, "Landing checklist complete", s.SpoilersArmed == true ? Loc.T("monitor.landing.completeSpoilers") : Loc.T("monitor.landing.complete"))
+                : Event(now, Rules.LandingCheck, AlertSeverity.Caution, AlertKind.Event, string.Join(", ", problems.Select(p => p.Callout)), Loc.T("monitor.landing.missing", 2000, string.Join(", ", problems.Select(p => p.Text)))));
         }
         else if (crossed1000 && !_landingCheck1000Done)
         {
             _landingCheck1000Done = true;
             if (problems.Count > 0 && !suppressed && IsEnabled(Rules.LandingCheck))
             {
-                events.Add(Event(now, Rules.LandingCheck, AlertSeverity.Warning, AlertKind.Event, string.Join(", ", problems.Select(p => p.Callout)), "1000 ft: " + string.Join(", ", problems.Select(p => p.Text)) + "."));
+                events.Add(Event(now, Rules.LandingCheck, AlertSeverity.Warning, AlertKind.Event, string.Join(", ", problems.Select(p => p.Callout)), Loc.T("monitor.landing.missing", 1000, string.Join(", ", problems.Select(p => p.Text)))));
             }
         }
     }
@@ -813,7 +822,7 @@ public sealed partial class MonitorEngine
             rule.FalseSince ??= now;
             if ((now - rule.FalseSince.Value).TotalSeconds >= rule.OffDelaySec)
             {
-                Clear(rule, now, "Normal.", events);
+                Clear(rule, now, Loc.T("monitor.clear.normal"), events);
             }
         }
     }

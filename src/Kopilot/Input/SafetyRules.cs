@@ -1,5 +1,6 @@
 using System.Globalization;
 using Kopilot.Aircraft;
+using Kopilot.Localization;
 using Kopilot.Monitoring;
 
 namespace Kopilot.Input;
@@ -63,30 +64,31 @@ public static class SafetyRules
 
     private static readonly HashSet<string> OffWords = new(StringComparer.OrdinalIgnoreCase) { "off", "stby", "standby", "0" };
 
-    private static readonly Dictionary<string, (string Spoken, string Meaning)> EmergencySquawks = new()
+    /// <summary>Notfall-Codes: Warnhinweis zum Vorlesen (englisch) und Schlüssel der Erklärung in den Sprachdateien.</summary>
+    private static readonly Dictionary<string, (string Spoken, string ReasonKey)> EmergencySquawks = new()
     {
-        ["7500"] = ("squawk seven five zero zero, hijack code", "Entführung"),
-        ["7600"] = ("squawk seven six zero zero, radio failure code", "Funkausfall"),
-        ["7700"] = ("squawk seven seven zero zero, emergency code", "Notfall"),
+        ["7500"] = ("squawk seven five zero zero, hijack code", "input.caution.squawk7500"),
+        ["7600"] = ("squawk seven six zero zero, radio failure code", "input.caution.squawk7600"),
+        ["7700"] = ("squawk seven seven zero zero, emergency code", "input.caution.squawk7700"),
     };
 
     /// <summary>Kurzbeschreibung der Code-Sperren einer Aktion (für list_actions), null ohne.</summary>
     public static string? Describe(string id) => id.ToLowerInvariant() switch
     {
-        "gear.down" => "nur unter VLO und unter der Höchsthöhe (Profil: maxGearAltitudeFt); danach Callout three green / gear disagree",
-        "gear.up" => "nur in der Luft; danach Callout gear up / gear disagree",
-        "flaps" => "nur unter VFE der Stellung; Callout erst bei erreichter Stellung",
-        "speedbrake" => "ausfahren nicht in den gesperrten Klappenstellungen (Profil: speedbrakeInhibitFlaps)",
-        "elec.battery" or "elec.bat1" or "elec.bat2" => "aus nur am Boden",
-        "air.pack1" or "air.pack2" => "aus im Flug nur, solange das andere Pack an ist",
-        "apu.master" => "aus nicht bei APU Bleed an",
-        "xpdr.mode" => "STBY im Flug nur mit Rückfrage",
-        "xpdr.altreporting" => "aus im Flug nur mit Rückfrage",
-        "tcas.mode" => "STBY im Flug nur mit Rückfrage",
-        "xpdr.code" => "7500/7600/7700 nur mit Rückfrage",
-        "fcu.ap1" or "fcu.ap2" or "fcu.athr" => "aus im Flug nur mit Rückfrage",
-        "fcu.altitude" => "unter MSA (Profil: msaSource) oder außerhalb der ATC-Freigabe nur mit Rückfrage",
-        _ when id.StartsWith("adirs.", StringComparison.OrdinalIgnoreCase) => "aus im Flug gesperrt, am Boden nur mit Rückfrage",
+        "gear.down" => Loc.T("input.rule.gearDown"),
+        "gear.up" => Loc.T("input.rule.gearUp"),
+        "flaps" => Loc.T("input.rule.flaps"),
+        "speedbrake" => Loc.T("input.rule.speedbrake"),
+        "elec.battery" or "elec.bat1" or "elec.bat2" => Loc.T("input.rule.batteries"),
+        "air.pack1" or "air.pack2" => Loc.T("input.rule.packs"),
+        "apu.master" => Loc.T("input.rule.apuMaster"),
+        "xpdr.mode" => Loc.T("input.rule.xpdrMode"),
+        "xpdr.altreporting" => Loc.T("input.rule.altReporting"),
+        "tcas.mode" => Loc.T("input.rule.tcasMode"),
+        "xpdr.code" => Loc.T("input.rule.squawk"),
+        "fcu.ap1" or "fcu.ap2" or "fcu.athr" => Loc.T("input.rule.autoflight"),
+        "fcu.altitude" => Loc.T("input.rule.fcuAltitude"),
+        _ when id.StartsWith("adirs.", StringComparison.OrdinalIgnoreCase) => Loc.T("input.rule.adirs"),
         _ => null,
     };
 
@@ -135,15 +137,15 @@ public static class SafetyRules
             if (ctx.Limits.MaxGearAltitudeFt is not { } maxAlt)
             {
                 cautions.Add(new SafetyCaution("LIMIT_MISSING_GEAR_ALTITUDE", "gear altitude limit unknown",
-                    "Im Profil fehlt maxGearAltitudeFt – Fahrwerk nur mit Rückfrage.", MissingLimit: true));
+                    Loc.T("input.caution.gearAltitudeMissing"), MissingLimit: true));
             }
             else if (altitude is not { } alt)
             {
-                return Refuse("Höhe unbekannt – Fahrwerk gesperrt.");
+                return Refuse(Loc.T("input.safety.gearAltitudeUnknown"));
             }
             else if (alt >= maxAlt)
             {
-                return Refuse($"Fahrwerk gesperrt: {alt:0} ft, ausfahren nur unter {maxAlt:0} ft.");
+                return Refuse(Loc.T("input.safety.gearTooHigh", alt, maxAlt));
             }
         }
 
@@ -154,18 +156,18 @@ public static class SafetyRules
             var retracted = flaps is "0" || (s.FlapsLabel is null && s.FlapsIndex is < 0.5);
             if (flaps is null)
             {
-                cautions.Add(new SafetyCaution("FLAPS_UNKNOWN", "flap position unknown", "Klappenstellung unbekannt – Speedbrake nur mit Rückfrage."));
+                cautions.Add(new SafetyCaution("FLAPS_UNKNOWN", "flap position unknown", Loc.T("input.caution.flapsUnknown")));
             }
             else if (!retracted)
             {
                 if (ctx.Limits.SpeedbrakeInhibitFlaps is not { } inhibit)
                 {
                     cautions.Add(new SafetyCaution("LIMIT_MISSING_SPEEDBRAKE_FLAPS", "speedbrake with flaps extended",
-                        $"Klappen {flaps} und im Profil fehlt speedbrakeInhibitFlaps – Speedbrake nur mit Rückfrage.", MissingLimit: true));
+                        Loc.T("input.caution.speedbrakeFlapsMissing", flaps), MissingLimit: true));
                 }
                 else if (inhibit.Contains(flaps, StringComparer.OrdinalIgnoreCase))
                 {
-                    return Refuse($"Speedbrake gesperrt: Klappen {flaps}.");
+                    return Refuse(Loc.T("input.safety.speedbrakeFlaps", flaps));
                 }
             }
         }
@@ -176,8 +178,8 @@ public static class SafetyRules
             if (s.OnGround != true)
             {
                 return Refuse(s.OnGround is null
-                    ? "Unklar, ob das Flugzeug am Boden ist – Batterien bleiben an."
-                    : "Batterien im Flug ausschalten ist gesperrt – nur am Boden.");
+                    ? Loc.T("input.safety.batteriesGroundUnknown")
+                    : Loc.T("input.safety.batteriesInFlight"));
             }
         }
 
@@ -188,10 +190,10 @@ public static class SafetyRules
             switch (State(ctx, OtherPackOn))
             {
                 case false:
-                    return Refuse($"{other} ist schon aus – beide Packs aus nur am Boden (Druckverlust).");
+                    return Refuse(Loc.T("input.safety.otherPackOff", other));
                 case null:
                     cautions.Add(new SafetyCaution("OTHER_PACK_UNKNOWN", "other pack state unknown",
-                        $"Zustand von {other} nicht lesbar – im Flug nur mit Rückfrage (beide aus = Druckverlust)."));
+                        Loc.T("input.caution.otherPackUnknown", other)));
                     break;
             }
         }
@@ -202,10 +204,10 @@ public static class SafetyRules
             switch (State(ctx, ApuBleedOn))
             {
                 case true:
-                    return Refuse("APU Bleed ist an – erst apu.bleed off, dann APU Master aus.");
+                    return Refuse(Loc.T("input.safety.apuBleedOn"));
                 case null:
                     cautions.Add(new SafetyCaution("APU_BLEED_UNKNOWN", "APU bleed state unknown",
-                        "Zustand APU Bleed nicht lesbar – APU Master aus nur mit Rückfrage."));
+                        Loc.T("input.caution.apuBleedUnknown")));
                     break;
             }
         }
@@ -214,24 +216,24 @@ public static class SafetyRules
         if (id == "xpdr.mode" && IsOff(option) && inFlight)
         {
             cautions.Add(new SafetyCaution("XPDR_STBY_IN_FLIGHT", "transponder standby in flight",
-                "Transponder STBY im Flug – ATC sieht keine Höhe/Kennung mehr, TCAS ist aus."));
+                Loc.T("input.caution.xpdrStandby")));
         }
 
         if (id == "xpdr.altreporting" && IsOff(option) && inFlight)
         {
             cautions.Add(new SafetyCaution("ALT_RPTG_OFF_IN_FLIGHT", "altitude reporting off in flight",
-                "ALT RPTG aus im Flug – ATC und TCAS anderer Flugzeuge sehen unsere Höhe nicht mehr."));
+                Loc.T("input.caution.altReportingOff")));
         }
 
         if (id == "tcas.mode" && IsOff(option) && inFlight)
         {
             cautions.Add(new SafetyCaution("TCAS_STBY_IN_FLIGHT", "TCAS standby in flight",
-                "TCAS STBY im Flug – keine Verkehrswarnungen und keine Ausweichanweisungen mehr."));
+                Loc.T("input.caution.tcasStandby")));
         }
 
         if (id == "xpdr.code" && plan.ValueText is { } code && EmergencySquawks.TryGetValue(code, out var squawk))
         {
-            cautions.Add(new SafetyCaution($"SQUAWK_{code}", squawk.Spoken, $"Squawk {code} ist der Code für {squawk.Meaning} – löst bei ATC Alarm aus."));
+            cautions.Add(new SafetyCaution($"SQUAWK_{code}", squawk.Spoken, Loc.T(squawk.ReasonKey)));
         }
 
         // ---------------- ADIRS aus: im Flug gesperrt (irreversibel, kein Ausrichten in der Luft), am Boden nur mit Rückfrage
@@ -240,11 +242,11 @@ public static class SafetyRules
             if (inFlight)
             {
                 return Refuse(s.OnGround is null
-                    ? "Unklar, ob das Flugzeug am Boden ist – ADIRS bleiben an."
-                    : "ADIRS aus im Flug ist gesperrt – Lage- und Navigationsdaten weg, in der Luft kein neues Ausrichten möglich.");
+                    ? Loc.T("input.safety.adirsGroundUnknown")
+                    : Loc.T("input.safety.adirsInFlight"));
             }
 
-            cautions.Add(new SafetyCaution("ADIRS_OFF", "ADIRS off", "ADIRS aus – danach neu ausrichten (ca. 7–10 min)."));
+            cautions.Add(new SafetyCaution("ADIRS_OFF", "ADIRS off", Loc.T("input.caution.adirsOff")));
         }
 
         // ---------------- Rückfragen: Autopilot, Autothrust
@@ -253,12 +255,12 @@ public static class SafetyRules
         {
             var which = id == "fcu.ap1" ? "one" : "two";
             cautions.Add(new SafetyCaution(id == "fcu.ap1" ? "AP1_OFF" : "AP2_OFF", $"autopilot {which} off",
-                $"Autopilot {(id == "fcu.ap1" ? 1 : 2)} aus im Flug – der Pilot fliegt dann von Hand (sofern der andere AP nicht an ist)."));
+                Loc.T("input.caution.apOff", id == "fcu.ap1" ? 1 : 2)));
         }
 
         if (id == "fcu.athr" && IsOff(option) && inFlight)
         {
-            cautions.Add(new SafetyCaution("ATHR_OFF", "autothrust off", "Autothrust aus im Flug – Schub dann von Hand über die Hebel."));
+            cautions.Add(new SafetyCaution("ATHR_OFF", "autothrust off", Loc.T("input.caution.athrOff")));
         }
 
         // ---------------- FCU-Höhe: MSA und Freigabe
@@ -282,17 +284,17 @@ public static class SafetyRules
             if (ctx.Limits.MsaSource is null)
             {
                 cautions.Add(new SafetyCaution("LIMIT_MISSING_MSA_SOURCE", "minimum safe altitude unknown",
-                    "Im Profil fehlt msaSource – FCU-Höhe nur mit Rückfrage.", MissingLimit: true));
+                    Loc.T("input.caution.msaSourceMissing"), MissingLimit: true));
             }
             else if (ctx.Msa?.Ft is not { } msa)
             {
                 cautions.Add(new SafetyCaution("MSA_UNKNOWN", "minimum safe altitude unknown",
-                    $"MSA nicht verfügbar ({ctx.Msa?.Problem ?? "keine Daten"}) – FCU-Höhe nur mit Rückfrage.", MissingLimit: true));
+                    Loc.T("input.caution.msaUnknown", ctx.Msa?.Problem ?? Loc.T("input.msa.noData")), MissingLimit: true));
             }
             else if (target < msa)
             {
                 cautions.Add(new SafetyCaution("BELOW_MSA", $"below minimum safe altitude {SpokenAltitude(msa)}",
-                    $"FCU-Höhe {target.ToString("0", inv)} ft liegt unter der MSA {msa.ToString("0", inv)} ft ({ctx.Msa?.Source})."));
+                    Loc.T("input.caution.belowMsa", target.ToString("0", inv), msa.ToString("0", inv), ctx.Msa?.Source)));
             }
         }
 
@@ -320,7 +322,7 @@ public static class SafetyRules
             if (target < lo || target > hi)
             {
                 cautions.Add(new SafetyCaution("ALTITUDE_NOT_CLEARED", $"altitude not cleared, cleared {SpokenAltitude(clearedFt)}",
-                    $"FCU-Höhe {target.ToString("0", inv)} ft liegt außerhalb der Freigabe ({clearedFt.ToString("0", inv)} ft)."));
+                    Loc.T("input.caution.notCleared", target.ToString("0", inv), clearedFt.ToString("0", inv))));
             }
         }
     }

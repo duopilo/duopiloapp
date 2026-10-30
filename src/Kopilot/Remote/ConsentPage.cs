@@ -1,42 +1,46 @@
 using System.Net;
+using Kopilot.Localization;
 
 namespace Kopilot.Remote;
 
 /// <summary>HTML für die Freigabeseite und Fehlerseiten des OAuth-Ablaufs.</summary>
 public static class ConsentPage
 {
+    /// <summary>Stands for a value that gets markup (e.g. bold) after the text was encoded.</summary>
+    private const string Slot = "[[kopilot-value]]";
+
     public static IResult Render(HttpContext context, string requestId, string clientName, string redirectUri, string? error, int statusCode = 200)
     {
         var redirectHost = Uri.TryCreate(redirectUri, UriKind.Absolute, out var uri) ? uri.Host : redirectUri;
         var isLoopback = uri is not null && RequestOrigin.IsLoopbackHost(uri.Host);
 
         var warning = isLoopback
-            ? """<p class="warn">Die Weiterleitung geht an eine lokale Adresse. Das ist normal für Claude Code – gib nur frei, wenn du die Verbindung gerade selbst gestartet hast.</p>"""
+            ? $"""<p class="warn">{E(Loc.T("remote.consent.loopbackWarning"))}</p>"""
             : "";
         var errorHtml = error is null ? "" : $"""<p class="error">{E(error)}</p>""";
 
         var body = $"""
-            <h1>Zugriff auf Kopilot freigeben?</h1>
-            <p><strong>{E(clientName)}</strong> möchte die Flugdaten aus deinem Microsoft Flight Simulator lesen.</p>
-            <p class="target">Weiterleitung nach der Freigabe an:<br><strong>{E(redirectHost)}</strong></p>
+            <h1>{E(Loc.T("remote.consent.heading"))}</h1>
+            <p>{WithBold(Loc.T("remote.consent.request", Slot), clientName)}</p>
+            <p class="target">{E(Loc.T("remote.consent.redirectTo"))}<br><strong>{E(redirectHost)}</strong></p>
             {warning}
             {errorHtml}
             <form method="post" action="/authorize">
               <input type="hidden" name="request_id" value="{E(requestId)}">
-              <label for="pw">Freigabe-Passwort</label>
+              <label for="pw">{E(Loc.T("remote.consent.password"))}</label>
               <input id="pw" type="password" name="password" autocomplete="current-password" autofocus required>
               <div class="buttons">
-                <button type="submit" name="action" value="approve">Freigeben</button>
-                <button type="submit" name="action" value="deny" class="secondary" formnovalidate>Ablehnen</button>
+                <button type="submit" name="action" value="approve">{E(Loc.T("remote.consent.approve"))}</button>
+                <button type="submit" name="action" value="deny" class="secondary" formnovalidate>{E(Loc.T("remote.consent.deny"))}</button>
               </div>
             </form>
             """;
 
-        return Html(context, "Kopilot – Zugriff freigeben", body, statusCode);
+        return Html(context, Loc.T("remote.consent.title"), body, statusCode);
     }
 
     public static IResult Error(HttpContext context, string message, int statusCode = 400) =>
-        Html(context, "Kopilot – Fehler", $"""<h1>Das hat nicht geklappt</h1><p class="error">{E(message)}</p>""", statusCode);
+        Html(context, Loc.T("remote.error.title"), $"""<h1>{E(Loc.T("remote.error.heading"))}</h1><p class="error">{E(message)}</p>""", statusCode);
 
     private static IResult Html(HttpContext context, string title, string body, int statusCode)
     {
@@ -48,7 +52,7 @@ public static class ConsentPage
 
         var html = $$"""
             <!doctype html>
-            <html lang="de">
+            <html lang="{{E(Loc.Language)}}">
             <head>
               <meta charset="utf-8">
               <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -77,4 +81,8 @@ public static class ConsentPage
     }
 
     private static string E(string value) => WebUtility.HtmlEncode(value);
+
+    /// <summary>Encodes a text from <c>Loc.T(key, Slot)</c> and puts the value (encoded as well) in bold where the slot is.</summary>
+    private static string WithBold(string text, string value) =>
+        E(text).Replace(Slot, $"<strong>{E(value)}</strong>", StringComparison.Ordinal);
 }
