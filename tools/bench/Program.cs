@@ -144,7 +144,7 @@ string[] german =
 
 summary.AppendLine("## Piper (piper.exe 2023.11.14-2, one process per sentence as in Duopilo)");
 summary.AppendLine();
-summary.AppendLine("8 German sentences × 3 runs. CPU = user+kernel time of piper.exe incl. model load. Cores = CPU time / wall time. WER = Whisper small-q5_1 (de) round trip, lower is better.");
+summary.AppendLine("8 German sentences × 2 runs. CPU = user+kernel time of piper.exe incl. model load. Cores = CPU time / wall time. WER = Whisper small-q5_1 (de) round trip, lower is better.");
 summary.AppendLine();
 summary.AppendLine("| Voice | Model MB | Sample rate | wall ms/sentence | CPU ms/sentence | CPU s per audio s | avg cores while running | WER |");
 summary.AppendLine("|---|---:|---:|---:|---:|---:|---:|---:|");
@@ -163,7 +163,7 @@ using (var asr = factory.CreateBuilder().WithThreads(4).WithTemperature(0f).With
         foreach (var sentence in german)
         {
             byte[] wav = [];
-            for (var r = 0; r < 3; r++)
+            for (var r = 0; r < 2; r++)
             {
                 var (w, ms, cpuMs) = RunPiper(voice, sentence);
                 wav = w;
@@ -198,6 +198,7 @@ using (var asr = factory.CreateBuilder().WithThreads(4).WithTemperature(0f).With
 }
 
 Console.WriteLine(summary.ToString());
+File.WriteAllText(Path.Combine(Environment.CurrentDirectory, "results.md"), summary.ToString());
 var stepSummary = Environment.GetEnvironmentVariable("GITHUB_STEP_SUMMARY");
 if (!string.IsNullOrEmpty(stepSummary))
 {
