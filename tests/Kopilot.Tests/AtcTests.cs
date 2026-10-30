@@ -298,7 +298,8 @@ public sealed partial class AtcTests
         var telephony = Templates().CallsignTelephony;
         Assert.Equal("Lufthansa four alpha bravo", AtcSpeech.Callsign("DLH4AB", telephony).Spoken);
         Assert.Equal("Speedbird one two three", AtcSpeech.Callsign("BAW123", telephony).Spoken);
-        Assert.Equal("delta echo alpha bravo charlie", AtcSpeech.Callsign("D-EABC", telephony).Spoken);
+        Assert.Equal("delta echo alpha bravo charlie", AtcSpeech.Callsign("D-EABC", telephony).Spoken); // Kennzeichen, keine Airline "DEA"
+        Assert.Equal("golf alpha bravo charlie delta", AtcSpeech.Callsign("G-ABCD", telephony).Spoken);
     }
 
     [Fact]

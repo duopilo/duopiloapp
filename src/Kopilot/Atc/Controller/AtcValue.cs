@@ -254,12 +254,15 @@ public static partial class AtcSpeech
 
     /// <summary>
     /// Rufzeichen: ICAO-Kennung der Airline wird durch das Telephony-Rufzeichen ersetzt, der Rest buchstabiert
-    /// ("DLH4AB" → "Lufthansa four alpha bravo"). Unbekannte Kennungen werden ganz buchstabiert.
+    /// ("DLH4AB" → "Lufthansa four alpha bravo"). Nach der Kennung muss eine Ziffer folgen – sonst ist es ein
+    /// Kennzeichen wie "D-EABC", das ganz buchstabiert wird (mit der vollen Airline-Datenbank ist fast jede
+    /// Buchstabenfolge irgendeine Airline). Unbekannte Kennungen werden ganz buchstabiert.
     /// </summary>
     public static AtcValue Callsign(string callsign, IReadOnlyDictionary<string, string> telephony)
     {
         var code = Compact(callsign);
         if (code.Length >= 4 && char.IsAsciiLetter(code[0]) && char.IsAsciiLetter(code[1]) && char.IsAsciiLetter(code[2])
+            && char.IsAsciiDigit(code[3])
             && telephony.TryGetValue(code[..3], out var name) && !string.IsNullOrWhiteSpace(name))
         {
             return new AtcValue(AtcValueKind.Callsign, code, name.Trim() + " " + Spell(code[3..])) { Code = code };
