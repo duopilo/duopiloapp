@@ -3,14 +3,14 @@
 Kurzer Testflug für die Sperren, Rückfragen und Callouts aus `feature/action-interlocks`.
 Flugzeug **FlyByWire A32NX**, Strecke **EDDF–EDDS**, SimBrief-OFP mit Reiseflughöhe **FL260 oder höher** (für den 25.000-ft-Test).
 
-Ergebnis je Punkt im Testlog notieren: ✓ wie erwartet / ✗ mit Uhrzeit (Z), Antwort von Kopilot und Eintrag im Dashboard-Protokoll.
+Ergebnis je Punkt im Testlog notieren: ✓ wie erwartet / ✗ mit Uhrzeit (Z), Antwort von Duopilo und Eintrag im Dashboard-Protokoll.
 
 Legende: **erlaubt** = normaler Readback, ein „confirm“ führt aus · **gesperrt** = `refused` mit Grund · **Rückfrage** = nach dem ersten „confirm“ kommt „Caution, … Confirm …?“, erst das zweite „confirm“ führt aus.
 
 ## Vorbereitung
 
-- [ ] Branch bauen, Kopilot starten, Eingabe im Dashboard freigeben.
-- [ ] `kopilot_status`: `profileErrors` und `profileWarnings` leer.
+- [ ] Branch bauen, Duopilo starten, Eingabe im Dashboard freigeben.
+- [ ] `duopilo_status`: `profileErrors` und `profileWarnings` leer.
 - [ ] `list_actions`: Feld `safety` bei gear.down, flaps, speedbrake, air.pack1/2, apu.master, xpdr.*, tcas.mode, fcu.ap1/ap2/athr, fcu.altitude.
 - [ ] SimBrief-OFP geladen (`get_flight_plan`).
 
@@ -48,7 +48,7 @@ Legende: **erlaubt** = normaler Readback, ein „confirm“ führt aus · **gesp
 | 3.1 | Speed unter 250 kt, `gear.down` | gesperrt („… ausfahren nur unter 25000 ft“) – **nicht** bestätigen, falls doch ein Readback kommt |
 | 3.2 | `fcu.altitude 2000` | Rückfrage „below minimum safe altitude …“ (MORA-Wert plausibel?) → „negative“ |
 | 3.3 | `speedbrake half`, danach `speedbrake retract` | erlaubt (Klappen 0) |
-| 3.4 | Sim pausieren, `kopilot_status`, weiter | keine Ansagen während der Pause |
+| 3.4 | Sim pausieren, `duopilo_status`, weiter | keine Ansagen während der Pause |
 
 ## 4. Sinkflug und Anflug EDDS
 
