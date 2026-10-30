@@ -23,6 +23,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<EcamCatalog>();
         services.AddSingleton<SimBriefService>();
         // Verkehr (get_traffic, Hintergrundabfrage für TRAFFIC_PROXIMITY)
+        services.AddSingleton<TrafficConnection>();
         services.AddSingleton<TrafficService>();
         services.AddHostedService(sp => sp.GetRequiredService<TrafficService>());
 

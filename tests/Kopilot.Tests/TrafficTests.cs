@@ -257,6 +257,9 @@ public sealed class TrafficTests
     [InlineData("ATCCOM.AC_MODEL_B738.0.text", "B738")]
     [InlineData("A20N", "A20N")]
     [InlineData("$$:C172", "C172")]
+    [InlineData("ATCCOM.AC MODEL C441.0.tts", "C441")]
+    [InlineData("ATCCOM.ATC NAME CITATION.0.tts", "CITATION")]
+    [InlineData("ATCCOM.ATC_NAME_BOEING_737.0.text", "BOEING 737")]
     [InlineData("  ", null)]
     [InlineData(null, null)]
     public void ATC_MODEL_wird_lesbar(string? raw, string? expected)
@@ -624,5 +627,78 @@ public sealed class TrafficTests
 
         var withTrueAltitude = WarmedUp();
         Assert.Empty(Feed(withTrueAltitude, CruiseFl320(12, target, null), CruiseFl320(13.2, target, null), CruiseFl320(16, target, null)));
+    }
+
+    // ------------------------------------------------------------------ Rufzeichen (Testlog 0.9, 01:22Z)
+
+    [Theory]
+    [InlineData("Lufthansa", "123", "D-AIUA", "Lufthansa 123")]
+    [InlineData(null, "1432126", "N605SD", "N605SD")]
+    [InlineData("", "1520435", "N441E", "N441E")]
+    [InlineData("Lufthansa", null, "D-AIUA", "D-AIUA")]
+    [InlineData("Lufthansa", " ", "D-AIUA", "D-AIUA")]
+    [InlineData("TT:ATCCOM.AIRLINE_CONDOR.0.text", "2205", "D-AIKA", "CONDOR 2205")]
+    [InlineData(null, "1432126", null, null)]
+    [InlineData(null, null, null, null)]
+    public void Callsign_nur_aus_Airline_und_Flugnummer_sonst_Registrierung(string? airline, string? flightNumber, string? atcId, string? expected)
+    {
+        Assert.Equal(expected, TrafficMath.Callsign(airline, flightNumber, atcId));
+    }
+
+    [Fact]
+    public void Live_Traffic_GA_mit_Registrierung_und_bereinigtem_Typ()
+    {
+        // C172 N605SD und C441 N441E: Flugnummer ohne Airline, Typ als Rohstring
+        var c172 = Target(2, 0, 4, 9500, atcId: "N605SD", model: "ATCCOM.AC MODEL C172.0.tts") with { AtcFlightNumber = "1432126" };
+        var c441 = Target(3, 90, 6, 17_500, atcId: "N441E", model: "ATCCOM.AC MODEL C441.0.tts") with { AtcFlightNumber = "1520435" };
+        var citation = Target(4, 180, 8, 45_000, atcId: "N482FX", model: "ATCCOM.ATC NAME CITATION.0.tts") with
+        {
+            AtcAirline = "Flexjet",
+            AtcFlightNumber = "482",
+        };
+
+        var targets = Picture(T0, Own(), c172, c441, citation).Targets;
+
+        Assert.Equal(new string?[] { "N605SD", "N441E", "Flexjet 482" }, targets.Select(t => t.Ident));
+        Assert.Equal(new string?[] { "N605SD", "N441E", "Flexjet 482" }, targets.Select(t => t.Callsign));
+        Assert.Equal(new string?[] { "C172", "C441", "CITATION" }, targets.Select(t => t.Type));
+        Assert.Equal("N482FX", targets[2].AtcId);
+    }
+
+    // ------------------------------------------------------------------ Texte für den Hintergrundscan
+
+    [Fact]
+    public void Hintergrundscan_uebernimmt_Callsign_und_Typ_aus_get_traffic()
+    {
+        var cache = new TrafficIdentCache();
+        var withText = Target(2, 0, 4, 5500, atcId: "D-AIUA", model: "A320") with { AtcAirline = "Lufthansa", AtcFlightNumber = "123" };
+        cache.Remember([Own(), withText], T0);
+
+        // Hintergrundscan: nur Zahlen
+        var numeric = withText with { AtcId = null, AtcAirline = null, AtcFlightNumber = null, AtcModel = null };
+        var unknown = Target(3, 90, 2, 5200, atcId: null) with { AtcId = null };
+        var filled = cache.Fill([Own() with { AtcId = null }, numeric, unknown], T0.AddMinutes(5));
+
+        Assert.Null(filled[0].AtcId);
+        Assert.Equal("Lufthansa", filled[1].AtcAirline);
+        Assert.Equal("123", filled[1].AtcFlightNumber);
+        Assert.Equal("A320", filled[1].AtcModel);
+        Assert.Equal(numeric.Latitude, filled[1].Latitude);
+        Assert.Null(filled[2].AtcId);
+
+        // Solange das Ziel gesehen wird, bleibt der Eintrag; 15 min ohne Sichtung verfällt er
+        Assert.Equal("D-AIUA", cache.Fill([numeric], T0.AddMinutes(19))[0].AtcId);
+        Assert.Null(cache.Fill([numeric], T0.AddMinutes(35))[0].AtcId);
+    }
+
+    [Fact]
+    public void Verkehrswarnung_ohne_Callsign_nennt_nur_Position()
+    {
+        var engine = WarmedUp();
+        var conflict = Target(2, 150, 2.1, 5500) with { AtcId = null };
+
+        Feed(engine, Cruise(12, conflict));
+        var e = Assert.Single(Feed(engine, Cruise(13.2, conflict)));
+        Assert.StartsWith("Verkehr auf 2 Uhr, 2.1 NM, 500 ft darüber", e.Message);
     }
 }

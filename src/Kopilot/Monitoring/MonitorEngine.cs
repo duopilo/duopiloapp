@@ -388,11 +388,8 @@ public sealed partial class MonitorEngine
             return null;
         }
 
-        var who = target.Ident ?? "unbekannt";
-        if (target.Type is not null)
-        {
-            who += $" ({target.Type})";
-        }
+        // Callsign und Typ kennt der Hintergrundscan nur, wenn get_traffic das Ziel schon einmal gesehen hat
+        var who = string.Join(" ", new[] { target.Ident, target.Type is null ? null : $"({target.Type})" }.Where(p => p is not null));
 
         var diff = Math.Round(target.AltitudeDiffFt / 10) * 10;
         var where = diff switch
@@ -409,7 +406,7 @@ public sealed partial class MonitorEngine
         };
         return new RuleCheck(
             target.Callout,
-            $"Verkehr {who} auf {target.Clock} Uhr, {target.DistanceNm.ToString("0.0", CultureInfo.InvariantCulture)} NM, {where}, {trend}.");
+            $"Verkehr {(who.Length > 0 ? who + " " : "")}auf {target.Clock} Uhr, {target.DistanceNm.ToString("0.0", CultureInfo.InvariantCulture)} NM, {where}, {trend}.");
     }
 
     // ------------------------------------------------------------------ Ereignisse

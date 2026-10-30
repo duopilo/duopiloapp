@@ -90,7 +90,7 @@ Nach dem Laden eines Flugs, einem Flugzeugwechsel oder einem Air-Start schweigt 
 
 ## Verkehr
 
-`get_traffic` fragt per SimConnect (`RequestDataOnSimObjectType`) alle Flugzeuge und Hubschrauber im Umkreis ab – KI-Verkehr und Multiplayer, soweit im Sim eingeschaltet. Das eigene Flugzeug ist ausgeschlossen.
+`get_traffic` fragt per SimConnect (`RequestDataOnSimObjectType`) alle Flugzeuge und Hubschrauber im Umkreis ab – KI-Verkehr, Live-Traffic und Multiplayer, soweit im Sim eingeschaltet. Das eigene Flugzeug ist ausgeschlossen.
 
 | Parameter | Standard | Bedeutung |
 |---|---|---|
@@ -98,13 +98,14 @@ Nach dem Laden eines Flugs, einem Flugzeugwechsel oder einem Air-Start schweigt 
 | `limit` | 10 | höchstens so viele Ziele, nächstes zuerst (1–50) |
 | `airborneOnly` | false | Flugzeuge am Boden (Gate, Rollweg) weglassen |
 
-Pro Ziel: `ident` (Callsign, sonst ATC-ID), `type` (ATC MODEL, z. B. `A320`), `distanceNm`, `clock` („2 o'clock“), `relativeBearingDeg`, `bearingTrueDeg`, `altitudeFt`, `altitudeDiffFt` (+ = darüber), `verticalTrend` (climbing/descending/level ab ±500 ft/min), `groundSpeedKt` mit `groundSpeedSource`, `headingTrueDeg`/`headingMagDeg`, `onGround`. Das nächste Ziel hat `closest: true`; `callout` ist die Verkehrsmeldung dazu:
+Pro Ziel: `ident`/`callsign` (Airline + Flugnummer, wenn beide gesetzt sind, z. B. `Lufthansa 123`; sonst die ATC ID, also die Registrierung wie `N605SD`), `atcId`, `type` (ATC MODEL, z. B. `A320`), `distanceNm`, `clock` („2 o'clock“), `relativeBearingDeg`, `bearingTrueDeg`, `altitudeFt`, `altitudeDiffFt` (+ = darüber), `verticalTrend` (climbing/descending/level ab ±500 ft/min), `groundSpeedKt` mit `groundSpeedSource`, `headingTrueDeg`/`headingMagDeg`, `onGround`. Das nächste Ziel hat `closest: true`; `callout` ist die Verkehrsmeldung dazu:
 
 ```
 Traffic, 2 o'clock, 5 miles, 1000 feet above, descending
 ```
 
 - **Uhrzeit:** relativ zum eigenen Steuerkurs, je 30°: 12 Uhr = 345° bis unter 15°.
+- **Rufzeichen und Typ:** Live-Traffic-GA liefert als `ATC FLIGHT NUMBER` oft eine interne Nummer ohne Airline (z. B. `1432126`) – die ist kein Rufzeichen, dann gilt die Registrierung. Typen kommen teils als Lokalisierungsschlüssel (`ATCCOM.AC MODEL C441.0.tts`, `ATCCOM.ATC NAME CITATION.0.tts`, `TT:ATCCOM.AC_MODEL_A320.0.text`); Kopilot macht daraus `C441`, `CITATION`, `A320`.
 - **Abstand:** horizontal (Großkreis).
 - **Höhe:** `altitudeFt` ist die Höhe des Ziels, wie SimConnect sie liefert (`PLANE ALTITUDE`). Beim Live-Traffic von MSFS ist das die barometrische Höhe aus ADS-B, also die Flugfläche – nicht die wahre Höhe. `altitudeDiffFt` rechnet deshalb wie TCAS gegen die eigene Druckhöhe (`PRESSURE ALTITUDE`, 1013,25 hPa). Gegen die wahre Höhe lag die Differenz bei kalter Luft oder tiefem Luftdruck weit daneben: auf FL320 mit 30.630 ft wahrer Höhe erschien ein Ziel auf FL330 2.400 ft statt 1.000 ft darüber. `ownAircraft` zeigt Druckhöhe, wahre Höhe und mit `altitudeReference` (`pressure`/`true`), welche gezählt hat; ohne Druckhöhe nimmt Kopilot die wahre Höhe.
 - **Groundspeed:** Die SimVar `GROUND VELOCITY` ist beim Live-Traffic unbrauchbar (im Testflug meist rund Faktor 3,3 zu klein, z. B. 169 statt 556 kt). Kopilot rechnet die Groundspeed deshalb aus der Positionsänderung zwischen zwei Abfragen, 5–120 s auseinander, bevorzugt etwa 20 s (`groundSpeedSource: "position"`, Abstand in `groundSpeedBaselineSec`, Rohwert der SimVar zum Vergleich in `groundSpeedSimVarKt`). Läuft die Hintergrundabfrage der Verkehrswarnung, gibt es das nach wenigen Sekunden; sonst ab dem zweiten `get_traffic`-Aufruf. Bis dahin steht dort die SimVar (`groundSpeedSource: "simvar"`) – mit Vorsicht lesen.
@@ -120,6 +121,14 @@ Traffic, 2 o'clock, 5 miles, 1000 feet above, descending
 `"AltitudeReference": "True"` im selben Abschnitt stellt die Höhendifferenz (get_traffic und Verkehrswarnung) zurück auf die eigene wahre Höhe – für Ziele, deren `PLANE ALTITUDE` eine wahre Höhe ist. Bei KI-Verkehr und Multiplayer ist das noch nicht im Sim geprüft; Standard ist `"Pressure"`.
 
 Das ist kein TCAS: keine Ausweichempfehlung, keine Vorhersage des Annäherungspunkts – nur Abstand und Höhe im Moment.
+
+**Eigene Verbindung für Verkehr:** Bis 0.9 lief die Abfrage über die Hauptverbindung. Deren verwaltete SimConnect-Bibliothek liest jede Antwort mit der vollen Struktur, ohne die Größe der Nachricht (`dwSize`) zu prüfen – die vermutete Ursache der Abstürze im Testflug (AccessViolation in `CSTRMarshaler.ConvertFixedToManaged`, in .NET nicht abfangbar). Das passt auch zu Abstürzen ohne Verkehr: Die Antwort „kein Objekt im Umkreis“ (`dwoutof = 0`) kommt bei jeder Hubschrauber-Abfrage. Jetzt öffnet Kopilot für den Verkehr eine eigene SimConnect-Verbindung direkt über die native `SimConnect.dll` und liest nur, was laut `dwSize` und Empfangsgröße zur Nachricht gehört. Felder, die nicht vollständig ankommen, bleiben leer.
+
+- Der Hintergrundscan der Verkehrswarnung fragt nur Zahlen ab (Position, Höhe, Kurs, Speed, V/S, Boden). Callsign und Typ kennt die Warnung, wenn `get_traffic` das Ziel in den letzten 15 Minuten gesehen hat.
+- Texte (ATC ID, Airline, Flugnummer, Typ) fragt nur `get_traffic` ab.
+- `TRAFFIC_PROXIMITY` kann damit wieder an – den Workaround `"DisabledRules": [ "TRAFFIC_PROXIMITY" ]` aus `appsettings.Local.json` entfernen.
+
+**Prüfung der Antworten:** Kopilot zählt alle Antworten und schreibt jede nach `%LOCALAPPDATA%\Kopilot\logs\traffic-messages.csv` (Größe, Objekt, Eintrag, Flags `empty`/`short`/`mismatch`; rund 250 KB pro Flugstunde, bei 10 MB rotiert). `get_traffic` zeigt unter `messageCheck` das Urteil zu den beiden Absturz-Hypothesen: ob leere Antworten kürzer sind als die alte Struktur (368 Byte) und ob Live-Traffic zu kurze Datenblöcke liefert. Die ersten Antworten und alle Auffälligkeiten stehen zusätzlich im normalen Log, alle 30 Minuten eine Zusammenfassung. Abschalten mit `"Kopilot": { "Monitoring": { "Traffic": { "MessageLog": false } } }`.
 
 ## Sprachausgabe
 
@@ -353,7 +362,7 @@ Gewichte und Treibstoff rechnet Kopilot immer in kg um. Der Plan dient auch dazu
 Kopilot braucht zwei Dateien aus dem MSFS-2024-SDK:
 
 - `SimConnect SDK\lib\managed\Microsoft.FlightSimulator.SimConnect.dll`
-- `SimConnect SDK\lib\SimConnect.dll`
+- `SimConnect SDK\lib\SimConnect.dll` (native Bibliothek; die Verkehrsabfrage nutzt sie direkt)
 
 Das SDK bekommst du über den **Developer Mode** von MSFS 2024: Developer Mode in den Optionen einschalten, dann in der Entwickler-Leiste über das Hilfe-Menü den SDK-Installer starten.
 
@@ -605,6 +614,7 @@ src/Kopilot/
   Atc/Controller/         Kopilot-ATC: Zustandsmaschine, Vorlagen, Sprechweise, Readback-Prüfung, Stationen und Stimmen
   atc-templates.json      Textvorlagen des Kopilot-ATC
   Monitoring/             Regeln (MonitorEngine), Alert-Bus, Hintergrunddienst
+  Sim/TrafficConnection.cs Eigene SimConnect-Verbindung für Verkehr (native SimConnect.dll, Größenprüfung je Nachricht)
   Traffic/                Verkehrsabfrage, Peilung/Uhrzeit/Callout, Hintergrundabfrage für TRAFFIC_PROXIMITY
   Tools/                  MCP-Tools
   profiles/               Flugzeugprofile (JSON)

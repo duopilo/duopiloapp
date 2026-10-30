@@ -35,39 +35,12 @@ public struct SimString256
 }
 
 /// <summary>
-/// Ein Flugzeug aus RequestDataOnSimObjectType (Verkehrsabfrage). Reihenfolge und Typen müssen exakt zur
-/// Data Definition in <see cref="SimConnectClient"/> passen (<see cref="TrafficVariables"/>).
+/// SimVars der Verkehrsabfrage, in dieser Reihenfolge in der Data Definition (siehe <see cref="TrafficConnection"/>).
+/// Die Zahlen kommen als FLOAT64 (je 8 Byte), die Texte als STRING64 (je 64 Byte) dahinter.
 /// </summary>
-[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
-public struct TrafficDatum
-{
-    public double Latitude;
-    public double Longitude;
-    public double AltitudeFt;
-    public double HeadingTrueDeg;
-    public double HeadingMagDeg;
-    public double GroundSpeedKt;
-    public double VerticalSpeedFpm;
-    public double OnGround;
-    public double IsUser;
-
-    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
-    public string AtcId;
-
-    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
-    public string AtcAirline;
-
-    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
-    public string AtcFlightNumber;
-
-    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
-    public string AtcModel;
-}
-
-/// <summary>SimVars der Verkehrsabfrage in der Reihenfolge von <see cref="TrafficDatum"/>. Unit null = Text (STRING64).</summary>
 public static class TrafficVariables
 {
-    public static readonly IReadOnlyList<(string Name, string? Unit)> All =
+    public static readonly IReadOnlyList<(string Name, string Unit)> Numeric =
     [
         ("PLANE LATITUDE", "degrees"),
         ("PLANE LONGITUDE", "degrees"),
@@ -78,11 +51,18 @@ public static class TrafficVariables
         ("VERTICAL SPEED", "feet per minute"),
         ("SIM ON GROUND", "Bool"),
         ("IS USER SIM", "Bool"),
-        ("ATC ID", null),
-        ("ATC AIRLINE", null),
-        ("ATC FLIGHT NUMBER", null),
-        ("ATC MODEL", null),
     ];
+
+    /// <summary>Nur bei get_traffic – der Hintergrundscan der Verkehrswarnung fragt keine Texte ab.</summary>
+    public static readonly IReadOnlyList<string> Text = ["ATC ID", "ATC AIRLINE", "ATC FLIGHT NUMBER", "ATC MODEL"];
+
+    public const int NumericFieldBytes = 8;
+
+    public const int TextFieldBytes = 64;
+
+    public static int NumericBytes => Numeric.Count * NumericFieldBytes;
+
+    public static int PayloadBytes(bool withText) => NumericBytes + (withText ? Text.Count * TextFieldBytes : 0);
 }
 
 /// <summary>Rohdaten eines Flugzeugs aus der Verkehrsabfrage (eigenes Flugzeug eingeschlossen, siehe <see cref="IsUser"/>).</summary>
