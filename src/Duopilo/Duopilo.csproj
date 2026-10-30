@@ -2,12 +2,13 @@
 
   <PropertyGroup>
     <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
-    <!-- Windows-Anwendung ohne Konsolenfenster: Kopilot sitzt im Infobereich. Der Schalter "console" öffnet bei Bedarf eine Konsole. -->
+    <!-- Windows-Anwendung ohne Konsolenfenster: Duopilo sitzt im Infobereich. Der Schalter "console" öffnet bei Bedarf eine Konsole. -->
     <OutputType>WinExe</OutputType>
     <UseWindowsForms>true</UseWindowsForms>
-    <ApplicationIcon>Assets\kopilot.ico</ApplicationIcon>
-    <AssemblyName>Kopilot</AssemblyName>
-    <RootNamespace>Kopilot</RootNamespace>
+    <ApplicationIcon>Assets\duopilo.ico</ApplicationIcon>
+    <!-- Programmdatei Duopilo.exe (bis 0.9.x Kopilot.exe). Installer und Release lesen den Namen von hier (installer/installer.ps1). -->
+    <AssemblyName>Duopilo</AssemblyName>
+    <RootNamespace>Duopilo</RootNamespace>
     <!-- Nur für lokale Builds (update.cmd). Releases setzen die Version aus dem Tag v… (.github/workflows/release.yml). -->
     <Version>0.9.1</Version>
     <!-- SimConnect.dll ist eine native x64-Bibliothek -->
@@ -26,7 +27,7 @@
     <!--
       Sprachschleife (v0.9): Whisper über Whisper.net (MIT, whisper.cpp), CPU-Laufzeit plus Vulkan für die GPU-Option.
       Mikrofon über NAudio (MIT, WinMM). Silero VAD (MIT) läuft über die ONNX Runtime, die KokoroSharp schon mitbringt.
-      Modelle lädt Kopilot erst, wenn die Sprachschleife eingeschaltet ist, nach %LOCALAPPDATA%\Kopilot\models.
+      Modelle lädt Duopilo erst, wenn die Sprachschleife eingeschaltet ist, nach %LOCALAPPDATA%\Duopilo\models.
     -->
     <PackageReference Include="Whisper.net" Version="1.9.1" />
     <PackageReference Include="Whisper.net.Runtime" Version="1.9.1" />
@@ -39,20 +40,20 @@
   <!--
     Kokoro-Stimmen: KokoroSharp kopiert beim Build alle Stimmen (auch Chinesisch usw.) nach bin, aber nicht beim Publish.
     Ins veröffentlichte Programm kommen nur die englischen (a = amerikanisch, b = britisch), ca. 15 MB.
-    Das Modell selbst (~310 MB) lädt Kopilot erst, wenn Kokoro gebraucht wird, nach %LOCALAPPDATA%\Kopilot\models.
+    Das Modell selbst (~310 MB) lädt Duopilo erst, wenn Kokoro gebraucht wird, nach %LOCALAPPDATA%\Duopilo\models.
   -->
   <ItemGroup Condition="'$(PkgKokoroSharp)' != ''">
     <None Include="$(PkgKokoroSharp)\content\voices\a?_*.npy;$(PkgKokoroSharp)\content\voices\b?_*.npy" Link="voices\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
   </ItemGroup>
 
-  <!-- Dashboard, Schriften (B612, SIL OFL 1.1) und Symbole stecken in der Kopilot.dll -->
+  <!-- Dashboard, Schriften (B612, SIL OFL 1.1) und Symbole stecken in der Duopilo.dll -->
   <ItemGroup>
-    <EmbeddedResource Include="Dashboard\dashboard.html" LogicalName="Kopilot.Dashboard.dashboard.html" />
-    <EmbeddedResource Include="Dashboard\fonts\*.woff" LogicalName="Kopilot.Dashboard.fonts.%(Filename)%(Extension)" />
-    <EmbeddedResource Include="Assets\kopilot.ico" LogicalName="Kopilot.Dashboard.favicon.ico" />
-    <EmbeddedResource Include="Assets\tray-*.ico" LogicalName="Kopilot.Assets.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Dashboard\dashboard.html" LogicalName="Duopilo.Dashboard.dashboard.html" />
+    <EmbeddedResource Include="Dashboard\fonts\*.woff" LogicalName="Duopilo.Dashboard.fonts.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Assets\duopilo.ico" LogicalName="Duopilo.Dashboard.favicon.ico" />
+    <EmbeddedResource Include="Assets\tray-*.ico" LogicalName="Duopilo.Assets.%(Filename)%(Extension)" />
     <!-- Sprachdateien (i18n\<code>.json): Dashboard, Tool-Meldungen und Logs. Englisch ist Standard und Fallback. -->
-    <EmbeddedResource Include="i18n\*.json" LogicalName="Kopilot.i18n.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="i18n\*.json" LogicalName="Duopilo.i18n.%(Filename)%(Extension)" />
     <None Update="Dashboard\fonts\OFL.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Link="licenses\B612-OFL.txt" />
   </ItemGroup>
 
@@ -60,7 +61,7 @@
     WinForms bringt globale usings für System.Windows.Forms und System.Drawing mit. Die kollidieren mit Namen wie
     Timer oder Binding im übrigen Code – deshalb raus damit, der Tray-Code nutzt Aliase.
   -->
-  <Target Name="KopilotRemoveWinFormsUsings" BeforeTargets="GenerateGlobalUsings">
+  <Target Name="DuopiloRemoveWinFormsUsings" BeforeTargets="GenerateGlobalUsings">
     <ItemGroup>
       <Using Remove="System.Windows.Forms" />
       <Using Remove="System.Drawing" />
@@ -71,11 +72,11 @@
     <Content Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Update="appsettings.Local.example.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Update="atc-templates.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <!-- Vorlage – beim ersten Start nach %LOCALAPPDATA%\Kopilot\voice-settings.json kopiert (update.cmd überschreibt die nicht) -->
+    <!-- Vorlage – beim ersten Start nach %LOCALAPPDATA%\Duopilo\voice-settings.json kopiert (update.cmd überschreibt die nicht) -->
     <Content Update="voice-settings.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <!-- Lokale Geheimnisse nie mitkopieren, falls die Datei versehentlich im Projektordner liegt -->
     <Content Remove="appsettings.Local.json" />
-    <!-- Sprachdateien stecken in der Kopilot.dll (EmbeddedResource oben) -->
+    <!-- Sprachdateien stecken in der Duopilo.dll (EmbeddedResource oben) -->
     <Content Remove="i18n\**" />
     <None Remove="i18n\**" />
     <Content Update="profiles\**\*.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
@@ -100,19 +101,19 @@
     Der Stub kompiliert, kann sich aber nicht mit MSFS verbinden – nur für CI.
   -->
   <PropertyGroup>
-    <_KopilotRepoLib>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', '..', 'lib'))</_KopilotRepoLib>
-    <_KopilotSdkRoot Condition="'$(MSFS2024_SDK)' != ''">$([MSBuild]::EnsureTrailingSlash('$(MSFS2024_SDK)'))</_KopilotSdkRoot>
-    <_KopilotSdkRoot Condition="'$(_KopilotSdkRoot)' == ''">C:\MSFS 2024 SDK\</_KopilotSdkRoot>
+    <_DuopiloRepoLib>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', '..', 'lib'))</_DuopiloRepoLib>
+    <_DuopiloSdkRoot Condition="'$(MSFS2024_SDK)' != ''">$([MSBuild]::EnsureTrailingSlash('$(MSFS2024_SDK)'))</_DuopiloSdkRoot>
+    <_DuopiloSdkRoot Condition="'$(_DuopiloSdkRoot)' == ''">C:\MSFS 2024 SDK\</_DuopiloSdkRoot>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(UseSimConnectStub)' != 'true' and Exists('$(_KopilotRepoLib)Microsoft.FlightSimulator.SimConnect.dll')">
-    <SimConnectManagedDll>$(_KopilotRepoLib)Microsoft.FlightSimulator.SimConnect.dll</SimConnectManagedDll>
-    <SimConnectNativeDll>$(_KopilotRepoLib)SimConnect.dll</SimConnectNativeDll>
+  <PropertyGroup Condition="'$(UseSimConnectStub)' != 'true' and Exists('$(_DuopiloRepoLib)Microsoft.FlightSimulator.SimConnect.dll')">
+    <SimConnectManagedDll>$(_DuopiloRepoLib)Microsoft.FlightSimulator.SimConnect.dll</SimConnectManagedDll>
+    <SimConnectNativeDll>$(_DuopiloRepoLib)SimConnect.dll</SimConnectNativeDll>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(UseSimConnectStub)' != 'true' and '$(SimConnectManagedDll)' == '' and Exists('$(_KopilotSdkRoot)SimConnect SDK\lib\managed\Microsoft.FlightSimulator.SimConnect.dll')">
-    <SimConnectManagedDll>$(_KopilotSdkRoot)SimConnect SDK\lib\managed\Microsoft.FlightSimulator.SimConnect.dll</SimConnectManagedDll>
-    <SimConnectNativeDll>$(_KopilotSdkRoot)SimConnect SDK\lib\SimConnect.dll</SimConnectNativeDll>
+  <PropertyGroup Condition="'$(UseSimConnectStub)' != 'true' and '$(SimConnectManagedDll)' == '' and Exists('$(_DuopiloSdkRoot)SimConnect SDK\lib\managed\Microsoft.FlightSimulator.SimConnect.dll')">
+    <SimConnectManagedDll>$(_DuopiloSdkRoot)SimConnect SDK\lib\managed\Microsoft.FlightSimulator.SimConnect.dll</SimConnectManagedDll>
+    <SimConnectNativeDll>$(_DuopiloSdkRoot)SimConnect SDK\lib\SimConnect.dll</SimConnectNativeDll>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(SimConnectManagedDll)' != ''">
@@ -127,10 +128,10 @@
     <ProjectReference Include="..\SimConnectStub\SimConnectStub.csproj" />
   </ItemGroup>
 
-  <Target Name="KopilotSimConnectInfo" BeforeTargets="CoreCompile">
-    <Message Importance="high" Condition="'$(SimConnectManagedDll)' != ''" Text="Kopilot: SimConnect aus $(SimConnectManagedDll)" />
-    <Warning Condition="'$(SimConnectManagedDll)' == ''" Text="Kopilot: Kein MSFS-2024-SDK gefunden – Build läuft gegen den SimConnect-Stub. So kann sich Kopilot NICHT mit MSFS verbinden. Siehe README, Abschnitt 'SimConnect-SDK'." />
-    <Warning Condition="'$(SimConnectManagedDll)' != '' and !Exists('$(SimConnectNativeDll)')" Text="Kopilot: Native SimConnect.dll nicht gefunden unter $(SimConnectNativeDll). Bitte manuell neben Kopilot.exe kopieren." />
+  <Target Name="DuopiloSimConnectInfo" BeforeTargets="CoreCompile">
+    <Message Importance="high" Condition="'$(SimConnectManagedDll)' != ''" Text="Duopilo: SimConnect aus $(SimConnectManagedDll)" />
+    <Warning Condition="'$(SimConnectManagedDll)' == ''" Text="Duopilo: Kein MSFS-2024-SDK gefunden – Build läuft gegen den SimConnect-Stub. So kann sich Duopilo NICHT mit MSFS verbinden. Siehe README, Abschnitt 'SimConnect-SDK'." />
+    <Warning Condition="'$(SimConnectManagedDll)' != '' and !Exists('$(SimConnectNativeDll)')" Text="Duopilo: Native SimConnect.dll nicht gefunden unter $(SimConnectNativeDll). Bitte manuell neben Duopilo.exe kopieren." />
   </Target>
 
 </Project>

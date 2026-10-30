@@ -1,11 +1,11 @@
-using Kopilot.Aircraft;
-using Kopilot.Atc;
-using Kopilot.Ecam;
-using Kopilot.FlightPlan;
-using Kopilot.Sim;
-using Kopilot.Traffic;
+using Duopilo.Aircraft;
+using Duopilo.Atc;
+using Duopilo.Ecam;
+using Duopilo.FlightPlan;
+using Duopilo.Sim;
+using Duopilo.Traffic;
 
-namespace Kopilot.Monitoring;
+namespace Duopilo.Monitoring;
 
 /// <summary>Baut aus den zwischengespeicherten Sim-Werten einen <see cref="FlightSnapshot"/>.</summary>
 public sealed class SnapshotFactory(SimConnectClient sim, EcamCatalog ecam, SimBriefService simBrief, TrafficService traffic)

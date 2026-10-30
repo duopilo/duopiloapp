@@ -1,8 +1,8 @@
-using Kopilot.FlightPlan;
-using Kopilot.Speech;
-using Kopilot.Voice;
+using Duopilo.FlightPlan;
+using Duopilo.Speech;
+using Duopilo.Voice;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
 /// <summary>
 /// Abfragen per Sprache (v0.9.2, Punkt 2): Sprit gegen Plan und Landemenge, nächster Wegpunkt, ETA, Top of Descent, Verkehr,

@@ -1,10 +1,10 @@
-using Kopilot.Aircraft;
-using Kopilot.FlightPlan;
-using Kopilot.Monitoring;
-using Kopilot.Sim;
-using Kopilot.Traffic;
+using Duopilo.Aircraft;
+using Duopilo.FlightPlan;
+using Duopilo.Monitoring;
+using Duopilo.Sim;
+using Duopilo.Traffic;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
 /// <summary>get_traffic: Peilung, Abstand, Uhrzeit-Angabe, Callout und die Monitoring-Regel TRAFFIC_PROXIMITY.</summary>
 public sealed class TrafficTests
@@ -422,7 +422,7 @@ public sealed class TrafficTests
     public void Testflug_Labrador_FL330_gegen_FL320_ist_1000_ft_darueber()
     {
         // Emirates 222 auf barometrisch 33.000 ft (Flightradar), eigenes FL320 bei −47 °C mit 30.630 ft wahrer Höhe.
-        // Kopilot 0.9 meldete 2.400 ft darüber, richtig ist FL330 gegen FL320.
+        // Duopilo 0.9 meldete 2.400 ft darüber, richtig ist FL330 gegen FL320.
         var own = Own(altitudeFt: 30_630, headingTrueDeg: 270);
         var emirates = Target(2, 330, 14, 33_000);
 

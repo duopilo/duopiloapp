@@ -2,7 +2,7 @@ using System.Globalization;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 
-namespace Kopilot.Tools;
+namespace Duopilo.Tools;
 
 internal static class Json
 {

@@ -1,9 +1,9 @@
 using System.Runtime.InteropServices;
 
-namespace Kopilot.Hosting;
+namespace Duopilo.Hosting;
 
 /// <summary>
-/// Kopilot ist eine Windows-Anwendung ohne Konsolenfenster (es gibt das Tray-Symbol).
+/// Duopilo ist eine Windows-Anwendung ohne Konsolenfenster (es gibt das Tray-Symbol).
 /// Für --generate-secret und --console wird bei Bedarf eine Konsole angehängt bzw. geöffnet.
 /// </summary>
 internal static class NativeConsole

@@ -1,13 +1,13 @@
-using Kopilot.Atc;
-using Kopilot.Localization;
+using Duopilo.Atc;
+using Duopilo.Localization;
 
-namespace Kopilot.Voice;
+namespace Duopilo.Voice;
 
 /// <summary>Was mit einem Satz passiert ist – für Log, Status und Tests.</summary>
 /// <param name="Normalized">Normalisierte Form.</param>
 /// <param name="Route">Zuordnung (Kopilot oder ATC).</param>
-/// <param name="Intent">Erkannter Kopilot-Befehl (null bei ATC).</param>
-/// <param name="Reply">Was Kopilot sagt (null = nichts). ATC-Antworten spricht das ATC-Modul selbst.</param>
+/// <param name="Intent">Erkannter Befehl an den Kopiloten (null bei ATC).</param>
+/// <param name="Reply">Was der Kopilot sagt (null = nichts). ATC-Antworten spricht das ATC-Modul selbst.</param>
 /// <param name="Atc">Ergebnis des ATC-Moduls (null bei Kopilot).</param>
 /// <param name="Chat">
 /// Smalltalk: weder Befehl noch Abfrage noch Funkspruch – der Satz geht ans Sprachmodell (die Antwort kommt später und wird nur
@@ -16,9 +16,9 @@ namespace Kopilot.Voice;
 public sealed record VoiceOutcome(string Normalized, VoiceRoute Route, VoiceIntent? Intent, VoiceReply? Reply, AtcTransmitResult? Atc, bool Chat = false);
 
 /// <summary>
-/// Ein abgeschriebener Satz → Router → ATC-Modul oder Kopilot-Dialog. Kurze Antworten ohne Station und ohne Anrede
+/// Ein abgeschriebener Satz → Router → ATC-Modul oder Dialog mit dem Kopiloten. Kurze Antworten ohne Station und ohne Anrede
 /// ("Say again", "Affirm", "Negative") gehen an die Seite, die zuletzt gesprochen hat (ATC oder Kopilot).
-/// Spricht ATC nach einem Readback von Kopilot, verfällt die offene Aktion – ein "Affirm" danach gilt ATC.
+/// Spricht ATC nach einem Readback des Kopiloten, verfällt die offene Aktion – ein "Affirm" danach gilt ATC.
 /// Ohne Sim, Mikrofon und Audio – damit testbar.
 /// </summary>
 public sealed class VoiceDispatcher(VoiceDialog dialog, IAtcLink atc, VoiceRouter router, IReadOnlyCollection<string> wakeWords)
@@ -34,7 +34,7 @@ public sealed class VoiceDispatcher(VoiceDialog dialog, IAtcLink atc, VoiceRoute
     /// <summary>Ende des zuletzt gesprochenen ATC-Funkspruchs (Sprachausgabe) – genauer als die Zeit im Protokoll des ATC-Moduls.</summary>
     public Func<DateTimeOffset?> AtcHeardUtc { get; init; } = () => null;
 
-    /// <summary>Name des First Officers als Anrede (normalisiert, z. B. "sam") – zusätzlich zu "Kopilot". null = keiner.</summary>
+    /// <summary>Name des First Officers als Anrede (normalisiert, z. B. "sam") – zusätzlich zu "Kopilot" (und "Duopilo"). null = keiner.</summary>
     public Func<string?> PersonaName { get; init; } = () => null;
 
     /// <summary>

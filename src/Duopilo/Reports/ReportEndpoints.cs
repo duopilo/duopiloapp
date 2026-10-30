@@ -1,12 +1,12 @@
-using Kopilot.Dashboard;
-using Kopilot.Hosting;
-using Kopilot.Localization;
-using Kopilot.Tools;
+using Duopilo.Dashboard;
+using Duopilo.Hosting;
+using Duopilo.Localization;
+using Duopilo.Tools;
 
-namespace Kopilot.Reports;
+namespace Duopilo.Reports;
 
 /// <summary>
-/// Knopf „Fehler melden“ im Dashboard (nur lokal, schreibend nur mit Header "X-Kopilot: 1"):
+/// Knopf „Fehler melden“ im Dashboard (nur lokal, schreibend nur mit Header "X-Duopilo: 1"):
 /// <list type="number">
 /// <item>POST /api/report/capture – Momentaufnahme beim Druck auf den Knopf.</item>
 /// <item>POST /api/report – Art, Titel und Text dazu: lokale Kopie schreiben, Link zum GitHub-Issue zurückgeben.</item>
@@ -32,7 +32,7 @@ public static class ReportEndpoints
             {
                 id,
                 capturedUtc = capture.CapturedUtc,
-                repository = BugReport.IsRepository(reports.Options.GitHubRepository) ? reports.Options.GitHubRepository : null,
+                repository = BugReport.IsRepository(reports.Options.ResolveGitHubRepository()) ? reports.Options.ResolveGitHubRepository() : null,
                 directory = reports.Directory,
                 categories = BugReport.Categories.Select(c => new
                 {
@@ -92,6 +92,5 @@ public static class ReportEndpoints
         }).LocalOnly();
     }
 
-    private static bool IsDashboardAction(HttpContext context) =>
-        context.Request.Headers.TryGetValue(DashboardEndpoints.ActionHeader, out var value) && value == "1";
+    private static bool IsDashboardAction(HttpContext context) => DashboardEndpoints.IsDashboardAction(context);
 }

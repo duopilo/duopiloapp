@@ -1,14 +1,14 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Kopilot.Localization;
-using Kopilot.Speech;
+using Duopilo.Localization;
+using Duopilo.Speech;
 
-namespace Kopilot.Voice;
+namespace Duopilo.Voice;
 
 /// <summary>
 /// Einstellungen der Sprachschleife aus voice-settings.json. Die Datei liegt im Datenordner
-/// (%LOCALAPPDATA%\Kopilot\voice-settings.json) und wird beim ersten Start aus der Vorlage neben der Kopilot.exe angelegt –
-/// so überschreibt update.cmd sie nicht. Änderungen gelten nach einem Neustart von Kopilot.
+/// (%LOCALAPPDATA%\Duopilo\voice-settings.json) und wird beim ersten Start aus der Vorlage neben der Duopilo.exe angelegt –
+/// so überschreibt update.cmd sie nicht. Änderungen gelten nach einem Neustart von Duopilo.
 /// </summary>
 public sealed record VoiceSettings
 {
@@ -93,7 +93,7 @@ public sealed record RecognitionSettings
     /// <summary>Modell: tiny, base, small – jeweils auch quantisiert (-q5_1, -q8_0). Mehrsprachig, also ohne ".en".</summary>
     public string Model { get; init; } = "base-q5_1";
 
-    /// <summary>Eigene Modelldatei (ggml-*.bin). Leer = %LOCALAPPDATA%\Kopilot\models, wird bei Bedarf geladen.</summary>
+    /// <summary>Eigene Modelldatei (ggml-*.bin). Leer = %LOCALAPPDATA%\Duopilo\models, wird bei Bedarf geladen.</summary>
     public string ModelPath { get; init; } = "";
 
     /// <summary>"cpu" oder "gpu" (CUDA, sonst Vulkan; ohne passende GPU-Laufzeit zurück auf die CPU).</summary>
@@ -137,10 +137,10 @@ public sealed record RecognitionSettings
 /// <summary>Stimmen und Lautstärke.</summary>
 public sealed record VoicesSettings
 {
-    /// <summary>Feste Kokoro-Stimme für Kopilot (Callouts und Antworten). Leer = Stimme des First Officers, ist er aus: die aus dem Dashboard.</summary>
+    /// <summary>Feste Kokoro-Stimme des Kopiloten (Callouts und Antworten; Schlüssel "kopilot" = die Rolle, bleibt so). Leer = Stimme des First Officers, ist er aus: die aus dem Dashboard.</summary>
     public string Kopilot { get; init; } = "";
 
-    /// <summary>Lautstärke von Kopilot (Faktor auf die Lautstärke im Dashboard).</summary>
+    /// <summary>Lautstärke des Kopiloten (Faktor auf die Lautstärke im Dashboard).</summary>
     public double KopilotVolume { get; init; } = 1.0;
 
     /// <summary>Lautstärke der ATC-Stationen (Faktor auf die Lautstärke im Dashboard). Die Stimmen vergibt das ATC-Modul.</summary>
@@ -161,10 +161,13 @@ public sealed record HotkeySettings
     public string Mute { get; init; } = "Ctrl+Alt+K";
 }
 
-/// <summary>Kopilot-Befehle.</summary>
+/// <summary>Befehle an den Kopiloten.</summary>
 public sealed record CommandSettings
 {
-    /// <summary>Anrede für Kopilot, z. B. "Kopilot, Gear up". Optional, außer <see cref="RequireWakeWord"/>.</summary>
+    /// <summary>
+    /// Anrede für den Kopiloten, z. B. "Kopilot, Gear up" – „Kopilot“ bleibt das feste Ansprachewort. „Duopilo“ zählt zusätzlich,
+    /// wenn Whisper es eindeutig so abschreibt (<see cref="VoiceText"/> macht "kopilot" daraus). Optional, außer <see cref="RequireWakeWord"/>.
+    /// </summary>
     public List<string> WakeWords { get; init; } = ["kopilot", "copilot"];
 
     /// <summary>Befehle nur mit Anrede ("Kopilot, …") – hilft, wenn im Raum geredet wird.</summary>
@@ -292,7 +295,7 @@ public sealed record TaxiSpeedSettings
 }
 
 /// <summary>
-/// Lädt voice-settings.json aus dem Datenordner. Fehlt die Datei, wird sie aus der Vorlage neben der Kopilot.exe angelegt.
+/// Lädt voice-settings.json aus dem Datenordner. Fehlt die Datei, wird sie aus der Vorlage neben der Duopilo.exe angelegt.
 /// JSON mit Kommentaren und Komma am Ende ist erlaubt.
 /// </summary>
 public sealed class VoiceSettingsStore(string dataDirectory, string? templateDirectory = null)
@@ -370,8 +373,8 @@ public sealed class VoiceSettingsStore(string dataDirectory, string? templateDir
     }
 
     /// <summary>
-    /// Hinweis, wenn die Vorlage neben der Kopilot.exe bearbeitet wurde, die wirksame Datei im Datenordner aber nicht:
-    /// update.cmd überschreibt die Vorlage, und Kopilot liest nur die Datei im Datenordner. null = alles in Ordnung.
+    /// Hinweis, wenn die Vorlage neben der Duopilo.exe bearbeitet wurde, die wirksame Datei im Datenordner aber nicht:
+    /// update.cmd überschreibt die Vorlage, und Duopilo liest nur die Datei im Datenordner. null = alles in Ordnung.
     /// </summary>
     public string? TemplateMismatch(VoiceSettings effective)
     {

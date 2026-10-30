@@ -1,50 +1,51 @@
-using Kopilot.Localization;
+using Duopilo.Localization;
 
-namespace Kopilot.Hosting;
+namespace Duopilo.Hosting;
 
-public enum KopilotTransport
+public enum DuopiloTransport
 {
     Stdio,
     Http,
 }
 
 /// <summary>Konfiguration laden, Transport bestimmen, Loopback-Bindung prüfen.</summary>
-public static class KopilotConfiguration
+public static class DuopiloConfiguration
 {
     public const string LocalSettingsFile = "appsettings.Local.json";
 
     /// <summary>
     /// Ergänzt appsettings.Local.json (Geheimnisse, nicht im Repo). Umgebungsvariablen und Kommandozeile werden
-    /// danach erneut angehängt, damit sie weiterhin Vorrang vor Dateien haben.
+    /// danach erneut angehängt, damit sie weiterhin Vorrang vor Dateien haben. Alle drei lesen den alten Abschnitt
+    /// "Kopilot" (bzw. Kopilot__…) mit (<see cref="LegacySectionSource"/>).
     /// </summary>
     public static void AddLocalSettings(IConfigurationBuilder configuration, string baseDirectory, string[] args)
     {
-        configuration.AddJsonFile(Path.Combine(baseDirectory, LocalSettingsFile), optional: true, reloadOnChange: false);
-        configuration.AddEnvironmentVariables();
-        configuration.AddCommandLine(args);
+        configuration.Add(LegacySectionSource.Json(Path.Combine(baseDirectory, LocalSettingsFile)));
+        configuration.Add(LegacySectionSource.EnvironmentVariables());
+        configuration.Add(LegacySectionSource.CommandLine(args));
     }
 
-    /// <summary>--stdio / --http haben Vorrang, sonst Kopilot:Transport aus der Konfiguration (Standard: http).</summary>
-    public static KopilotTransport ResolveTransport(string[] args, string baseDirectory)
+    /// <summary>--stdio / --http haben Vorrang, sonst Duopilo:Transport aus der Konfiguration (Standard: http).</summary>
+    public static DuopiloTransport ResolveTransport(string[] args, string baseDirectory)
     {
         if (args.Any(a => string.Equals(a, "--stdio", StringComparison.OrdinalIgnoreCase)))
         {
-            return KopilotTransport.Stdio;
+            return DuopiloTransport.Stdio;
         }
 
         if (args.Any(a => string.Equals(a, "--http", StringComparison.OrdinalIgnoreCase)))
         {
-            return KopilotTransport.Http;
+            return DuopiloTransport.Http;
         }
 
         var builder = new ConfigurationBuilder()
             .AddJsonFile(Path.Combine(baseDirectory, "appsettings.json"), optional: true, reloadOnChange: false);
         AddLocalSettings(builder, baseDirectory, FilterSwitches(args));
-        var value = builder.Build()[$"{KopilotOptions.Section}:{nameof(KopilotOptions.Transport)}"];
+        var value = builder.Build()[$"{DuopiloOptions.Section}:{nameof(DuopiloOptions.Transport)}"];
 
         return string.Equals(value?.Trim(), "stdio", StringComparison.OrdinalIgnoreCase)
-            ? KopilotTransport.Stdio
-            : KopilotTransport.Http;
+            ? DuopiloTransport.Stdio
+            : DuopiloTransport.Http;
     }
 
     /// <summary>Prüft, dass der HTTP-Modus nur an eine Loopback-Adresse bindet.</summary>
@@ -68,7 +69,7 @@ public static class KopilotConfiguration
 
     private static readonly string[] Switches = ["--stdio", "--http", "--generate-secret", "--console", "--no-tray", "--autostart", "--restarted", AppRestart.ReplaceSwitch];
 
-    /// <summary>Entfernt Kopilot-eigene Schalter, die der Kommandozeilen-Provider nicht versteht.</summary>
+    /// <summary>Entfernt Duopilo-eigene Schalter, die der Kommandozeilen-Provider nicht versteht.</summary>
     public static string[] FilterSwitches(string[] args) =>
         args.Where(a => !Switches.Contains(a, StringComparer.OrdinalIgnoreCase)).ToArray();
 }

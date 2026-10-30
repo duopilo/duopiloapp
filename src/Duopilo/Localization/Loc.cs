@@ -4,14 +4,14 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 
-namespace Kopilot.Localization;
+namespace Duopilo.Localization;
 
-/// <summary>A language Kopilot can show: code ("en", "de") and its own name ("English", "Deutsch").</summary>
+/// <summary>A language Duopilo can show: code ("en", "de") and its own name ("English", "Deutsch").</summary>
 public sealed record LanguageInfo(string Code, string Name);
 
 /// <summary>
 /// Texts for the dashboard, tool messages (message/note fields), tray and logs, from one JSON file per language
-/// (<c>src/Kopilot/i18n/&lt;code&gt;.json</c>, embedded in Kopilot.dll). English is the default and the fallback for missing keys.
+/// (<c>src/Duopilo/i18n/&lt;code&gt;.json</c>, embedded in Duopilo.dll). English is the default and the fallback for missing keys.
 /// <para>
 /// What stays English regardless of the setting (like a real crew, SOP): callouts, checklists, FMA calls, warnings and radio
 /// (ATC templates) – everything that is spoken or is phraseology. Those texts never go through <see cref="T"/>.
@@ -26,8 +26,8 @@ public sealed record LanguageInfo(string Code, string Name);
 /// arguments to the names in the order they first appear in the <b>English</b> text, so a translation may reorder them.
 /// </para>
 /// <para>
-/// Optional: extra or corrected translations in <c>%LOCALAPPDATA%\Kopilot\i18n\&lt;code&gt;.json</c> (key by key on top of the
-/// embedded file) – for trying a translation without building Kopilot.
+/// Optional: extra or corrected translations in <c>%LOCALAPPDATA%\Duopilo\i18n\&lt;code&gt;.json</c> (key by key on top of the
+/// embedded file) – for trying a translation without building Duopilo.
 /// </para>
 /// </summary>
 public static class Loc
@@ -43,7 +43,7 @@ public static class Loc
     /// <summary>Size of one generation of <see cref="ToEnglish"/> twins (two generations are kept).</summary>
     private const int TwinGeneration = 16384;
 
-    private const string ResourcePrefix = "Kopilot.i18n.";
+    private const string ResourcePrefix = "Duopilo.i18n.";
 
     private static readonly AsyncLocal<string?> ScopedLanguage = new();
     private static readonly object TwinGate = new();
@@ -65,14 +65,14 @@ public static class Loc
     public static string? OverrideDirectory => _catalog.OverrideDirectory;
 
     /// <summary>
-    /// Startup: language from "Kopilot:Language" and extra translation files from the data folder. Without a setting the language
+    /// Startup: language from "Duopilo:Language" and extra translation files from the data folder. Without a setting the language
     /// stays as it is (English by default).
     /// </summary>
     public static void Configure(IConfiguration configuration)
     {
-        var dataDirectory = (configuration.GetSection(KopilotOptions.Section).Get<KopilotOptions>() ?? new KopilotOptions()).ResolveDataDirectory();
+        var dataDirectory = (configuration.GetSection(DuopiloOptions.Section).Get<DuopiloOptions>() ?? new DuopiloOptions()).ResolveDataDirectory();
         LoadOverrides(Path.Combine(dataDirectory, "i18n"));
-        var language = configuration[$"{KopilotOptions.Section}:{nameof(KopilotOptions.Language)}"];
+        var language = configuration[$"{DuopiloOptions.Section}:{nameof(DuopiloOptions.Language)}"];
         if (!string.IsNullOrWhiteSpace(language))
         {
             SetLanguage(language);

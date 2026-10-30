@@ -1,10 +1,10 @@
-using Kopilot.Atc;
-using Kopilot.FlightPlan;
+using Duopilo.Atc;
+using Duopilo.FlightPlan;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
 /// <summary>
-/// Kopilot-ATC nach dem Testflug CFG2205 (v0.9): Höhenanfragen im Reiseflug, Stufensteigflüge aus dem OFP, gemeldete Höhe
+/// Duopilo-ATC nach dem Testflug CFG2205 (v0.9): Höhenanfragen im Reiseflug, Stufensteigflüge aus dem OFP, gemeldete Höhe
 /// beim Erstanruf, Squawk- und COM1-Überwachung und Funksprüche an die falsche Station.
 /// </summary>
 public sealed class AtcLevelAndRadioTests
@@ -57,7 +57,7 @@ public sealed class AtcLevelAndRadioTests
             new AtcSessionContext(_ => null, new NoTaxiRouteProvider(), "bm_george", SquawkFromSim: squawkFromSim));
     }
 
-    /// <summary>Templates mit festen Frequenzen für Gander und Montreal (sonst Platzhalter – die prüft Kopilot nicht).</summary>
+    /// <summary>Templates mit festen Frequenzen für Gander und Montreal (sonst Platzhalter – die prüft Duopilo nicht).</summary>
     private static AtcTemplates WithFrequencies()
     {
         var templates = TestData.Templates();
@@ -363,7 +363,7 @@ public sealed class AtcLevelAndRadioTests
         Assert.Equal("Gander Center", session.Station.Name);
         flight.Say("Gander Center, Condor 2205, maintaining flight level three two zero", flight.Fix(Alpha) - 30);
 
-        // Stufe ohne Kopilot-ATC, dann Übergabe an Montreal
+        // Stufe ohne Duopilo-ATC, dann Übergabe an Montreal
         flight.AltitudeFt = 34000;
         Assert.StartsWith("CFG2205, contact Montreal Center", Assert.Single(flight.Run(flight.Boundary + 1, 1)).Text);
         var reply = Assert.Single(flight.Say("Montreal Center, Condor 2205, maintaining flight level three four zero", flight.Boundary + 2));
@@ -429,7 +429,7 @@ public sealed class AtcLevelAndRadioTests
         var raised = Assert.Single(session.TakeDeviationEvents());
         Assert.Equal(AtcDeviationChange.Raised, raised.Change);
 
-        // Kopilot setzt nie selbst zurück; ATC wiederholt nach 120 s, höchstens dreimal
+        // Duopilo setzt nie selbst zurück; ATC wiederholt nach 120 s, höchstens dreimal
         Assert.Empty(flight.Run(nm, 100));
         Assert.Single(flight.Run(nm, 25));
         Assert.Single(flight.Run(nm, 125));
@@ -484,7 +484,7 @@ public sealed class AtcLevelAndRadioTests
         Assert.Equal(AtcDeviationChange.Adopted, adopted.Change);
         Assert.Equal(assigned, adopted.Previous);
 
-        // Allgemeine Codes übernimmt Kopilot nicht – dann wie sonst "check squawk"
+        // Allgemeine Codes übernimmt Duopilo nicht – dann wie sonst "check squawk"
         flight.Transponder = "2000";
         Assert.Equal($"CFG2205, check squawk, should be {simCode}", Assert.Single(flight.Run(nm, 20)).Text);
 
@@ -728,6 +728,21 @@ public sealed class AtcLevelAndRadioTests
         restored.Restore(snapshot, flight.At(nm));
         Assert.Equal(session.ExpectedLevel, restored.ExpectedLevel);
         Assert.Equal(session.Squawk, restored.Squawk);
-        Assert.Equal("kopilot", restored.SquawkSource);
+        Assert.Equal("duopilo", restored.SquawkSource);
+    }
+
+    [Fact]
+    public void Alte_Sicherung_mit_Squawk_von_Kopilot_wird_uebernommen()
+    {
+        // atc-session.json aus 0.9.x: "squawkSource": "kopilot"
+        var templates = TestData.Templates();
+        var (session, flight, nm) = AtMontreal(templates);
+        var snapshot = AtcSessionStore.Deserialize(AtcSessionStore.Serialize(session.Snapshot(flight.Now)))! with { SquawkSource = "kopilot" };
+
+        var restored = Session(templates);
+        restored.Restore(snapshot, flight.At(nm));
+
+        Assert.Equal(session.Squawk, restored.Squawk);
+        Assert.Equal("duopilo", restored.SquawkSource);
     }
 }

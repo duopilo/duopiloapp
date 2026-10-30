@@ -1,4 +1,4 @@
-namespace Kopilot.Speech;
+namespace Duopilo.Speech;
 
 /// <summary>
 /// Warnton für die Bestätigungspflicht: drei kurze Töne (wie ein Attention Getter), als WAV für denselben Windows-Player,

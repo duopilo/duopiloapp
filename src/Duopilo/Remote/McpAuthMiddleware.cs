@@ -1,15 +1,15 @@
-using Kopilot.Localization;
+using Duopilo.Localization;
 using Microsoft.Extensions.Options;
 
-namespace Kopilot.Remote;
+namespace Duopilo.Remote;
 
 /// <summary>
 /// Schützt den MCP-Endpunkt (/mcp). Zugelassen sind:
 ///   1. der statische Bearer-Token aus der Konfiguration,
-///   2. OAuth-Access-Tokens, die Kopilot selbst ausgestellt hat (Claude-Connector).
+///   2. OAuth-Access-Tokens, die Duopilo selbst ausgestellt hat (Claude-Connector).
 /// Alles andere bekommt 401 – mit Verweis auf die OAuth-Metadaten, damit Claude die Anmeldung starten kann.
 /// </summary>
-public sealed class McpAuthMiddleware(RequestDelegate next, IOptions<KopilotOptions> options)
+public sealed class McpAuthMiddleware(RequestDelegate next, IOptions<DuopiloOptions> options)
 {
     public async Task InvokeAsync(HttpContext context)
     {

@@ -1,7 +1,7 @@
-using Kopilot.Hosting;
-using Kopilot.Remote;
+using Duopilo.Hosting;
+using Duopilo.Remote;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
 public sealed class ConfigurationTests
 {
@@ -15,22 +15,22 @@ public sealed class ConfigurationTests
     [InlineData("kein-url", false)]
     public void Nur_Loopback_ist_als_HttpUrl_erlaubt(string url, bool expected)
     {
-        Assert.Equal(expected, KopilotConfiguration.IsLoopbackUrl(url, out _));
+        Assert.Equal(expected, DuopiloConfiguration.IsLoopbackUrl(url, out _));
     }
 
     [Theory]
-    [InlineData("--stdio", KopilotTransport.Stdio)]
-    [InlineData("--http", KopilotTransport.Http)]
-    public void Kommandozeile_bestimmt_den_Transport(string arg, KopilotTransport expected)
+    [InlineData("--stdio", DuopiloTransport.Stdio)]
+    [InlineData("--http", DuopiloTransport.Http)]
+    public void Kommandozeile_bestimmt_den_Transport(string arg, DuopiloTransport expected)
     {
-        Assert.Equal(expected, KopilotConfiguration.ResolveTransport([arg], AppContext.BaseDirectory));
+        Assert.Equal(expected, DuopiloConfiguration.ResolveTransport([arg], AppContext.BaseDirectory));
     }
 
     [Theory]
-    [InlineData("https://kopilot.flo210500.com", true)]
-    [InlineData("https://kopilot.flo210500.com/", true)]
-    [InlineData("http://kopilot.flo210500.com", false)]
-    [InlineData("https://kopilot.flo210500.com/unterpfad", false)]
+    [InlineData("https://duopilo.example.com", true)]
+    [InlineData("https://duopilo.example.com/", true)]
+    [InlineData("http://duopilo.example.com", false)]
+    [InlineData("https://duopilo.example.com/unterpfad", false)]
     [InlineData("", false)]
     public void PublicUrl_muss_https_ohne_Pfad_sein(string publicUrl, bool valid)
     {
@@ -39,7 +39,7 @@ public sealed class ConfigurationTests
         Assert.Equal(valid, options.OAuthEnabled);
         if (valid)
         {
-            Assert.Equal("https://kopilot.flo210500.com/mcp", options.ResourceUrl);
+            Assert.Equal("https://duopilo.example.com/mcp", options.ResourceUrl);
         }
     }
 

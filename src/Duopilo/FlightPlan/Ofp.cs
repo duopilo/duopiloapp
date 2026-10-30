@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 
-namespace Kopilot.FlightPlan;
+namespace Duopilo.FlightPlan;
 
 /// <summary>Flugplan (OFP) aus SimBrief. Gewichte und Treibstoff immer in kg.</summary>
 public sealed record Ofp
@@ -10,7 +10,7 @@ public sealed record Ofp
 
     public DateTimeOffset? GeneratedUtc { get; init; }
 
-    /// <summary>Einheit im SimBrief-OFP ("kgs" oder "lbs"). Kopilot rechnet alles in kg um.</summary>
+    /// <summary>Einheit im SimBrief-OFP ("kgs" oder "lbs"). Duopilo rechnet alles in kg um.</summary>
     public string SourceUnits { get; init; } = "kgs";
 
     public string? Callsign { get; init; }

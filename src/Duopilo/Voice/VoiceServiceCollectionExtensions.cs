@@ -1,16 +1,16 @@
-using Kopilot.Speech;
+using Duopilo.Speech;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
-namespace Kopilot.Voice;
+namespace Duopilo.Voice;
 
 public static class VoiceServiceCollectionExtensions
 {
     /// <summary>
     /// Sprachschleife (nur HTTP-Modus mit Tray, nach der Sprachausgabe registrieren). Funksprüche gehen an das ATC-Modul
-    /// (<see cref="Kopilot.Atc.AtcService"/> aus AddKopilotCore), dessen Antworten über <see cref="Kopilot.Atc.IAtcRadio"/> gesprochen werden.
-    /// Ersetzt den Platzhalter <see cref="NoVoiceLoop"/>, damit kopilot_status den echten Zustand zeigt.
+    /// (<see cref="Duopilo.Atc.AtcService"/> aus AddDuopiloCore), dessen Antworten über <see cref="Duopilo.Atc.IAtcRadio"/> gesprochen werden.
+    /// Ersetzt den Platzhalter <see cref="NoVoiceLoop"/>, damit duopilo_status den echten Zustand zeigt.
     /// </summary>
-    public static IServiceCollection AddKopilotVoice(this IServiceCollection services)
+    public static IServiceCollection AddDuopiloVoice(this IServiceCollection services)
     {
         services.TryAddSingleton<IVoiceOutput>(sp => sp.GetRequiredService<CalloutSpeaker>());
         services.TryAddSingleton<IAtcLink, AtcServiceLink>();

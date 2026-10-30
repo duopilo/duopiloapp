@@ -1,6 +1,6 @@
 using System.Globalization;
 
-namespace Kopilot.Atc;
+namespace Duopilo.Atc;
 
 /// <summary>Vom Ingame-ATC zugewiesene Bahn.</summary>
 /// <param name="Number">Bahnnummer 1–36.</param>
@@ -11,7 +11,7 @@ public sealed record AssignedRunway(int Number, string? Designator, string? Desi
     public string Ident => Number.ToString("00", CultureInfo.InvariantCulture) + Designator;
 
     /// <summary>Sprechfunk-Form, z. B. "two three left".</summary>
-    public string Spoken => Kopilot.Speech.Pronunciation.Runway(Number, Designator);
+    public string Spoken => Duopilo.Speech.Pronunciation.Runway(Number, Designator);
 }
 
 public static class RunwayMath

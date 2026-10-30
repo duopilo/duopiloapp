@@ -1,9 +1,9 @@
 using System.ComponentModel;
-using Kopilot.Input;
-using Kopilot.Localization;
+using Duopilo.Input;
+using Duopilo.Localization;
 using ModelContextProtocol.Server;
 
-namespace Kopilot.Tools;
+namespace Duopilo.Tools;
 
 /// <summary>Eingabe-Modul: Cockpit bedienen – nur nach Readback und Bestätigung durch den Piloten.</summary>
 [McpServerToolType]
@@ -20,10 +20,10 @@ public static class InputTools
 
     [McpServerTool(Name = "list_actions", ReadOnly = true)]
     [Description(
-        "Lists the cockpit inputs Kopilot may operate in the current aircraft (FCU, EFIS, gear/flaps/speedbrake, lights, signs, anti-ice, packs, APU, " +
+        "Lists the cockpit inputs Duopilo may operate in the current aircraft (FCU, EFIS, gear/flaps/speedbrake, lights, signs, anti-ice, packs, APU, " +
         "transponder/TCAS, radios, baro, autobrake). Engine masters, fire handles, fuel pumps/crossfeed, hydraulics, IDG and the MCDU are never available. " +
         "'safety' names the built-in plausibility locks and cautions of an action. " +
-        "Shows whether input is enabled; it is disabled by default and only the pilot can enable it in the Kopilot dashboard. " + Rules)]
+        "Shows whether input is enabled; it is disabled by default and only the pilot can enable it in the Duopilo dashboard. " + Rules)]
     public static string ListActions(
         InputService input,
         [Description("Optional area filter, e.g. FCU, EFIS, Config, Lights, Signs, AntiIce, Air, APU, Transponder, Radio, Brakes.")] string? area = null)
@@ -58,7 +58,7 @@ public static class InputTools
         "and the gear altitude limit, no speedbrake in inhibited flap settings, batteries off and both packs off only on ground, APU master off not with APU bleed on) " +
         "and returns a readback plus a token valid for about 60 s. Nothing is changed in the aircraft yet. 'cautionFollows' = a second confirmation with a caution follows. " +
         "Only one action is open at a time: every new prepare_action discards the open one (even if the new one is refused), " +
-        "so always confirm with the token of the latest successful prepare_action, through the same Kopilot connection. " + Rules)]
+        "so always confirm with the token of the latest successful prepare_action, through the same Duopilo connection. " + Rules)]
     public static async Task<string> PrepareAction(
         InputService input,
         ILogger<InputService> log,
@@ -87,8 +87,8 @@ public static class InputTools
         "Step 2: executes the prepared action after the pilot confirmed the readback. Interlocks are checked again with the current state. " +
         "For critical actions the first call returns 'awaiting_caution_confirmation' with a 'caution' text instead of executing – read it to the pilot, " +
         "and call confirm_action again with the same token after the pilot confirms. " +
-        "After gear and flaps Kopilot reads the position back and calls it out itself ('Gear down, three green', 'Flaps two', or 'Gear disagree') – see 'followUp'. " +
-        "Afterwards Kopilot reads the aircraft state back ('verification': confirmed/unverified/failed). 'stateAfter' is the raw value of the checked variable – " +
+        "After gear and flaps Duopilo reads the position back and calls it out itself ('Gear down, three green', 'Flaps two', or 'Gear disagree') – see 'followUp'. " +
+        "Afterwards Duopilo reads the aircraft state back ('verification': confirmed/unverified/failed). 'stateAfter' is the raw value of the checked variable – " +
         "for selector switches the position number (e.g. 0 = ON on a 3-position ON/AUTO/OFF switch), so never read it as on/off; " +
         "'stateAfterText' names the matching option. " + Rules)]
     public static async Task<string> ConfirmAction(
@@ -110,7 +110,7 @@ public static class InputTools
     [McpServerTool(Name = "mark_action_verified", Destructive = false, Idempotent = true)]
     [Description(
         "Stores an action as verified after the pilot has seen in the cockpit that it really worked (e.g. the pushbutton light came on, the switch moved). " +
-        "Use it for actions where confirm_action reported verification 'unverified' (Kopilot could only read the switch variable). " +
+        "Use it for actions where confirm_action reported verification 'unverified' (Duopilo could only read the switch variable). " +
         "Actions with a real aircraft-state check are stored automatically. Only call this when the pilot explicitly says it worked.")]
     public static async Task<string> MarkActionVerified(
         InputService input,

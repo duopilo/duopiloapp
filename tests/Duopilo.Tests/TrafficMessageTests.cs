@@ -1,8 +1,8 @@
 using System.Buffers.Binary;
 using System.Text;
-using Kopilot.Sim;
+using Duopilo.Sim;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
 /// <summary>
 /// Absturzanalyse Testlog 0.9: BYTYPE-Antworten werden nur so weit gelesen, wie dwSize und pcbData reichen.
@@ -278,7 +278,7 @@ public sealed class TrafficMessageTests
         Assert.Equal(40u, d.EmptyMinDwSize);
         Assert.Equal(44u, d.EmptyMaxDwSize);
         Assert.Equal(T0, d.SinceUtc);
-        Assert.Equal("confirmed: 2 empty replies with dwSize 40–44 bytes instead of 368 – up to 0.9 Kopilot read past the end", d.EmptyReplyVerdict);
+        Assert.Equal("confirmed: 2 empty replies with dwSize 40–44 bytes instead of 368 – up to 0.9 Duopilo read past the end", d.EmptyReplyVerdict);
         Assert.Equal("not observed so far (1 data messages, dwSize 112 bytes)", d.ShortBlockVerdict);
     }
 
@@ -308,7 +308,7 @@ public sealed class TrafficMessageTests
         var mismatch = Parse(ByType(12, 57, TextDefine, 1, 1, Payload(texts: ["A", "B", "C", "D"]), received: 120));
         Assert.Equal("short+mismatch", TrafficMessageLog.Flags(mismatch));
 
-        var directory = Path.Combine(Path.GetTempPath(), "kopilot-tests", Guid.NewGuid().ToString("N"));
+        var directory = Path.Combine(Path.GetTempPath(), "duopilo-tests", Guid.NewGuid().ToString("N"));
         try
         {
             using (var log = new TrafficMessageLog(directory))

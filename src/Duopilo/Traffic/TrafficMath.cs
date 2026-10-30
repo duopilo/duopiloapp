@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 
-namespace Kopilot.Traffic;
+namespace Duopilo.Traffic;
 
 /// <summary>Rechnungen und Texte rund um Verkehr: Peilung, Uhrzeit-Angabe, Vertikaltrend und Callout.</summary>
 public static partial class TrafficMath

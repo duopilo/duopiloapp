@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace Kopilot.Voice;
+namespace Duopilo.Voice;
 
 public enum IntentKind
 {
@@ -102,7 +102,7 @@ public sealed record VoiceIntent(IntentKind Kind, string? ActionId = null, strin
 }
 
 /// <summary>
-/// Kopilot-Befehle nach festen Mustern (deutsch und englisch, mit Synonymen) – kein Sprachmodell.
+/// Befehle an den Kopiloten nach festen Mustern (deutsch und englisch, mit Synonymen) – kein Sprachmodell.
 /// Arbeitet auf der Form von <see cref="VoiceText.Normalize"/>. Passen mehrere verschiedene Befehle, gilt der Satz als unklar
 /// ("Say again") – ein Satz, ein Befehl.
 /// </summary>

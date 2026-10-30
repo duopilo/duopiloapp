@@ -1,7 +1,7 @@
 # Airspace and airline data
 
-Data for the Kopilot ATC. Kopilot reads it when the ATC session starts. Your own, newer copy in
-`%LOCALAPPDATA%\Kopilot\data\…` (same folder structure) takes precedence over the bundled files and survives
+Data for the Duopilo ATC. Duopilo reads it when the ATC session starts. Your own, newer copy in
+`%LOCALAPPDATA%\Duopilo\data\…` (same folder structure) takes precedence over the bundled files and survives
 every update. Then run `atc_control reload`.
 
 | Folder | Contents | Source | License |
@@ -13,7 +13,7 @@ every update. Then run `atc_control reload`.
 ## Updating
 
 VAT-Spy and OpenFlights: copy the files from the respective repository unchanged to here (or to
-`%LOCALAPPDATA%\Kopilot\data\vatspy` or `…\openflights`).
+`%LOCALAPPDATA%\Duopilo\data\vatspy` or `…\openflights`).
 
 Sectors:
 

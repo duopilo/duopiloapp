@@ -1,11 +1,11 @@
 using System.Diagnostics;
-using Kopilot.Localization;
+using Duopilo.Localization;
 
-namespace Kopilot.Hosting;
+namespace Duopilo.Hosting;
 
 /// <summary>
 /// Neustart der Tray-Instanz aus dem Dashboard (z. B. nach geänderten Einstellungen für Claude, Monitoring oder ATC).
-/// Startet eine neue Kopilot.exe mit <see cref="ReplaceSwitch"/> und beendet die laufende sauber. Die neue Instanz wartet,
+/// Startet eine neue Duopilo.exe mit <see cref="ReplaceSwitch"/> und beendet die laufende sauber. Die neue Instanz wartet,
 /// bis die alte ihren Instanz-Mutex freigibt – sonst würde sie nur das Dashboard öffnen und sich beenden.
 /// Die ATC-Sitzung kommt wie nach einem Absturz aus der Sitzungsdatei zurück.
 /// </summary>

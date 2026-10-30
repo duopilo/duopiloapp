@@ -1,20 +1,21 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
-using Kopilot.Localization;
+using Duopilo.Localization;
 using Microsoft.Extensions.Options;
 
-namespace Kopilot.Remote;
+namespace Duopilo.Remote;
 
 /// <summary>
 /// Minimaler OAuth-2.1-Zustand für genau einen Nutzer (dich):
 /// registrierte Clients (DCR), Autorisierungscodes, Access- und Refresh-Tokens.
 ///
 /// Clients und Tokens werden – Tokens nur als SHA-256-Hash – in einer JSON-Datei gespeichert,
-/// damit der Claude-Connector einen Neustart von Kopilot übersteht. Codes und offene Freigaben bleiben nur im Speicher.
+/// damit der Claude-Connector einen Neustart von Duopilo übersteht. Codes und offene Freigaben bleiben nur im Speicher.
 /// </summary>
 public sealed class OAuthStore
 {
-    public const string Scope = "kopilot";
+    /// <summary>Angebotener Scope (bis 0.9.x "kopilot"). Wird nicht geprüft – alte Anmeldungen bleiben gültig.</summary>
+    public const string Scope = "duopilo";
     private const int MaxClients = 100;
     private static readonly TimeSpan CodeLifetime = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan PendingLifetime = TimeSpan.FromMinutes(10);
@@ -31,7 +32,7 @@ public sealed class OAuthStore
     private readonly ConcurrentDictionary<string, PendingAuthorization> _pending = new();
     private readonly ConcurrentDictionary<string, AuthorizationCode> _codes = new();
 
-    public OAuthStore(IOptions<KopilotOptions> options, ILogger<OAuthStore> log, TimeProvider? time = null)
+    public OAuthStore(IOptions<DuopiloOptions> options, ILogger<OAuthStore> log, TimeProvider? time = null)
     {
         _options = options.Value.Remote;
         _log = log;

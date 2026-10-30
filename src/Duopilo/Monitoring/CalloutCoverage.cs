@@ -1,6 +1,6 @@
-using Kopilot.Aircraft;
+using Duopilo.Aircraft;
 
-namespace Kopilot.Monitoring;
+namespace Duopilo.Monitoring;
 
 /// <summary>Wie gut ein Callout mit einem Profil funktioniert.</summary>
 /// <param name="Rule">Regel-ID, z. B. "TCAS_RA".</param>

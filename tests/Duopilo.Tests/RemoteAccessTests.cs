@@ -7,7 +7,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.WebUtilities;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
 /// <summary>
 /// Prüft Zugriffsschutz und OAuth-Ablauf so, wie Claude ihn als Custom Connector durchläuft.
@@ -15,7 +15,7 @@ namespace Kopilot.Tests;
 /// </summary>
 public sealed partial class RemoteAccessTests : IAsyncLifetime
 {
-    private readonly string _stateFile = Path.Combine(Path.GetTempPath(), $"kopilot-test-{Guid.NewGuid():N}.json");
+    private readonly string _stateFile = Path.Combine(Path.GetTempPath(), $"duopilo-test-{Guid.NewGuid():N}.json");
     private TestApp _app = null!;
 
     public async Task InitializeAsync() => _app = await TestApp.StartAsync(_stateFile);
@@ -39,7 +39,7 @@ public sealed partial class RemoteAccessTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         var challenge = Challenge(response);
         Assert.Contains("Bearer", challenge);
-        Assert.Contains("resource_metadata=\"https://kopilot.test/.well-known/oauth-protected-resource\"", challenge);
+        Assert.Contains("resource_metadata=\"https://duopilo.test/.well-known/oauth-protected-resource\"", challenge);
     }
 
     [Fact]
@@ -331,7 +331,7 @@ public sealed partial class RemoteAccessTests : IAsyncLifetime
     public async Task Ohne_Passwort_ist_OAuth_aus_und_nur_Bearer_moeglich()
     {
         await _app.DisposeAsync();
-        _app = await TestApp.StartAsync(_stateFile, new() { ["Kopilot:Remote:ConsentPassword"] = "" });
+        _app = await TestApp.StartAsync(_stateFile, new() { ["Duopilo:Remote:ConsentPassword"] = "" });
 
         using var metadata = await _app.Remote().GetAsync("/.well-known/oauth-authorization-server");
         using var unauthorized = await TestApp.McpInitializeAsync(_app.Remote(), bearer: null);
@@ -381,7 +381,7 @@ public sealed partial class RemoteAccessTests : IAsyncLifetime
             ["code_challenge"] = challenge,
             ["code_challenge_method"] = "S256",
             ["state"] = state,
-            ["scope"] = "kopilot offline_access",
+            ["scope"] = "duopilo offline_access",
             ["resource"] = TestApp.ResourceUrl,
         });
 

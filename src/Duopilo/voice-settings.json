@@ -1,12 +1,13 @@
 {
-  // Kopilot – Sprachschleife (Mikrofon → Whisper → Kopilot-Befehle / ATC → Sprachausgabe), komplett lokal, ohne Sprachmodell.
+  // Duopilo – Sprachschleife (Mikrofon → Whisper → Befehle an den Kopiloten / ATC → Sprachausgabe), komplett lokal, ohne Sprachmodell.
   // First Officer (Name und Stimme pro Flug) und optionaler Smalltalk über ein Sprachmodell: im Dashboard unter
   // Einstellungen → First Officer und Smalltalk (appsettings.Local.json), nicht hier.
-  // ACHTUNG: Diese Datei neben der Kopilot.exe ist nur die VORLAGE und wird von update.cmd überschrieben.
-  // Kopilot kopiert sie beim ersten Start nach %LOCALAPPDATA%\Kopilot\voice-settings.json – nur DIESE Datei gilt.
+  // ACHTUNG: Diese Datei neben der Duopilo.exe ist nur die VORLAGE und wird von update.cmd überschrieben.
+  // Duopilo kopiert sie beim ersten Start nach %LOCALAPPDATA%\Duopilo\voice-settings.json – nur DIESE Datei gilt.
+  // (Bis 0.9.x hieß der Ordner %LOCALAPPDATA%\Kopilot – Duopilo übernimmt ihn beim ersten Start mitsamt dieser Datei.)
   // Einfacher: im Dashboard unter Ansagen → Stimme die Sprachschleife einschalten und das Mikrofon wählen (gilt sofort).
-  // Andere Änderungen von Hand gelten nach einem Neustart von Kopilot.
-  // Status zur Laufzeit: kopilot_status (Abschnitt voiceLoop) oder http://127.0.0.1:5155/voice
+  // Andere Änderungen von Hand gelten nach einem Neustart von Duopilo.
+  // Status zur Laufzeit: duopilo_status (Abschnitt voiceLoop) oder http://127.0.0.1:5155/voice
   // Alles hier gilt nur mit "enabled": true – sonst verhalten sich die Callouts wie ohne Sprachschleife.
 
   // Mikrofon dauerhaft offen, Befehle per Sprache. Standard: aus.
@@ -14,8 +15,8 @@
 
   "microphone": {
     // Teil des Gerätenamens, z. B. "Headset", "Quest" oder "Index". Leer = Windows-Standardmikrofon.
-    // Die vorhandenen Geräte stehen beim Start im Log ("Aufnahmegeräte: …"), in kopilot_status und im Dashboard.
-    // Fehlt das Gerät (VR-Brille aus), nimmt Kopilot das Standardgerät und wechselt, sobald es auftaucht.
+    // Die vorhandenen Geräte stehen beim Start im Log ("Aufnahmegeräte: …"), in duopilo_status und im Dashboard.
+    // Fehlt das Gerät (VR-Brille aus), nimmt Duopilo das Standardgerät und wechselt, sobald es auftaucht.
     "device": "",
     // VAD-Empfindlichkeit (Silero, 0,1–0,95): kleiner = empfindlicher, größer = nur deutliche Sprache.
     "threshold": 0.5,
@@ -34,7 +35,7 @@
   "recognition": {
     // Whisper-Modell: tiny, base, small – auch quantisiert (-q5_1, -q8_0). base-q5_1 ≈ 60 MB, small-q5_1 ≈ 190 MB.
     "model": "base-q5_1",
-    // Eigene Modelldatei (ggml-*.bin). Leer = wird nach %LOCALAPPDATA%\Kopilot\models geladen.
+    // Eigene Modelldatei (ggml-*.bin). Leer = wird nach %LOCALAPPDATA%\Duopilo\models geladen.
     "modelPath": "",
     // "cpu" oder "gpu" (CUDA, sonst Vulkan, sonst CPU). Die GPU braucht MSFS – CPU ist meist die bessere Wahl.
     "device": "cpu",
@@ -48,7 +49,7 @@
   },
 
   "voices": {
-    // Feste Kokoro-Stimme für Kopilot (Callouts und Antworten), z. B. "bm_george". Leer = Stimme des First Officers
+    // Feste Kokoro-Stimme des Kopiloten (Callouts und Antworten), z. B. "bm_george". Leer = Stimme des First Officers
     // (pro Flug, passend zu seinem Namen), ist er aus: Stimme aus dem Dashboard. Eine feste Stimme bestimmt das Geschlecht des Namens.
     "kopilot": "",
     // Lautstärke (Faktor auf die Lautstärke im Dashboard). Die Stimmen der ATC-Stationen vergibt das ATC-Modul (atc-templates.json).
@@ -63,7 +64,8 @@
   },
 
   "commands": {
-    // Anrede, z. B. "Kopilot, Gear up". Optional – außer requireWakeWord ist true.
+    // Anrede, z. B. "Kopilot, Gear up". Optional – außer requireWakeWord ist true. „Kopilot“ ist das feste Ansprachewort;
+    // „Duopilo, …“ zählt zusätzlich, wenn Whisper es eindeutig so abschreibt.
     "wakeWords": [ "kopilot", "copilot" ],
     // Befehle nur mit Anrede – hilft, wenn im Raum geredet wird. "Confirm" nach dem Readback braucht keine Anrede.
     "requireWakeWord": false,

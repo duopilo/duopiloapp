@@ -2,7 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace Kopilot.Voice;
+namespace Duopilo.Voice;
 
 /// <summary>
 /// Bringt die Abschrift von Whisper in eine feste Form, gegen die Router und Befehle prüfen:
@@ -46,6 +46,9 @@ public static partial class VoiceText
     // Mehrwortige Begriffe → ein Wort (vor den Zahlen)
     private static readonly (Regex Pattern, string Replacement)[] PhraseFolds =
     [
+        // „Duopilo“ (Produktname) zählt wie das feste Ansprachewort „Kopilot“ – aber nur, wenn Whisper es eindeutig so
+        // abschreibt ("Duopilo", "Duo Pilo", "Duopilot"). Ähnliches wie "do a pilot" oder "dual pilot" bleibt, was es ist.
+        (Fold(@"duo ?pilot?"), "kopilot"),
         (Fold(@"co ?pilot|ko ?pilot|kopi lot|co pi lot"), "kopilot"),
         (Fold(@"speed ?brakes?|speed ?breaks?"), "speedbrake"),
         (Fold(@"seat ?belts?(?: signs?)?|seatbelts? signs?"), "seatbelts"),

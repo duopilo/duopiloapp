@@ -1,10 +1,10 @@
-using Kopilot.Aircraft;
-using Kopilot.Input;
-using Kopilot.Monitoring;
+using Duopilo.Aircraft;
+using Duopilo.Input;
+using Duopilo.Monitoring;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
 /// <summary>
 /// Sicherheitssperren (v0.9.1): Sperrliste, Plausibilitätssperren je Phase, Rückfragen mit Warnhinweis,
@@ -72,7 +72,7 @@ public sealed partial class InputTests
         return copy;
     }
 
-    // ------------------------------------------------------------------ 2. Nie über Kopilot: Triebwerk, Treibstoff, Feuer, Hydraulik, IDG
+    // ------------------------------------------------------------------ 2. Nie über Duopilo: Triebwerk, Treibstoff, Feuer, Hydraulik, IDG
 
     [Theory]
     [InlineData("L:A32NX_OVHD_HYD_ENG_1_PUMP_PB_IS_AUTO", false)]
@@ -590,9 +590,9 @@ public sealed partial class InputTests
     {
         var time = new ManualTime();
         var backend = new FakeBackend(time) { Profile = A339(), Current = Flight(alt: 30000) };
-        var options = Options.Create(new KopilotOptions
+        var options = Options.Create(new DuopiloOptions
         {
-            DataDirectory = Path.Combine(Path.GetTempPath(), "kopilot-tests", Guid.NewGuid().ToString("N")),
+            DataDirectory = Path.Combine(Path.GetTempPath(), "duopilo-tests", Guid.NewGuid().ToString("N")),
             Input = new InputOptions { Enabled = true },
         });
         var context = new FixedContext(10000, new MsaReading(5000, "MORA", null));
@@ -609,9 +609,9 @@ public sealed partial class InputTests
         var time = new ManualTime();
         var backend = new FakeBackend(time) { Profile = profile, Current = state };
         backend.State["SIM ON GROUND"] = state.OnGround == true ? 1 : 0;
-        var options = Options.Create(new KopilotOptions
+        var options = Options.Create(new DuopiloOptions
         {
-            DataDirectory = Path.Combine(Path.GetTempPath(), "kopilot-tests", Guid.NewGuid().ToString("N")),
+            DataDirectory = Path.Combine(Path.GetTempPath(), "duopilo-tests", Guid.NewGuid().ToString("N")),
             Input = new InputOptions { Enabled = true },
         });
         var bus = new AlertBus();
@@ -814,27 +814,27 @@ public sealed partial class InputTests
     [Fact]
     public void MSA_aus_der_MORA_des_aktuellen_Abschnitts()
     {
-        var ofp = new Kopilot.FlightPlan.Ofp
+        var ofp = new Duopilo.FlightPlan.Ofp
         {
-            Origin = new Kopilot.FlightPlan.OfpAirport("EDDF", null, null, 50.03, 8.57, 364, 5000, null, null),
-            Destination = new Kopilot.FlightPlan.OfpAirport("EDDS", null, null, 48.69, 9.22, 1276, null, 7000, null),
+            Origin = new Duopilo.FlightPlan.OfpAirport("EDDF", null, null, 50.03, 8.57, 364, 5000, null, null),
+            Destination = new Duopilo.FlightPlan.OfpAirport("EDDS", null, null, 48.69, 9.22, 1276, null, 7000, null),
             Fixes =
             [
-                new Kopilot.FlightPlan.OfpFix { Ident = "AAA", Lat = 49.8, Lon = 8.7, MoraFt = 4300 },
-                new Kopilot.FlightPlan.OfpFix { Ident = "BBB", Lat = 49.4, Lon = 8.9, MoraFt = 5900 },
-                new Kopilot.FlightPlan.OfpFix { Ident = "EDDS", Lat = 48.69, Lon = 9.22, MoraFt = 4100 },
+                new Duopilo.FlightPlan.OfpFix { Ident = "AAA", Lat = 49.8, Lon = 8.7, MoraFt = 4300 },
+                new Duopilo.FlightPlan.OfpFix { Ident = "BBB", Lat = 49.4, Lon = 8.9, MoraFt = 5900 },
+                new Duopilo.FlightPlan.OfpFix { Ident = "EDDS", Lat = 48.69, Lon = 9.22, MoraFt = 4100 },
             ],
         };
         var points = ofp.RoutePoints();
-        var route = Kopilot.FlightPlan.RouteTracker.Locate(points, 49.6, 8.8);
+        var route = Duopilo.FlightPlan.RouteTracker.Locate(points, 49.6, 8.8);
 
         var msa = MsaCalculator.FromOfp(ofp, points, route);
         Assert.Equal(5900, msa.Ft);
         Assert.Contains("AAA", msa.Source);
 
         Assert.Null(MsaCalculator.FromOfp(ofp, points, null).Ft);
-        Assert.Equal(5900, Kopilot.FlightPlan.OfpParser.Mora(59));
-        Assert.Equal(5900, Kopilot.FlightPlan.OfpParser.Mora(5900));
-        Assert.Null(Kopilot.FlightPlan.OfpParser.Mora(0));
+        Assert.Equal(5900, Duopilo.FlightPlan.OfpParser.Mora(59));
+        Assert.Equal(5900, Duopilo.FlightPlan.OfpParser.Mora(5900));
+        Assert.Null(Duopilo.FlightPlan.OfpParser.Mora(0));
     }
 }

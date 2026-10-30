@@ -1,6 +1,6 @@
-using Kopilot.FlightPlan;
+using Duopilo.FlightPlan;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
 /// <summary>ETA nach SimBrief-Navlog (geplante Winde) statt nur mit der aktuellen Groundspeed.</summary>
 public sealed class EtaTests

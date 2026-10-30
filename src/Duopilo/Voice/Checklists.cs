@@ -1,13 +1,13 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 
-namespace Kopilot.Voice;
+namespace Duopilo.Voice;
 
 /// <summary>Was ein Checklistenpunkt prüfen kann: der Zustand im Sim und die Antwort des Piloten (normalisiert).</summary>
 public sealed record ChecklistContext(VoiceFlightState State, string Answer);
 
 /// <summary>
-/// Ein Punkt der Checkliste: Challenge (liest Kopilot), erwartete Antwort (zur Anzeige) und – wo möglich – der Abgleich mit dem Sim.
+/// Ein Punkt der Checkliste: Challenge (liest der Kopilot), erwartete Antwort (zur Anzeige) und – wo möglich – der Abgleich mit dem Sim.
 /// <see cref="Check"/> liefert die Abweichung zum Ansagen ("Beacon off") oder null (passt oder nicht prüfbar).
 /// </summary>
 public sealed record ChecklistItem(string Challenge, string Response, Func<ChecklistContext, string?>? Check = null)
@@ -22,7 +22,7 @@ public sealed record ChecklistDefinition(string Id, string Title, IReadOnlyList<
 
 /// <summary>
 /// Normal Checklist nach dem Muster der Airbus-Normal-Checklist (A320/A330): Before Start, After Start, Before Takeoff, Approach,
-/// Landing, After Landing, Parking. Challenge auf Englisch (SOP), Abgleich mit dem Sim, wo Kopilot den Zustand lesen kann.
+/// Landing, After Landing, Parking. Challenge auf Englisch (SOP), Abgleich mit dem Sim, wo Duopilo den Zustand lesen kann.
 /// </summary>
 public static partial class AirbusChecklists
 {
@@ -116,7 +116,7 @@ public static partial class AirbusChecklists
 
         var kg = said < 300 ? said * 1000 : said;
         return Math.Abs(kg - actual) > Math.Max(500, actual * 0.05)
-            ? $"Fuel on board {Kopilot.Monitoring.FuelCheckText.Amount(actual)}"
+            ? $"Fuel on board {Duopilo.Monitoring.FuelCheckText.Amount(actual)}"
             : null;
     }
 
@@ -280,10 +280,10 @@ public static partial class AirbusChecklists
 }
 
 /// <summary>
-/// Challenge-Response: Kopilot liest die Challenge, wartet auf die Antwort des Piloten, gleicht sie – wo möglich – mit dem Sim ab
+/// Challenge-Response: Der Kopilot liest die Challenge, wartet auf die Antwort des Piloten, gleicht sie – wo möglich – mit dem Sim ab
 /// und meldet Abweichungen. Bei einer Abweichung bleibt der Punkt offen: Antwortet der Pilot nach dem Korrigieren erneut, geht es
 /// weiter; weicht es beim zweiten Mal noch ab, wird der Punkt als offen vermerkt. "Skip" überspringt (offen), "Say again"
-/// wiederholt, "Stop checklist" bricht ab. Ohne Antwort wiederholt Kopilot die Challenge einmal.
+/// wiederholt, "Stop checklist" bricht ab. Ohne Antwort wiederholt der Kopilot die Challenge einmal.
 /// Nicht threadsicher – die Sprachschleife ruft alles nacheinander auf.
 /// </summary>
 public sealed class ChecklistRunner(TimeProvider? time = null)

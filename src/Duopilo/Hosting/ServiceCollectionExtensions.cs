@@ -1,25 +1,25 @@
-using Kopilot.Aircraft;
-using Kopilot.Atc;
-using Kopilot.Ecam;
-using Kopilot.FlightPlan;
-using Kopilot.Input;
-using Kopilot.Monitoring;
-using Kopilot.Sim;
-using Kopilot.Traffic;
+using Duopilo.Aircraft;
+using Duopilo.Atc;
+using Duopilo.Ecam;
+using Duopilo.FlightPlan;
+using Duopilo.Input;
+using Duopilo.Monitoring;
+using Duopilo.Sim;
+using Duopilo.Traffic;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 
-namespace Kopilot.Hosting;
+namespace Duopilo.Hosting;
 
 public static class ServiceCollectionExtensions
 {
     /// <summary>Gemeinsame Dienste für stdio- und HTTP-Modus: Profile, SimConnect, ECAM, SimBrief, Monitoring und Eingabe.</summary>
-    public static IServiceCollection AddKopilotCore(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddDuopiloCore(this IServiceCollection services, IConfiguration configuration)
     {
-        services.Configure<KopilotOptions>(configuration.GetSection(KopilotOptions.Section));
+        services.Configure<DuopiloOptions>(configuration.GetSection(DuopiloOptions.Section));
 
-        // Sprache für Dashboard, Tool-Meldungen und Tray (Kopilot:Language) – so früh wie möglich; Logs bleiben Englisch
-        Kopilot.Localization.Loc.Configure(configuration);
+        // Sprache für Dashboard, Tool-Meldungen und Tray (Duopilo:Language) – so früh wie möglich; Logs bleiben Englisch
+        Duopilo.Localization.Loc.Configure(configuration);
         services.AddSingleton<ProfileStore>();
         services.AddSingleton<SimConnectClient>();
         services.AddHostedService(sp => sp.GetRequiredService<SimConnectClient>());
@@ -31,7 +31,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<TrafficService>();
         services.AddHostedService(sp => sp.GetRequiredService<TrafficService>());
 
-        services.AddSingleton(sp => new AlertBus(sp.GetRequiredService<IOptions<KopilotOptions>>().Value.Monitoring.HistorySize));
+        services.AddSingleton(sp => new AlertBus(sp.GetRequiredService<IOptions<DuopiloOptions>>().Value.Monitoring.HistorySize));
         services.AddSingleton<SnapshotFactory>();
         services.AddSingleton<ConfigCalloutClaims>();
         services.AddSingleton(new FmaLog());
@@ -49,8 +49,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<AtcService>();
         services.AddHostedService(sp => sp.GetRequiredService<AtcService>());
 
-        // Zustand der Sprachschleife für kopilot_status – die Tray-Instanz ersetzt den Platzhalter (AddKopilotVoice)
-        services.TryAddSingleton<Kopilot.Voice.IVoiceStatusSource, Kopilot.Voice.NoVoiceLoop>();
+        // Zustand der Sprachschleife für duopilo_status – die Tray-Instanz ersetzt den Platzhalter (AddDuopiloVoice)
+        services.TryAddSingleton<Duopilo.Voice.IVoiceStatusSource, Duopilo.Voice.NoVoiceLoop>();
         return services;
     }
 }

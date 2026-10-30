@@ -1,8 +1,8 @@
 using System.Runtime.InteropServices;
-using Kopilot.Localization;
+using Duopilo.Localization;
 using Microsoft.Extensions.Options;
 
-namespace Kopilot.Sim;
+namespace Duopilo.Sim;
 
 /// <summary>
 /// Eigene SimConnect-Verbindung nur für die Verkehrsabfrage (RequestDataOnSimObjectType), direkt über die native
@@ -40,7 +40,7 @@ public sealed class TrafficConnection : IDisposable
     private static readonly TimeSpan SummaryInterval = TimeSpan.FromMinutes(30);
 
     private readonly SimConnectClient _sim;
-    private readonly KopilotOptions _options;
+    private readonly DuopiloOptions _options;
     private readonly ILogger<TrafficConnection> _log;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly AutoResetEvent _event = new(false);
@@ -60,7 +60,7 @@ public sealed class TrafficConnection : IDisposable
     private DateTimeOffset _lastSummaryUtc = DateTimeOffset.UtcNow;
     private string? _unavailable;
 
-    public TrafficConnection(SimConnectClient sim, IOptions<KopilotOptions> options, ILogger<TrafficConnection> log)
+    public TrafficConnection(SimConnectClient sim, IOptions<DuopiloOptions> options, ILogger<TrafficConnection> log)
     {
         _sim = sim;
         _options = options.Value;

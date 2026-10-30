@@ -1,6 +1,6 @@
-using Kopilot.Localization;
+using Duopilo.Localization;
 
-namespace Kopilot.Monitoring;
+namespace Duopilo.Monitoring;
 
 /// <summary>
 /// Autoflug und Anflug (Testlog 0.9, Anflug KLAX): TCAS RA und "Clear of conflict", "Autothrust off", FMA-Moduswechsel

@@ -1,7 +1,7 @@
-using Kopilot.Input;
-using Kopilot.Voice;
+using Duopilo.Input;
+using Duopilo.Voice;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
 /// <summary>
 /// Checklisten als Challenge-Response nach der Airbus Normal Checklist (v0.9.2, Punkt 6): Kopilot liest die Challenge, wartet auf

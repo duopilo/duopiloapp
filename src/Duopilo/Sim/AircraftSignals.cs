@@ -1,7 +1,7 @@
 using System.Globalization;
-using Kopilot.Aircraft;
+using Duopilo.Aircraft;
 
-namespace Kopilot.Sim;
+namespace Duopilo.Sim;
 
 /// <summary>
 /// Semantische Sicht auf das Flugzeug: nimmt die Werte aus den Profil-Bindings (z. B. FBW-L:-Variablen)
@@ -330,7 +330,7 @@ public sealed class AircraftSignals(SimConnectClient sim)
         Raw(BindingKeys.FmsToWptDistance) is { } d && d > 0 && Raw(BindingKeys.FmsToWptBearing) is { } b ? (d, b) : null;
 
     /// <summary>Eingabe für die Zuordnung des FMS-Wegpunkts zum SimBrief-Plan, null ohne FMS-Daten.</summary>
-    public Kopilot.FlightPlan.FmsWaypointInput? FmsWaypoint(double lat, double lon)
+    public Duopilo.FlightPlan.FmsWaypointInput? FmsWaypoint(double lat, double lon)
     {
         if (FmsToWaypoint is not { } fms)
         {
@@ -343,7 +343,7 @@ public sealed class AircraftSignals(SimConnectClient sim)
             variation = ((t - m) % 360 + 540) % 360 - 180;
         }
 
-        return new Kopilot.FlightPlan.FmsWaypointInput(lat, lon, fms.DistanceNm, fms.BearingDeg, variation);
+        return new Duopilo.FlightPlan.FmsWaypointInput(lat, lon, fms.DistanceNm, fms.BearingDeg, variation);
     }
 
     // ------------------------------------------------------------------ ECAM

@@ -3,17 +3,17 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using Kopilot.Atc;
-using Kopilot.Input;
-using Kopilot.Localization;
-using Kopilot.Monitoring;
-using Kopilot.Smalltalk;
-using Kopilot.Speech;
-using Kopilot.Voice;
+using Duopilo.Atc;
+using Duopilo.Input;
+using Duopilo.Localization;
+using Duopilo.Monitoring;
+using Duopilo.Smalltalk;
+using Duopilo.Speech;
+using Duopilo.Voice;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
 /// <summary>
 /// Smalltalk und First Officer (Prompt N): Routing Befehl gegen Smalltalk, Vorrang der Callouts, Name und Stimme pro Flug,
@@ -442,7 +442,7 @@ public sealed class SmalltalkTests
     [Fact]
     public void Gleicher_Flug_gleicher_First_Officer_neuer_Plan_neuer()
     {
-        var store = new FirstOfficerStore(Path.Combine(Path.GetTempPath(), "kopilot-tests", Guid.NewGuid().ToString("N"), FirstOfficerStore.FileName));
+        var store = new FirstOfficerStore(Path.Combine(Path.GetTempPath(), "duopilo-tests", Guid.NewGuid().ToString("N"), FirstOfficerStore.FileName));
         var time = new ManualTime(T0);
         var roster = new FirstOfficerRoster(store, time, new Random(5));
         var config = new FirstOfficerConfig();
@@ -664,7 +664,7 @@ public sealed class SmalltalkTests
 
     private static string TempDirectory()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "kopilot-tests", Guid.NewGuid().ToString("N"));
+        var dir = Path.Combine(Path.GetTempPath(), "duopilo-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         return dir;
     }
@@ -730,7 +730,7 @@ public sealed class SmalltalkTests
         var data = TempDirectory();
         var handler = new BytesHandler(buffer.ToArray());
         var engine = new PiperSpeechEngine(
-            Options.Create(new KopilotOptions { DataDirectory = data }),
+            Options.Create(new DuopiloOptions { DataDirectory = data }),
             NullLogger<PiperSpeechEngine>.Instance,
             handler);
         var voice = PiperSpeechEngine.Catalog.First(v => v.Gender == VoiceGender.Male);
@@ -772,7 +772,7 @@ public sealed class SmalltalkTests
         options ??= new SmalltalkOptions { Provider = "ollama", Url = "http://localhost:11434", Model = "llama3.2", RequestsPerMinute = 6 };
         var model = new FakeModel();
         var service = new SmalltalkService(
-            Options.Create(new KopilotOptions { Smalltalk = options }),
+            Options.Create(new DuopiloOptions { Smalltalk = options }),
             NullLogger<SmalltalkService>.Instance,
             model,
             new ManualTime(T0),

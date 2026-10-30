@@ -1,8 +1,8 @@
 using System.Buffers.Binary;
 using System.Text;
-using Kopilot.Localization;
+using Duopilo.Localization;
 
-namespace Kopilot.Sim;
+namespace Duopilo.Sim;
 
 /// <summary>Data Definition der Verkehrsabfrage: nur Zahlen (Hintergrundscan) oder Zahlen plus Texte (get_traffic).</summary>
 public sealed record TrafficLayout(uint DefineId, bool WithText)

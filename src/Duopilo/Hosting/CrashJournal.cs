@@ -1,7 +1,7 @@
 using System.IO.MemoryMappedFiles;
 using System.Text;
 
-namespace Kopilot.Hosting;
+namespace Duopilo.Hosting;
 
 /// <summary>Was das Journal über einen nicht sauber beendeten Lauf weiß.</summary>
 /// <param name="Pid">Prozess-ID des alten Laufs.</param>
@@ -19,10 +19,10 @@ public sealed record CrashJournalRun(
     IReadOnlyList<(DateTimeOffset TimeUtc, string Text)> Entries);
 
 /// <summary>
-/// Kleines Journal als speicherabgebildete Datei (logs\journal-*.bin): Was Kopilot zuletzt getan hat, landet sofort in der
+/// Kleines Journal als speicherabgebildete Datei (logs\journal-*.bin): Was Duopilo zuletzt getan hat, landet sofort in der
 /// Datei – auch wenn der Prozess hart abstürzt (AccessViolation in SimConnect lässt sich in .NET nicht abfangen, und
 /// die Logzeilen der letzten Millisekunden gehen verloren). Windows schreibt die Seiten auch nach dem Prozessende weg.
-/// Beim nächsten Start sieht Kopilot am Kopf "läuft noch", dass der letzte Lauf nicht sauber endete, und gibt die
+/// Beim nächsten Start sieht Duopilo am Kopf "läuft noch", dass der letzte Lauf nicht sauber endete, und gibt die
 /// letzten Einträge ins Log. Threadsicher; Einträge sind kurz und kosten nur einen Speicherzugriff.
 /// </summary>
 public sealed class CrashJournal : IDisposable

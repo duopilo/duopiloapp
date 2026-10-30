@@ -1,7 +1,7 @@
-using Kopilot.Atc;
-using Kopilot.FlightPlan;
+using Duopilo.Atc;
+using Duopilo.FlightPlan;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
 /// <summary>
 /// Anruf an eine falsche Station am Boden (Testflug 30.10.: in Düsseldorf wurde "Frankfurt Tower" angenommen).

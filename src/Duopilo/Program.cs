@@ -1,54 +1,58 @@
-using Kopilot;
-using Kopilot.Desktop;
-using Kopilot.Hosting;
-using Kopilot.Localization;
-using Kopilot.Remote;
+using Duopilo;
+using Duopilo.Desktop;
+using Duopilo.Hosting;
+using Duopilo.Localization;
+using Duopilo.Remote;
 using Microsoft.Extensions.Options;
 
-// Kopilot – MCP-Server, der Daten aus Microsoft Flight Simulator 2024 an Claude weitergibt.
+// Duopilo (bis 0.9.x „Kopilot“) – MCP-Server, der Daten aus Microsoft Flight Simulator 2024 an Claude weitergibt.
 //
-//   Kopilot.exe                    → HTTP-Modus mit Tray-Symbol und Dashboard (http://127.0.0.1:5155/), MCP unter /mcp
-//   Kopilot.exe --stdio            → MCP über stdin/stdout (Claude Desktop startet den Prozess selbst)
-//   Kopilot.exe --console          → zusätzlich ein Konsolenfenster mit dem Log (Fehlersuche)
-//   Kopilot.exe --no-tray          → ohne Tray-Symbol
-//   Kopilot.exe --generate-secret  → zufälliges Geheimnis für BearerToken / ConsentPassword ausgeben
+//   Duopilo.exe                    → HTTP-Modus mit Tray-Symbol und Dashboard (http://127.0.0.1:5155/), MCP unter /mcp
+//   Duopilo.exe --stdio            → MCP über stdin/stdout (Claude Desktop startet den Prozess selbst)
+//   Duopilo.exe --console          → zusätzlich ein Konsolenfenster mit dem Log (Fehlersuche)
+//   Duopilo.exe --no-tray          → ohne Tray-Symbol
+//   Duopilo.exe --generate-secret  → zufälliges Geheimnis für BearerToken / ConsentPassword ausgeben
 //
-// Sprachschleife (Mikrofon, Whisper, Kopilot-Befehle) nur im HTTP-Modus: %LOCALAPPDATA%\Kopilot\voice-settings.json
+// Sprachschleife (Mikrofon, Whisper, Duopilo-Befehle) nur im HTTP-Modus: %LOCALAPPDATA%\Duopilo\voice-settings.json
 // bzw. im Dashboard unter Ansagen → Stimme. Nach einem Absturz startet Windows die Tray-Instanz mit --restarted neu.
 //
-// Ohne --stdio/--http entscheidet Kopilot:Transport in appsettings(.Local).json.
+// Ohne --stdio/--http entscheidet Duopilo:Transport in appsettings(.Local).json.
+//
+// Alter Name: Der Datenordner %LOCALAPPDATA%\Kopilot wird beim ersten Start übernommen, der Abschnitt "Kopilot" und
+// Umgebungsvariablen Kopilot__… werden weiter gelesen (Hosting/AppNames.cs).
 
 static bool Has(string[] args, string flag) => args.Any(a => string.Equals(a, flag, StringComparison.OrdinalIgnoreCase));
 
 if (Has(args, "--generate-secret"))
 {
-    // Kopilot ist eine Windows-Anwendung ohne eigene Konsole – an die aufrufende Konsole anhängen.
+    // Duopilo ist eine Windows-Anwendung ohne eigene Konsole – an die aufrufende Konsole anhängen.
     NativeConsole.AttachToParent();
     Console.WriteLine();
     Console.WriteLine(Secrets.NewToken());
     return;
 }
 
-var transport = KopilotConfiguration.ResolveTransport(args, AppContext.BaseDirectory);
+var transport = DuopiloConfiguration.ResolveTransport(args, AppContext.BaseDirectory);
 
-if (transport == KopilotTransport.Stdio)
+if (transport == DuopiloTransport.Stdio)
 {
     var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
     {
-        Args = KopilotConfiguration.FilterSwitches(args),
+        Args = DuopiloConfiguration.FilterSwitches(args),
         ContentRootPath = AppContext.BaseDirectory,
     });
-    KopilotConfiguration.AddLocalSettings(builder.Configuration, AppContext.BaseDirectory, KopilotConfiguration.FilterSwitches(args));
+    DuopiloConfiguration.AddLocalSettings(builder.Configuration, AppContext.BaseDirectory, DuopiloConfiguration.FilterSwitches(args));
 
     // Im stdio-Modus gehört stdout exklusiv dem MCP-Protokoll – alle Logs gehen nach stderr und in die Logdatei.
     builder.Logging.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
     AddFileLog(builder.Logging, builder.Configuration, builder.Services, "stdio");
     CrashReporter.InstallHandlers(LogDirectory(builder.Configuration), "stdio");
 
-    builder.Services.AddKopilotCore(builder.Configuration);
+    builder.Services.AddDuopiloCore(builder.Configuration);
+    builder.Services.AddHostedService<LegacyNotice>();
 
     // Eigene ATC-Sitzungsdatei, damit sich stdio- und Tray-Instanz nicht gegenseitig überschreiben
-    builder.Services.PostConfigure<KopilotOptions>(o =>
+    builder.Services.PostConfigure<DuopiloOptions>(o =>
     {
         if (o.Atc.SessionFile == AtcOptions.DefaultSessionFile)
         {
@@ -87,14 +91,22 @@ else
     CrashReporter.InstallHandlers(logDirectory, "http");
     HttpHost.AddServices(builder);
 
-    var url = builder.Configuration.GetSection(KopilotOptions.Section).Get<KopilotOptions>()?.HttpUrl ?? new KopilotOptions().HttpUrl;
+    var url = builder.Configuration.GetSection(DuopiloOptions.Section).Get<DuopiloOptions>()?.HttpUrl ?? new DuopiloOptions().HttpUrl;
     var dashboardUrl = url.TrimEnd('/') + "/";
 
     // Nur eine Instanz im HTTP-Modus: Ein zweiter Start öffnet einfach das Dashboard der laufenden Instanz.
     // Ausnahme: Neustart aus dem Dashboard (--replace) – dann auf das Ende der alten Instanz warten.
     var replacing = Has(args, AppRestart.ReplaceSwitch);
-    using var instance = new Mutex(initiallyOwned: true, $"Local\\Kopilot-{new Uri(url).Port}", out var firstInstance);
+    var port = new Uri(url).Port;
+    using var instance = new Mutex(initiallyOwned: true, $"Local\\{AppNames.Product}-{port}", out var firstInstance);
     if (!firstInstance && !(replacing && AppRestart.WaitForPrevious(instance, AppRestart.WaitForPreviousTimeout)))
+    {
+        OpenBrowser(dashboardUrl);
+        return;
+    }
+
+    // Läuft noch ein altes Kopilot (bis 0.9.x) auf demselben Port, gehört der Port ihm – wie bei einer zweiten Instanz
+    if (LegacyInstance.IsRunning(port))
     {
         OpenBrowser(dashboardUrl);
         return;
@@ -104,19 +116,19 @@ else
     builder.Services.AddSingleton(sp => new AppRestart(args, sp.GetRequiredService<IHostApplicationLifetime>(), sp.GetRequiredService<ILogger<AppRestart>>()));
 
     // Sprachausgabe nur in dieser (Tray-)Instanz – die stdio-Instanz von Claude Desktop würde sonst doppelt sprechen
-    builder.Services.AddSingleton<Kopilot.Speech.KokoroSpeechEngine>();
+    builder.Services.AddSingleton<Duopilo.Speech.KokoroSpeechEngine>();
 
     // Piper: zweite lokale Stimme für Smalltalk in Sprachen ohne Kokoro-Stimme (Deutsch) – lädt erst bei Bedarf
-    builder.Services.AddSingleton<Kopilot.Speech.PiperSpeechEngine>();
-    builder.Services.AddSingleton<Kopilot.Speech.ITtsEngine>(sp => sp.GetRequiredService<Kopilot.Speech.PiperSpeechEngine>());
-    builder.Services.AddSingleton(sp => new Kopilot.Speech.TtsEngineRegistry(sp.GetServices<Kopilot.Speech.ITtsEngine>()));
-    builder.Services.AddSingleton<Kopilot.Speech.CalloutSpeaker>();
-    builder.Services.AddSingleton<Kopilot.Speech.ISpeechOutput>(sp => sp.GetRequiredService<Kopilot.Speech.CalloutSpeaker>());
-    builder.Services.AddSingleton<Kopilot.Atc.IAtcRadio>(sp => sp.GetRequiredService<Kopilot.Speech.CalloutSpeaker>());
-    builder.Services.AddHostedService(sp => sp.GetRequiredService<Kopilot.Speech.CalloutSpeaker>());
+    builder.Services.AddSingleton<Duopilo.Speech.PiperSpeechEngine>();
+    builder.Services.AddSingleton<Duopilo.Speech.ITtsEngine>(sp => sp.GetRequiredService<Duopilo.Speech.PiperSpeechEngine>());
+    builder.Services.AddSingleton(sp => new Duopilo.Speech.TtsEngineRegistry(sp.GetServices<Duopilo.Speech.ITtsEngine>()));
+    builder.Services.AddSingleton<Duopilo.Speech.CalloutSpeaker>();
+    builder.Services.AddSingleton<Duopilo.Speech.ISpeechOutput>(sp => sp.GetRequiredService<Duopilo.Speech.CalloutSpeaker>());
+    builder.Services.AddSingleton<Duopilo.Atc.IAtcRadio>(sp => sp.GetRequiredService<Duopilo.Speech.CalloutSpeaker>());
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<Duopilo.Speech.CalloutSpeaker>());
 
-    // Sprachschleife (Mikrofon → Whisper → Kopilot/ATC → Sprachausgabe), aus voice-settings.json – standardmäßig aus
-    Kopilot.Voice.VoiceServiceCollectionExtensions.AddKopilotVoice(builder.Services);
+    // Sprachschleife (Mikrofon → Whisper → Duopilo/ATC → Sprachausgabe), aus voice-settings.json – standardmäßig aus
+    Duopilo.Voice.VoiceServiceCollectionExtensions.AddDuopiloVoice(builder.Services);
 
     if (OperatingSystem.IsWindows() && !Has(args, "--no-tray"))
     {
@@ -125,17 +137,19 @@ else
         builder.Services.AddHostedService<TrayService>();
     }
 
+    builder.Services.AddHostedService<LegacyNotice>();
+
     var app = builder.Build();
     HttpHost.Configure(app);
 
-    if (!KopilotConfiguration.IsLoopbackUrl(url, out var reason))
+    if (!DuopiloConfiguration.IsLoopbackUrl(url, out var reason))
     {
         app.Logger.LogCritical("{Reason}", reason);
         Environment.ExitCode = 1;
         return;
     }
 
-    app.Logger.LogInformation(Loc.Log("log.program.httpStarted"), typeof(KopilotOptions).Assembly.GetName().Version?.ToString(3), dashboardUrl, url.TrimEnd('/') + "/mcp");
+    app.Logger.LogInformation(Loc.Log("log.program.httpStarted"), typeof(DuopiloOptions).Assembly.GetName().Version?.ToString(3), dashboardUrl, url.TrimEnd('/') + "/mcp");
     if (Has(args, "--restarted"))
     {
         app.Logger.LogWarning(Loc.Log("log.program.restartedAfterCrash"));
@@ -144,7 +158,7 @@ else
     // Absturz-Journal (nur Tray-Instanz – es gibt nur eine) und Neustart durch Windows nach einem Absturz
     var journal = CrashReporter.StartJournal(logDirectory, "http", app.Logger);
     app.Lifetime.ApplicationStopped.Register(() => journal?.MarkClean());
-    if (app.Services.GetRequiredService<IOptions<KopilotOptions>>().Value.RestartAfterCrash)
+    if (app.Services.GetRequiredService<IOptions<DuopiloOptions>>().Value.RestartAfterCrash)
     {
         CrashReporter.RegisterRestart(args, app.Logger);
     }
@@ -161,18 +175,18 @@ else
 }
 
 static string LogDirectory(IConfiguration configuration) =>
-    Path.Combine((configuration.GetSection(KopilotOptions.Section).Get<KopilotOptions>() ?? new KopilotOptions()).ResolveDataDirectory(), "logs");
+    Path.Combine((configuration.GetSection(DuopiloOptions.Section).Get<DuopiloOptions>() ?? new DuopiloOptions()).ResolveDataDirectory(), "logs");
 
-// Logdatei unter %LOCALAPPDATA%\Kopilot\logs (bzw. Kopilot:DataDirectory\logs) plus Puffer fürs Dashboard.
+// Logdatei unter %LOCALAPPDATA%\Duopilo\logs (bzw. Duopilo:DataDirectory\logs) plus Puffer fürs Dashboard.
 static string? AddFileLog(ILoggingBuilder logging, IConfiguration configuration, IServiceCollection services, string mode)
 {
     var buffer = new LogBuffer();
     services.AddSingleton(buffer);
     try
     {
-        var options = configuration.GetSection(KopilotOptions.Section).Get<KopilotOptions>() ?? new KopilotOptions();
+        var options = configuration.GetSection(DuopiloOptions.Section).Get<DuopiloOptions>() ?? new DuopiloOptions();
         var directory = Path.Combine(options.ResolveDataDirectory(), "logs");
-        var provider = new FileLoggerProvider(directory, mode == "stdio" ? "kopilot-stdio.log" : "kopilot.log", buffer);
+        var provider = new FileLoggerProvider(directory, FileLoggerProvider.FileName(mode), buffer);
         logging.AddProvider(provider);
         return provider.FilePath;
     }

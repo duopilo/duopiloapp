@@ -1,9 +1,9 @@
-using Kopilot.Atc;
-using Kopilot.FlightPlan;
+using Duopilo.Atc;
+using Duopilo.FlightPlan;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
-/// <summary>Kopilot-ATC: Vorlagen, Sprechweise, Readback-Prüfung und Zustandsübergänge – ohne MSFS.</summary>
+/// <summary>Duopilo-ATC: Vorlagen, Sprechweise, Readback-Prüfung und Zustandsübergänge – ohne MSFS.</summary>
 public sealed partial class AtcTests
 {
     // ------------------------------------------------------------------ Testdaten
@@ -13,7 +13,7 @@ public sealed partial class AtcTests
     private static string RepoFile(params string[] parts)
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "src", "Kopilot", AtcTemplateLoader.FileName)))
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "src", "Duopilo", AtcTemplateLoader.FileName)))
         {
             dir = dir.Parent;
         }

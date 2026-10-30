@@ -1,11 +1,11 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Kopilot.Localization;
+using Duopilo.Localization;
 
-namespace Kopilot.Atc;
+namespace Duopilo.Atc;
 
 /// <summary>
-/// Sichert die laufende ATC-Sitzung in einer JSON-Datei (Standard %LOCALAPPDATA%\Kopilot\atc-session.json).
+/// Sichert die laufende ATC-Sitzung in einer JSON-Datei (Standard %LOCALAPPDATA%\Duopilo\atc-session.json).
 /// Geschrieben wird über eine Zwischendatei, damit ein Absturz mitten im Schreiben keine halbe Datei hinterlässt.
 /// </summary>
 public sealed class AtcSessionStore
@@ -27,8 +27,8 @@ public sealed class AtcSessionStore
 
     public string? LastError { get; private set; }
 
-    /// <summary>Pfad aus Kopilot:Atc:SessionFile (relativ = im Datenordner, leer = aus).</summary>
-    public static AtcSessionStore From(KopilotOptions options)
+    /// <summary>Pfad aus Duopilo:Atc:SessionFile (relativ = im Datenordner, leer = aus).</summary>
+    public static AtcSessionStore From(DuopiloOptions options)
     {
         var file = options.Atc.SessionFile?.Trim();
         if (string.IsNullOrEmpty(file))
@@ -36,7 +36,7 @@ public sealed class AtcSessionStore
             return new AtcSessionStore(null);
         }
 
-        return new AtcSessionStore(Path.IsPathRooted(file) ? file : Path.Combine(options.ResolveDataDirectory(), file));
+        return new AtcSessionStore(Path.IsPathRooted(file) ? Duopilo.Hosting.DataDirectoryMigration.MapLegacyPath(file) : Path.Combine(options.ResolveDataDirectory(), file));
     }
 
     public static string Serialize(AtcSessionSnapshot snapshot) => JsonSerializer.Serialize(snapshot, Options);

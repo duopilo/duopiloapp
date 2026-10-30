@@ -1,5 +1,5 @@
 {
-  "_hinweis": "Templates for the Kopilot ATC. Best make your own changes in a copy at %LOCALAPPDATA%\\Kopilot\\atc-templates.json – it takes precedence and is not overwritten by updates. Then run atc_control reload. Variables are written in {braces}; with several variants, the first one whose variables are all known wins. Kopilot speaks numbers digit by digit, speeds in knots only.",
+  "_hinweis": "Templates for the Duopilo ATC. Best make your own changes in a copy at %LOCALAPPDATA%\\Duopilo\\atc-templates.json – it takes precedence and is not overwritten by updates. Then run atc_control reload. Variables are written in {braces}; with several variants, the first one whose variables are all known wins. Duopilo speaks numbers digit by digit, speeds in knots only.",
   "_hinweise": {
     "voices": "Each station gets a random voice from pool for each flight. Fixed voices go under stations, e.g. \"EDDF/tower\": \"bf_emma\", \"FIR/EGGX\": \"bm_daniel\", or for a whole station type \"delivery\": \"af_heart\".",
     "airports": "Spoken airport name, climb altitude of the IFR clearance ({initialAlt}), station names that differ from the default and fixed frequencies (\"frequencies\": { \"tower\": \"118.775\" } – these take precedence over the Facilities API).",
@@ -8,7 +8,7 @@
     "firSuffixes": "ICAO prefix → station type for FIRs without an entry of their own. The longest matching prefix wins, \"\" for all others.",
     "rules": "Thresholds of the state machine: altitudes in ft, distances in nm, times in seconds or minutes. sectorMinNm: sectors the route touches for a shorter distance don't get a handoff of their own. offerStepClimbs/stepClimbLeadNm: step climbs from the OFP are cleared by ATC on its own (\"when ready climb and maintain …\") this far before the step point. levelRequestUnablePercent: share of level requests answered with \"unable due traffic, expect … in levelRequestDelayMinutes minutes\" (0 = never) – the clearance then follows on its own. checkSquawk/checkFrequency: compare transponder code and COM1 with the assignment; a deviation has to last deviationSeconds (after a handoff frequencyGraceSeconds as well) before ATC says \"check squawk/frequency, should be …\", repeated every deviationRepeatSeconds, at most deviationMaxCalls times.",
     "words": "Words the state machine inserts for {levelVerb}: climb/descend/maintain in corrections, climbAndMaintain/descendAndMaintain/maintain in level clearances.",
-    "messages": "from: atc = Kopilot speaks, pilot = expected pilot call (hint). readback: variables the pilot has to read back.",
+    "messages": "from: atc = Duopilo speaks, pilot = expected pilot call (hint). readback: variables the pilot has to read back.",
     "corrections": "What is said after \"negative\", per readback item."
   },
   "version": 2,

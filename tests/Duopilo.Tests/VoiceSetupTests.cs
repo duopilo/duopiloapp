@@ -1,26 +1,26 @@
 using System.Net;
 using System.Text.Json;
-using Kopilot.Hosting;
-using Kopilot.Voice;
+using Duopilo.Hosting;
+using Duopilo.Voice;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
 /// <summary>
 /// Testlog 0.9: Sprachschleife stumm (voice-settings.json im Datenordner stand auf "enabled": false), Mikrofonauswahl,
-/// Status in kopilot_status und das Absturz-Journal. Ohne Mikrofon und MSFS.
+/// Status in duopilo_status und das Absturz-Journal. Ohne Mikrofon und MSFS.
 /// </summary>
 public sealed class VoiceSetupTests
 {
     private static string RepoTemplate()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Kopilot.slnx")))
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Duopilo.slnx")))
         {
             dir = dir.Parent;
         }
 
         Assert.NotNull(dir);
-        return File.ReadAllText(Path.Combine(dir!.FullName, "src", "Kopilot", VoiceSettingsStore.FileName));
+        return File.ReadAllText(Path.Combine(dir!.FullName, "src", "Duopilo", VoiceSettingsStore.FileName));
     }
 
     // ------------------------------------------------------------------ Werte in der Datei ändern, Kommentare behalten
@@ -105,7 +105,7 @@ public sealed class VoiceSetupTests
     [Fact]
     public void Update_schreibt_in_den_Datenordner_und_meldet_die_Vorlage()
     {
-        var root = Directory.CreateTempSubdirectory("kopilot-voice-").FullName;
+        var root = Directory.CreateTempSubdirectory("duopilo-voice-").FullName;
         try
         {
             var exe = Path.Combine(root, "exe");
@@ -209,7 +209,7 @@ public sealed class VoiceSetupTests
     [Fact]
     public async Task Status_und_Voice_Endpunkt_zeigen_die_Sprachschleife()
     {
-        var stateFile = Path.Combine(Path.GetTempPath(), $"kopilot-test-{Guid.NewGuid():N}.json");
+        var stateFile = Path.Combine(Path.GetTempPath(), $"duopilo-test-{Guid.NewGuid():N}.json");
         await using var app = await TestApp.StartAsync(stateFile);
         var client = app.Local();
 
@@ -241,7 +241,7 @@ public sealed class VoiceSetupTests
     [Fact]
     public void Journal_erkennt_einen_nicht_sauber_beendeten_Lauf()
     {
-        var root = Directory.CreateTempSubdirectory("kopilot-journal-").FullName;
+        var root = Directory.CreateTempSubdirectory("duopilo-journal-").FullName;
         var path = Path.Combine(root, "journal-test.bin");
         try
         {
@@ -278,7 +278,7 @@ public sealed class VoiceSetupTests
     [Fact]
     public void Journal_ist_ein_Ring_und_kuerzt_lange_Eintraege()
     {
-        var root = Directory.CreateTempSubdirectory("kopilot-journal-").FullName;
+        var root = Directory.CreateTempSubdirectory("duopilo-journal-").FullName;
         var path = Path.Combine(root, "journal-test.bin");
         try
         {

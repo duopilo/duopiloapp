@@ -1,7 +1,8 @@
-using Kopilot.Localization;
+using Duopilo.Hosting;
+using Duopilo.Localization;
 using Microsoft.Extensions.Options;
 
-namespace Kopilot.FlightPlan;
+namespace Duopilo.FlightPlan;
 
 /// <summary>Lädt das letzte OFP aus SimBrief (öffentliche API, keine Anmeldung) und hält es zwischengespeichert.</summary>
 public sealed class SimBriefService
@@ -18,12 +19,12 @@ public sealed class SimBriefService
     private DateTimeOffset _fetchedUtc;
     private int? _legHint;
 
-    public SimBriefService(IOptions<KopilotOptions> options, ILogger<SimBriefService> log)
+    public SimBriefService(IOptions<DuopiloOptions> options, ILogger<SimBriefService> log)
     {
         _options = options.Value.SimBrief;
         _log = log;
         _http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-        _http.DefaultRequestHeaders.UserAgent.ParseAdd("Kopilot/1.0 (+https://github.com/Shin-Jin-Jin/Kopilot)");
+        _http.DefaultRequestHeaders.UserAgent.ParseAdd(AppNames.UserAgent);
     }
 
     public bool IsConfigured => _options.IsConfigured;
@@ -59,7 +60,7 @@ public sealed class SimBriefService
         _options.Username = username;
         _options.PilotId = pilotId;
         _current = null;
-        Kopilot.Speech.SpeechContext.Current = Kopilot.Speech.SpeechContext.Empty;
+        Duopilo.Speech.SpeechContext.Current = Duopilo.Speech.SpeechContext.Empty;
         _legHint = null;
         _fetchedUtc = default;
         LastError = null;
@@ -108,7 +109,7 @@ public sealed class SimBriefService
             _current = ofp;
 
             // Aussprache: Funkfeuer mit dem Namen aus dem Navlog, Flughäfen des Plans buchstabiert
-            Kopilot.Speech.SpeechContext.Current = Kopilot.Speech.SpeechContext.From(ofp);
+            Duopilo.Speech.SpeechContext.Current = Duopilo.Speech.SpeechContext.From(ofp);
 
             _fetchedUtc = DateTimeOffset.UtcNow;
             LastError = null;

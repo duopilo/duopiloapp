@@ -1017,7 +1017,7 @@
       "label": "Seat belts",
       // Stellung L:XMLVAR_SWITCH_OVHD_INTLT_SEATBELT_Position wie im A330-Modell (Tooltips 0/1/2): 0 = ON, 1 = AUTO, 2 = OFF.
       // Im Flug gelesen: OFF = 2 bei ausgeschaltetem Zeichen (CABIN SEATBELTS ALERT SWITCH 0). stateAfter 0 bei "on" ist also richtig.
-      "description": "Three-position switch (ON, AUTO, OFF; position 0 = ON, 1 = AUTO, 2 = OFF). On ON and OFF Kopilot switches the sign as well – like the switch in the cockpit. In AUTO the aircraft controls it (slats or gear).",
+      "description": "Three-position switch (ON, AUTO, OFF; position 0 = ON, 1 = AUTO, 2 = OFF). On ON and OFF Duopilo switches the sign as well – like the switch in the cockpit. In AUTO the aircraft controls it (slats or gear).",
       "parameter": {
         "type": "choice",
         "options": { "on": 0, "auto": 1, "off": 2 }

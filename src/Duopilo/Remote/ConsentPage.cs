@@ -1,13 +1,13 @@
 using System.Net;
-using Kopilot.Localization;
+using Duopilo.Localization;
 
-namespace Kopilot.Remote;
+namespace Duopilo.Remote;
 
 /// <summary>HTML für die Freigabeseite und Fehlerseiten des OAuth-Ablaufs.</summary>
 public static class ConsentPage
 {
     /// <summary>Stands for a value that gets markup (e.g. bold) after the text was encoded.</summary>
-    private const string Slot = "[[kopilot-value]]";
+    private const string Slot = "[[duopilo-value]]";
 
     public static IResult Render(HttpContext context, string requestId, string clientName, string redirectUri, string? error, int statusCode = 200)
     {

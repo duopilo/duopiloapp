@@ -1,15 +1,15 @@
-using Kopilot.Atc;
-using Kopilot.FlightPlan;
-using Kopilot.Hosting;
-using Kopilot.Input;
-using Kopilot.Localization;
-using Kopilot.Monitoring;
-using Kopilot.Remote;
-using Kopilot.Smalltalk;
-using Kopilot.Voice;
+using Duopilo.Atc;
+using Duopilo.FlightPlan;
+using Duopilo.Hosting;
+using Duopilo.Input;
+using Duopilo.Localization;
+using Duopilo.Monitoring;
+using Duopilo.Remote;
+using Duopilo.Smalltalk;
+using Duopilo.Voice;
 using Microsoft.Extensions.Options;
 
-namespace Kopilot.Settings;
+namespace Duopilo.Settings;
 
 /// <summary>Ergebnis einer Änderung auf der Einstellungsseite.</summary>
 /// <param name="Token">Neu erzeugter Bearer-Token – wird genau einmal angezeigt.</param>
@@ -23,17 +23,17 @@ public sealed record SettingsResult(bool Ok, string? Message, string? Error = nu
 /// (bzw. in die vorhandenen Dateien der Module: input.json, voice-settings.json).
 /// <list type="bullet">
 /// <item>Sofort wirksam: SimBrief-Konto, Eingabe-Modul, Sprachschleife und Mikrofon.</item>
-/// <item>Nach einem Neustart von Kopilot: Zugang für Claude (Tunnel-Adresse, Passwort, Token), Monitoring und ATC – diese
+/// <item>Nach einem Neustart von Duopilo: Zugang für Claude (Tunnel-Adresse, Passwort, Token), Monitoring und ATC – diese
 /// Dienste lesen ihre Einstellungen beim Start. Die Seite zeigt dann „Neustart nötig“ mit Knopf.</item>
 /// </list>
-/// Geheimnisse (Passwort, Token) verlassen Kopilot nie Richtung Browser – außer ein frisch erzeugter Token, einmal zum Kopieren.
+/// Geheimnisse (Passwort, Token) verlassen Duopilo nie Richtung Browser – außer ein frisch erzeugter Token, einmal zum Kopieren.
 /// </summary>
 public sealed class SettingsService
 {
-    private static readonly string[] Root = [KopilotOptions.Section];
+    private static readonly string[] Root = [DuopiloOptions.Section];
 
-    /// <summary>Werte, die erst nach einem Neustart gelten: Schlüssel unter "Kopilot" → Anzeigename (eingestellte Sprache) und laufender Wert.</summary>
-    private static readonly Dictionary<string, (Func<string> Label, Func<KopilotOptions, string> Running)> RestartKeys = new()
+    /// <summary>Werte, die erst nach einem Neustart gelten: Schlüssel unter "Duopilo" → Anzeigename (eingestellte Sprache) und laufender Wert.</summary>
+    private static readonly Dictionary<string, (Func<string> Label, Func<DuopiloOptions, string> Running)> RestartKeys = new()
     {
         [Keys.PublicUrl] = (() => Loc.T("settings.label.publicUrl"), o => NormalizeUrl(o.Remote.PublicUrl)),
         [Keys.ConsentPassword] = (() => Loc.T("settings.label.consentPassword"), o => o.Remote.ConsentPassword),
@@ -51,7 +51,7 @@ public sealed class SettingsService
 
     private static readonly HttpClient TunnelHttp = new() { Timeout = TimeSpan.FromSeconds(10) };
 
-    private readonly KopilotOptions _options;
+    private readonly DuopiloOptions _options;
     private readonly LocalSettingsStore _store;
     private readonly SimBriefService _simBrief;
     private readonly MonitoringService _monitoring;
@@ -64,7 +64,7 @@ public sealed class SettingsService
     private object? _lastTunnelCheck;
 
     public SettingsService(
-        IOptions<KopilotOptions> options,
+        IOptions<DuopiloOptions> options,
         LocalSettingsStore store,
         SimBriefService simBrief,
         MonitoringService monitoring,
@@ -83,7 +83,7 @@ public sealed class SettingsService
         _log = log;
     }
 
-    /// <summary>Schlüssel unter "Kopilot" (Doppelpunkt wie in der .NET-Konfiguration).</summary>
+    /// <summary>Schlüssel unter "Duopilo" (Doppelpunkt wie in der .NET-Konfiguration).</summary>
     public static class Keys
     {
         public const string SimBriefUsername = "SimBrief:Username";
@@ -175,7 +175,7 @@ public sealed class SettingsService
                     ? (object)new { available = false }
                     : new { available = true, enabled = voice.Status.Enabled, state = voice.Status.State, file = voice.Store.FilePath },
             },
-            reports = new { repository = o.Reports.GitHubRepository },
+            reports = new { repository = o.Reports.ResolveGitHubRepository() },
             smalltalk = SmalltalkView(),
             language = new
             {
@@ -385,7 +385,7 @@ public sealed class SettingsService
     }
 
     /// <summary>
-    /// Prüft die öffentliche Adresse von außen: /mcp ohne Token muss mit Kopilots 401 antworten – dann führt der Tunnel bis hierher.
+    /// Prüft die öffentliche Adresse von außen: /mcp ohne Token muss mit Duopilos 401 antworten – dann führt der Tunnel bis hierher.
     /// Geprüft wird die laufende Adresse (eine gerade gespeicherte gilt erst nach dem Neustart).
     /// </summary>
     public async Task<object> CheckTunnelAsync(CancellationToken ct)
@@ -409,7 +409,9 @@ public sealed class SettingsService
                 var cloudflare = response.Headers.Contains("CF-RAY") || response.Headers.Server.ToString().Contains("cloudflare", StringComparison.OrdinalIgnoreCase);
                 result = code switch
                 {
-                    401 when body.Contains("Kopilot", StringComparison.OrdinalIgnoreCase) =>
+                    // Antwort von Duopilo selbst (oder einem alten Kopilot hinter derselben Adresse)
+                    401 when body.Contains(AppNames.Product, StringComparison.OrdinalIgnoreCase)
+                        || body.Contains(AppNames.Legacy.Product, StringComparison.OrdinalIgnoreCase) =>
                         TunnelResult("ok", Loc.T("settings.tunnel.ok", remote.PublicBaseUri.Host)),
                     403 when cloudflare =>
                         TunnelResult("blocked", Loc.T("settings.tunnel.blocked")),
@@ -702,9 +704,11 @@ public sealed class SettingsService
         }
     }
 
+    /// <summary>Gesetzte Umgebungsvariablen, die Werte der Seite überschreiben – auch unter dem alten Namen Kopilot__….</summary>
     private static IReadOnlyList<string> EnvironmentOverrides() =>
         OverridableKeys
-            .Select(k => $"{KopilotOptions.Section}__{k.Replace(":", "__", StringComparison.Ordinal)}")
+            .SelectMany(k => new[] { DuopiloOptions.Section, AppNames.Legacy.ConfigSection }
+                .Select(section => $"{section}__{k.Replace(":", "__", StringComparison.Ordinal)}"))
             .Where(name => !string.IsNullOrEmpty(Environment.GetEnvironmentVariable(name)))
             .ToList();
 

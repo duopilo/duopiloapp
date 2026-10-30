@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Kopilot</title>
+<title>Duopilo</title>
 <link rel="icon" href="/favicon.ico">
 <style>
 /* B612 – die Schrift, die Airbus und ONERA für Cockpit-Displays entwickelt haben (SIL Open Font License 1.1) */
@@ -430,14 +430,14 @@ dialog.report::backdrop { background: rgba(5, 8, 11, .7); }
       <g clip-path="url(#adi)"><rect width="26" height="14" fill="#2b7bb9"/><rect y="14" width="26" height="12" fill="#7a4a22"/><rect y="13.4" width="26" height="1.2" fill="#e9eef1"/></g>
       <path d="M5 12.5h5v3h-1.5v-1.5H5zM21 12.5h-5v3h1.5v-1.5H21zM12 12h2v2h-2z" fill="#ffd400" stroke="#000" stroke-width=".6"/>
     </svg>
-    Kopilot <small id="version"></small>
+    Duopilo <small id="version"></small>
   </div>
   <div class="link"><span class="lamp" id="lamp"></span><span id="linkText" data-i18n="dashboard.header.connecting">Connecting …</span></div>
   <div class="aircraft" id="aircraft"></div>
   <span class="fo-pill" id="foPill" hidden></span>
   <span class="paused-pill" id="paused" data-i18n="dashboard.header.paused" hidden>Sim paused</span>
   <span class="spacer"></span>
-  <nav class="hnav" aria-label="Kopilot">
+  <nav class="hnav" aria-label="Duopilo">
     <button class="hbtn" id="reportOpen" type="button" title="Captures position, altitude, ATC station, frequencies and the latest transmissions right now – then describe the problem and report it as a GitHub issue" data-i18n-title="dashboard.header.reportTitle" data-i18n="dashboard.report.title">Report a problem</button>
     <a class="hbtn" id="settingsLink" href="#einstellungen" data-i18n="dashboard.settings.title">Settings</a>
   </nav>
@@ -483,7 +483,7 @@ dialog.report::backdrop { background: rgba(5, 8, 11, .7); }
         <select class="btn" id="voice" aria-label="Browser voice" data-i18n-aria-label="dashboard.speech.browserVoice"></select>
         <button class="btn" id="speechSettings" type="button" aria-expanded="false" aria-controls="speechPanel" data-i18n="dashboard.speech.voice" hidden>Voice</button>
         <button class="btn" id="speakTest" type="button" data-i18n="dashboard.speech.test">Test</button>
-        <button class="btn" id="inputToggle" type="button" aria-pressed="false" title="Inputs: Kopilot may operate switches after readback and confirmation" data-i18n-title="dashboard.input.toggleTitle" data-i18n="dashboard.input.locked" hidden>Input locked</button>
+        <button class="btn" id="inputToggle" type="button" aria-pressed="false" title="Inputs: Duopilo may operate switches after readback and confirmation" data-i18n-title="dashboard.input.toggleTitle" data-i18n="dashboard.input.locked" hidden>Input locked</button>
       </span>
     </h2>
     <div class="speech-panel" id="speechPanel" hidden>
@@ -502,11 +502,11 @@ dialog.report::backdrop { background: rgba(5, 8, 11, .7); }
         <option value="Caution" data-i18n="dashboard.speech.severityCaution">Caution and above</option>
         <option value="Warning" data-i18n="dashboard.speech.severityWarning">Warnings only</option>
       </select></label>
-      <label class="check"><input type="checkbox" id="srvAuto"> <span data-i18n="dashboard.speech.aircraftAuto">Radio altitudes, minimum and retard from Kopilot too (only for aircraft without their own callouts)</span></label>
+      <label class="check"><input type="checkbox" id="srvAuto"> <span data-i18n="dashboard.speech.aircraftAuto">Radio altitudes, minimum and retard from Duopilo too (only for aircraft without their own callouts)</span></label>
       <p class="speech-info" id="srvInfo"></p>
       <p class="speech-error" id="srvError" hidden></p>
       <div class="voice-loop" id="voiceLoop" hidden>
-        <h3 data-i18n="dashboard.voice.title">Voice loop (microphone → Kopilot and ATC)</h3>
+        <h3 data-i18n="dashboard.voice.title">Voice loop (microphone → copilot and ATC)</h3>
         <label class="check"><input type="checkbox" id="vlEnabled"> <span data-i18n="dashboard.voice.enable">Voice loop on – microphone always open, commands and radio without Claude</span></label>
         <label><span data-i18n="dashboard.common.microphone">Microphone</span> <select class="btn" id="vlMic"></select></label>
         <span><span data-i18n="dashboard.common.level">Level</span> <span class="level" title="Peak level of the last few seconds" data-i18n-title="dashboard.common.peakLevel"><i id="vlLevel"></i></span> <span id="vlLevelText"></span></span>
@@ -519,7 +519,7 @@ dialog.report::backdrop { background: rgba(5, 8, 11, .7); }
       <button class="btn" id="pendingCancel" type="button" data-i18n="dashboard.common.cancel">Cancel</button>
       <div class="pl" id="pendingInfo"></div>
     </div>
-    <div class="hero quiet" id="hero"><div class="callout" id="heroCallout" data-i18n="dashboard.callouts.connecting">Connecting to Kopilot …</div><div class="msg" id="heroMsg"></div><div class="when" id="heroWhen"></div></div>
+    <div class="hero quiet" id="hero"><div class="callout" id="heroCallout" data-i18n="dashboard.callouts.connecting">Connecting to Duopilo …</div><div class="msg" id="heroMsg"></div><div class="when" id="heroWhen"></div></div>
     <div class="chips" id="activeChips"></div>
     <ul class="history" id="history"></ul>
     <details class="input-log" id="inputLog" hidden>
@@ -608,14 +608,14 @@ dialog.report::backdrop { background: rgba(5, 8, 11, .7); }
   </div>
   <div class="restart-bar" id="restartBar" role="status" hidden>
     <span id="restartText"></span>
-    <button class="btn primary" id="restartBtn" type="button" data-i18n="dashboard.settings.restart">Restart Kopilot</button>
+    <button class="btn primary" id="restartBtn" type="button" data-i18n="dashboard.settings.restart">Restart Duopilo</button>
   </div>
   <p class="set-warn" id="setEnv" hidden></p>
 
   <div class="set-grid">
     <section class="card" aria-labelledby="hClaude">
       <h2 id="hClaude" data-i18n="dashboard.settings.claude.title">Connection to Claude</h2>
-      <p class="hint" data-i18n="dashboard.settings.claude.hint">Claude Desktop and Claude Code on this PC connect locally. For claude.ai, the mobile app and voice mode, Kopilot needs a Cloudflare Tunnel with a public address (guide: docs/cloudflared.md in the repository).</p>
+      <p class="hint" data-i18n="dashboard.settings.claude.hint">Claude Desktop and Claude Code on this PC connect locally. For claude.ai, the mobile app and voice mode, Duopilo needs a Cloudflare Tunnel with a public address (guide: docs/cloudflared.md in the repository).</p>
       <dl class="kv">
         <dt data-i18n="dashboard.settings.claude.local">Local (MCP)</dt><dd><code id="clMcp"></code></dd>
         <dt data-i18n="dashboard.settings.claude.connector">Claude connector</dt><dd id="clOauth"></dd>
@@ -624,7 +624,7 @@ dialog.report::backdrop { background: rgba(5, 8, 11, .7); }
       </dl>
       <form id="clForm" autocomplete="off">
         <label class="field"><span data-i18n="dashboard.settings.claude.publicUrl">Public address (tunnel)</span>
-          <input id="clUrl" type="url" inputmode="url" placeholder="https://kopilot.example.com" spellcheck="false">
+          <input id="clUrl" type="url" inputmode="url" placeholder="https://duopilo.example.com" spellcheck="false">
         </label>
         <label class="field"><span data-i18n="dashboard.settings.claude.password">Consent password for the Claude connector</span>
           <input id="clPwd" type="password" autocomplete="new-password" spellcheck="false">
@@ -670,7 +670,7 @@ dialog.report::backdrop { background: rgba(5, 8, 11, .7); }
 
     <section class="card" aria-labelledby="hMic">
       <h2 id="hMic" data-i18n="dashboard.common.microphone">Microphone</h2>
-      <p class="hint" data-i18n="dashboard.settings.mic.hint">For the voice loop (commands and radio without Claude). If the device is missing (VR headset off), Kopilot uses the Windows default device and switches as soon as it shows up. Applies immediately.</p>
+      <p class="hint" data-i18n="dashboard.settings.mic.hint">For the voice loop (commands and radio without Claude). If the device is missing (VR headset off), Duopilo uses the Windows default device and switches as soon as it shows up. Applies immediately.</p>
       <label class="field"><span data-i18n="dashboard.settings.mic.device">Recording device</span> <select id="micSel"></select></label>
       <div class="row"><span data-i18n="dashboard.common.level">Level</span> <span class="level" title="Peak level of the last few seconds" data-i18n-title="dashboard.common.peakLevel"><i id="micLevel"></i></span> <span id="micLevelText"></span></div>
       <p class="state-line" id="micState"></p>
@@ -679,18 +679,18 @@ dialog.report::backdrop { background: rgba(5, 8, 11, .7); }
 
     <section class="card" aria-labelledby="hModules">
       <h2 id="hModules" data-i18n="dashboard.settings.modules.title">Modules</h2>
-      <p class="hint" data-i18n="dashboard.settings.modules.hint">Monitoring and ATC read their setting at startup – restart Kopilot after switching. Input and voice loop apply immediately.</p>
+      <p class="hint" data-i18n="dashboard.settings.modules.hint">Monitoring and ATC read their setting at startup – restart Duopilo after switching. Input and voice loop apply immediately.</p>
       <ul class="modules">
         <li><span><span class="name" data-i18n="dashboard.settings.modules.monitoring.name">Monitoring</span><span class="what" data-i18n="dashboard.settings.modules.monitoring.what">Callouts and warnings as pilot monitoring</span></span>
           <button class="switch" id="modMonitoring" type="button" role="switch" aria-checked="false" aria-label="Monitoring" data-i18n-aria-label="dashboard.settings.modules.monitoring.name">OFF</button>
           <span class="note" id="modMonitoringNote"></span></li>
-        <li><span><span class="name" data-i18n="dashboard.settings.modules.input.name">Input</span><span class="what" data-i18n="dashboard.settings.modules.input.what">Kopilot operates switches – only after readback and confirmation</span></span>
+        <li><span><span class="name" data-i18n="dashboard.settings.modules.input.name">Input</span><span class="what" data-i18n="dashboard.settings.modules.input.what">Duopilo operates switches – only after readback and confirmation</span></span>
           <button class="switch" id="modInput" type="button" role="switch" aria-checked="false" aria-label="Input" data-i18n-aria-label="dashboard.settings.modules.input.name">OFF</button>
           <span class="note" id="modInputNote"></span></li>
-        <li><span><span class="name">ATC</span><span class="what" data-i18n="dashboard.settings.modules.atc.what">Air traffic control by Kopilot (radio, handoffs, clearances)</span></span>
+        <li><span><span class="name">ATC</span><span class="what" data-i18n="dashboard.settings.modules.atc.what">Air traffic control by Duopilo (radio, handoffs, clearances)</span></span>
           <button class="switch" id="modAtc" type="button" role="switch" aria-checked="false" aria-label="ATC">OFF</button>
           <span class="note" id="modAtcNote"></span></li>
-        <li><span><span class="name" data-i18n="dashboard.settings.modules.voice.name">Voice loop</span><span class="what" data-i18n="dashboard.settings.modules.voice.what">Microphone always open, commands and radio straight to Kopilot</span></span>
+        <li><span><span class="name" data-i18n="dashboard.settings.modules.voice.name">Voice loop</span><span class="what" data-i18n="dashboard.settings.modules.voice.what">Microphone always open, commands and radio straight to Duopilo</span></span>
           <button class="switch" id="modVoice" type="button" role="switch" aria-checked="false" aria-label="Voice loop" data-i18n-aria-label="dashboard.settings.modules.voice.name">OFF</button>
           <span class="note" id="modVoiceNote"></span></li>
       </ul>
@@ -759,7 +759,7 @@ dialog.report::backdrop { background: rgba(5, 8, 11, .7); }
     <fieldset class="kinds" id="rpKinds"><legend data-i18n="dashboard.report.kinds">What's wrong?</legend></fieldset>
     <label class="field"><span data-i18n="dashboard.report.titleLabel">Title</span> <input id="rpTitle" maxlength="200" spellcheck="true"></label>
     <label class="field"><span data-i18n="dashboard.report.description">What is wrong, and what would be right?</span>
-      <textarea id="rpText" rows="5" placeholder="e.g. Sim ATC only hands off to Montreal Center here, frequency 132.25 – Kopilot did it 260 NM earlier at HOIST." data-i18n-placeholder="dashboard.report.placeholder"></textarea>
+      <textarea id="rpText" rows="5" placeholder="e.g. Sim ATC only hands off to Montreal Center here, frequency 132.25 – Duopilo did it 260 NM earlier at HOIST." data-i18n-placeholder="dashboard.report.placeholder"></textarea>
     </label>
     <details id="rpDetails"><summary data-i18n="dashboard.report.context">Context that is sent along</summary><pre id="rpContext"></pre></details>
     <div class="row">
@@ -772,9 +772,9 @@ dialog.report::backdrop { background: rgba(5, 8, 11, .7); }
   </form>
 </dialog>
 
-<div class="offline" id="offline" role="alert" data-i18n="dashboard.offline.text" hidden>Kopilot isn't responding. Is Kopilot still running? The icon in the notification area shows it – otherwise restart Kopilot.exe.</div>
+<div class="offline" id="offline" role="alert" data-i18n="dashboard.offline.text" hidden>Duopilo isn't responding. Is Duopilo still running? The icon in the notification area shows it – otherwise restart Duopilo.exe.</div>
 
-<!--KOPILOT_I18N-->
+<!--DUOPILO_I18N-->
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
@@ -839,11 +839,16 @@ const phaseName = (phase) => ({
 }[phase] || phase);
 const SEV = { Warning: "r", Caution: "a", Info: "g" };
 
+// Browser-Einstellungen unter "duopilo.…" – bis 0.9.x hießen sie "kopilot.…" und werden noch gelesen
 function load(key, fallback) {
-  try { const v = localStorage.getItem("kopilot." + key); return v === null ? fallback : JSON.parse(v); } catch { return fallback; }
+  try {
+    let v = localStorage.getItem("duopilo." + key);
+    if (v === null) v = localStorage.getItem("kopilot." + key);
+    return v === null ? fallback : JSON.parse(v);
+  } catch { return fallback; }
 }
 function save(key, value) {
-  try { localStorage.setItem("kopilot." + key, JSON.stringify(value)); } catch { /* privates Fenster o. Ä. */ }
+  try { localStorage.setItem("duopilo." + key, JSON.stringify(value)); } catch { /* privates Fenster o. Ä. */ }
 }
 
 const ui = {
@@ -1043,7 +1048,7 @@ function renderCallouts(d) {
 }
 
 /*
-  Sprachausgabe: Kopilot spricht selbst über Windows (Tray-Instanz). Nur wenn das nicht geht,
+  Sprachausgabe: Duopilo spricht selbst über Windows (Tray-Instanz). Nur wenn das nicht geht,
   liest der Browser die Callouts vor – englische Stimme, Warnings unterbrechen alles andere.
 */
 const server = { available: false, status: null, saveTimer: null, pollTimer: null, loading: false };
@@ -1062,7 +1067,7 @@ function fillVoices() {
   }
 }
 function speak(text, urgent) {
-  // Spricht Kopilot selbst, bleibt der Browser still – sonst käme alles doppelt
+  // Spricht Duopilo selbst, bleibt der Browser still – sonst käme alles doppelt
   if (server.available || !ui.speech || !("speechSynthesis" in window) || !text) return;
   if (urgent) speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
@@ -1140,7 +1145,7 @@ async function saveServerSpeech(patch) {
   server.status.settings = body;
   renderSpeechButton();
   try {
-    const r = await fetch("/api/speech", { method: "POST", headers: { "X-Kopilot": "1", "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const r = await fetch("/api/speech", { method: "POST", headers: { "X-Duopilo": "1", "Content-Type": "application/json" }, body: JSON.stringify(body) });
     if (r.ok) { server.status = await r.json(); renderServerSpeech(); renderSpeechButton(); }
   } catch { /* nächster Abruf zeigt den Stand */ }
 }
@@ -1156,7 +1161,7 @@ $("speak").addEventListener("click", () => {
 });
 $("speakTest").addEventListener("click", async () => {
   if (server.available) {
-    try { await fetch("/api/speech/test", { method: "POST", headers: { "X-Kopilot": "1" } }); } catch { /* egal */ }
+    try { await fetch("/api/speech/test", { method: "POST", headers: { "X-Duopilo": "1" } }); } catch { /* egal */ }
     return;
   }
   const was = ui.speech; ui.speech = true; speak("Runway two three left assigned", false); ui.speech = was;
@@ -1176,7 +1181,7 @@ $("srvAuto").addEventListener("change", (e) => saveServerSpeech({ aircraftAutoCa
 $("srvEngine").addEventListener("change", (e) => saveServerSpeech({ engine: e.target.value }));
 $("srvKokoroVoice").addEventListener("change", async (e) => {
   await saveServerSpeech({ kokoroVoice: e.target.value });
-  try { await fetch("/api/speech/test", { method: "POST", headers: { "X-Kopilot": "1" } }); } catch { /* egal */ }
+  try { await fetch("/api/speech/test", { method: "POST", headers: { "X-Duopilo": "1" } }); } catch { /* egal */ }
 });
 /* ------------------------------------------------------------------ Sprachschleife (im Panel "Stimme") */
 const voiceState = (state) => ({
@@ -1232,7 +1237,7 @@ async function loadVoiceLoop() {
 async function saveVoiceLoop(patch) {
   voiceLoop.saving = true;
   try {
-    const r = await fetch("/api/voice", { method: "POST", headers: { "X-Kopilot": "1", "Content-Type": "application/json" }, body: JSON.stringify(patch) });
+    const r = await fetch("/api/voice", { method: "POST", headers: { "X-Duopilo": "1", "Content-Type": "application/json" }, body: JSON.stringify(patch) });
     if (r.ok) voiceLoop.data = await r.json();
   } catch { /* nächster Abruf zeigt den Stand */ }
   voiceLoop.saving = false;
@@ -1584,7 +1589,7 @@ function renderSetup(d) {
 async function action(url, done) {
   const toast = $("toast");
   try {
-    const r = await fetch(url, { method: "POST", headers: { "X-Kopilot": "1" } });
+    const r = await fetch(url, { method: "POST", headers: { "X-Duopilo": "1" } });
     const j = await r.json();
     toast.className = "toast";
     toast.textContent = j.error ? j.error : (j.errors && j.errors.length ? j.errors.join("; ") : done);
@@ -1638,7 +1643,7 @@ function renderInput(d) {
 }
 async function postInput(url, body) {
   try {
-    await fetch(url, { method: "POST", headers: { "X-Kopilot": "1", "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : "{}" });
+    await fetch(url, { method: "POST", headers: { "X-Duopilo": "1", "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : "{}" });
   } catch { /* nächster Abruf zeigt den Stand */ }
 }
 $("inputToggle").addEventListener("click", () => {
@@ -1659,7 +1664,7 @@ applyBrt();
 
 /* ------------------------------------------------------------------ gemeinsame Helfer für Einstellungen und Meldungen */
 async function postJson(url, body) {
-  const r = await fetch(url, { method: "POST", headers: { "X-Kopilot": "1", "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+  const r = await fetch(url, { method: "POST", headers: { "X-Duopilo": "1", "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
   if (!r.ok) throw new Error("HTTP " + r.status);
   return r.json();
 }
@@ -1696,7 +1701,7 @@ async function loadSettings() {
     const r = await fetch("/api/settings", { cache: "no-store" });
     settingsUi.data = await r.json();
     renderSettings();
-  } catch { /* der Abruf im Hintergrund zeigt "Kopilot antwortet nicht" */ }
+  } catch { /* der Abruf im Hintergrund zeigt "Duopilo antwortet nicht" */ }
 }
 function applySettings(j, msgId) {
   if (!j) return;
@@ -2146,7 +2151,7 @@ async function poll() {
 }
 function render(d) {
   ui.data = d;
-  // Sprachausgabe von Kopilot: Zustand mitführen, nachladen sobald sie bereit ist
+  // Sprachausgabe von Duopilo: Zustand mitführen, nachladen sobald sie bereit ist
   if (d.speech) {
     if (d.speech.available !== server.available || (d.speech.engine || null) !== ((server.status && server.status.activeEngine) || null)) loadServerSpeech();
     else if (server.status && server.status.settings.enabled !== d.speech.enabled) { server.status.settings.enabled = d.speech.enabled; renderSpeechButton(); }

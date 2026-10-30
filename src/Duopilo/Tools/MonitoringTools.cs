@@ -1,11 +1,11 @@
 using System.ComponentModel;
-using Kopilot.Ecam;
-using Kopilot.Localization;
-using Kopilot.Monitoring;
-using Kopilot.Sim;
+using Duopilo.Ecam;
+using Duopilo.Localization;
+using Duopilo.Monitoring;
+using Duopilo.Sim;
 using ModelContextProtocol.Server;
 
-namespace Kopilot.Tools;
+namespace Duopilo.Tools;
 
 /// <summary>Pilot Monitoring: Warnungen, ECAM und die Meldungen der Monitoring-Regeln.</summary>
 [McpServerToolType]
@@ -20,7 +20,7 @@ public static class MonitoringTools
     {
         if (!sim.Connection.IsConnected)
         {
-            return KopilotTools.NotConnected(alerts);
+            return DuopiloTools.NotConnected(alerts);
         }
 
         var signals = new AircraftSignals(sim);
@@ -48,7 +48,7 @@ public static class MonitoringTools
 
     [McpServerTool(Name = "get_alerts", ReadOnly = true)]
     [Description(
-        "Monitoring alerts raised by Kopilot (gear/flap speed, speed limit below FL100, speed deviation, sink rate, bank angle, autopilot off, " +
+        "Monitoring alerts raised by Duopilo (gear/flap speed, speed limit below FL100, speed deviation, sink rate, bank angle, autopilot off, " +
         "master warning/caution with the newest ECAM message, new ECAM messages, one thousand to go, top of descent, landing checklist at 2000/1000 ft, " +
         "runway assigned by ATC, sim paused). Returns events with id > sinceId (oldest first) and the " +
         "currently active alerts. Each event has a short English 'callout' to say aloud (null for silent events such as 'Clear'). " +
@@ -69,7 +69,7 @@ public static class MonitoringTools
 
     [McpServerTool(Name = "wait_for_alerts", ReadOnly = true)]
     [Description(
-        "Waits until Kopilot raises a new monitoring alert after sinceId (long poll, max 25 s), then returns the new events. " +
+        "Waits until Duopilo raises a new monitoring alert after sinceId (long poll, max 25 s), then returns the new events. " +
         "Use in a loop to monitor the flight continuously: call with the returned lastId each time. Returns an empty list on timeout.")]
     public static async Task<string> WaitForAlerts(
         AlertBus alerts,
@@ -123,7 +123,7 @@ public static class MonitoringTools
     }
 
     [McpServerTool(Name = "get_monitoring_status", ReadOnly = true)]
-    [Description("State of Kopilot's monitoring: enabled, detected flight phase, enabled/disabled rules, quiet period after loading or unpausing.")]
+    [Description("State of Duopilo's monitoring: enabled, detected flight phase, enabled/disabled rules, quiet period after loading or unpausing.")]
     public static string GetMonitoringStatus(MonitoringService monitoring, AlertBus alerts)
     {
         var now = DateTimeOffset.UtcNow;

@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace Kopilot.Sim;
+namespace Duopilo.Sim;
 
 // Die verwaltete SimConnect-API erwartet IDs als Enum. Wir vergeben sie dynamisch per Cast aus uint.
 

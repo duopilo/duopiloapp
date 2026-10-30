@@ -1,10 +1,10 @@
 using System.Diagnostics;
 using System.Net.NetworkInformation;
 using System.Text.RegularExpressions;
-using Kopilot.Localization;
+using Duopilo.Localization;
 using Microsoft.Extensions.Options;
 
-namespace Kopilot.Smalltalk;
+namespace Duopilo.Smalltalk;
 
 /// <summary>Eine Frage an den First Officer.</summary>
 /// <param name="Text">Was der Pilot gesagt hat (Abschrift).</param>
@@ -63,7 +63,7 @@ public sealed partial class SmalltalkService
     private string? _lastError;
     private int? _lastMs;
 
-    public SmalltalkService(IOptions<KopilotOptions> options, ILogger<SmalltalkService> log, IChatModel? model = null, TimeProvider? time = null, TimeSpan? timeout = null)
+    public SmalltalkService(IOptions<DuopiloOptions> options, ILogger<SmalltalkService> log, IChatModel? model = null, TimeProvider? time = null, TimeSpan? timeout = null)
     {
         _config = SmalltalkConfig.From(options.Value.Smalltalk);
         _firstOfficer = FirstOfficerConfig.From(options.Value.FirstOfficer);
@@ -182,7 +182,7 @@ public sealed partial class SmalltalkService
             messages = [.. _history, new ChatTurn(ChatTurn.User, question.Text.Trim())];
         }
 
-        var system = SmalltalkPrompt.System(question.Name, Kopilot.Speech.SmalltalkVoices.LanguageName(question.Language), config.MaxReplyWords, question.Context);
+        var system = SmalltalkPrompt.System(question.Name, Duopilo.Speech.SmalltalkVoices.LanguageName(question.Language), config.MaxReplyWords, question.Context);
         var request = new ChatRequest(system, messages, config.MaxTokens);
         var watch = Stopwatch.StartNew();
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);

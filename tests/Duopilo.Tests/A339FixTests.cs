@@ -1,8 +1,8 @@
-using Kopilot.Aircraft;
-using Kopilot.Ecam;
-using Kopilot.Input;
+using Duopilo.Aircraft;
+using Duopilo.Ecam;
+using Duopilo.Input;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
 /// <summary>
 /// Testflug Headwind A330-900neo (29.10.2026): Batterien, Autobrake, TCAS, Schalterstellungen, NAV &amp; LOGO, Lesedaten,
@@ -116,7 +116,7 @@ public sealed partial class InputTests
         Assert.Equal("max", result.StateAfterText);
         Assert.Equal(new[] { "A32NX.AUTOBRAKE_SET_MAX:0" }, backend.Sent);
 
-        // In der Luft nimmt das Flugzeug MAX nicht an – Kopilot sagt das vorher, statt "stateAfter 0" zu melden
+        // In der Luft nimmt das Flugzeug MAX nicht an – Duopilo sagt das vorher, statt "stateAfter 0" zu melden
         backend.Current = Air(250);
         backend.State["SIM ON GROUND"] = 0;
         var air = await input.PrepareAsync("brakes.autobrake", "max", default);
@@ -404,7 +404,7 @@ public sealed partial class InputTests
     [Fact]
     public async Task Geteilte_Anzeige_kennt_den_Token_nur_als_Hash()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "kopilot-tests", Guid.NewGuid().ToString("N"));
+        var dir = Path.Combine(Path.GetTempPath(), "duopilo-tests", Guid.NewGuid().ToString("N"));
         var (input, _, _) = Create(dataDir: dir);
 
         var prepared = await input.PrepareAsync("gear.up", null, default);

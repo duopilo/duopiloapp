@@ -1,8 +1,8 @@
 using System.Text.Json;
-using Kopilot.Localization;
+using Duopilo.Localization;
 using Microsoft.Extensions.Options;
 
-namespace Kopilot.Aircraft;
+namespace Duopilo.Aircraft;
 
 /// <summary>Lädt Flugzeugprofile aus dem Ordner "profiles" (*.json).</summary>
 public sealed class ProfileStore
@@ -19,7 +19,7 @@ public sealed class ProfileStore
     private volatile IReadOnlyList<string> _errors = [];
     private volatile IReadOnlyList<string> _warnings = [];
 
-    public ProfileStore(IOptions<KopilotOptions> options, ILogger<ProfileStore> log)
+    public ProfileStore(IOptions<DuopiloOptions> options, ILogger<ProfileStore> log)
     {
         _log = log;
         var dir = options.Value.ProfilesDirectory;
@@ -66,9 +66,9 @@ public sealed class ProfileStore
             action.Requires ??= [];
             action.Requires.RemoveAll(r => r is null);
 
-            var unknownInterlock = action.Interlocks.FirstOrDefault(i => i is null || !Kopilot.Input.Interlocks.All.Contains(i, StringComparer.OrdinalIgnoreCase));
-            var hasUnknownInterlock = action.Interlocks.Any(i => i is null || !Kopilot.Input.Interlocks.All.Contains(i, StringComparer.OrdinalIgnoreCase));
-            var needsVfe = action.Interlocks.Contains(Kopilot.Input.Interlocks.FlapsSpeed, StringComparer.OrdinalIgnoreCase);
+            var unknownInterlock = action.Interlocks.FirstOrDefault(i => i is null || !Duopilo.Input.Interlocks.All.Contains(i, StringComparer.OrdinalIgnoreCase));
+            var hasUnknownInterlock = action.Interlocks.Any(i => i is null || !Duopilo.Input.Interlocks.All.Contains(i, StringComparer.OrdinalIgnoreCase));
+            var needsVfe = action.Interlocks.Contains(Duopilo.Input.Interlocks.FlapsSpeed, StringComparer.OrdinalIgnoreCase);
             var flapsWithoutChoice = needsVfe && action.Parameter is not { IsChoice: true, Options.Count: > 0 };
 
             string? problem = null;
@@ -80,7 +80,7 @@ public sealed class ProfileStore
             {
                 problem = Loc.T("aircraft.action.duplicate", action.Id);
             }
-            else if (Kopilot.Input.ActionSafety.Problem(action) is { } unsafeStep)
+            else if (Duopilo.Input.ActionSafety.Problem(action) is { } unsafeStep)
             {
                 problem = Loc.T("aircraft.action.unsafe", action.Id, unsafeStep);
             }
@@ -127,7 +127,7 @@ public sealed class ProfileStore
             }
         }
 
-        foreach (var flaps in profile.Actions.Where(a => a.Interlocks.Contains(Kopilot.Input.Interlocks.FlapsSpeed, StringComparer.OrdinalIgnoreCase)))
+        foreach (var flaps in profile.Actions.Where(a => a.Interlocks.Contains(Duopilo.Input.Interlocks.FlapsSpeed, StringComparer.OrdinalIgnoreCase)))
         {
             var missing = flaps.Parameter?.Options?.Keys.Where(o => o != "0" && limits.VfeFor(null, o) is null).ToList() ?? [];
             if (missing.Count > 0)

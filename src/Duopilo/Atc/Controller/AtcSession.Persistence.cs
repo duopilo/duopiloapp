@@ -1,6 +1,6 @@
-using Kopilot.Localization;
+using Duopilo.Localization;
 
-namespace Kopilot.Atc;
+namespace Duopilo.Atc;
 
 /// <summary>Verweis auf eine Station, aus dem sich die Station nach einem Neustart wieder bauen lässt.</summary>
 /// <param name="Key">z. B. "EDDF/tower", "FIR/CZQX" oder "FIR/CZUL/MC" (Kontrollposition aus den Sektordaten).</param>
@@ -11,7 +11,7 @@ public sealed record AtcStationRef(string Key, AtcStationType Type, string Facil
 }
 
 /// <summary>
-/// Gesicherter Stand einer ATC-Sitzung (atc-session.json). Damit geht nach einem Absturz oder Neustart von Kopilot
+/// Gesicherter Stand einer ATC-Sitzung (atc-session.json). Damit geht nach einem Absturz oder Neustart von Duopilo
 /// nichts verloren: Station, Phase, freigegebene Höhe, Oceanic-Freigabe, Werte von Hand (Gate …), Stimmen und Funkverlauf.
 /// Offene Readbacks lassen sich nicht sichern (dahinter steckt Code) – sie gelten nach dem Wiederherstellen als erledigt.
 /// </summary>
@@ -83,7 +83,7 @@ public sealed record AtcSessionSnapshot
     /// <summary>Beim Sichern offenes Readback (Nachrichten-ID) – nur zur Information.</summary>
     public string? PendingReadback { get; init; }
 
-    /// <summary>"kopilot" oder "sim" (Squawk aus dem Transponder übernommen). Fehlt in älteren Sicherungen.</summary>
+    /// <summary>"duopilo" (bis 0.9.x "kopilot") oder "sim" (Squawk aus dem Transponder übernommen). Fehlt in älteren Sicherungen.</summary>
     public string? SquawkSource { get; init; }
 
     /// <summary>Stufensteigflüge des OFP vor diesem Index sind erledigt.</summary>
@@ -199,7 +199,7 @@ public sealed partial class AtcSession
         if (IsValidSquawk(s.Squawk))
         {
             Squawk = s.Squawk;
-            SquawkSource = s.SquawkSource is "sim" ? "sim" : "kopilot";
+            SquawkSource = s.SquawkSource is "sim" ? "sim" : SquawkSourceOwn;
         }
 
         _stepClimbIndex = Math.Clamp(s.StepClimbIndex, 0, Plan.StepClimbs.Count);

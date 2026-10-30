@@ -1,8 +1,8 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
-using Kopilot.FlightPlan;
+using Duopilo.FlightPlan;
 
-namespace Kopilot.Atc;
+namespace Duopilo.Atc;
 
 /// <summary>Variablen der Vorlagen, Höhen, Stationen und Lage auf der Route.</summary>
 public sealed partial class AtcSession

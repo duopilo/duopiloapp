@@ -1,13 +1,13 @@
 using System.Globalization;
 using System.Text.Json;
-using Kopilot.Localization;
+using Duopilo.Localization;
 
-namespace Kopilot.Atc.Airspace;
+namespace Duopilo.Atc.Airspace;
 
 /// <summary>
 /// Lädt die Luftraumdaten aus dem Ordner "data": VAT-Spy (FIR-Grenzen und -Namen, Originalformat), die Streckensektoren
 /// (atc-sectors.json aus tools/import_sectors.py) und die Airline-Datenbank von OpenFlights. Jede Quelle wird zuerst unter
-/// %LOCALAPPDATA%\Kopilot\data gesucht (dort überlebt ein eigener, neuerer Stand jedes Update), dann neben der Kopilot.exe.
+/// %LOCALAPPDATA%\Duopilo\data gesucht (dort überlebt ein eigener, neuerer Stand jedes Update), dann neben der Duopilo.exe.
 /// </summary>
 public static class AirspaceLoader
 {
@@ -101,7 +101,7 @@ public static class AirspaceLoader
     /// <summary>
     /// VAT-Spy im Originalformat: Namen aus dem Abschnitt [FIRs] von VATSpy.dat ("ICAO|NAME|PRÄFIX|GRENZE"), Grenzen aus
     /// Boundaries.geojson. Unterteilungen wie "EDGG-N" oder "CZQO-GOTA" (Präfix ist selbst eine FIR) bleiben außen vor –
-    /// Kopilot nimmt dafür die Sektoren.
+    /// Duopilo nimmt dafür die Sektoren.
     /// </summary>
     public static List<AirspaceFir> ParseVatSpy(string datText, Stream boundaries)
     {

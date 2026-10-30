@@ -1,7 +1,7 @@
-using Kopilot.FlightPlan;
-using Kopilot.Sim;
+using Duopilo.FlightPlan;
+using Duopilo.Sim;
 
-namespace Kopilot.Traffic;
+namespace Duopilo.Traffic;
 
 /// <summary>Bezugspunkt für die Verkehrsrechnung: das eigene Flugzeug.</summary>
 /// <param name="AltitudeFt">Wahre Höhe über MSL (PLANE ALTITUDE). Nur für die Erkennung des eigenen Objekts in der Abfrage.</param>

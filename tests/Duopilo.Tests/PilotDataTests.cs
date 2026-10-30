@@ -1,12 +1,12 @@
-using Kopilot.Aircraft;
-using Kopilot.Atc;
-using Kopilot.Ecam;
-using Kopilot.FlightPlan;
-using Kopilot.Monitoring;
+using Duopilo.Aircraft;
+using Duopilo.Atc;
+using Duopilo.Ecam;
+using Duopilo.FlightPlan;
+using Duopilo.Monitoring;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
 public sealed class PilotDataTests
 {
@@ -111,9 +111,9 @@ public sealed class PilotDataTests
     [Fact]
     public void Ziffern_werden_mit_niner_gesprochen()
     {
-        Assert.Equal("zero niner", Kopilot.Speech.Pronunciation.Runway(9, null));
-        Assert.Equal("two seven right", Kopilot.Speech.Pronunciation.Runway(27, "R"));
-        Assert.Equal("one niner niner", Kopilot.Speech.Pronunciation.Digits(199));
+        Assert.Equal("zero niner", Duopilo.Speech.Pronunciation.Runway(9, null));
+        Assert.Equal("two seven right", Duopilo.Speech.Pronunciation.Runway(27, "R"));
+        Assert.Equal("one niner niner", Duopilo.Speech.Pronunciation.Digits(199));
     }
 
     // ------------------------------------------------------------------ SimBrief
@@ -241,13 +241,13 @@ public sealed class PilotDataTests
     private static ProfileStore RepoProfiles()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !Directory.Exists(Path.Combine(dir.FullName, "src", "Kopilot", "profiles")))
+        while (dir is not null && !Directory.Exists(Path.Combine(dir.FullName, "src", "Duopilo", "profiles")))
         {
             dir = dir.Parent;
         }
 
         Assert.NotNull(dir);
-        var options = Options.Create(new KopilotOptions { ProfilesDirectory = Path.Combine(dir.FullName, "src", "Kopilot", "profiles") });
+        var options = Options.Create(new DuopiloOptions { ProfilesDirectory = Path.Combine(dir.FullName, "src", "Duopilo", "profiles") });
         return new ProfileStore(options, NullLogger<ProfileStore>.Instance);
     }
 

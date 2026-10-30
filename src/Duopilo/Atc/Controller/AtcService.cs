@@ -1,14 +1,14 @@
 using System.Threading.Channels;
-using Kopilot.Atc.Airspace;
-using Kopilot.FlightPlan;
-using Kopilot.Localization;
-using Kopilot.Monitoring;
-using Kopilot.Sim;
+using Duopilo.Atc.Airspace;
+using Duopilo.FlightPlan;
+using Duopilo.Localization;
+using Duopilo.Monitoring;
+using Duopilo.Sim;
 using Microsoft.Extensions.Options;
 
-namespace Kopilot.Atc;
+namespace Duopilo.Atc;
 
-/// <summary>Spricht ATC-Funksprüche mit der Stimme der Station (in Kopilot: die Sprachausgabe der Tray-Instanz).</summary>
+/// <summary>Spricht ATC-Funksprüche mit der Stimme der Station (in Duopilo: die Sprachausgabe der Tray-Instanz).</summary>
 public interface IAtcRadio
 {
     Task TransmitAsync(AtcTransmission transmission, CancellationToken ct);
@@ -21,7 +21,7 @@ public sealed record AtcTransmitResult(bool Ok, string? Error, IReadOnlyList<Atc
 /// Hält die ATC-Sitzung des aktuellen Flugs: lädt atc-templates.json, baut den Plan aus dem SimBrief-OFP, taktet die
 /// Zustandsmaschine mit den SimConnect-Werten, holt Frequenzen über die Facilities-API und gibt die Funksprüche an die
 /// Sprachausgabe. Eine Sitzung beginnt mit dem ersten Pilotenspruch (oder atc_control start).
-/// Die Sitzung wird laufend gesichert (atc-session.json) und nach einem Neustart oder Absturz von Kopilot automatisch
+/// Die Sitzung wird laufend gesichert (atc-session.json) und nach einem Neustart oder Absturz von Duopilo automatisch
 /// fortgesetzt, sobald MSFS verbunden ist und derselbe SimBrief-Plan geladen ist.
 /// </summary>
 public sealed class AtcService : BackgroundService
@@ -32,7 +32,7 @@ public sealed class AtcService : BackgroundService
     /// <summary>Meldung im AlertBus: COM1 steht nicht auf der Frequenz der Station (ATC hat "check frequency" gesagt).</summary>
     public const string FrequencyAlertRule = "ATC_FREQUENCY";
 
-    private readonly KopilotOptions _options;
+    private readonly DuopiloOptions _options;
     private readonly SimConnectClient _sim;
     private readonly SimBriefService _simBrief;
     private readonly IServiceProvider _services;
@@ -65,7 +65,7 @@ public sealed class AtcService : BackgroundService
     private DateTimeOffset? _restoredFromUtc;
     private readonly HashSet<string> _raisedAlerts = new(StringComparer.Ordinal);
 
-    public AtcService(IOptions<KopilotOptions> options, SimConnectClient sim, SimBriefService simBrief, IServiceProvider services, ILogger<AtcService> log)
+    public AtcService(IOptions<DuopiloOptions> options, SimConnectClient sim, SimBriefService simBrief, IServiceProvider services, ILogger<AtcService> log)
     {
         _options = options.Value;
         _sim = sim;
@@ -135,7 +135,7 @@ public sealed class AtcService : BackgroundService
 
     /// <summary>
     /// Für die Sprachschleife: Stationsnamen und eigenes Rufzeichen (Code und Sprechform) des laufenden bzw. geplanten Flugs,
-    /// damit sie Funksprüche an ATC vom Kopilot-Befehl unterscheiden kann.
+    /// damit sie Funksprüche an ATC vom Duopilo-Befehl unterscheiden kann.
     /// </summary>
     public AtcRoutingInfo RoutingInfo()
     {
@@ -147,8 +147,8 @@ public sealed class AtcService : BackgroundService
     }
 
     /// <summary>
-    /// Vorlagen, Airline-Datenbank und Luftraumdaten neu laden. Die mitgelieferte atc-templates.json neben der Kopilot.exe
-    /// ist die Grundlage, eine eigene Kopie in DataDirectory wird darübergelegt. Die Luftraumdaten lädt Kopilot im
+    /// Vorlagen, Airline-Datenbank und Luftraumdaten neu laden. Die mitgelieferte atc-templates.json neben der Duopilo.exe
+    /// ist die Grundlage, eine eigene Kopie in DataDirectory wird darübergelegt. Die Luftraumdaten lädt Duopilo im
     /// Hintergrund nach (beim ersten Bedarf spätestens).
     /// </summary>
     public IReadOnlyList<string> ReloadTemplates()
@@ -430,7 +430,7 @@ public sealed class AtcService : BackgroundService
 
     /// <summary>
     /// Abweichungen bei Squawk und COM1 als Meldungen im AlertBus (ohne Callout – ATC hat es schon gesagt). Claude sieht sie
-    /// in activeAlerts und wait_for_alerts und bietet dem Piloten das Zurücksetzen an; Kopilot selbst setzt nie zurück.
+    /// in activeAlerts und wait_for_alerts und bietet dem Piloten das Zurücksetzen an; Duopilo selbst setzt nie zurück.
     /// </summary>
     private void PublishDeviations(IReadOnlyList<AtcDeviationEvent> deviations)
     {
@@ -506,7 +506,7 @@ public sealed class AtcService : BackgroundService
     }
 
     /// <summary>
-    /// Nach dem Start von Kopilot einmal: Gibt es eine gesicherte Sitzung, die nicht zu alt ist, wird sie fortgesetzt, sobald
+    /// Nach dem Start von Duopilo einmal: Gibt es eine gesicherte Sitzung, die nicht zu alt ist, wird sie fortgesetzt, sobald
     /// MSFS verbunden ist – ohne dass der Pilot erst funken muss. Eine Sicherung eines anderen Flugs bleibt liegen.
     /// </summary>
     private async Task AutoRestoreAsync(CancellationToken ct)
@@ -810,7 +810,7 @@ public sealed class AtcService : BackgroundService
         ZuluTimeSec = _sim.Num("zuluTimeSec"),
         ParkingBrake = new AircraftSignals(_sim).ParkingBrake,
         AssignedRunway = _sim.Connection.IsConnected ? AtcReader.AssignedRunway(_sim, _simBrief.Current)?.Ident : null,
-        TransponderCode = Kopilot.Tools.Fmt.Squawk(_sim.Num("xpdrCode")),
+        TransponderCode = Duopilo.Tools.Fmt.Squawk(_sim.Num("xpdrCode")),
         Com1ActiveMhz = _sim.Num("com1Active"),
     };
 
@@ -821,7 +821,7 @@ public sealed class AtcService : BackgroundService
         return airline is not null && number is not null ? airline + number : _sim.Str("atcId");
     }
 
-    /// <summary>Stimme, mit der Kopilot gerade spricht (First Officer der Sprachschleife, sonst die Stimme aus dem Dashboard).</summary>
+    /// <summary>Stimme, mit der Duopilo gerade spricht (First Officer der Sprachschleife, sonst die Stimme aus dem Dashboard).</summary>
     private string? CalloutVoice() =>
         _services.GetService<Speech.ISpeechOutput>()?.KopilotVoice ?? _options.Speech.KokoroVoice;
 
@@ -833,7 +833,7 @@ public sealed class AtcService : BackgroundService
     }
 
     /// <summary>
-    /// Grundlage: TemplatesFile neben der Kopilot.exe. Eigene Kopie: TemplatesFile in DataDirectory (oder ein absoluter Pfad).
+    /// Grundlage: TemplatesFile neben der Duopilo.exe. Eigene Kopie: TemplatesFile in DataDirectory (oder ein absoluter Pfad).
     /// Zeigen beide auf dieselbe Datei, gibt es nur die Grundlage.
     /// </summary>
     private (string? BasePath, string? UserPath) ResolveTemplatesPaths()
@@ -846,7 +846,7 @@ public sealed class AtcService : BackgroundService
 
         var bundled = Path.Combine(AppContext.BaseDirectory, Path.IsPathRooted(configured) ? AtcTemplateLoader.FileName : configured);
         var basePath = File.Exists(bundled) ? bundled : null;
-        var own = Path.IsPathRooted(configured) ? configured : Path.Combine(_options.ResolveDataDirectory(), configured);
+        var own = Path.IsPathRooted(configured) ? Duopilo.Hosting.DataDirectoryMigration.MapLegacyPath(configured) : Path.Combine(_options.ResolveDataDirectory(), configured);
         var userPath = File.Exists(own) && (basePath is null || !Path.GetFullPath(own).Equals(Path.GetFullPath(basePath), StringComparison.OrdinalIgnoreCase))
             ? own
             : null;

@@ -1,10 +1,10 @@
 using System.Diagnostics;
-using Kopilot.Atc;
-using Kopilot.Localization;
-using Kopilot.Monitoring;
+using Duopilo.Atc;
+using Duopilo.Localization;
+using Duopilo.Monitoring;
 using Microsoft.Extensions.Options;
 
-namespace Kopilot.Speech;
+namespace Duopilo.Speech;
 
 /// <summary>
 /// Spricht die Callouts des Monitorings: hört auf den <see cref="AlertBus"/>, ordnet über die <see cref="CalloutQueue"/>
@@ -82,7 +82,7 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
 
     /// <param name="engines">Weitere lokale Engines für Smalltalk in anderen Sprachen (Piper). null = nur Englisch.</param>
     public CalloutSpeaker(
-        IOptions<KopilotOptions> options,
+        IOptions<DuopiloOptions> options,
         AlertBus bus,
         MonitoringService monitoring,
         KokoroSpeechEngine kokoro,
@@ -120,7 +120,7 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
             _kokoro.Voices,
             _lastSynthesisMs));
 
-    /// <summary>Kokoro-Stimme, mit der Kopilot gerade spricht: die der Sprachschleife (First Officer), sonst die aus dem Dashboard.</summary>
+    /// <summary>Kokoro-Stimme, mit der Duopilo gerade spricht: die der Sprachschleife (First Officer), sonst die aus dem Dashboard.</summary>
     public string? KopilotVoice => _voice.KopilotVoice ?? _settings.KokoroVoice;
 
     // ------------------------------------------------------------------ IVoiceOutput (Sprachschleife)
@@ -461,7 +461,7 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
         return clip;
     }
 
-    /// <summary>Stimme für eine Ansage: eigene Stimme der Ansage (ATC), sonst die Kopilot-Stimme, sonst die aus dem Dashboard.</summary>
+    /// <summary>Stimme für eine Ansage: eigene Stimme der Ansage (ATC), sonst die Duopilo-Stimme, sonst die aus dem Dashboard.</summary>
     private string VoiceFor(SpeechItem? item)
     {
         if (KokoroSpeechEngine.IsEnglishVoice(item?.Voice))
@@ -514,7 +514,7 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
     // ------------------------------------------------------------------ ATC
 
     /// <summary>
-    /// ATC-Funkspruch in die Warteschlange (Priorität ATC: nach Warnungen, Callouts und Antworten von Kopilot), gesprochen mit
+    /// ATC-Funkspruch in die Warteschlange (Priorität ATC: nach Warnungen, Callouts und Antworten von Duopilo), gesprochen mit
     /// der Kokoro-Stimme der Station. Solange Kokoro lädt, spricht die Windows-Stimme (falls englisch). Kehrt sofort zurück –
     /// die Reihenfolge der Funksprüche bleibt in der Warteschlange erhalten, und das Mikrofon der Sprachschleife bleibt
     /// stumm, solange ATC spricht.

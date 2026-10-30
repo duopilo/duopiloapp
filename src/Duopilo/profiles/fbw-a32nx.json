@@ -38,7 +38,7 @@
     },
     "fmaVertical": {
       "name": "L:A32NX_FMA_VERTICAL_MODE", "type": "enum", "verified": true,
-      "description": "ALT CRZ is missing from this variable – Kopilot derives it from fmgcDiscreteWord1",
+      "description": "ALT CRZ is missing from this variable – Duopilo derives it from fmgcDiscreteWord1",
       "values": {
         "0": "", "10": "ALT", "11": "ALT*", "12": "OP CLB", "13": "OP DES", "14": "V/S", "15": "FPA",
         "20": "ALT CST", "21": "ALT CST*", "22": "CLB", "23": "DES", "24": "FINAL", "30": "G/S*", "31": "G/S",
@@ -153,11 +153,11 @@
     { "key": "fmgcPhase", "name": "L:A32NX_FMGC_FLIGHT_PHASE", "unit": "number", "description": "FMGC flight phase",
       "values": { "0": "PREFLIGHT", "1": "TAKEOFF", "2": "CLIMB", "3": "CRUISE", "4": "DESCENT", "5": "APPROACH", "6": "GO AROUND", "7": "DONE" } }
   ],
-  // Eingaben (Eingabe-Modul, v0.7): nur diese Aktionen kann Kopilot im Cockpit bedienen – nach Readback und Bestätigung.
+  // Eingaben (Eingabe-Modul, v0.7): nur diese Aktionen kann Duopilo im Cockpit bedienen – nach Readback und Bestätigung.
   // Quellen: fbw-a32nx/docs/a320-events.md, a320-simvars.md, aircraft_preset_procedures.xml (FBW-Presets), Rust-Systeme.
   // "verified": false = laut FBW-Quellcode, im Sim noch nicht geprüft. Triebwerk, Feuer, Treibstoff und MCDU sind im Code gesperrt.
   // "verified": true = im Sim getestet (28.10.2026: fcu.heading, flaps, lights.beacon, antiice.engines, apu.bleed).
-  // Weitere geprüfte Aktionen merkt sich Kopilot in %LOCALAPPDATA%\Kopilot\verified-actions.json.
+  // Weitere geprüfte Aktionen merkt sich Duopilo in %LOCALAPPDATA%\Duopilo\verified-actions.json.
   "actions": [
     {
       "id": "fcu.speed",

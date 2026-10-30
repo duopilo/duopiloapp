@@ -1,9 +1,9 @@
-using Kopilot.Aircraft;
-using Kopilot.FlightPlan;
-using Kopilot.Monitoring;
-using Kopilot.Sim;
+using Duopilo.Aircraft;
+using Duopilo.FlightPlan;
+using Duopilo.Monitoring;
+using Duopilo.Sim;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
 /// <summary>Korrekturen nach dem Testflug EDDL–EDDM (v0.5).</summary>
 public sealed class FlightTestFixesTests

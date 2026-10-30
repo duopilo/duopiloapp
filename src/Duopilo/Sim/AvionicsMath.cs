@@ -1,4 +1,4 @@
-namespace Kopilot.Sim;
+namespace Duopilo.Sim;
 
 /// <summary>Zustand (Sign/Status Matrix) eines ARINC-429-Datenworts.</summary>
 public enum Arinc429Ssm

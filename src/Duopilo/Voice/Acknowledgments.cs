@@ -1,6 +1,6 @@
-using Kopilot.Monitoring;
+using Duopilo.Monitoring;
 
-namespace Kopilot.Voice;
+namespace Duopilo.Voice;
 
 /// <summary>Eine wichtige Meldung, die auf "check"/"copy" wartet.</summary>
 /// <param name="Rule">Regel-ID der Meldung (z. B. "FUEL_WARNING").</param>

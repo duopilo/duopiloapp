@@ -1,17 +1,17 @@
 using System.Net.Http.Headers;
 using System.Text;
-using Kopilot.Hosting;
+using Duopilo.Hosting;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
-/// <summary>Startet Kopilot im HTTP-Modus auf einem In-Memory-TestServer.</summary>
+/// <summary>Startet Duopilo im HTTP-Modus auf einem In-Memory-TestServer.</summary>
 internal sealed class TestApp : IAsyncDisposable
 {
-    public const string PublicUrl = "https://kopilot.test";
+    public const string PublicUrl = "https://duopilo.test";
     public const string ResourceUrl = PublicUrl + "/mcp";
     public const string BearerToken = "test-bearer-0123456789abcdefghijklmnopqrstuvwxyz";
     public const string Password = "richtiges-passwort-42";
@@ -26,14 +26,14 @@ internal sealed class TestApp : IAsyncDisposable
     {
         var settings = new Dictionary<string, string?>
         {
-            ["Kopilot:Remote:PublicUrl"] = PublicUrl,
-            ["Kopilot:Remote:BearerToken"] = BearerToken,
-            ["Kopilot:Remote:ConsentPassword"] = Password,
-            ["Kopilot:Remote:StateFile"] = stateFile,
-            ["Kopilot:ReconnectSeconds"] = "60",
+            ["Duopilo:Remote:PublicUrl"] = PublicUrl,
+            ["Duopilo:Remote:BearerToken"] = BearerToken,
+            ["Duopilo:Remote:ConsentPassword"] = Password,
+            ["Duopilo:Remote:StateFile"] = stateFile,
+            ["Duopilo:ReconnectSeconds"] = "60",
 
-            // Eigener Datenordner, damit Tests nie den echten %LOCALAPPDATA%\Kopilot (z. B. input.json) verändern
-            ["Kopilot:DataDirectory"] = Path.Combine(Path.GetTempPath(), "kopilot-tests", Guid.NewGuid().ToString("N")),
+            // Eigener Datenordner, damit Tests nie den echten %LOCALAPPDATA%\Duopilo (z. B. input.json) verändern
+            ["Duopilo:DataDirectory"] = Path.Combine(Path.GetTempPath(), "duopilo-tests", Guid.NewGuid().ToString("N")),
         };
 
         foreach (var (key, value) in overrides ?? new Dictionary<string, string?>())
@@ -60,7 +60,7 @@ internal sealed class TestApp : IAsyncDisposable
     public HttpClient Remote()
     {
         var client = App.GetTestServer().CreateClient();
-        client.BaseAddress = new Uri("http://kopilot.test/");
+        client.BaseAddress = new Uri("http://duopilo.test/");
         client.DefaultRequestHeaders.Add("CF-Connecting-IP", "160.79.104.10");
         return client;
     }
@@ -69,7 +69,7 @@ internal sealed class TestApp : IAsyncDisposable
     public static async Task<HttpResponseMessage> McpInitializeAsync(HttpClient client, string? bearer)
     {
         const string body = """
-            {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"kopilot-tests","version":"1.0"}}}
+            {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"duopilo-tests","version":"1.0"}}}
             """;
         var request = new HttpRequestMessage(HttpMethod.Post, "/mcp")
         {

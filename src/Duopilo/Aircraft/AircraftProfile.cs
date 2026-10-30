@@ -1,10 +1,10 @@
 using System.Globalization;
 using System.Text.Json.Serialization;
 
-namespace Kopilot.Aircraft;
+namespace Duopilo.Aircraft;
 
 /// <summary>
-/// Flugzeugprofil: sagt Kopilot, woher flugzeugspezifische Werte kommen (meist L:-Variablen),
+/// Flugzeugprofil: sagt Duopilo, woher flugzeugspezifische Werte kommen (meist L:-Variablen),
 /// wie das ECAM gelesen wird und welche Grenzwerte gelten.
 /// </summary>
 public sealed class AircraftProfile
@@ -38,10 +38,10 @@ public sealed class AircraftProfile
     /// <summary>Treibstoffsystem für get_systems (z. B. Pumpenschalter, Pumpe läuft, Transferventile). Leer = keine Pumpenliste.</summary>
     public List<ProfileVariable> Fuel { get; set; } = [];
 
-    /// <summary>Erlaubte Eingaben (Eingabe-Modul). Nur was hier steht, kann Kopilot im Cockpit bedienen.</summary>
-    public List<Kopilot.Input.ProfileAction> Actions { get; set; } = [];
+    /// <summary>Erlaubte Eingaben (Eingabe-Modul). Nur was hier steht, kann Duopilo im Cockpit bedienen.</summary>
+    public List<Duopilo.Input.ProfileAction> Actions { get; set; } = [];
 
-    /// <summary>Wie Kopilot nach Fahrwerk und Klappen nachliest, ob die Stellung erreicht ist. Fehlt = Standard-SimVars.</summary>
+    /// <summary>Wie Duopilo nach Fahrwerk und Klappen nachliest, ob die Stellung erreicht ist. Fehlt = Standard-SimVars.</summary>
     public VerificationConfig? Verification { get; set; }
 
     [JsonIgnore]
@@ -96,7 +96,7 @@ public sealed class ProfileBinding
     /// <summary>number | bool | enum | bitmask | string | arinc429 (FBW-Datenwort: Wert nur bei Normal Operation)</summary>
     public string Type { get; set; } = "number";
 
-    /// <summary>Umrechnungsfaktor auf die Kopilot-Einheit (z. B. lbs/h → kg/h = 0.45359237).</summary>
+    /// <summary>Umrechnungsfaktor auf die Duopilo-Einheit (z. B. lbs/h → kg/h = 0.45359237).</summary>
     public double Scale { get; set; } = 1;
 
     /// <summary>enum: Rohwert → Text. bitmask: Bitnummer → Text.</summary>
@@ -243,7 +243,7 @@ public sealed class AircraftLimits
 }
 
 /// <summary>
-/// Nachlesen nach Fahrwerk/Klappen (Eingabe-Modul): Erst wenn die Stellung erreicht ist, sagt Kopilot "Gear down, three green"
+/// Nachlesen nach Fahrwerk/Klappen (Eingabe-Modul): Erst wenn die Stellung erreicht ist, sagt Duopilo "Gear down, three green"
 /// bzw. "Flaps two" – sonst nach der Zeitgrenze "Gear disagree" bzw. "Flaps disagree".
 /// </summary>
 public sealed class VerificationConfig

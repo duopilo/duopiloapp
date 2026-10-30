@@ -22,7 +22,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Kopilot\Kopilot.csproj" />
+    <ProjectReference Include="..\..\src\Duopilo\Duopilo.csproj" />
   </ItemGroup>
 
   <ItemGroup>

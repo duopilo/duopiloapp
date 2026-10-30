@@ -1,9 +1,9 @@
-using Kopilot.Atc;
-using Kopilot.FlightPlan;
-using Kopilot.Input;
-using Kopilot.Voice;
+using Duopilo.Atc;
+using Duopilo.FlightPlan;
+using Duopilo.Input;
+using Duopilo.Voice;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
 /// <summary>
 /// Sprachschleife ↔ ATC-Modul (v0.9): Router mit den echten Stationsnamen und Rufzeichen aus atc-templates.json und

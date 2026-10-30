@@ -1,9 +1,9 @@
 using System.Globalization;
-using Kopilot.Aircraft;
-using Kopilot.Localization;
-using Kopilot.Monitoring;
+using Duopilo.Aircraft;
+using Duopilo.Localization;
+using Duopilo.Monitoring;
 
-namespace Kopilot.Input;
+namespace Duopilo.Input;
 
 /// <summary>Was nach Fahrwerk oder Klappen nachgelesen wird.</summary>
 /// <param name="Item"><see cref="ConfigCalloutClaims.Gear"/> oder <see cref="ConfigCalloutClaims.Flaps"/>.</param>

@@ -1,10 +1,10 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
-using Kopilot.Atc.Airspace;
-using Kopilot.Localization;
+using Duopilo.Atc.Airspace;
+using Duopilo.Localization;
 
-namespace Kopilot.Atc;
+namespace Duopilo.Atc;
 
 /// <summary>
 /// Inhalt von atc-templates.json: alle Funksprüche als Textvorlagen mit {Variablen}, dazu Stimmen, Rufzeichen,
@@ -26,7 +26,7 @@ public sealed class AtcTemplates
     public Dictionary<string, string> Telephony { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Zusatz für FIRs ohne eigenen Eintrag, deren Namen Kopilot aus VAT-Spy nimmt ("Minneapolis" → "Minneapolis Center"):
+    /// Zusatz für FIRs ohne eigenen Eintrag, deren Namen Duopilo aus VAT-Spy nimmt ("Minneapolis" → "Minneapolis Center"):
     /// ICAO-Präfix → Stationsart, der längste passende Präfix gewinnt, "" für alle übrigen.
     /// </summary>
     public Dictionary<string, string> FirSuffixes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
@@ -136,7 +136,7 @@ public sealed class AtcVoiceConfig
     /// <summary>Feste Stimme je Station: Schlüssel "EDDF/tower", "FIR/EDGG" oder nur die Art ("delivery").</summary>
     public Dictionary<string, string> Stations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Die Stimme der Kopilot-Callouts nicht für ATC verwenden.</summary>
+    /// <summary>Die Stimme der Duopilo-Callouts nicht für ATC verwenden.</summary>
     public bool AvoidCalloutVoice { get; set; } = true;
 }
 
@@ -270,8 +270,8 @@ public sealed class AtcMessageTemplate
 }
 
 /// <summary>
-/// Lädt und prüft atc-templates.json. Die mitgelieferte Datei neben der Kopilot.exe ist die Grundlage; eine eigene Kopie
-/// (z. B. %LOCALAPPDATA%\Kopilot\atc-templates.json) wird darübergelegt – sie braucht nur noch die Abweichungen. Ältere
+/// Lädt und prüft atc-templates.json. Die mitgelieferte Datei neben der Duopilo.exe ist die Grundlage; eine eigene Kopie
+/// (z. B. %LOCALAPPDATA%\Duopilo\atc-templates.json) wird darübergelegt – sie braucht nur noch die Abweichungen. Ältere
 /// Formate hebt <see cref="AtcTemplateMigration"/> vorher an.
 /// </summary>
 public static class AtcTemplateLoader

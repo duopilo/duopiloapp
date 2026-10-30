@@ -1,21 +1,21 @@
 using System.ComponentModel;
-using Kopilot.Atc;
-using Kopilot.Localization;
-using Kopilot.Monitoring;
+using Duopilo.Atc;
+using Duopilo.Localization;
+using Duopilo.Monitoring;
 using ModelContextProtocol.Server;
 
-namespace Kopilot.Tools;
+namespace Duopilo.Tools;
 
 /// <summary>
-/// Kopilot-ATC: Zustandsmaschine mit festen Textvorlagen (atc-templates.json). Claude gibt die Funksprüche des Piloten
-/// weiter, Kopilot antwortet als Delivery, Ground, Tower, Departure, Center, Oceanic und Approach – jede Station mit eigener Stimme.
+/// Duopilo-ATC: Zustandsmaschine mit festen Textvorlagen (atc-templates.json). Claude gibt die Funksprüche des Piloten
+/// weiter, Duopilo antwortet als Delivery, Ground, Tower, Departure, Center, Oceanic und Approach – jede Station mit eigener Stimme.
 /// </summary>
 [McpServerToolType]
 public static class AtcControllerTools
 {
     [McpServerTool(Name = "get_atc_controller", ReadOnly = true)]
     [Description(
-        "Kopilot ATC (template-based, no LLM): current station with frequency and voice, phase/step, what the pilot is expected to say next " +
+        "Duopilo ATC (template-based, no LLM): current station with frequency and voice, phase/step, what the pilot is expected to say next " +
         "(rendered phraseology), pending readback items, squawk, cleared altitude, step climbs from the OFP, SID/STAR/runways, oceanic clearance " +
         "state and the recent radio transcript. Frequencies come from the MSFS facilities API, the template file, or a placeholder (frequencySource). " +
         "'deviations' lists a transponder code or COM1 frequency that doesn't match the assignment (MSFS changes both on its own, even with its ATC muted) " +
@@ -25,14 +25,14 @@ public static class AtcControllerTools
 
     [McpServerTool(Name = "atc_transmit", Destructive = false, Idempotent = false)]
     [Description(
-        "Send the pilot's radio call to Kopilot ATC and get the controller's reply. Pass the pilot's words exactly as spoken, e.g. " +
+        "Send the pilot's radio call to Duopilo ATC and get the controller's reply. Pass the pilot's words exactly as spoken, e.g. " +
         "'Frankfurt Delivery, Lufthansa four alpha bravo, request IFR clearance to Berlin' or a readback " +
         "'cleared to Berlin, MARUN seven golf departure, runway two five center, climb five thousand feet, squawk two two zero five'. " +
         "Readbacks are checked (SID, altitude, squawk, runway, frequency …); a wrong value gets 'negative' with the correct one. " +
         "Level requests in cruise ('request climb flight level three four zero', 'request descent', 'request higher') get 'climb and maintain …' " +
         "with readback; the cleared altitude follows. A call addressed to another station gets 'this is …, say again' (or the old station repeats " +
-        "the handoff). 'say again' repeats the last transmission. Kopilot speaks the reply itself with the station's voice – do not read it aloud " +
-        "again unless the pilot asks. Starts the ATC session on the first call; after a Kopilot restart the saved session of the same " +
+        "the handoff). 'say again' repeats the last transmission. Duopilo speaks the reply itself with the station's voice – do not read it aloud " +
+        "again unless the pilot asks. Starts the ATC session on the first call; after a Duopilo restart the saved session of the same " +
         "SimBrief flight continues (station, cleared altitude, transcript).")]
     public static async Task<string> AtcTransmit(
         AtcService atc,
@@ -46,14 +46,14 @@ public static class AtcControllerTools
             ok = result.Ok,
             error = result.Error,
             responses = result.Responses.Select(View).ToList(),
-            spokenByKopilot = atc.HasRadio,
+            spokenByDuopilo = atc.HasRadio,
             state = atc.WithSession((session, input) => Status(atc, session, input, alerts)),
         });
     }
 
     [McpServerTool(Name = "atc_control", Destructive = false, Idempotent = false)]
     [Description(
-        "Control the Kopilot ATC session: 'start' (begin at the current position), 'restart' (new session, new voices/squawk for a new OFP), " +
+        "Control the Duopilo ATC session: 'start' (begin at the current position), 'restart' (new session, new voices/squawk for a new OFP), " +
         "'stop', 'reload' (re-read atc-templates.json after editing) or 'say_again' (repeat the last ATC transmission).")]
     public static async Task<string> AtcControl(
         AtcService atc,
@@ -184,7 +184,7 @@ public static class AtcControllerTools
                 },
             voices = session.Voices.ToDictionary(v => v.Key, v => v.Value),
             overrides = session.Overrides.ToDictionary(v => v.Key, v => v.Value),
-            spokenByKopilot = atc.HasRadio,
+            spokenByDuopilo = atc.HasRadio,
             facilityFrequencies = atc.Frequencies.Counts,
             transcript = session.Transcript.TakeLast(12).Select(View).ToList(),
             templates = atc.TemplatesPath,

@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace Kopilot.Monitoring;
+namespace Duopilo.Monitoring;
 
 [JsonConverter(typeof(JsonStringEnumConverter<AlertSeverity>))]
 public enum AlertSeverity

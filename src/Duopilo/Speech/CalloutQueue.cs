@@ -1,6 +1,6 @@
-using Kopilot.Monitoring;
+using Duopilo.Monitoring;
 
-namespace Kopilot.Speech;
+namespace Duopilo.Speech;
 
 /// <summary>Rangfolge der Sprachausgabe: Warnungen vor Callouts vor Antworten vor ATC vor Smalltalk.</summary>
 public enum SpeechPriority
@@ -14,7 +14,7 @@ public enum SpeechPriority
     /// <summary>Funkspruch einer ATC-Station (vom ATC-Modul).</summary>
     Atc = 0,
 
-    /// <summary>Antwort von Kopilot auf den Piloten (Readback, Abfrage, "Say again").</summary>
+    /// <summary>Antwort von Duopilo auf den Piloten (Readback, Abfrage, "Say again").</summary>
     Response = 1,
 
     /// <summary>Callout des Monitorings (Info und Caution).</summary>
@@ -32,7 +32,7 @@ public sealed record SpeechRequest(string Text, SpeechPriority Priority)
     /// <summary>Text für die Sprachsynthese, z. B. "Speed two five zero". Leer = <see cref="Text"/>.</summary>
     public string? Spoken { get; init; }
 
-    /// <summary>Kokoro-Stimme (z. B. "am_michael"). Leer = Stimme von Kopilot.</summary>
+    /// <summary>Kokoro-Stimme (z. B. "am_michael"). Leer = Stimme von Duopilo.</summary>
     public string? Voice { get; init; }
 
     /// <summary>Faktor auf die eingestellte Lautstärke (0–1).</summary>
@@ -118,7 +118,7 @@ public sealed class CalloutQueue
     /// <summary>Ältere Callouts werden nicht mehr gesprochen.</summary>
     public static readonly TimeSpan MaxAge = TimeSpan.FromSeconds(8);
 
-    /// <summary>Antworten von Kopilot warten höchstens so lange.</summary>
+    /// <summary>Antworten von Duopilo warten höchstens so lange.</summary>
     public static readonly TimeSpan ResponseMaxAge = TimeSpan.FromSeconds(20);
 
     /// <summary>ATC-Funksprüche warten höchstens so lange (z. B. hinter einer Warnung oder während einer Pause).</summary>

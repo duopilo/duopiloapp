@@ -1,6 +1,6 @@
 using System.Globalization;
 
-namespace Kopilot.Speech;
+namespace Duopilo.Speech;
 
 /// <summary>Geschlecht einer Stimme (und des First Officers, der mit ihr spricht).</summary>
 public enum VoiceGender
@@ -92,7 +92,7 @@ public sealed class TtsEngineRegistry(IEnumerable<ITtsEngine> engines)
 
 /// <summary>In welcher Sprache und mit welcher Stimme der Smalltalk gesprochen wird.</summary>
 /// <param name="Language">Sprachcode der Antwort ("de", "en").</param>
-/// <param name="Voice">Stimme einer anderen Engine (null = die Kokoro-Stimme von Kopilot, für Englisch).</param>
+/// <param name="Voice">Stimme einer anderen Engine (null = die Kokoro-Stimme von Duopilo, für Englisch).</param>
 /// <param name="Wanted">Gewünschte Sprache (Oberflächensprache) – weicht von <paramref name="Language"/> ab, wenn es auf Englisch zurückfällt.</param>
 /// <param name="Reason">Warum Englisch statt der gewünschten Sprache: "noVoice", "downloading", "failed" (null = alles wie gewünscht).</param>
 public sealed record SmalltalkVoiceChoice(string Language, TtsVoice? Voice, string Wanted, string? Reason = null)
@@ -101,7 +101,7 @@ public sealed record SmalltalkVoiceChoice(string Language, TtsVoice? Voice, stri
 }
 
 /// <summary>
-/// Sprache und Stimme für den Smalltalk: die Oberflächensprache (Prompt K), Englisch mit der Kokoro-Stimme von Kopilot, andere
+/// Sprache und Stimme für den Smalltalk: die Oberflächensprache (Prompt K), Englisch mit der Kokoro-Stimme von Duopilo, andere
 /// Sprachen mit einer lokalen Engine (Piper) – Geschlecht passend zum First Officer. Gibt es keine Stimme für die Sprache oder
 /// ist sie noch nicht geladen, Englisch (Hinweis im Dashboard).
 /// </summary>
@@ -129,7 +129,7 @@ public static class SmalltalkVoices
             }
 
             engine = e;
-            voice = candidates[Kopilot.Atc.AtcVoiceAssigner.StableHash(seed) % candidates.Count];
+            voice = candidates[Duopilo.Atc.AtcVoiceAssigner.StableHash(seed) % candidates.Count];
             break;
         }
 

@@ -1,9 +1,10 @@
 using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
-using Kopilot.Localization;
+using Duopilo.Hosting;
+using Duopilo.Localization;
 using Microsoft.Extensions.Options;
 
-namespace Kopilot.Ecam;
+namespace Duopilo.Ecam;
 
 /// <summary>Ein Eintrag der ECAM-Tabelle. Mit Gruppe = Titelzeile (z. B. "AUTO FLT AP OFF"), ohne = Aktions-/Memozeile.</summary>
 public sealed record EcamEntry(string Code, string? Group, string Text)
@@ -35,7 +36,7 @@ public sealed class EcamTable(IReadOnlyDictionary<string, EcamEntry> entries, Da
 
 /// <summary>
 /// Lädt ECAM-Meldungstabellen aus dem FlyByWire-Quellcode (GPL-3.0) zur Laufzeit und hält sie lokal im Cache.
-/// Die Tabelle wird bewusst nicht ins Kopilot-Repo kopiert.
+/// Die Tabelle wird bewusst nicht ins Duopilo-Repo kopiert.
 /// </summary>
 public sealed partial class EcamCatalog
 {
@@ -57,7 +58,7 @@ public sealed partial class EcamCatalog
     private readonly ILogger<EcamCatalog> _log;
     private readonly string _cacheDir;
 
-    public EcamCatalog(IOptions<KopilotOptions> options, ILogger<EcamCatalog> log)
+    public EcamCatalog(IOptions<DuopiloOptions> options, ILogger<EcamCatalog> log)
     {
         _log = log;
         _cacheDir = Path.Combine(options.Value.ResolveDataDirectory(), "ecam");
@@ -188,7 +189,7 @@ public sealed partial class EcamCatalog
     private static HttpClient CreateHttp()
     {
         var http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd("Kopilot/1.0 (+https://github.com/Shin-Jin-Jin/Kopilot)");
+        http.DefaultRequestHeaders.UserAgent.ParseAdd(AppNames.UserAgent);
         return http;
     }
 

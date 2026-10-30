@@ -1,10 +1,10 @@
 using System.Text.Json;
-using Kopilot.Localization;
+using Duopilo.Localization;
 
-namespace Kopilot.Input;
+namespace Duopilo.Input;
 
 /// <summary>
-/// Eine erlaubte Eingabe aus dem Flugzeugprofil ("actions"). Kopilot führt nur Aktionen aus dieser Liste aus –
+/// Eine erlaubte Eingabe aus dem Flugzeugprofil ("actions"). Duopilo führt nur Aktionen aus dieser Liste aus –
 /// es gibt keinen Weg, beliebige Events oder Variablen zu schreiben.
 /// </summary>
 public sealed class ProfileAction
@@ -154,7 +154,7 @@ public sealed class ActionCheck
     public double? Modulo { get; set; }
 }
 
-/// <summary>Was Kopilot an MSFS schickt – fertig ausgerechnet.</summary>
+/// <summary>Was Duopilo an MSFS schickt – fertig ausgerechnet.</summary>
 public sealed record ResolvedStep(
     string? Event,
     uint EventData,
@@ -325,12 +325,12 @@ public sealed record InputSettings
     public long Epoch { get; init; }
 }
 
-/// <summary>Offene Aktion für das Dashboard, auch wenn sie in einer anderen Kopilot-Instanz (stdio) vorbereitet wurde.</summary>
+/// <summary>Offene Aktion für das Dashboard, auch wenn sie in einer anderen Duopilo-Instanz (stdio) vorbereitet wurde.</summary>
 /// <param name="TokenHash">Kurzer Hash des Tokens – damit eine andere Instanz erkennt, dass ein Token zu dieser Aktion gehört (fehlt in älteren Dateien).</param>
 public sealed record SharedPending(string Action, string? Value, string Readback, DateTimeOffset ExpiresUtc, int ProcessId, string? TokenHash = null);
 
 /// <summary>
-/// Gemeinsamer Zustand aller Kopilot-Instanzen im Datenordner: input.json (Schalter, Epoch) und input-pending.json (offene Aktion).
+/// Gemeinsamer Zustand aller Duopilo-Instanzen im Datenordner: input.json (Schalter, Epoch) und input-pending.json (offene Aktion).
 /// Wird bei jedem Zugriff frisch gelesen – die Tray-Instanz und die stdio-Instanz von Claude Desktop sehen denselben Stand.
 /// </summary>
 public sealed class InputSettingsStore(string directory)

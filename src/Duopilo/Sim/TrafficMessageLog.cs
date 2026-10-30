@@ -1,6 +1,6 @@
 using System.Globalization;
 
-namespace Kopilot.Sim;
+namespace Duopilo.Sim;
 
 /// <summary>
 /// Schreibt jede BYTYPE-Nachricht der Verkehrsverbindung als Zeile nach logs\traffic-messages.csv (bei 10 MB wird

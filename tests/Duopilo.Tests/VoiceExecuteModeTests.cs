@@ -1,7 +1,7 @@
-using Kopilot.Input;
-using Kopilot.Voice;
+using Duopilo.Input;
+using Duopilo.Voice;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
 /// <summary>
 /// Modus "ausführen + Callout" (v0.9.2, Punkt 3): sicher erkannte Befehle sofort ausführen und nach der Prüfung ansagen;

@@ -7,8 +7,10 @@
     <Authors>Shin_Jin_Jin</Authors>
     <!--
       Produktname – zentral für Installer, ZIP und GitHub Release (installer/installer.ps1, .github/workflows/release.yml).
-      Programmdatei (AssemblyName), Datenordner %LOCALAPPDATA%\Kopilot und Autostart-Eintrag stehen noch im Code.
+      Programmdatei (<AssemblyName> in src/Duopilo/Duopilo.csproj), Datenordner %LOCALAPPDATA%\Duopilo, Autostart-Eintrag,
+      Konfigurationsabschnitt und Webseite stehen in src/Duopilo/Hosting/AppNames.cs – bei einer Umbenennung beides ändern.
+      Bis 0.9.x hieß das Produkt Kopilot; was unter dem alten Namen existiert, liest AppNames.Legacy weiter.
     -->
-    <Product>Kopilot</Product>
+    <Product>Duopilo</Product>
   </PropertyGroup>
 </Project>

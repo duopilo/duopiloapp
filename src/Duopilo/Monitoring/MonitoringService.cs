@@ -1,8 +1,8 @@
-using Kopilot.FlightPlan;
-using Kopilot.Localization;
+using Duopilo.FlightPlan;
+using Duopilo.Localization;
 using Microsoft.Extensions.Options;
 
-namespace Kopilot.Monitoring;
+namespace Duopilo.Monitoring;
 
 /// <summary>Wertet die Regeln im Takt aus (Standard 200 ms) und legt Meldungen im <see cref="AlertBus"/> ab.</summary>
 public sealed class MonitoringService : BackgroundService
@@ -19,7 +19,7 @@ public sealed class MonitoringService : BackgroundService
     private DateTimeOffset _lastSimBriefAttemptUtc;
 
     public MonitoringService(
-        IOptions<KopilotOptions> options,
+        IOptions<DuopiloOptions> options,
         SnapshotFactory factory,
         AlertBus bus,
         SimBriefService simBrief,

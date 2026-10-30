@@ -1,28 +1,28 @@
 using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text;
-using Kopilot.Atc;
-using Kopilot.FlightPlan;
-using Kopilot.Localization;
-using Kopilot.Monitoring;
-using Kopilot.Sim;
-using Kopilot.Tools;
-using Kopilot.Voice;
+using Duopilo.Atc;
+using Duopilo.FlightPlan;
+using Duopilo.Localization;
+using Duopilo.Monitoring;
+using Duopilo.Sim;
+using Duopilo.Tools;
+using Duopilo.Voice;
 using Microsoft.Extensions.Options;
 
-namespace Kopilot.Reports;
+namespace Duopilo.Reports;
 
 /// <summary>Gespeicherte Meldung: Issue-Daten und die lokale Kopie.</summary>
 /// <param name="File">Pfad der lokalen Kopie, null wenn sie nicht geschrieben werden konnte.</param>
 public sealed record BugReportSaved(BugReportIssue Issue, string? File, string? FileError);
 
 /// <summary>
-/// „Fehler melden“: hält beim Druck auf den Knopf fest, was Kopilot gerade weiß (Position, Höhe, ATC-Station und Frequenz,
+/// „Fehler melden“: hält beim Druck auf den Knopf fest, was Duopilo gerade weiß (Position, Höhe, ATC-Station und Frequenz,
 /// COM1, Funksprüche …) – bis der Pilot seinen Text geschrieben hat, ist das Flugzeug längst weiter. Beim Absenden landet
-/// eine Kopie unter %LOCALAPPDATA%\Kopilot\reports, der Link öffnet das vorausgefüllte GitHub-Issue.
+/// eine Kopie unter %LOCALAPPDATA%\Duopilo\reports, der Link öffnet das vorausgefüllte GitHub-Issue.
 /// </summary>
 public sealed class BugReportService(
-    IOptions<KopilotOptions> options,
+    IOptions<DuopiloOptions> options,
     SimConnectClient sim,
     SimBriefService simBrief,
     AtcService atc,
@@ -42,7 +42,7 @@ public sealed class BugReportService(
     /// <summary>Ordner der lokalen Kopien.</summary>
     public string Directory => string.IsNullOrWhiteSpace(Options.Directory)
         ? Path.Combine(options.Value.ResolveDataDirectory(), "reports")
-        : Options.Directory;
+        : Duopilo.Hosting.DataDirectoryMigration.MapLegacyPath(Options.Directory);
 
     /// <summary>Momentaufnahme festhalten. Rückgabe: Kennung für <see cref="Submit"/> und der Kontext.</summary>
     public (string Id, BugReportContext Context) Capture()
@@ -69,7 +69,7 @@ public sealed class BugReportService(
     /// <summary>Meldung fertigstellen und die lokale Kopie schreiben.</summary>
     public BugReportSaved Submit(BugReportContext context, IReadOnlyList<BugReportCategory> categories, string? title, string? description)
     {
-        var issue = BugReport.Build(Options.GitHubRepository, Options.IssueTemplate, categories, title, description, context);
+        var issue = BugReport.Build(Options.ResolveGitHubRepository(), Options.ResolveIssueTemplate(), categories, title, description, context);
         string? file = null;
         string? error = null;
         try

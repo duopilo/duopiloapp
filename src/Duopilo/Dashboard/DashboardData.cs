@@ -1,15 +1,15 @@
-using Kopilot.Aircraft;
-using Kopilot.Atc;
-using Kopilot.Ecam;
-using Kopilot.FlightPlan;
-using Kopilot.Hosting;
-using Kopilot.Input;
-using Kopilot.Monitoring;
-using Kopilot.Sim;
-using Kopilot.Speech;
-using Kopilot.Tools;
+using Duopilo.Aircraft;
+using Duopilo.Atc;
+using Duopilo.Ecam;
+using Duopilo.FlightPlan;
+using Duopilo.Hosting;
+using Duopilo.Input;
+using Duopilo.Monitoring;
+using Duopilo.Sim;
+using Duopilo.Speech;
+using Duopilo.Tools;
 
-namespace Kopilot.Dashboard;
+namespace Duopilo.Dashboard;
 
 /// <summary>Großanzeige im Dashboard: eine Meldung und ob ihr Zustand noch besteht.</summary>
 public sealed record DashboardHeadline(AlertEvent Alert, bool Active);
@@ -25,7 +25,7 @@ public sealed class DashboardData(
     LogBuffer logs,
     InputService? input = null,
     ISpeechOutput? speech = null,
-    Kopilot.Voice.IVoiceStatusSource? voice = null)
+    Duopilo.Voice.IVoiceStatusSource? voice = null)
 {
     /// <summary>So lange bleibt eine einmalige Ansage groß stehen.</summary>
     public static readonly TimeSpan HeadlineWindow = TimeSpan.FromSeconds(60);

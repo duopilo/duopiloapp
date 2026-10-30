@@ -1,12 +1,12 @@
 using System.Text.RegularExpressions;
-using Kopilot.Aircraft;
-using Kopilot.Localization;
-using Kopilot.Monitoring;
+using Duopilo.Aircraft;
+using Duopilo.Localization;
+using Duopilo.Monitoring;
 
-namespace Kopilot.Input;
+namespace Duopilo.Input;
 
 /// <summary>
-/// Was Kopilot überhaupt an MSFS schicken darf – im Code festgelegt, ein bearbeitetes Profil kommt nicht daran vorbei:
+/// Was Duopilo überhaupt an MSFS schicken darf – im Code festgelegt, ein bearbeitetes Profil kommt nicht daran vorbei:
 /// <list type="bullet">
 /// <item>Events nur aus einer festen Liste (FCU, Autobrake, Fahrwerk, Klappen, Spoiler, Licht, Schilder, Transponder, COM).</item>
 /// <item>Schreiben nur von L:-Variablen, nie von A:-SimVars. Fahrwerk, Klappen und Spoiler nur über ihre Events mit Sperren.</item>

@@ -2,7 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace Kopilot.Atc;
+namespace Duopilo.Atc;
 
 public enum ReadbackProblem
 {
@@ -341,7 +341,7 @@ public sealed partial class HeardText
 
     private static readonly HashSet<string> DecimalWords = new(StringComparer.Ordinal) { "decimal", "point", "dot" };
 
-    // Natürlich gesprochene Zahlen, wie Kopilot Koordinaten sagt ("fifty five north twenty west")
+    // Natürlich gesprochene Zahlen, wie Duopilo Koordinaten sagt ("fifty five north twenty west")
     private static readonly Dictionary<string, int> TeensAndTens = new(StringComparer.Ordinal)
     {
         ["ten"] = 10, ["eleven"] = 11, ["twelve"] = 12, ["thirteen"] = 13, ["fourteen"] = 14, ["fifteen"] = 15, ["sixteen"] = 16,

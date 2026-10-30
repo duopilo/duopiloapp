@@ -1,9 +1,9 @@
 using System.Globalization;
-using Kopilot.Aircraft;
-using Kopilot.Localization;
-using Kopilot.Monitoring;
+using Duopilo.Aircraft;
+using Duopilo.Localization;
+using Duopilo.Monitoring;
 
-namespace Kopilot.Input;
+namespace Duopilo.Input;
 
 /// <summary>MSA laut Profil-Quelle. <see cref="Ft"/> null = unbekannt, <see cref="Problem"/> sagt warum.</summary>
 public sealed record MsaReading(double? Ft, string? Source, string? Problem);

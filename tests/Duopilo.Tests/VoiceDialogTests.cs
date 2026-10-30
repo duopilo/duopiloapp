@@ -1,7 +1,7 @@
-using Kopilot.Input;
-using Kopilot.Voice;
+using Duopilo.Input;
+using Duopilo.Voice;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
 /// <summary>Sprachschleife (v0.9): Zwei-Schritt-Ablauf mit Readback und Bestätigung, Abfragen, Phraseologie.</summary>
 public sealed class VoiceDialogTests
@@ -421,7 +421,7 @@ public sealed class VoiceDialogTests
     [InlineData("Speedbrake retracted", "Speedbrake retracted")]
     public void Zahlen_wie_im_Funk(string text, string spoken)
     {
-        Assert.Equal(spoken, Kopilot.Speech.Pronunciation.ForSpeech(text, Kopilot.Speech.SpeechContext.Empty));
+        Assert.Equal(spoken, Duopilo.Speech.Pronunciation.ForSpeech(text, Duopilo.Speech.SpeechContext.Empty));
     }
 
     [Theory]
@@ -430,7 +430,7 @@ public sealed class VoiceDialogTests
     [InlineData("EDDL", "echo delta delta lima")]
     public void Buchstabieren_nach_NATO_Alphabet(string text, string spoken)
     {
-        Assert.Equal(spoken, Kopilot.Speech.Pronunciation.Spell(text));
+        Assert.Equal(spoken, Duopilo.Speech.Pronunciation.Spell(text));
     }
 
     // ------------------------------------------------------------------ Kritische Aktion: Rückfrage mit Warnhinweis (v0.9.1)

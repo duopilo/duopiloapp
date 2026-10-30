@@ -1,12 +1,12 @@
 using System.ComponentModel;
 using System.Globalization;
-using Kopilot.Localization;
-using Kopilot.Monitoring;
-using Kopilot.Sim;
-using Kopilot.Traffic;
+using Duopilo.Localization;
+using Duopilo.Monitoring;
+using Duopilo.Sim;
+using Duopilo.Traffic;
 using ModelContextProtocol.Server;
 
-namespace Kopilot.Tools;
+namespace Duopilo.Tools;
 
 /// <summary>Verkehr um das eigene Flugzeug (KI-Verkehr und Multiplayer) über SimConnect.</summary>
 [McpServerToolType]
@@ -42,7 +42,7 @@ public static class TrafficTools
     {
         if (!sim.Connection.IsConnected)
         {
-            return KopilotTools.NotConnected(alerts);
+            return DuopiloTools.NotConnected(alerts);
         }
 
         var status = sim.Status;

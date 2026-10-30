@@ -1,7 +1,7 @@
-using Kopilot.Atc.Airspace;
-using Kopilot.FlightPlan;
+using Duopilo.Atc.Airspace;
+using Duopilo.FlightPlan;
 
-namespace Kopilot.Atc;
+namespace Duopilo.Atc;
 
 /// <summary>Grenzen und Sektoren aus den Luftraumdaten (VAT-Spy, VATSIM-Sektoren).</summary>
 public sealed partial class AtcPlan

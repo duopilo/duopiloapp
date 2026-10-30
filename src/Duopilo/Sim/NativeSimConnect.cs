@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace Kopilot.Sim;
+namespace Duopilo.Sim;
 
 /// <summary>
 /// Direkter Zugriff auf die native SimConnect.dll (MSFS-SDK, x64) – nur für die Verkehrsabfrage, siehe

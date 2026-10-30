@@ -1,4 +1,4 @@
-namespace Kopilot.FlightPlan;
+namespace Duopilo.FlightPlan;
 
 /// <summary>Restzeiten in Sekunden ab jetzt (null = nicht berechenbar).</summary>
 public sealed record EtaPrediction

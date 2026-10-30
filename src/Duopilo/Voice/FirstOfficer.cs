@@ -1,12 +1,12 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using Kopilot.Atc;
-using Kopilot.FlightPlan;
-using Kopilot.Localization;
-using Kopilot.Smalltalk;
-using Kopilot.Speech;
+using Duopilo.Atc;
+using Duopilo.FlightPlan;
+using Duopilo.Localization;
+using Duopilo.Smalltalk;
+using Duopilo.Speech;
 
-namespace Kopilot.Voice;
+namespace Duopilo.Voice;
 
 /// <summary>Der First Officer eines Flugs: Name, Geschlecht und Kokoro-Stimme. Bleibt während des Flugs gleich.</summary>
 /// <param name="FlightKey">Flug (SimBrief-Request-ID; <see cref="FirstOfficerRoster.Unplanned"/> ohne Plan).</param>
@@ -84,7 +84,7 @@ public static partial class FirstOfficerNames
 /// </summary>
 public static class FirstOfficerCasting
 {
-    /// <summary>Ersatz, wenn keine Kokoro-Stimmen neben der Kopilot.exe liegen (Entwicklung, Tests).</summary>
+    /// <summary>Ersatz, wenn keine Kokoro-Stimmen neben der Duopilo.exe liegen (Entwicklung, Tests).</summary>
     public static readonly IReadOnlyList<string> DefaultVoices =
     [
         "bf_emma", "af_heart", "bf_isabella", "af_bella", "bf_alice", "af_nicole", "af_sarah", "bf_lily",
@@ -163,7 +163,7 @@ public static class FirstOfficerCasting
         language == "en" ? Loc.En("voice.firstOfficer.introduction", name) : Loc.T("voice.firstOfficer.introduction", name);
 }
 
-/// <summary>Speichert den First Officer des laufenden Flugs (Datenordner), damit er nach einem Neustart von Kopilot derselbe bleibt.</summary>
+/// <summary>Speichert den First Officer des laufenden Flugs (Datenordner), damit er nach einem Neustart von Duopilo derselbe bleibt.</summary>
 public sealed class FirstOfficerStore(string path)
 {
     public const string FileName = "first-officer.json";
@@ -200,7 +200,7 @@ public sealed class FirstOfficerStore(string path)
 
 /// <summary>
 /// Hält den First Officer des laufenden Flugs: pro Flug (SimBrief-Plan) ein neuer, während des Flugs derselbe – auch nach einem
-/// Neustart von Kopilot. Ohne Plan gilt er, bis ein Plan geladen wird, und bleibt dann für diesen Flug.
+/// Neustart von Duopilo. Ohne Plan gilt er, bis ein Plan geladen wird, und bleibt dann für diesen Flug.
 /// Nicht threadsicher – die Sprachschleife ruft alles nacheinander auf.
 /// </summary>
 public sealed class FirstOfficerRoster(FirstOfficerStore? store = null, TimeProvider? time = null, Random? random = null)

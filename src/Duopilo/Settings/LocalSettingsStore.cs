@@ -1,16 +1,16 @@
 using System.Text;
 using System.Text.Json;
-using Kopilot.Hosting;
-using Kopilot.Localization;
-using Kopilot.Voice;
+using Duopilo.Hosting;
+using Duopilo.Localization;
+using Duopilo.Voice;
 
-namespace Kopilot.Settings;
+namespace Duopilo.Settings;
 
 /// <summary>Schreiben in appsettings.Local.json ging nicht – die Meldung ist für den Piloten gedacht.</summary>
 public sealed class SettingsWriteException(string message, Exception? inner = null) : Exception(message, inner);
 
 /// <summary>
-/// Ändert einzelne Werte in appsettings.Local.json neben der Kopilot.exe – derselben Datei, die Kopilot beim Start liest.
+/// Ändert einzelne Werte in appsettings.Local.json neben der Duopilo.exe – derselben Datei, die Duopilo beim Start liest.
 /// Kommentare, Reihenfolge und Einrückung bleiben erhalten (<see cref="JsonTextPatcher"/>), damit Handarbeit in der Datei
 /// nicht verloren geht.
 /// <para>
@@ -29,9 +29,9 @@ public sealed class LocalSettingsStore(string filePath, string? backupPath = nul
 
     private readonly object _gate = new();
 
-    /// <summary>Die Datei neben der Kopilot.exe, Sicherung im Datenordner.</summary>
-    public static LocalSettingsStore ForApplication(KopilotOptions options) => new(
-        Path.Combine(AppContext.BaseDirectory, KopilotConfiguration.LocalSettingsFile),
+    /// <summary>Die Datei neben der Duopilo.exe, Sicherung im Datenordner.</summary>
+    public static LocalSettingsStore ForApplication(DuopiloOptions options) => new(
+        Path.Combine(AppContext.BaseDirectory, DuopiloConfiguration.LocalSettingsFile),
         Path.Combine(options.ResolveDataDirectory(), "appsettings.Local.backup.json"));
 
     public string FilePath { get; } = filePath;
@@ -43,7 +43,7 @@ public sealed class LocalSettingsStore(string filePath, string? backupPath = nul
     /// <summary>Wann zuletzt aus dem Dashboard geschrieben wurde (null = in diesem Lauf noch nicht).</summary>
     public DateTimeOffset? LastWriteUtc { get; private set; }
 
-    /// <summary>Werte in einem Schreibvorgang setzen (alles oder nichts). Pfade ab der Wurzel, z. B. ["Kopilot", "SimBrief", "Username"].</summary>
+    /// <summary>Werte in einem Schreibvorgang setzen (alles oder nichts). Pfade ab der Wurzel, z. B. ["Duopilo", "SimBrief", "Username"].</summary>
     /// <exception cref="SettingsWriteException">Datei nicht lesbar oder schreibbar, oder sie ist kein gültiges JSON.</exception>
     public void Set(IReadOnlyList<SettingValue> values)
     {
@@ -78,19 +78,23 @@ public sealed class LocalSettingsStore(string filePath, string? backupPath = nul
             {
             }
 
+            // Alte Datei (bis 0.9.x): Abschnitt "Kopilot" beim ersten Speichern in "Duopilo" umbenennen – sonst stünden die
+            // neuen Werte daneben und die alten blieben als Altlast stehen
+            text = JsonTextPatcher.RenameRootProperty(text, AppNames.Legacy.ConfigSection, DuopiloOptions.Section);
+
             foreach (var value in values)
             {
                 text = JsonTextPatcher.Set(text, value.Path, value.RawJson);
             }
 
-            // Kontrolle: Nie eine Datei schreiben, die Kopilot beim nächsten Start nicht lesen kann
+            // Kontrolle: Nie eine Datei schreiben, die Duopilo beim nächsten Start nicht lesen kann
             using (JsonDocument.Parse(text, DocumentOptions))
             {
             }
         }
         catch (JsonException ex)
         {
-            throw new SettingsWriteException(Loc.T("settings.file.invalidJson", KopilotConfiguration.LocalSettingsFile, ex.Message), ex);
+            throw new SettingsWriteException(Loc.T("settings.file.invalidJson", DuopiloConfiguration.LocalSettingsFile, ex.Message), ex);
         }
 
         return text;
@@ -129,7 +133,7 @@ public sealed class LocalSettingsStore(string filePath, string? backupPath = nul
         }
         catch (UnauthorizedAccessException ex)
         {
-            throw new SettingsWriteException(Loc.T("settings.file.noWriteAccess", FilePath, KopilotConfiguration.LocalSettingsFile), ex);
+            throw new SettingsWriteException(Loc.T("settings.file.noWriteAccess", FilePath, DuopiloConfiguration.LocalSettingsFile), ex);
         }
         catch (IOException ex)
         {

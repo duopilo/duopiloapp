@@ -6,7 +6,7 @@ using Windows.Media.Playback;
 using Windows.Media.SpeechSynthesis;
 using Windows.Storage.Streams;
 
-namespace Kopilot.Speech;
+namespace Duopilo.Speech;
 
 /// <summary>
 /// Sprachausgabe über die Windows-Sprachsynthese (OneCore-Stimmen) und MediaPlayer – damit lässt sich das Ausgabegerät wählen

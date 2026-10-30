@@ -1,7 +1,8 @@
 using System.Security.Cryptography;
-using Kopilot.Localization;
+using Duopilo.Hosting;
+using Duopilo.Localization;
 
-namespace Kopilot.Voice;
+namespace Duopilo.Voice;
 
 /// <summary>
 /// Die heruntergeladene Datei hat nicht die erwartete SHA-256-Prüfsumme – sie ist gelöscht und darf nicht benutzt werden
@@ -59,7 +60,7 @@ public static class ModelDownloader
         var temp = path + ".download";
         using (var http = handler is null ? new HttpClient { Timeout = Timeout.InfiniteTimeSpan } : new HttpClient(handler, disposeHandler: false) { Timeout = Timeout.InfiniteTimeSpan })
         {
-            http.DefaultRequestHeaders.UserAgent.ParseAdd("Kopilot");
+            http.DefaultRequestHeaders.UserAgent.ParseAdd(AppNames.Product);
             using var response = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
             response.EnsureSuccessStatusCode();
             var total = response.Content.Headers.ContentLength;

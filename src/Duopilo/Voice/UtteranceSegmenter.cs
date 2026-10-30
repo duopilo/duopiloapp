@@ -1,4 +1,4 @@
-namespace Kopilot.Voice;
+namespace Duopilo.Voice;
 
 /// <summary>Einstellungen für das Zerlegen in Sätze (aus <see cref="MicrophoneSettings"/>).</summary>
 public sealed record SegmenterOptions
@@ -121,7 +121,7 @@ public sealed class UtteranceSegmenter
         return null;
     }
 
-    /// <summary>Laufenden Satz verwerfen (z. B. wenn Kopilot zu sprechen beginnt).</summary>
+    /// <summary>Laufenden Satz verwerfen (z. B. wenn der Kopilot zu sprechen beginnt).</summary>
     public void Reset()
     {
         _triggered = false;
@@ -157,7 +157,7 @@ public sealed class UtteranceSegmenter
     }
 }
 
-/// <summary>Halbduplex: Mikrofon zu, solange Kopilot spricht, und noch kurz danach (Nachhall).</summary>
+/// <summary>Halbduplex: Mikrofon zu, solange der Kopilot spricht, und noch kurz danach (Nachhall).</summary>
 public static class HalfDuplex
 {
     public static bool MicOpen(bool speaking, DateTimeOffset lastSpeechEndUtc, DateTimeOffset now, TimeSpan tail) =>

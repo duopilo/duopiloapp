@@ -2,18 +2,18 @@ using System.Diagnostics.Eventing.Reader;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
-using Kopilot.Localization;
+using Duopilo.Localization;
 
-namespace Kopilot.Hosting;
+namespace Duopilo.Hosting;
 
 /// <summary>
 /// Absturzprotokoll:
 /// <list type="bullet">
-/// <item>Unbehandelte Ausnahmen landen sofort (synchron) in logs\crash.log und im Kopilot-Log.</item>
-/// <item>Harte Abstürze (AccessViolation in SimConnect, FailFast) lassen sich in .NET nicht abfangen. Dafür führt Kopilot
+/// <item>Unbehandelte Ausnahmen landen sofort (synchron) in logs\crash.log und im Duopilo-Log.</item>
+/// <item>Harte Abstürze (AccessViolation in SimConnect, FailFast) lassen sich in .NET nicht abfangen. Dafür führt Duopilo
 /// ein <see cref="CrashJournal"/>; beim nächsten Start meldet es den nicht sauber beendeten Lauf, die letzten
 /// Einträge und – aus der Windows-Ereignisanzeige – die Ausnahme mit Stacktrace.</item>
-/// <item>Windows startet Kopilot nach einem Absturz neu (RegisterApplicationRestart, erst nach 60 s Laufzeit – keine Schleife).</item>
+/// <item>Windows startet Duopilo nach einem Absturz neu (RegisterApplicationRestart, erst nach 60 s Laufzeit – keine Schleife).</item>
 /// </list>
 /// </summary>
 public static class CrashReporter
@@ -61,7 +61,7 @@ public static class CrashReporter
             return null;
         }
 
-        CrashJournal.Note($"Start Kopilot {Version} ({mode}), PID {Environment.ProcessId}");
+        CrashJournal.Note($"Start {AppNames.Product} {Version} ({mode}), PID {Environment.ProcessId}");
         if (previous is not null)
         {
             ReportPrevious(previous, log);
@@ -70,7 +70,7 @@ public static class CrashReporter
         return journal;
     }
 
-    /// <summary>Nach einem Absturz startet Windows Kopilot neu (mit denselben Schaltern und --restarted).</summary>
+    /// <summary>Nach einem Absturz startet Windows Duopilo neu (mit denselben Schaltern und --restarted).</summary>
     public static void RegisterRestart(string[] args, ILogger log)
     {
         if (!OperatingSystem.IsWindows())
@@ -98,7 +98,7 @@ public static class CrashReporter
     {
         var text = new StringBuilder()
             .Append(DateTimeOffset.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture))
-            .Append(" CRT Kopilot ").Append(Version).Append(" (").Append(_mode).Append(", PID ").Append(Environment.ProcessId).Append("): ")
+            .Append(" CRT ").Append(AppNames.Product).Append(' ').Append(Version).Append(" (").Append(_mode).Append(", PID ").Append(Environment.ProcessId).Append("): ")
             .AppendLine(title)
             .AppendLine(exception?.ToString() ?? Loc.En("log.host.crash.noException"))
             .AppendLine()
@@ -110,7 +110,7 @@ public static class CrashReporter
             return;
         }
 
-        foreach (var file in new[] { CrashLogFile, _mode == "stdio" ? "kopilot-stdio.log" : "kopilot.log" })
+        foreach (var file in new[] { CrashLogFile, FileLoggerProvider.FileName(_mode) })
         {
             try
             {
@@ -189,7 +189,7 @@ public static class CrashReporter
         }
     }
 
-    /// <summary>Fehler-Einträge von ".NET Runtime" und "Application Error" zu Kopilot im Anwendungsprotokoll.</summary>
+    /// <summary>Fehler-Einträge von ".NET Runtime" und "Application Error" zu Duopilo im Anwendungsprotokoll.</summary>
     public static IReadOnlyList<string> WindowsCrashEvents(DateTimeOffset from, DateTimeOffset to)
     {
         var result = new List<string>();
@@ -220,7 +220,7 @@ public static class CrashReporter
                     }
 
                     message ??= string.Join(" | ", record.Properties.Select(p => p.Value?.ToString()));
-                    if (message.Contains("Kopilot", StringComparison.OrdinalIgnoreCase))
+                    if (message.Contains(AppNames.Product, StringComparison.OrdinalIgnoreCase))
                     {
                         result.Add(Loc.En("log.host.crash.event", record.TimeCreated?.ToUniversalTime(), record.ProviderName, record.Id, message.Trim()));
                     }

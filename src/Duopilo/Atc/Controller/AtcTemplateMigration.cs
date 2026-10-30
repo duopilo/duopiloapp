@@ -1,8 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Kopilot.Localization;
+using Duopilo.Localization;
 
-namespace Kopilot.Atc;
+namespace Duopilo.Atc;
 
 /// <summary>
 /// Hebt atc-templates.json beim Laden auf das aktuelle Format (<see cref="AtcTemplates.CurrentVersion"/>). Die Datei auf der

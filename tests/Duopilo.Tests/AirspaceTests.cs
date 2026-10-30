@@ -1,11 +1,11 @@
-using Kopilot.Atc;
-using Kopilot.Atc.Airspace;
-using Kopilot.FlightPlan;
+using Duopilo.Atc;
+using Duopilo.Atc.Airspace;
+using Duopilo.FlightPlan;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
 /// <summary>
-/// Luftraumdaten im Kopilot-ATC: FIR-Grenzen aus VAT-Spy, Sektoren aus den VATSIM-Sektordaten, Gander Domestic,
+/// Luftraumdaten im Duopilo-ATC: FIR-Grenzen aus VAT-Spy, Sektoren aus den VATSIM-Sektordaten, Gander Domestic,
 /// Rufzeichen aus OpenFlights und das Anheben alter Vorlagen. Referenzpunkte aus dem Testflug CFG2205 (docs/testlog-0.9.md).
 /// </summary>
 public sealed class AirspaceTests
@@ -131,7 +131,7 @@ public sealed class AirspaceTests
         var plan = Plan();
         var montreal = plan.Firs.First(f => f.Fir == "CZUL");
 
-        // MSFS-ATC übergab bei 53,51 N / 64,65 W – Kopilot 0.9 schon bei HOIST, ca. 260 nm zu früh
+        // MSFS-ATC übergab bei 53,51 N / 64,65 W – Duopilo 0.9 schon bei HOIST, ca. 260 nm zu früh
         Assert.InRange(MissNm(plan, montreal, 53.51, -64.65), 0, 15);
         Assert.InRange(montreal.StartNm - plan.FixDistanceNm(Hoist)!.Value, 240, 290);
         Assert.True(montreal.StartNm < plan.FixDistanceNm(Ywk)!.Value);
@@ -218,7 +218,7 @@ public sealed class AirspaceTests
     }
 
     /// <summary>
-    /// Neustart von Kopilot im Reiseflug innerhalb eines Sektors: Die Sitzung kommt mit der Station dieser Kontrollposition
+    /// Neustart von Duopilo im Reiseflug innerhalb eines Sektors: Die Sitzung kommt mit der Station dieser Kontrollposition
     /// zurück – Rufname, Frequenz aus den Sektordaten und Stimme wie vor dem Neustart, nicht die allgemeine FIR-Station.
     /// </summary>
     [Fact]
@@ -480,7 +480,7 @@ public sealed class AirspaceTests
     public void Eigene_Kopie_im_alten_Format_wird_angehoben_und_ueber_die_Grundlage_gelegt()
     {
         var notes = new List<string>();
-        var templates = AtcTemplateLoader.ParseLayered(File.ReadAllText(TestData.RepoFile("src", "Kopilot", AtcTemplateLoader.FileName)), OldUserCopy, notes);
+        var templates = AtcTemplateLoader.ParseLayered(File.ReadAllText(TestData.RepoFile("src", "Duopilo", AtcTemplateLoader.FileName)), OldUserCopy, notes);
 
         Assert.Equal(AtcTemplates.CurrentVersion, templates.Version);
         Assert.Empty(AtcTemplateLoader.Validate(templates));
@@ -509,7 +509,7 @@ public sealed class AirspaceTests
     public void Alte_Kopie_allein_funktioniert_weiter()
     {
         var notes = new List<string>();
-        var full = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(TestData.RepoFile("src", "Kopilot", AtcTemplateLoader.FileName)))!.AsObject();
+        var full = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(TestData.RepoFile("src", "Duopilo", AtcTemplateLoader.FileName)))!.AsObject();
         full["version"] = 1;
         full["firs"]!.AsObject().Remove("CZQO");
         full["firs"]!["CZQX"] = new System.Text.Json.Nodes.JsonObject { ["name"] = "Gander Oceanic", ["oceanic"] = true };
@@ -525,13 +525,13 @@ public sealed class AirspaceTests
     [Fact]
     public void Datei_mit_Fehler_in_der_eigenen_Kopie_nimmt_die_Grundlage()
     {
-        var dir = Directory.CreateTempSubdirectory("kopilot-atc-");
+        var dir = Directory.CreateTempSubdirectory("duopilo-atc-");
         try
         {
             var user = Path.Combine(dir.FullName, "atc-templates.json");
             File.WriteAllText(user, "{ \"firs\": { ");
             var errors = new List<string>();
-            var templates = AtcTemplateLoader.Load(TestData.RepoFile("src", "Kopilot", AtcTemplateLoader.FileName), user, errors, []);
+            var templates = AtcTemplateLoader.Load(TestData.RepoFile("src", "Duopilo", AtcTemplateLoader.FileName), user, errors, []);
 
             Assert.NotNull(templates);
             Assert.Single(errors);

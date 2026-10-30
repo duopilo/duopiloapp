@@ -2,7 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace Kopilot.Speech;
+namespace Duopilo.Speech;
 
 /// <summary>
 /// Fertigen Text für die Sprachausgabe aufbereiten – der letzte Schritt vor der TTS für Callouts, Fuel Check, Antworten

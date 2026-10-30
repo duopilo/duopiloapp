@@ -1,12 +1,12 @@
 using System.ComponentModel;
 using System.Globalization;
-using Kopilot.FlightPlan;
-using Kopilot.Localization;
-using Kopilot.Monitoring;
-using Kopilot.Sim;
+using Duopilo.FlightPlan;
+using Duopilo.Localization;
+using Duopilo.Monitoring;
+using Duopilo.Sim;
 using ModelContextProtocol.Server;
 
-namespace Kopilot.Tools;
+namespace Duopilo.Tools;
 
 /// <summary>Flugplan und Fortschritt aus dem SimBrief-OFP (die Airliner-FMS geben ihre Route nicht über SimConnect heraus).</summary>
 [McpServerToolType]
@@ -79,7 +79,7 @@ public static class FlightPlanTools
         "distance to top of descent, cross-track deviation from the planned route, planned altitude at the next fix, and fuel on board versus plan " +
         "with predicted landing fuel (kg). Times are UTC. 'etaSource': 'simbrief' = ETE/ETA from the planned navlog times (planned winds, climb and descent), " +
         "shifted by the deviation from plan at the last fix passed; 'groundspeed' = remaining distance at current ground speed (navlog without times). " +
-        "'fuelCheck': Kopilot's automatic cruise fuel checks (at every OFP waypoint and at least every 'intervalMinutes'): the last check and the recent " +
+        "'fuelCheck': Duopilo's automatic cruise fuel checks (at every OFP waypoint and at least every 'intervalMinutes'): the last check and the recent " +
         "trend (diffKg = actual minus plan, changeKg = change since the previous check, negative = worse), plus refuelling it detected.")]
     public static async Task<string> GetProgress(
         SimConnectClient sim,
@@ -90,7 +90,7 @@ public static class FlightPlanTools
     {
         if (!sim.Connection.IsConnected)
         {
-            return KopilotTools.NotConnected(alerts);
+            return DuopiloTools.NotConnected(alerts);
         }
 
         var ofp = await simBrief.GetAsync(false, cancellationToken);

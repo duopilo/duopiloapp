@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 using Whisper.net;
 using Whisper.net.LibraryLoader;
 
-namespace Kopilot.Voice;
+namespace Duopilo.Voice;
 
 /// <summary>Ergebnis der Spracherkennung.</summary>
 public sealed record Transcript(string Text, string? Language, int ElapsedMs)
@@ -31,9 +31,10 @@ public sealed class WhisperRecognizer : ISpeechRecognizer
     /// <summary>
     /// Eingebauter Wortschatz-Hinweis: Funk- und Cockpit-Begriffe, deutsch und englisch. Ohne "confirm"/"correct"/"affirm" –
     /// sonst schreibt Whisper aus einem Räuspern gern genau das ab, und das würde eine Aktion bestätigen.
+    /// Vorne die Ansprachewörter: „Kopilot“ (fest) und „Duopilo“ (Produktname, damit Whisper ihn so schreibt).
     /// </summary>
     public const string DefaultPrompt =
-        "Kopilot. Gear up, gear down, flaps one, flaps full, speedbrake retract, arm spoilers, autobrake medium, landing lights on, " +
+        "Kopilot, Duopilo. Gear up, gear down, flaps one, flaps full, speedbrake retract, arm spoilers, autobrake medium, landing lights on, " +
         "seat belts on, APU start, QNH 1013, standard, altitude 5000, flight level 120, speed 250, heading 090, squawk 7000, TCAS TA/RA, " +
         "speed check, say again. Frankfurt Tower, Langen Radar, Shanwick, Lufthansa. " +
         "Fahrwerk einfahren, Klappen eins, Anschnallzeichen an.";
@@ -182,8 +183,9 @@ public static partial class TranscriptFilter
             return "";
         }
 
-        // Der Wortschatz-Hinweis selbst kommt bei Stille manchmal zurück
-        if (lower.StartsWith("kopilot. gear up, gear down", StringComparison.Ordinal))
+        // Der Wortschatz-Hinweis selbst kommt bei Stille manchmal zurück (auch der bis 0.9.x, nur mit „Kopilot“)
+        if (lower.StartsWith("kopilot, duopilo. gear up, gear down", StringComparison.Ordinal)
+            || lower.StartsWith("kopilot. gear up, gear down", StringComparison.Ordinal))
         {
             return "";
         }

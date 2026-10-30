@@ -1,7 +1,7 @@
-using Kopilot.FlightPlan;
-using Kopilot.Sim;
+using Duopilo.FlightPlan;
+using Duopilo.Sim;
 
-namespace Kopilot.Traffic;
+namespace Duopilo.Traffic;
 
 /// <summary>Groundspeed eines Ziels aus seiner Positionsänderung.</summary>
 /// <param name="Knots">Großkreisentfernung zwischen zwei Positionen geteilt durch die Zeit dazwischen.</param>

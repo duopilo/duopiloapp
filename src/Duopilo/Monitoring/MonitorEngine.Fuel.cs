@@ -1,8 +1,8 @@
 using System.Globalization;
-using Kopilot.FlightPlan;
-using Kopilot.Localization;
+using Duopilo.FlightPlan;
+using Duopilo.Localization;
 
-namespace Kopilot.Monitoring;
+namespace Duopilo.Monitoring;
 
 /// <summary>
 /// Fuel Check im Reiseflug: an jedem OFP-Wegpunkt (und spätestens alle <see cref="FuelCheckSettings.IntervalMinutes"/>)

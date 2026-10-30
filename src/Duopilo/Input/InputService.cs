@@ -1,11 +1,11 @@
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
-using Kopilot.Aircraft;
-using Kopilot.Localization;
-using Kopilot.Monitoring;
+using Duopilo.Aircraft;
+using Duopilo.Localization;
+using Duopilo.Monitoring;
 using Microsoft.Extensions.Options;
 
-namespace Kopilot.Input;
+namespace Duopilo.Input;
 
 /// <summary>Zugriff auf den Sim für das Eingabe-Modul – austauschbar für Tests.</summary>
 public interface IInputBackend
@@ -145,7 +145,7 @@ public sealed partial class InputService
     private sealed record RetiredToken(string Token, string Summary, string Fate);
 
     public InputService(
-        IOptions<KopilotOptions> options,
+        IOptions<DuopiloOptions> options,
         IInputBackend backend,
         ILogger<InputService> log,
         TimeProvider? time = null,
@@ -184,7 +184,7 @@ public sealed partial class InputService
         }
     }
 
-    /// <summary>Offene Aktion einer anderen Kopilot-Instanz (z. B. stdio für Claude Desktop), sonst null.</summary>
+    /// <summary>Offene Aktion einer anderen Duopilo-Instanz (z. B. stdio für Claude Desktop), sonst null.</summary>
     public SharedPending? ForeignPending =>
         _store.LoadPending() is { } p && p.ProcessId != Environment.ProcessId && p.ExpiresUtc > _time.GetUtcNow() ? p : null;
 
@@ -217,7 +217,7 @@ public sealed partial class InputService
 
     /// <summary>
     /// Der Pilot bestätigt, dass eine gerade ausgeführte Aktion im Cockpit wirklich funktioniert hat – für Aktionen,
-    /// bei denen Kopilot nur die Schalterstellung lesen kann. Geht nur nach einer Ausführung in den letzten 15 Minuten.
+    /// bei denen Duopilo nur die Schalterstellung lesen kann. Geht nur nach einer Ausführung in den letzten 15 Minuten.
     /// </summary>
     public InputResult MarkVerified(string? actionId, string? pilotConfirmation)
     {
@@ -274,7 +274,7 @@ public sealed partial class InputService
         Cancel(null, enabled ? Loc.T("input.cancel.enabled") : Loc.T("input.cancel.disabled"));
     }
 
-    /// <summary>Abbrechen im Dashboard: verwirft offene Aktionen in allen Kopilot-Instanzen.</summary>
+    /// <summary>Abbrechen im Dashboard: verwirft offene Aktionen in allen Duopilo-Instanzen.</summary>
     public InputResult CancelEverywhere(string reason)
     {
         _store.Save(new InputSettings { Enabled = Enabled, Epoch = Epoch + 1 });
@@ -423,7 +423,7 @@ public sealed partial class InputService
     // ------------------------------------------------------------------ Sprachschleife: ausführen + Callout
 
     /// <summary>
-    /// Modus "ausführen + Callout" der Sprachschleife: Der Befehl des Piloten ist die Anweisung (PF → PM) – Kopilot führt ihn
+    /// Modus "ausführen + Callout" der Sprachschleife: Der Befehl des Piloten ist die Anweisung (PF → PM) – Duopilo führt ihn
     /// sofort aus, ohne Readback und "confirm". Alle Prüfungen bleiben: Freigabe, Flugzeug, Sperrliste, Sperren, Bedingungen.
     /// Verlangt die Aktion eine Rückfrage mit Warnhinweis (<see cref="SafetyRules"/>), wird sie stattdessen wie bei
     /// <see cref="PrepareAsync"/> als offene Aktion angelegt (<see cref="InputResult.AwaitingConfirmation"/>) – der zweistufige Ablauf

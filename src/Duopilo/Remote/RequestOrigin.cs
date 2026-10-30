@@ -1,6 +1,6 @@
 using System.Net;
 
-namespace Kopilot.Remote;
+namespace Duopilo.Remote;
 
 /// <summary>
 /// Unterscheidet direkte lokale Aufrufe von Aufrufen über den Cloudflare Tunnel.

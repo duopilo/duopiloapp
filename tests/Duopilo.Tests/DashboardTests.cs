@@ -1,18 +1,18 @@
 using System.Net;
 using System.Text.Json;
-using Kopilot.Aircraft;
-using Kopilot.Dashboard;
-using Kopilot.FlightPlan;
-using Kopilot.Hosting;
-using Kopilot.Monitoring;
+using Duopilo.Aircraft;
+using Duopilo.Dashboard;
+using Duopilo.FlightPlan;
+using Duopilo.Hosting;
+using Duopilo.Monitoring;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
 /// <summary>Dashboard im Browser: nur lokal, Schriften eingebettet, Knöpfe nur mit Header.</summary>
 public sealed class DashboardTests : IAsyncLifetime
 {
-    private readonly string _stateFile = Path.Combine(Path.GetTempPath(), $"kopilot-test-{Guid.NewGuid():N}.json");
+    private readonly string _stateFile = Path.Combine(Path.GetTempPath(), $"duopilo-test-{Guid.NewGuid():N}.json");
     private TestApp _app = null!;
 
     public async Task InitializeAsync() => _app = await TestApp.StartAsync(_stateFile);
@@ -34,7 +34,7 @@ public sealed class DashboardTests : IAsyncLifetime
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("text/html", response.Content.Headers.ContentType?.MediaType);
-        Assert.Contains("<title>Kopilot</title>", html);
+        Assert.Contains("<title>Duopilo</title>", html);
         Assert.Contains("frame-ancestors 'none'", response.Headers.GetValues("Content-Security-Policy").Single());
     }
 
@@ -85,17 +85,28 @@ public sealed class DashboardTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Knoepfe_brauchen_den_Kopilot_Header()
+    public async Task Knoepfe_brauchen_den_Duopilo_Header()
     {
         var client = _app.Local();
         using var without = await client.PostAsync("/api/reload-profiles", null);
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/reload-profiles");
-        request.Headers.Add("X-Kopilot", "1");
+        request.Headers.Add("X-Duopilo", "1");
         using var with = await client.SendAsync(request);
 
         Assert.Equal(HttpStatusCode.BadRequest, without.StatusCode);
         Assert.Equal(HttpStatusCode.OK, with.StatusCode);
+    }
+
+    [Fact]
+    public async Task Alter_Kopilot_Header_gilt_weiter()
+    {
+        // Ein noch offener Dashboard-Tab aus 0.9.x schickt "X-Kopilot: 1"
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/reload-profiles");
+        request.Headers.Add("X-Kopilot", "1");
+        using var response = await _app.Local().SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
     [Fact]
@@ -115,7 +126,7 @@ public sealed class DashboardTests : IAsyncLifetime
         {
             Content = new StringContent("""{"enabled":true}""", System.Text.Encoding.UTF8, "application/json"),
         };
-        request.Headers.Add("X-Kopilot", "1");
+        request.Headers.Add("X-Duopilo", "1");
         using var with = await client.SendAsync(request);
         Assert.Equal(HttpStatusCode.OK, with.StatusCode);
 

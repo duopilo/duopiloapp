@@ -1,6 +1,6 @@
-using Kopilot.Sim;
+using Duopilo.Sim;
 
-namespace Kopilot.Ecam;
+namespace Duopilo.Ecam;
 
 /// <summary>Aktueller Inhalt des unteren EWD (links: Warnungen/Verfahren, rechts: Memos).</summary>
 /// <param name="Available">Das Profil beschreibt ECAM-Zeilen.</param>

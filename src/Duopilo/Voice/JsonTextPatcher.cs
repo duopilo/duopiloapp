@@ -1,8 +1,8 @@
 using System.Text;
 using System.Text.Json;
-using Kopilot.Localization;
+using Duopilo.Localization;
 
-namespace Kopilot.Voice;
+namespace Duopilo.Voice;
 
 /// <summary>
 /// Ändert einzelne Werte in einer JSON-Datei mit Kommentaren, ohne den Rest anzufassen – Kommentare, Reihenfolge und
@@ -100,6 +100,49 @@ public static class JsonTextPatcher
         var insert = $"{nl}{Indent(deepestPrefix + 1)}{Quote(path[deepestPrefix])}: {value},";
         var at = (int)deepestBrace + 1;
         return Encoding.UTF8.GetString(bytes, 0, at) + insert + Encoding.UTF8.GetString(bytes, at, bytes.Length - at);
+    }
+
+    /// <summary>
+    /// Benennt eine Eigenschaft des Wurzelobjekts um (z. B. den alten Abschnitt "Kopilot" in "Duopilo"), ohne den Rest
+    /// anzufassen. Unverändert, wenn es <paramref name="from"/> nicht gibt, <paramref name="to"/> schon gibt oder der Text
+    /// kein gültiges JSON ist.
+    /// </summary>
+    public static string RenameRootProperty(string json, string from, string to)
+    {
+        var bytes = Encoding.UTF8.GetBytes(json);
+        var reader = new Utf8JsonReader(bytes, ReaderOptions);
+        var start = -1;
+        var length = 0;
+        try
+        {
+            while (reader.Read())
+            {
+                if (reader.TokenType != JsonTokenType.PropertyName || reader.CurrentDepth != 1)
+                {
+                    continue;
+                }
+
+                var name = reader.GetString();
+                if (string.Equals(name, to, StringComparison.OrdinalIgnoreCase))
+                {
+                    return json;
+                }
+
+                if (start < 0 && !reader.ValueIsEscaped && string.Equals(name, from, StringComparison.OrdinalIgnoreCase))
+                {
+                    start = (int)reader.TokenStartIndex;
+                    length = reader.ValueSpan.Length + 2;
+                }
+            }
+        }
+        catch (JsonException)
+        {
+            return json;
+        }
+
+        return start < 0
+            ? json
+            : Encoding.UTF8.GetString(bytes, 0, start) + Quote(to) + Encoding.UTF8.GetString(bytes, start + length, bytes.Length - start - length);
     }
 
     /// <summary>String als JSON-Wert (mit Anführungszeichen und Escapes).</summary>

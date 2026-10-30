@@ -1,4 +1,4 @@
-namespace Kopilot.Speech;
+namespace Duopilo.Speech;
 
 /// <summary>
 /// Feste Callouts. Vor dem Sprechen bereitet <see cref="Pronunciation.ForSpeech"/> sie auf (ECAM-Titel wie "ENG 1 FIRE",

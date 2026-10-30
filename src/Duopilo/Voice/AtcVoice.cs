@@ -1,6 +1,6 @@
-using Kopilot.Atc;
+using Duopilo.Atc;
 
-namespace Kopilot.Voice;
+namespace Duopilo.Voice;
 
 /// <summary>
 /// Anbindung der Sprachschleife an das ATC-Modul (<see cref="AtcService"/>): Funksprüche des Piloten weitergeben und die
@@ -9,7 +9,7 @@ namespace Kopilot.Voice;
 /// </summary>
 public interface IAtcLink
 {
-    /// <summary>ATC-Modul eingeschaltet (Kopilot:Atc:Enabled).</summary>
+    /// <summary>ATC-Modul eingeschaltet (Duopilo:Atc:Enabled).</summary>
     bool Enabled { get; }
 
     /// <summary>Stationsnamen und eigene Rufzeichen des Flugs.</summary>

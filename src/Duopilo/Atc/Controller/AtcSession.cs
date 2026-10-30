@@ -1,4 +1,4 @@
-namespace Kopilot.Atc;
+namespace Duopilo.Atc;
 
 /// <summary>
 /// ATC als Zustandsmaschine mit festen Textvorlagen (kein LLM): Delivery → Ground → Tower → Departure → Center
@@ -939,7 +939,7 @@ public sealed partial class AtcSession
         var along = _alongNm;
 
         // Schon im Oceanic-Luftraum oder am Eintrittspunkt vorbei (z. B. Sitzung erst über dem Atlantik bzw. nach einem
-        // Neustart von Kopilot gestartet, oder nie angefordert): die Freigabe gilt als erteilt. Sonst bliebe sie auf
+        // Neustart von Duopilo gestartet, oder nie angefordert): die Freigabe gilt als erteilt. Sonst bliebe sie auf
         // NotYetDue stehen, und mit Due ginge eine Positionsmeldung an Shanwick als Freigabe-Anfrage durch.
         if (Phase == AtcPhase.Oceanic || (entryNm is { } passedNm && along is { } a && a >= passedNm))
         {

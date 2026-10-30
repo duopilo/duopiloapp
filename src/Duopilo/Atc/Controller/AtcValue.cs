@@ -1,8 +1,8 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
-using Kopilot.Speech;
+using Duopilo.Speech;
 
-namespace Kopilot.Atc;
+namespace Duopilo.Atc;
 
 /// <summary>Art eines Vorlagen-Werts – bestimmt Sprechweise und Readback-Vergleich.</summary>
 public enum AtcValueKind

@@ -1,11 +1,11 @@
-using Kopilot.Aircraft;
-using Kopilot.Atc;
-using Kopilot.FlightPlan;
-using Kopilot.Localization;
-using Kopilot.Monitoring;
-using Kopilot.Sim;
+using Duopilo.Aircraft;
+using Duopilo.Atc;
+using Duopilo.FlightPlan;
+using Duopilo.Localization;
+using Duopilo.Monitoring;
+using Duopilo.Sim;
 
-namespace Kopilot.Input;
+namespace Duopilo.Input;
 
 /// <summary>Umgebung für die Plausibilitätssperren: ATC-Freigabe und MSA – austauschbar für Tests.</summary>
 public interface IInputContext

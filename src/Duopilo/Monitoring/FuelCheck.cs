@@ -1,12 +1,12 @@
 using System.Globalization;
 using System.Text.Json.Serialization;
-using Kopilot.FlightPlan;
-using Kopilot.Localization;
-using Kopilot.Speech;
+using Duopilo.FlightPlan;
+using Duopilo.Localization;
+using Duopilo.Speech;
 
-namespace Kopilot.Monitoring;
+namespace Duopilo.Monitoring;
 
-/// <summary>Grenzen des Fuel Checks (Kopilot:Monitoring:FuelCheck).</summary>
+/// <summary>Grenzen des Fuel Checks (Duopilo:Monitoring:FuelCheck).</summary>
 public sealed class FuelCheckSettings
 {
     /// <summary>Im Reiseflug spätestens nach so vielen Minuten (Sim-Zeit) ohne Check einen Intervall-Check machen. 0 = aus.</summary>

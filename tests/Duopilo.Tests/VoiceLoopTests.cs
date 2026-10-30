@@ -1,9 +1,9 @@
-using Kopilot.Aircraft;
-using Kopilot.Monitoring;
-using Kopilot.Speech;
-using Kopilot.Voice;
+using Duopilo.Aircraft;
+using Duopilo.Monitoring;
+using Duopilo.Speech;
+using Duopilo.Voice;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
 /// <summary>
 /// Sprachschleife (v0.9): Satzgrenzen (VAD), Halbduplex, Warteschlange mit Prioritäten, Taxi-Speed-Warnung,
@@ -361,7 +361,7 @@ public sealed class VoiceLoopTests
     [Fact]
     public void Vorlage_wird_in_den_Datenordner_kopiert()
     {
-        var root = Directory.CreateTempSubdirectory("kopilot-voice-").FullName;
+        var root = Directory.CreateTempSubdirectory("duopilo-voice-").FullName;
         try
         {
             var template = Path.Combine(root, "exe");
@@ -393,13 +393,13 @@ public sealed class VoiceLoopTests
     public void Mitgelieferte_Vorlage_ist_gueltig_und_aus()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Kopilot.slnx")))
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Duopilo.slnx")))
         {
             dir = dir.Parent;
         }
 
         Assert.NotNull(dir);
-        var s = VoiceSettingsStore.Parse(File.ReadAllText(Path.Combine(dir!.FullName, "src", "Kopilot", VoiceSettingsStore.FileName)));
+        var s = VoiceSettingsStore.Parse(File.ReadAllText(Path.Combine(dir!.FullName, "src", "Duopilo", VoiceSettingsStore.FileName)));
 
         Assert.False(s.Enabled);
         Assert.Equal("base-q5_1", s.Recognition.Model);

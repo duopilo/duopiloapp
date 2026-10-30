@@ -1,4 +1,4 @@
-namespace Kopilot.FlightPlan;
+namespace Duopilo.FlightPlan;
 
 /// <summary>Großkreis-Rechnungen in nautischen Meilen.</summary>
 public static class RouteMath

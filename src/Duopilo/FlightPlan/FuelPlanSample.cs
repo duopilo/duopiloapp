@@ -1,4 +1,4 @@
-namespace Kopilot.FlightPlan;
+namespace Duopilo.FlightPlan;
 
 /// <summary>Ein Fix der Route, wie ihn der Fuel Check braucht (Name für die Ansage, Phase laut SimBrief).</summary>
 /// <param name="Stage">SimBrief-Phase des Abschnitts, der an diesem Fix endet: CLB, CRZ oder DSC (null = unbekannt).</param>

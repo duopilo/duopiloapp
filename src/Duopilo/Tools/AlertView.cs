@@ -1,6 +1,6 @@
-using Kopilot.Monitoring;
+using Duopilo.Monitoring;
 
-namespace Kopilot.Tools;
+namespace Duopilo.Tools;
 
 /// <summary>Kompakte Darstellung von Monitoring-Meldungen in Tool-Antworten.</summary>
 internal static class AlertView

@@ -2,9 +2,10 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Kopilot.Localization;
+using Duopilo.Hosting;
+using Duopilo.Localization;
 
-namespace Kopilot.Smalltalk;
+namespace Duopilo.Smalltalk;
 
 /// <summary>Ein Beitrag im Gespräch: "user" (Pilot) oder "assistant" (First Officer).</summary>
 public sealed record ChatTurn(string Role, string Text)
@@ -109,7 +110,7 @@ public sealed class HttpChatModel(HttpClient? http = null) : IChatModel
                 throw new ChatModelException(Loc.T("smalltalk.config.off"));
         }
 
-        message.Headers.UserAgent.ParseAdd("Kopilot");
+        message.Headers.UserAgent.ParseAdd(AppNames.Product);
         message.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
         return message;
     }

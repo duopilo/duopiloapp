@@ -1,9 +1,10 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
-using Kopilot.Atc.Airspace;
-using Kopilot.FlightPlan;
+using Duopilo.Atc.Airspace;
+using Duopilo.FlightPlan;
+using Duopilo.Hosting;
 
-namespace Kopilot.Atc;
+namespace Duopilo.Atc;
 
 /// <summary>
 /// Abschnitt der Route bei einer Kontrollstelle. <paramref name="StartNm"/> = Streckenposition der Grenze ab dem Startflughafen.
@@ -136,7 +137,7 @@ public sealed partial class AtcPlan
             distances.Add(total);
         }
 
-        var callsign = CallsignCode(ofp, simCallsign) ?? "KOPILOT";
+        var callsign = CallsignCode(ofp, simCallsign) ?? AppNames.Product.ToUpperInvariant();
         var cruise = ofp.InitialAltitudeFt ?? ofp.Fixes.Select(f => f.AltitudeFt ?? 0).DefaultIfEmpty(0).Max();
         if (cruise <= 0)
         {
@@ -339,7 +340,7 @@ public sealed partial class AtcPlan
 
     /// <summary>
     /// FIR-Abschnitte entlang der Route. Beim Oceanic-Teil liegt die Grenze kurz vor dem Eintrittspunkt bzw. am
-    /// Austrittspunkt (die liegen auf der Grenze). Sonst schneidet Kopilot die Route mit den VAT-Spy-Grenzen beider FIRs
+    /// Austrittspunkt (die liegen auf der Grenze). Sonst schneidet Duopilo die Route mit den VAT-Spy-Grenzen beider FIRs
     /// (<see cref="Crossing"/>); ohne Grenzen liegt sie in der Mitte zwischen dem letzten Fix der alten und dem ersten der neuen FIR.
     /// </summary>
     private static List<AtcFirSegment> Segments(

@@ -1,4 +1,4 @@
-namespace Kopilot.Atc.Airspace;
+namespace Duopilo.Atc.Airspace;
 
 /// <summary>
 /// Geschlossener Ring aus Längen/Breiten (Grad) für Punkt-in-Polygon-Abfragen. Ein Ring über die Datumsgrenze

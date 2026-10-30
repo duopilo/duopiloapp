@@ -1,6 +1,6 @@
-using Kopilot.Sim;
+using Duopilo.Sim;
 
-namespace Kopilot.Traffic;
+namespace Duopilo.Traffic;
 
 /// <summary>
 /// V/S der Ziele aus der Höhenänderung zwischen zwei Verkehrsabfragen – für Ziele, deren SimVar VERTICAL SPEED 0 liefert

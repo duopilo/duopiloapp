@@ -1,21 +1,21 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
-using Kopilot.Reports;
+using Duopilo.Reports;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
 /// <summary>„Fehler melden“: Kontext, Titel, Labels und Link zum vorausgefüllten GitHub-Issue.</summary>
 public sealed class BugReportTests : IAsyncLifetime
 {
-    private const string Repository = "Shin-Jin-Jin/Kopilot";
-    private const string Template = "kopilot-meldung.yml";
+    private const string Repository = "duopilo/duopiloapp";
+    private const string Template = "duopilo-meldung.yml";
 
-    private readonly string _stateFile = Path.Combine(Path.GetTempPath(), $"kopilot-test-{Guid.NewGuid():N}.json");
-    private readonly string _dataDirectory = Path.Combine(Path.GetTempPath(), "kopilot-report-tests", Guid.NewGuid().ToString("N"));
+    private readonly string _stateFile = Path.Combine(Path.GetTempPath(), $"duopilo-test-{Guid.NewGuid():N}.json");
+    private readonly string _dataDirectory = Path.Combine(Path.GetTempPath(), "duopilo-report-tests", Guid.NewGuid().ToString("N"));
     private TestApp _app = null!;
 
-    /// <summary>Wie bei HOIST im Testlog 0.9: Kopilot schon bei Montreal (Platzhalterfrequenz), Sim-ATC noch bei Gander.</summary>
+    /// <summary>Wie bei HOIST im Testlog 0.9: Duopilo schon bei Montreal (Platzhalterfrequenz), Sim-ATC noch bei Gander.</summary>
     private static BugReportContext Hoist(int transcriptLines = 3) => new()
     {
         CapturedUtc = new DateTimeOffset(2026, 10, 29, 21, 18, 7, TimeSpan.Zero),
@@ -49,7 +49,7 @@ public sealed class BugReportTests : IAsyncLifetime
     };
 
     public async Task InitializeAsync() =>
-        _app = await TestApp.StartAsync(_stateFile, new Dictionary<string, string?> { ["Kopilot:DataDirectory"] = _dataDirectory });
+        _app = await TestApp.StartAsync(_stateFile, new Dictionary<string, string?> { ["Duopilo:DataDirectory"] = _dataDirectory });
 
     public async Task DisposeAsync()
     {
@@ -76,9 +76,9 @@ public sealed class BugReportTests : IAsyncLifetime
     {
         var text = BugReport.ContextMarkdown(Hoist(), labels: ["data/fir", "data/frequency"]);
 
-        Assert.StartsWith("<!-- kopilot-meldung labels: data/fir,data/frequency -->", text);
+        Assert.StartsWith("<!-- duopilo-meldung labels: data/fir,data/frequency -->", text);
         Assert.Contains("2026-10-29 21:18:07Z (sim 21:18:05Z)", text);
-        Assert.Contains("Kopilot 0.9.1", text);
+        Assert.Contains("Duopilo 0.9.1", text);
         Assert.Contains("53.5100 N, 64.6500 W", text);
         Assert.Contains("openstreetmap.org/?mlat=53.5100&mlon=-64.6500", text);
         Assert.Contains("FL320 · 30630 ft · GS 480 kt · HDG 268°", text);
@@ -86,7 +86,7 @@ public sealed class BugReportTests : IAsyncLifetime
         Assert.Contains("CZUL from mile 2377 · next CZYZ at mile 3010", text);
         Assert.Contains("Mile 2390 of 5312", text);
         Assert.Contains("124.725 active · 133.300 standby", text);
-        Assert.Contains("Transponder 3172 · Kopilot assigned 2340", text);
+        Assert.Contains("Transponder 3172 · Duopilo assigned 2340", text);
         Assert.Contains("CFG2205 EDDF–KLAX, spoken “Condor two two zero five”", text);
         Assert.Contains("```text\n21:11:00Z Pilot Gander Oceanic 127.650: Gander, Condor 2205, position report 1\n", text);
         Assert.Contains("Voice loop, last heard", text);
@@ -98,7 +98,7 @@ public sealed class BugReportTests : IAsyncLifetime
         var text = BugReport.ContextMarkdown(new BugReportContext { CapturedUtc = DateTimeOffset.UnixEpoch, Version = "0.9.1" });
 
         Assert.Contains("**Sim:** not connected", text);
-        Assert.Contains("**ATC per Kopilot:** no session", text);
+        Assert.Contains("**ATC per Duopilo:** no session", text);
         Assert.DoesNotContain("Position", text);
         Assert.DoesNotContain("```", text);
     }
@@ -138,14 +138,14 @@ public sealed class BugReportTests : IAsyncLifetime
 
         Assert.NotNull(issue.Url);
         var url = issue.Url!;
-        Assert.StartsWith("https://github.com/Shin-Jin-Jin/Kopilot/issues/new?template=kopilot-meldung.yml&title=", url);
+        Assert.StartsWith("https://github.com/duopilo/duopiloapp/issues/new?template=duopilo-meldung.yml&title=", url);
         Assert.Contains("&labels=data%2Ffir%2Cdata%2Ffrequency", url);
         Assert.Contains("&beschreibung=" + Uri.EscapeDataString("Sim-ATC übergibt erst bei 64.65 W an Montreal 132.25"), url);
-        Assert.Contains("&kontext=" + Uri.EscapeDataString("<!-- kopilot-meldung labels: data/fir,data/frequency -->"), url);
+        Assert.Contains("&kontext=" + Uri.EscapeDataString("<!-- duopilo-meldung labels: data/fir,data/frequency -->"), url);
         Assert.False(issue.Truncated);
         Assert.Equal("[FIR boundary / station, Frequency] Montreal Center (CZUL) at 53.51 N 64.65 W", issue.Title);
         Assert.Contains("### What is wrong, and what would be right?", issue.Body);
-        Assert.Contains("### Context from Kopilot", issue.Body);
+        Assert.Contains("### Context from Duopilo", issue.Body);
     }
 
     [Fact]
@@ -193,7 +193,7 @@ public sealed class BugReportTests : IAsyncLifetime
         var id = capture.GetProperty("id").GetString();
         Assert.Equal(4, capture.GetProperty("categories").GetArrayLength());
         Assert.Equal(Repository, capture.GetProperty("repository").GetString());
-        Assert.Contains("Kopilot", capture.GetProperty("context").GetString());
+        Assert.Contains("Duopilo", capture.GetProperty("context").GetString());
         Assert.False(capture.GetProperty("summary").GetProperty("simConnected").GetBoolean());
 
         var report = await PostAsync("/api/report", $$"""{"id":"{{id}}","categories":["frequency"],"title":"","description":"Platzhalter 132.6 statt 132.25"}""");
@@ -226,7 +226,7 @@ public sealed class BugReportTests : IAsyncLifetime
     private async Task<JsonElement> PostAsync(string url, string body)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
-        request.Headers.Add("X-Kopilot", "1");
+        request.Headers.Add("X-Duopilo", "1");
         using var response = await _app.Local().SendAsync(request);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());

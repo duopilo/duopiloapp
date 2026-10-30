@@ -1,25 +1,30 @@
-namespace Kopilot;
+using Duopilo.Hosting;
 
-/// <summary>Einstellungen aus appsettings.json / appsettings.Local.json / Umgebungsvariablen, Abschnitt "Kopilot".</summary>
-public sealed class KopilotOptions
+namespace Duopilo;
+
+/// <summary>
+/// Einstellungen aus appsettings.json / appsettings.Local.json / Umgebungsvariablen, Abschnitt "Duopilo".
+/// Der alte Abschnitt "Kopilot" (bis 0.9.x) wird weiter gelesen (<see cref="LegacySectionSource"/>).
+/// </summary>
+public sealed class DuopiloOptions
 {
-    public const string Section = "Kopilot";
+    public const string Section = AppNames.Product;
 
     /// <summary>
-    /// "stdio" (Claude Desktop startet Kopilot selbst) oder "http" (Streamable HTTP auf <see cref="HttpUrl"/>).
+    /// "stdio" (Claude Desktop startet Duopilo selbst) oder "http" (Streamable HTTP auf <see cref="HttpUrl"/>).
     /// Die Kommandozeilenschalter --stdio / --http haben Vorrang.
     /// </summary>
     public string Transport { get; set; } = "http";
 
     /// <summary>
-    /// Language of the dashboard, tool messages and tray ("en", "de" – see src/Kopilot/i18n). English is the default.
+    /// Language of the dashboard, tool messages and tray ("en", "de" – see src/Duopilo/i18n). English is the default.
     /// Callouts, checklists, FMA calls, warnings and radio stay English whatever this says (SOP), and so do the logs (issues,
     /// international contributors). Changeable in the dashboard settings.
     /// </summary>
     public string Language { get; set; } = Localization.Loc.DefaultLanguage;
 
-    /// <summary>Name, unter dem sich Kopilot bei SimConnect anmeldet.</summary>
-    public string ClientName { get; set; } = "Kopilot";
+    /// <summary>Name, unter dem sich Duopilo bei SimConnect anmeldet.</summary>
+    public string ClientName { get; set; } = AppNames.Product;
 
     /// <summary>Wartezeit zwischen Verbindungsversuchen, solange MSFS nicht läuft.</summary>
     public int ReconnectSeconds { get; set; } = 5;
@@ -33,7 +38,7 @@ public sealed class KopilotOptions
     /// <summary>Adresse des HTTP-Modus. Muss auf Loopback zeigen (127.0.0.1, localhost oder [::1]).</summary>
     public string HttpUrl { get; set; } = "http://127.0.0.1:5155";
 
-    /// <summary>Ordner mit Flugzeugprofilen (*.json), relativ zur Kopilot.exe oder absolut.</summary>
+    /// <summary>Ordner mit Flugzeugprofilen (*.json), relativ zur Duopilo.exe oder absolut.</summary>
     public string ProfilesDirectory { get; set; } = "profiles";
 
     /// <summary>Zugriffsschutz und Remote-Betrieb (Cloudflare Tunnel, Claude-Connector).</summary>
@@ -66,7 +71,10 @@ public sealed class KopilotOptions
     /// <summary>Der First Officer der Sprachschleife: Name und Stimme pro Flug, Vorstellung beim Briefing.</summary>
     public FirstOfficerOptions FirstOfficer { get; set; } = new();
 
-    /// <summary>Ordner für Caches (ECAM-Tabellen). Leer = %LOCALAPPDATA%\Kopilot.</summary>
+    /// <summary>
+    /// Datenordner (Logs, Modelle, Caches, Dashboard-Einstellungen). Leer = %LOCALAPPDATA%\Duopilo – beim ersten Start
+    /// übernommen aus %LOCALAPPDATA%\Kopilot (<see cref="DataDirectoryMigration"/>).
+    /// </summary>
     public string DataDirectory { get; set; } = "";
 
     /// <summary>
@@ -77,8 +85,8 @@ public sealed class KopilotOptions
 
     public string ResolveDataDirectory() =>
         string.IsNullOrWhiteSpace(DataDirectory)
-            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Kopilot")
-            : DataDirectory;
+            ? DataDirectoryMigration.DefaultDirectory
+            : DataDirectoryMigration.MapLegacyPath(DataDirectory);
 }
 
 public sealed class SimBriefOptions
@@ -109,7 +117,7 @@ public sealed class MonitoringOptions
     public int HistorySize { get; set; } = 500;
 
     /// <summary>
-    /// Radiohöhen (2500, 1000, 500 …), Hundred above/Minimum und Retard auch von Kopilot ansagen.
+    /// Radiohöhen (2500, 1000, 500 …), Hundred above/Minimum und Retard auch von Duopilo ansagen.
     /// Standard aus – der FBW A32NX und andere Airliner sprechen sie selbst. Im Dashboard umschaltbar.
     /// </summary>
     public bool AircraftAutoCallouts { get; set; }
@@ -213,7 +221,7 @@ public sealed class SpeechOptions
     /// <summary>Kokoro-Stimme, z. B. bm_george, bf_emma, am_michael, af_heart (a/b = US/GB, f/m = weiblich/männlich).</summary>
     public string KokoroVoice { get; set; } = "bm_george";
 
-    /// <summary>Pfad zum Kokoro-Modell. Leer = %LOCALAPPDATA%\Kopilot\models\kokoro.onnx (wird bei Bedarf geladen).</summary>
+    /// <summary>Pfad zum Kokoro-Modell. Leer = %LOCALAPPDATA%\Duopilo\models\kokoro.onnx (wird bei Bedarf geladen).</summary>
     public string KokoroModelPath { get; set; } = "";
 
     /// <summary>CPU-Threads für Kokoro – wenig, damit MSFS nicht ausgebremst wird.</summary>
@@ -222,11 +230,11 @@ public sealed class SpeechOptions
 
 /// <summary>
 /// Zugriffsschutz für den HTTP-Modus. Geheimnisse gehören in appsettings.Local.json oder Umgebungsvariablen
-/// (z. B. <c>Kopilot__Remote__BearerToken</c>), niemals ins Repo.
+/// (z. B. <c>Duopilo__Remote__BearerToken</c>; der alte Name <c>Kopilot__…</c> gilt weiter), niemals ins Repo.
 /// </summary>
 public sealed class RemoteOptions
 {
-    /// <summary>Öffentliche Basis-URL hinter dem Tunnel, z. B. https://kopilot.flo210500.com (ohne /mcp).</summary>
+    /// <summary>Öffentliche Basis-URL hinter dem Tunnel, z. B. https://duopilo.example.com (ohne /mcp).</summary>
     public string PublicUrl { get; set; } = "";
 
     /// <summary>Statischer Bearer-Token für Clients wie Claude Code oder den MCP Inspector. Mindestens 32 Zeichen.</summary>
@@ -239,7 +247,7 @@ public sealed class RemoteOptions
 
     public int RefreshTokenDays { get; set; } = 90;
 
-    /// <summary>Datei für registrierte Clients und (gehashte) Tokens. Leer = %LOCALAPPDATA%\Kopilot\oauth-state.json.</summary>
+    /// <summary>Datei für registrierte Clients und (gehashte) Tokens. Leer = %LOCALAPPDATA%\Duopilo\oauth-state.json.</summary>
     public string StateFile { get; set; } = "";
 
     public const int MinBearerTokenLength = 32;
@@ -271,8 +279,8 @@ public sealed class RemoteOptions
 
     public string ResolveStateFile() =>
         string.IsNullOrWhiteSpace(StateFile)
-            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Kopilot", "oauth-state.json")
-            : StateFile;
+            ? Path.Combine(DataDirectoryMigration.DefaultDirectory, "oauth-state.json")
+            : DataDirectoryMigration.MapLegacyPath(StateFile);
 }
 
 public sealed class AtcOptions
@@ -280,8 +288,8 @@ public sealed class AtcOptions
     public bool Enabled { get; set; } = true;
 
     /// <summary>
-    /// Vorlagendatei. Ein relativer Name wird zuerst in DataDirectory (%LOCALAPPDATA%\Kopilot) gesucht – dort überlebt eine
-    /// eigene Kopie jedes Update –, dann neben der Kopilot.exe.
+    /// Vorlagendatei. Ein relativer Name wird zuerst in DataDirectory (%LOCALAPPDATA%\Duopilo) gesucht – dort überlebt eine
+    /// eigene Kopie jedes Update –, dann neben der Duopilo.exe.
     /// </summary>
     public string TemplatesFile { get; set; } = "atc-templates.json";
 
@@ -292,7 +300,7 @@ public sealed class AtcOptions
 
     /// <summary>
     /// Die laufende ATC-Sitzung wird hier gesichert (relativ = im DataDirectory) und nach einem Neustart oder Absturz von
-    /// Kopilot wiederhergestellt, solange der SimBrief-Plan derselbe ist. Leer = nicht sichern.
+    /// Duopilo wiederhergestellt, solange der SimBrief-Plan derselbe ist. Leer = nicht sichern.
     /// Die stdio-Instanz nimmt automatisch eine eigene Datei (atc-session-stdio.json).
     /// </summary>
     public string SessionFile { get; set; } = DefaultSessionFile;
@@ -311,14 +319,29 @@ public sealed class AtcOptions
 /// <summary>Fehlermeldungen aus dem Dashboard (Knopf „Fehler melden“).</summary>
 public sealed class ReportOptions
 {
-    /// <summary>GitHub-Repository für die Issues ("Besitzer/Name"). Leer = nur lokal speichern.</summary>
-    public string GitHubRepository { get; set; } = "Shin-Jin-Jin/Kopilot";
+    /// <summary>
+    /// GitHub-Repository für die Issues ("Besitzer/Name"). Leer = nur lokal speichern. Das alte Shin-Jin-Jin/Kopilot aus
+    /// einer eigenen appsettings.Local.json wird zu duopilo/duopiloapp (<see cref="ResolveGitHubRepository"/>).
+    /// </summary>
+    public string GitHubRepository { get; set; } = AppNames.GitHubRepository;
 
-    /// <summary>Issue-Vorlage in .github/ISSUE_TEMPLATE des Repositorys.</summary>
-    public string IssueTemplate { get; set; } = "kopilot-meldung.yml";
+    /// <summary>Issue-Vorlage in .github/ISSUE_TEMPLATE des Repositorys (alt: kopilot-meldung.yml).</summary>
+    public string IssueTemplate { get; set; } = AppNames.IssueTemplate;
 
     /// <summary>Ordner für die lokale Kopie jeder Meldung. Leer = DataDirectory\reports.</summary>
     public string Directory { get; set; } = "";
+
+    /// <summary>Repository für die Links – das alte Repository unter dem Namen Kopilot zählt als das neue.</summary>
+    public string ResolveGitHubRepository() =>
+        string.Equals((GitHubRepository ?? "").Trim(), AppNames.Legacy.GitHubRepository, StringComparison.OrdinalIgnoreCase)
+            ? AppNames.GitHubRepository
+            : (GitHubRepository ?? "").Trim();
+
+    /// <summary>Vorlage für die Links – die alte Vorlage kopilot-meldung.yml heißt jetzt duopilo-meldung.yml.</summary>
+    public string ResolveIssueTemplate() =>
+        string.Equals((IssueTemplate ?? "").Trim(), AppNames.Legacy.IssueTemplate, StringComparison.OrdinalIgnoreCase)
+            ? AppNames.IssueTemplate
+            : (IssueTemplate ?? "").Trim();
 }
 
 public sealed class InputOptions
@@ -352,26 +375,26 @@ public sealed class SmalltalkOptions
     /// <summary>Antworten höchstens so viele Wörter lang (10–150).</summary>
     public int MaxReplyWords { get; set; } = 40;
 
-    /// <summary>Höchstens so viele Anfragen pro Minute (1–30) – darüber antwortet Kopilot sofort „I can't chat right now“.</summary>
+    /// <summary>Höchstens so viele Anfragen pro Minute (1–30) – darüber antwortet Duopilo sofort „I can't chat right now“.</summary>
     public int RequestsPerMinute { get; set; } = 6;
 
-    /// <summary>So lange wartet Kopilot höchstens auf eine Antwort (s, 2–30).</summary>
+    /// <summary>So lange wartet Duopilo höchstens auf eine Antwort (s, 2–30).</summary>
     public int TimeoutSec { get; set; } = 10;
 
     /// <summary>
-    /// Sätze ohne Anrede (Name des First Officers oder „Kopilot“) gehen nur bis zu dieser Wortzahl ans Modell – längere sind
+    /// Sätze ohne Anrede (Name des First Officers, „Kopilot“ oder „Duopilo“) gehen nur bis zu dieser Wortzahl ans Modell – längere sind
     /// meist Gespräche im Raum. 0 = nur mit Anrede.
     /// </summary>
     public int UnaddressedMaxWords { get; set; } = 12;
 
-    /// <summary>Eigene piper.exe. Leer = Kopilot lädt Piper bei Bedarf nach %LOCALAPPDATA%\Kopilot\piper.</summary>
+    /// <summary>Eigene piper.exe. Leer = Duopilo lädt Piper bei Bedarf nach %LOCALAPPDATA%\Duopilo\piper.</summary>
     public string PiperPath { get; set; } = "";
 }
 
 /// <summary>Der First Officer: pro Flug ein Name aus einer Liste (weiblich/männlich) und eine passende Stimme.</summary>
 public sealed class FirstOfficerOptions
 {
-    /// <summary>Name und Stimme pro Flug. false = Kopilot spricht wie bisher mit der Stimme aus dem Dashboard.</summary>
+    /// <summary>Name und Stimme pro Flug. false = Duopilo spricht wie bisher mit der Stimme aus dem Dashboard.</summary>
     public bool Enabled { get; set; } = true;
 
     /// <summary>Fester Name. Leer = pro Flug zufällig.</summary>

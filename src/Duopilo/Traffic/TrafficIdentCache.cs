@@ -1,6 +1,6 @@
-using Kopilot.Sim;
+using Duopilo.Sim;
 
-namespace Kopilot.Traffic;
+namespace Duopilo.Traffic;
 
 /// <summary>
 /// Merkt sich die Texte (ATC ID, Airline, Flugnummer, Typ) je Objekt-ID aus get_traffic und ergänzt sie im

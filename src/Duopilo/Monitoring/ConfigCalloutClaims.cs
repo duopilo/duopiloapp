@@ -1,4 +1,4 @@
-namespace Kopilot.Monitoring;
+namespace Duopilo.Monitoring;
 
 /// <summary>
 /// Fahrwerk und Klappen, die das Eingabe-Modul gerade selbst nachliest und ansagt ("Gear down, three green", "Flaps two").

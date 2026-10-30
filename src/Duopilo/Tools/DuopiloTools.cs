@@ -1,30 +1,30 @@
 using System.ComponentModel;
-using Kopilot.Aircraft;
-using Kopilot.Ecam;
-using Kopilot.FlightPlan;
-using Kopilot.Localization;
-using Kopilot.Monitoring;
-using Kopilot.Sim;
+using Duopilo.Aircraft;
+using Duopilo.Ecam;
+using Duopilo.FlightPlan;
+using Duopilo.Localization;
+using Duopilo.Monitoring;
+using Duopilo.Sim;
 using ModelContextProtocol.Server;
 
-namespace Kopilot.Tools;
+namespace Duopilo.Tools;
 
 /// <summary>
 /// MCP-Tools für Claude. Alle Tools sind lesend. Antworten sind JSON, Schlüssel englisch, Meldungen deutsch.
 /// Jede Antwort enthält "activeAlerts" – die gerade aktiven Monitoring-Meldungen.
 /// </summary>
 [McpServerToolType]
-public static class KopilotTools
+public static class DuopiloTools
 {
     internal static string NotConnectedMessage => Loc.T("tools.common.notConnected");
 
-    [McpServerTool(Name = "kopilot_status", ReadOnly = true)]
+    [McpServerTool(Name = "duopilo_status", ReadOnly = true)]
     [Description(
-        "Connection status of the Kopilot bridge to Microsoft Flight Simulator 2024: whether the sim is connected and paused, " +
+        "Connection status of the Duopilo bridge to Microsoft Flight Simulator 2024: whether the sim is connected and paused, " +
         "loaded aircraft (title and aircraft.cfg path), active aircraft profile, monitoring, input module, SimBrief and ECAM table status and any setup error. " +
-        "'voiceLoop' shows the local voice loop (microphone → Whisper → Kopilot commands/ATC): whether it runs, the microphone in use, " +
+        "'voiceLoop' shows the local voice loop (microphone → Whisper → Duopilo commands/ATC): whether it runs, the microphone in use, " +
         "the available microphones, input level, the last recognized phrase and where it went. It only exists in the tray (HTTP) instance. " +
-        "Call this first if other tools return no data. Every Kopilot response includes 'activeAlerts' (current monitoring alerts with short callouts).")]
+        "Call this first if other tools return no data. Every Duopilo response includes 'activeAlerts' (current monitoring alerts with short callouts).")]
     public static string Status(
         SimConnectClient sim,
         ProfileStore profiles,
@@ -32,8 +32,8 @@ public static class KopilotTools
         SimBriefService simBrief,
         EcamCatalog ecam,
         AlertBus alerts,
-        Kopilot.Input.InputService input,
-        Kopilot.Voice.IVoiceStatusSource voice)
+        Duopilo.Input.InputService input,
+        Duopilo.Voice.IVoiceStatusSource voice)
     {
         var connection = sim.Connection;
         var status = sim.Status;
@@ -85,7 +85,7 @@ public static class KopilotTools
             profilesLoaded = profiles.All.Select(p => p.Name),
             profileErrors = profiles.Errors,
             profileWarnings = profiles.Warnings.Count > 0 ? profiles.Warnings : null,
-            kopilotVersion = typeof(KopilotTools).Assembly.GetName().Version?.ToString(3),
+            duopiloVersion = typeof(DuopiloTools).Assembly.GetName().Version?.ToString(3),
             message = connection.IsConnected ? null : NotConnectedMessage,
             activeAlerts = AlertView.Active(alerts),
         });
@@ -358,7 +358,7 @@ public static class KopilotTools
 
     [McpServerTool(Name = "get_aircraft_profile", ReadOnly = true)]
     [Description(
-        "The active Kopilot aircraft profile for the loaded aircraft: semantic bindings (e.g. ap1, athrStatus, fmaVertical) with their variable, " +
+        "The active Duopilo aircraft profile for the loaded aircraft: semantic bindings (e.g. ap1, athrStatus, fmaVertical) with their variable, " +
         "current raw value, text meaning and whether the variable was verified in the sim, plus extra profile variables, ECAM configuration and speed limits. " +
         "Use this to check which values come from aircraft-specific L: variables. 'callouts' shows for the autoflight and approach callouts " +
         "(TCAS_RA, ATHR_OFF, FMA_CHANGE, LOC_DEVIATION, GS_DEVIATION, APPR_NOT_ACTIVE) whether their bindings are 'verified', 'unverified' or 'missing' " +
@@ -474,8 +474,8 @@ public static class KopilotTools
     /// FBW-ARINC-429-Wort erkennen und dekodieren: Das Profil kennt die Variable als arinc429, oder der Rohwert sieht so aus
     /// (ganzzahlig, SSM-Bits über 2^32 gesetzt). Sonst null.
     /// </summary>
-    /// <summary>Sprachschleife für kopilot_status: läuft sie, welches Mikrofon, was wurde zuletzt erkannt.</summary>
-    internal static object VoiceView(Kopilot.Voice.VoiceStatus v) => new
+    /// <summary>Sprachschleife für duopilo_status: läuft sie, welches Mikrofon, was wurde zuletzt erkannt.</summary>
+    internal static object VoiceView(Duopilo.Voice.VoiceStatus v) => new
     {
         available = v.Available,
         active = v.State is "listening" or "muted",

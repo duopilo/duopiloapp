@@ -1,9 +1,10 @@
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
-using Kopilot.Localization;
+using Duopilo.Hosting;
+using Duopilo.Localization;
 
-namespace Kopilot.Reports;
+namespace Duopilo.Reports;
 
 /// <summary>Art einer Meldung: Kennung fürs Dashboard, Label im GitHub-Repository, Anzeigename (in der eingestellten Sprache).</summary>
 public sealed record BugReportCategory(string Id, string Label)
@@ -18,7 +19,7 @@ public sealed record BugReportCategory(string Id, string Label)
     };
 }
 
-/// <summary>ATC-Stand laut Kopilot im Moment der Meldung (null-Felder = unbekannt).</summary>
+/// <summary>ATC-Stand laut Duopilo im Moment der Meldung (null-Felder = unbekannt).</summary>
 /// <param name="FirHere">FIR laut Plan an der aktuellen Streckenposition.</param>
 /// <param name="FirHereSinceNm">Streckenposition, ab der <paramref name="FirHere"/> gilt.</param>
 public sealed record BugReportAtc(
@@ -37,7 +38,7 @@ public sealed record BugReportAtc(
     string? Squawk,
     int? ClearedAltitudeFt);
 
-/// <summary>Momentaufnahme beim Druck auf „Fehler melden“ – Werte so, wie Kopilot sie in dem Moment hatte.</summary>
+/// <summary>Momentaufnahme beim Druck auf „Fehler melden“ – Werte so, wie Duopilo sie in dem Moment hatte.</summary>
 public sealed record BugReportContext
 {
     public required DateTimeOffset CapturedUtc { get; init; }
@@ -106,7 +107,7 @@ public sealed record BugReportIssue(string Title, IReadOnlyList<string> Labels, 
 
 /// <summary>
 /// „Fehler melden“ im Dashboard, rein rechnend (testbar): Kontext als Markdown, Titelvorschlag und der Link auf ein neues
-/// GitHub-Issue mit der Vorlage .github/ISSUE_TEMPLATE/kopilot-meldung.yml. Der Link füllt die Felder "beschreibung" und
+/// GitHub-Issue mit der Vorlage .github/ISSUE_TEMPLATE/duopilo-meldung.yml. Der Link füllt die Felder "beschreibung" und
 /// "kontext" der Vorlage und setzt die Labels (wirkt direkt nur für Leute mit Triage-Rechten – für alle anderen setzt die
 /// Action issue-labels.yml sie anhand der Markierung im Kontext).
 /// </summary>
@@ -118,8 +119,8 @@ public static partial class BugReport
     /// <summary>So viele Funksprüche kommen höchstens mit.</summary>
     public const int MaxTranscriptLines = 10;
 
-    /// <summary>Markierung im Kontext, aus der die Action die Labels liest.</summary>
-    public const string LabelMarker = "kopilot-meldung labels:";
+    /// <summary>Markierung im Kontext, aus der die Action die Labels liest (bis 0.9.x "kopilot-meldung labels:" – die Action kennt beide).</summary>
+    public const string LabelMarker = "duopilo-meldung labels:";
 
     public static readonly IReadOnlyList<BugReportCategory> Categories =
     [
@@ -177,7 +178,7 @@ public static partial class BugReport
         var simTime = c.SimZulu is { } z ? " " + Loc.T("report.context.simTime", z) : "";
         var paused = c.Paused == true ? ", " + Loc.T("report.context.paused") : "";
         Line(s, Loc.T("report.context.time"), time + simTime + paused);
-        Line(s, Loc.T("report.context.version"), "Kopilot " + c.Version);
+        Line(s, Loc.T("report.context.version"), AppNames.Product + " " + c.Version);
         if (!c.SimConnected)
         {
             Line(s, Loc.T("report.context.sim"), Loc.T("report.context.notConnected"));

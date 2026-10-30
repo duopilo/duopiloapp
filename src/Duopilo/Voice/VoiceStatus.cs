@@ -1,11 +1,11 @@
-using Kopilot.Localization;
+using Duopilo.Localization;
 
-namespace Kopilot.Voice;
+namespace Duopilo.Voice;
 
-/// <summary>Zustand der Sprachschleife für kopilot_status, /voice, das Dashboard und das Log.</summary>
+/// <summary>Zustand der Sprachschleife für duopilo_status, /voice, das Dashboard und das Log.</summary>
 public sealed record VoiceStatus
 {
-    /// <summary>Gibt es in dieser Kopilot-Instanz überhaupt eine Sprachschleife (nur Tray-/HTTP-Instanz)?</summary>
+    /// <summary>Gibt es in dieser Duopilo-Instanz überhaupt eine Sprachschleife (nur Tray-/HTTP-Instanz)?</summary>
     public bool Available { get; init; } = true;
 
     /// <summary>unavailable, off, loading, listening, muted, error.</summary>
@@ -19,7 +19,7 @@ public sealed record VoiceStatus
 
     public string? Error { get; init; }
 
-    /// <summary>Wirksame Einstellungsdatei (%LOCALAPPDATA%\Kopilot\voice-settings.json).</summary>
+    /// <summary>Wirksame Einstellungsdatei (%LOCALAPPDATA%\Duopilo\voice-settings.json).</summary>
     public string? SettingsFile { get; init; }
 
     /// <summary>Mikrofon laut Einstellungen (leer = Windows-Standardgerät).</summary>

@@ -1,11 +1,12 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Kopilot.Localization;
+using Duopilo.Hosting;
+using Duopilo.Localization;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
 
-namespace Kopilot.Remote;
+namespace Duopilo.Remote;
 
 /// <summary>
 /// Minimaler OAuth-2.1-Autorisierungsserver nach den Vorgaben für Claude-Connectors:
@@ -41,7 +42,7 @@ public static class OAuthEndpoints
 
     // ------------------------------------------------------------------ Discovery
 
-    private static IResult ProtectedResourceMetadata(IOptions<KopilotOptions> options)
+    private static IResult ProtectedResourceMetadata(IOptions<DuopiloOptions> options)
     {
         var remote = options.Value.Remote;
         return Results.Json(
@@ -51,12 +52,12 @@ public static class OAuthEndpoints
                 authorization_servers = new[] { remote.Issuer },
                 scopes_supported = new[] { OAuthStore.Scope },
                 bearer_methods_supported = new[] { "header" },
-                resource_name = "Kopilot (MSFS 2024)",
+                resource_name = AppNames.Product + " (MSFS 2024)",
             },
             Json);
     }
 
-    private static IResult AuthorizationServerMetadata(IOptions<KopilotOptions> options)
+    private static IResult AuthorizationServerMetadata(IOptions<DuopiloOptions> options)
     {
         var issuer = options.Value.Remote.Issuer;
         return Results.Json(
@@ -165,7 +166,7 @@ public static class OAuthEndpoints
         HttpContext context,
         OAuthStore store,
         LoginThrottle throttle,
-        IOptions<KopilotOptions> options,
+        IOptions<DuopiloOptions> options,
         ILoggerFactory loggerFactory)
     {
         if (!context.Request.HasFormContentType)
@@ -192,7 +193,7 @@ public static class OAuthEndpoints
             return ConsentPage.Render(context, requestId!, pending.ClientName, pending.RedirectUri, LockedMessage(until), StatusCodes.Status429TooManyRequests);
         }
 
-        var log = loggerFactory.CreateLogger("Kopilot.Remote.OAuth");
+        var log = loggerFactory.CreateLogger("Duopilo.Remote.OAuth");
         string password = form["password"].FirstOrDefault() ?? "";
         if (!Secrets.FixedTimeEquals(password, options.Value.Remote.ConsentPassword))
         {

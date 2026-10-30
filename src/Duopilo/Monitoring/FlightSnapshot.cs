@@ -1,9 +1,9 @@
-using Kopilot.Aircraft;
-using Kopilot.Atc;
-using Kopilot.FlightPlan;
-using Kopilot.Traffic;
+using Duopilo.Aircraft;
+using Duopilo.Atc;
+using Duopilo.FlightPlan;
+using Duopilo.Traffic;
 
-namespace Kopilot.Monitoring;
+namespace Duopilo.Monitoring;
 
 /// <summary>
 /// Momentaufnahme aller Werte, die das Monitoring braucht. Vom Sim unabhängig, damit die Regeln testbar sind.

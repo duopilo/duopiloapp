@@ -1,11 +1,11 @@
 using System.Text.Json;
-using Kopilot.Aircraft;
-using Kopilot.Input;
-using Kopilot.Monitoring;
+using Duopilo.Aircraft;
+using Duopilo.Input;
+using Duopilo.Monitoring;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
 /// <summary>Eingabe-Modul (v0.7): Planung, Sperren, Sperrliste und der zweistufige Ablauf mit Bestätigung.</summary>
 public sealed partial class InputTests
@@ -337,17 +337,17 @@ public sealed partial class InputTests
     [Fact]
     public void read_simvar_dekodiert_ARINC_429()
     {
-        var raw = Kopilot.Sim.Arinc429Word.Encode(Kopilot.Sim.Arinc429Ssm.NormalOperation, 99.5f);
-        var view = System.Text.Json.JsonSerializer.SerializeToElement(Kopilot.Tools.KopilotTools.ArincView("L:A32NX_APU_N", raw, null));
+        var raw = Duopilo.Sim.Arinc429Word.Encode(Duopilo.Sim.Arinc429Ssm.NormalOperation, 99.5f);
+        var view = System.Text.Json.JsonSerializer.SerializeToElement(Duopilo.Tools.DuopiloTools.ArincView("L:A32NX_APU_N", raw, null));
         Assert.Equal(99.5, view.GetProperty("value").GetDouble());
         Assert.True(view.GetProperty("valid").GetBoolean());
 
         // Normale Zahlen bleiben, wie sie sind
-        Assert.Null(Kopilot.Tools.KopilotTools.ArincView("L:A32NX_FMA_LATERAL_MODE", 20, null));
+        Assert.Null(Duopilo.Tools.DuopiloTools.ArincView("L:A32NX_FMA_LATERAL_MODE", 20, null));
 
         // Im Profil als arinc429 bekannt: auch ungültige Wörter (SSM 0) werden dekodiert
         var profile = new AircraftProfile { Bindings = new() { ["apuN"] = new ProfileBinding { Name = "L:A32NX_APU_N", Type = "arinc429" } } };
-        var failed = System.Text.Json.JsonSerializer.SerializeToElement(Kopilot.Tools.KopilotTools.ArincView("L:A32NX_APU_N", 0, profile));
+        var failed = System.Text.Json.JsonSerializer.SerializeToElement(Duopilo.Tools.DuopiloTools.ArincView("L:A32NX_APU_N", 0, profile));
         Assert.False(failed.GetProperty("valid").GetBoolean());
         Assert.Equal("FailureWarning", failed.GetProperty("ssm").GetString());
     }
@@ -395,13 +395,13 @@ public sealed partial class InputTests
     private static ProfileStore RepoStore()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !Directory.Exists(Path.Combine(dir.FullName, "src", "Kopilot", "profiles")))
+        while (dir is not null && !Directory.Exists(Path.Combine(dir.FullName, "src", "Duopilo", "profiles")))
         {
             dir = dir.Parent;
         }
 
         Assert.NotNull(dir);
-        var options = Options.Create(new KopilotOptions { ProfilesDirectory = Path.Combine(dir.FullName, "src", "Kopilot", "profiles") });
+        var options = Options.Create(new DuopiloOptions { ProfilesDirectory = Path.Combine(dir.FullName, "src", "Duopilo", "profiles") });
         var store = new ProfileStore(options, NullLogger<ProfileStore>.Instance);
         Assert.Empty(store.Errors);
         return store;
@@ -544,7 +544,7 @@ public sealed partial class InputTests
     [Fact]
     public void Kaputte_Profile_verhindern_den_Start_nicht()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "kopilot-tests", Guid.NewGuid().ToString("N"));
+        var dir = Path.Combine(Path.GetTempPath(), "duopilo-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         File.WriteAllText(Path.Combine(dir, "test.json"), """
             {
@@ -564,7 +564,7 @@ public sealed partial class InputTests
             """);
         File.WriteAllText(Path.Combine(dir, "nicht-json.json"), "{ das ist kein JSON");
 
-        var store = new ProfileStore(Options.Create(new KopilotOptions { ProfilesDirectory = dir }), NullLogger<ProfileStore>.Instance);
+        var store = new ProfileStore(Options.Create(new DuopiloOptions { ProfilesDirectory = dir }), NullLogger<ProfileStore>.Instance);
 
         var profile = Assert.Single(store.All);
         Assert.Equal(new[] { "ok" }, profile.Actions.Select(a => a.Id));
@@ -652,8 +652,8 @@ public sealed partial class InputTests
     {
         var time = new ManualTime();
         var backend = new FakeBackend(time);
-        var dir = dataDir ?? Path.Combine(Path.GetTempPath(), "kopilot-tests", Guid.NewGuid().ToString("N"));
-        var options = Options.Create(new KopilotOptions { DataDirectory = dir, Input = new InputOptions { Enabled = enabled } });
+        var dir = dataDir ?? Path.Combine(Path.GetTempPath(), "duopilo-tests", Guid.NewGuid().ToString("N"));
+        var options = Options.Create(new DuopiloOptions { DataDirectory = dir, Input = new InputOptions { Enabled = enabled } });
         return (new InputService(options, backend, NullLogger<InputService>.Instance, time), backend, time);
     }
 
@@ -735,7 +735,7 @@ public sealed partial class InputTests
     [Fact]
     public async Task Abbrechen_im_Dashboard_gilt_fuer_alle_Instanzen()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "kopilot-tests", Guid.NewGuid().ToString("N"));
+        var dir = Path.Combine(Path.GetTempPath(), "duopilo-tests", Guid.NewGuid().ToString("N"));
         var (claudeDesktop, backend, time) = Create(dataDir: dir);
         var (tray, _, _) = Create(dataDir: dir);
 
@@ -889,8 +889,8 @@ public sealed partial class InputTests
     [Fact]
     public async Task Ausnahmen_werden_zu_einer_strukturierten_Antwort()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "kopilot-tests", Guid.NewGuid().ToString("N"));
-        var options = Options.Create(new KopilotOptions { DataDirectory = dir, Input = new InputOptions { Enabled = true } });
+        var dir = Path.Combine(Path.GetTempPath(), "duopilo-tests", Guid.NewGuid().ToString("N"));
+        var options = Options.Create(new DuopiloOptions { DataDirectory = dir, Input = new InputOptions { Enabled = true } });
         var input = new InputService(options, new ThrowingBackend(), NullLogger<InputService>.Instance);
 
         var result = await input.PrepareAsync("apu.start", null, default);
@@ -906,7 +906,7 @@ public sealed partial class InputTests
     [Fact]
     public async Task Echt_bestaetigte_Aktion_wird_als_geprueft_gespeichert()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "kopilot-tests", Guid.NewGuid().ToString("N"));
+        var dir = Path.Combine(Path.GetTempPath(), "duopilo-tests", Guid.NewGuid().ToString("N"));
         var (input, backend, time) = Create(dataDir: dir);
         backend.OnEvent = (name, data) =>
         {
@@ -926,7 +926,7 @@ public sealed partial class InputTests
         Assert.True(result.Verified);
         Assert.Equal("sim", input.VerifiedBy(speed));
 
-        // Gilt auch für andere Kopilot-Instanzen (gleicher Datenordner) …
+        // Gilt auch für andere Duopilo-Instanzen (gleicher Datenordner) …
         var (other, otherBackend, _) = Create(dataDir: dir);
         Assert.Equal("sim", other.VerifiedBy(otherBackend.Profile!.Actions.Single(a => a.Id == "fcu.speed")));
 

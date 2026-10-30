@@ -1,8 +1,8 @@
-namespace Kopilot.Speech;
+namespace Duopilo.Speech;
 
 /// <summary>
 /// Sprachausgabe für die Sprachschleife: Antworten und ATC-Funksprüche in dieselbe Warteschlange wie die Callouts,
-/// dazu der Zustand für den Halbduplex-Betrieb (Mikrofon stumm, solange Kopilot spricht).
+/// dazu der Zustand für den Halbduplex-Betrieb (Mikrofon stumm, solange Duopilo spricht).
 /// </summary>
 public interface IVoiceOutput
 {
@@ -15,7 +15,7 @@ public interface IVoiceOutput
     /// <summary>Ende der letzten Ansage (für die Nachlaufzeit, in der das Mikrofon noch stumm bleibt).</summary>
     DateTimeOffset LastSpeechEndUtc { get; }
 
-    /// <summary>Ende des letzten ganz gesprochenen ATC-Funkspruchs (null = noch keiner) – wer hat zuletzt gesprochen, ATC oder Kopilot?</summary>
+    /// <summary>Ende des letzten ganz gesprochenen ATC-Funkspruchs (null = noch keiner) – wer hat zuletzt gesprochen, ATC oder Duopilo?</summary>
     DateTimeOffset? LastAtcSpeechEndUtc { get; }
 
     /// <summary>
@@ -27,7 +27,7 @@ public interface IVoiceOutput
     /// <summary>Reiht eine Ansage ein. false = nicht angenommen (keine Stimme, Sim pausiert, leer).</summary>
     bool Say(SpeechRequest request);
 
-    /// <summary>Einstellungen aus voice-settings.json übernehmen (Stimme von Kopilot, aktive Callouts, Pause).</summary>
+    /// <summary>Einstellungen aus voice-settings.json übernehmen (Stimme von Duopilo, aktive Callouts, Pause).</summary>
     void ConfigureVoice(VoiceOutputOptions options);
 
     /// <summary>Geschlecht der Windows-Stimme, wenn sie statt Kokoro spricht (null = Kokoro oder unbekannt).</summary>
@@ -39,10 +39,10 @@ public sealed record VoiceOutputOptions
 {
     public static VoiceOutputOptions Default { get; } = new();
 
-    /// <summary>Kokoro-Stimme für Kopilot (Callouts und Antworten). Leer = Stimme aus dem Dashboard.</summary>
+    /// <summary>Kokoro-Stimme für Duopilo (Callouts und Antworten). Leer = Stimme aus dem Dashboard.</summary>
     public string? KopilotVoice { get; init; }
 
-    /// <summary>Faktor auf die Lautstärke für Kopilot (0–1).</summary>
+    /// <summary>Faktor auf die Lautstärke für Duopilo (0–1).</summary>
     public double KopilotVolume { get; init; } = 1;
 
     /// <summary>Faktor auf die Lautstärke für ATC-Funksprüche (0–1).</summary>

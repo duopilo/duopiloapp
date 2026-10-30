@@ -1,4 +1,4 @@
-namespace Kopilot.Voice;
+namespace Duopilo.Voice;
 
 /// <summary>Ein Beispielsatz für einen Sprachbefehl: Aktion und Wert (wie <see cref="VoiceIntents.Recognize"/> sie liefert), englisch und deutsch.</summary>
 /// <param name="ActionId">Aktion im Flugzeugprofil, z. B. "flaps".</param>

@@ -1,4 +1,4 @@
-namespace Kopilot.Remote;
+namespace Duopilo.Remote;
 
 /// <summary>
 /// Schutz gegen Passwort-Raten auf der Freigabeseite: nach 5 Fehlversuchen innerhalb von 15 Minuten

@@ -1,9 +1,9 @@
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
-using Kopilot.FlightPlan;
+using Duopilo.FlightPlan;
 
-namespace Kopilot.Speech;
+namespace Duopilo.Speech;
 
 /// <summary>Ein Fix des OFP-Navlogs für die Aussprache: Kennung, Name (Funkfeuer: "WABUSH") und Lage.</summary>
 public sealed record SpeechFix(string Ident, string? Name, double? Lat, double? Lon);
@@ -72,7 +72,7 @@ public sealed class SpeechContext
 }
 
 /// <summary>
-/// Die eine Aussprache für alles, was Kopilot spricht – ATC, Callouts, Fuel Check und Antworten der Sprachschleife:
+/// Die eine Aussprache für alles, was Duopilo spricht – ATC, Callouts, Fuel Check und Antworten der Sprachschleife:
 /// Ziffern ICAO-gemäß ("niner"), Höhen in Tausendern, Flugflächen ("flight level three four zero", "flight level one
 /// hundred"), Bahnen ("two five right"), Squawks und Frequenzen Ziffer für Ziffer, ICAO-Codes und kurze Kennungen im
 /// NATO-Alphabet, fünfbuchstabige Fixe als Wort, Funkfeuer mit dem Namen aus dem OFP-Navlog ("Wabush" statt YWK) und

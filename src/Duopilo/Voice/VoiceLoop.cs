@@ -1,24 +1,24 @@
 using System.Threading.Channels;
-using Kopilot.FlightPlan;
-using Kopilot.Input;
-using Kopilot.Localization;
-using Kopilot.Monitoring;
-using Kopilot.Sim;
-using Kopilot.Smalltalk;
-using Kopilot.Speech;
-using Kopilot.Traffic;
+using Duopilo.FlightPlan;
+using Duopilo.Input;
+using Duopilo.Localization;
+using Duopilo.Monitoring;
+using Duopilo.Sim;
+using Duopilo.Smalltalk;
+using Duopilo.Speech;
+using Duopilo.Traffic;
 using Microsoft.Extensions.Options;
 
-namespace Kopilot.Voice;
+namespace Duopilo.Voice;
 
 /// <summary>
 /// Lokale Sprachschleife: Mikrofon dauerhaft offen, Silero VAD schneidet Sätze aus, Whisper schreibt sie ab,
-/// der Router schickt Funksprüche ans ATC-Modul und alles andere an die Kopilot-Befehle; Kopilot antwortet über die
-/// gemeinsame Sprachausgabe. Halbduplex: Solange Kopilot spricht, ist das Mikrofon stumm.
+/// der Router schickt Funksprüche ans ATC-Modul und alles andere an die Befehle für den Kopiloten; der Kopilot antwortet über die
+/// gemeinsame Sprachausgabe. Halbduplex: Solange der Kopilot spricht, ist das Mikrofon stumm.
 /// Kein Push-to-Talk, alles lokal – nur der optionale Smalltalk geht an ein Sprachmodell (<see cref="SmalltalkService"/>): Sätze,
 /// die weder Befehl noch Abfrage noch Funkspruch sind. Dessen Antwort wird nur gesprochen (ganz unten in der Warteschlange), nie
 /// ausgeführt. Der First Officer (Name und Stimme pro Flug) stellt sich beim Briefing vor und hört auf seinen Namen.
-/// Läuft nur in der Tray-Instanz (HTTP-Modus). Änderungen im Dashboard (an/aus, Mikrofon) starten die Schleife neu, ohne Kopilot
+/// Läuft nur in der Tray-Instanz (HTTP-Modus). Änderungen im Dashboard (an/aus, Mikrofon) starten die Schleife neu, ohne Duopilo
 /// neu zu starten.
 /// </summary>
 public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
@@ -29,7 +29,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
     /// <summary>Lagebericht im Log, solange die Schleife zuhört.</summary>
     private static readonly TimeSpan ReportInterval = TimeSpan.FromMinutes(5);
 
-    private readonly KopilotOptions _options;
+    private readonly DuopiloOptions _options;
     private readonly IVoiceOutput _output;
     private readonly MonitoringService _monitoring;
     private readonly SimConnectClient _sim;
@@ -76,7 +76,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
     private int _ticks;
 
     public VoiceLoop(
-        IOptions<KopilotOptions> options,
+        IOptions<DuopiloOptions> options,
         IVoiceOutput output,
         MonitoringService monitoring,
         SimConnectClient sim,
@@ -158,7 +158,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         }
     }
 
-    /// <summary>Einstellungen geändert (Dashboard): Schleife mit den neuen Werten neu starten – Kopilot läuft weiter.</summary>
+    /// <summary>Einstellungen geändert (Dashboard): Schleife mit den neuen Werten neu starten – Duopilo läuft weiter.</summary>
     public void Reload(string reason)
     {
         _log.LogInformation(Loc.Log("log.voice.loop.restart"), reason);
@@ -464,7 +464,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         var r = settings.Recognition;
         var whisperPath = string.IsNullOrWhiteSpace(r.ModelPath)
             ? Path.Combine(models, WhisperRecognizer.ModelFileName(r.Model))
-            : Path.GetFullPath(r.ModelPath, AppContext.BaseDirectory);
+            : Duopilo.Hosting.DataDirectoryMigration.MapLegacyPath(Path.GetFullPath(r.ModelPath, AppContext.BaseDirectory));
         var vadPath = Path.Combine(models, SileroVad.ModelFileName);
         SetStatus(s => s with { State = "loading", Model = Path.GetFileName(whisperPath) });
 
@@ -551,7 +551,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
 
     /// <summary>
     /// Hält das Mikrofon offen; fällt das Gerät weg, nach 5 Sekunden neu verbinden. Fehlt das eingestellte Gerät
-    /// (z. B. VR-Brille noch aus), läuft das Standardgerät, und Kopilot wechselt, sobald das eingestellte auftaucht.
+    /// (z. B. VR-Brille noch aus), läuft das Standardgerät, und Duopilo wechselt, sobald das eingestellte auftaucht.
     /// </summary>
     private async Task CaptureLoopAsync(string device, CancellationToken ct)
     {
@@ -767,7 +767,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
                 {
                     if (wasOpen)
                     {
-                        // Kopilot spricht: angefangenen Satz verwerfen (sonst hören wir uns selbst)
+                        // Der Kopilot spricht: angefangenen Satz verwerfen (sonst hören wir uns selbst)
                         if (segmenter.InSpeech)
                         {
                             _log.LogDebug(Loc.Log("log.voice.audio.halfDuplexDrop"));

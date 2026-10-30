@@ -1,7 +1,8 @@
 using System.Runtime.InteropServices;
-using Kopilot.Localization;
+using Duopilo.Hosting;
+using Duopilo.Localization;
 
-namespace Kopilot.Voice;
+namespace Duopilo.Voice;
 
 /// <summary>Tastenkürzel wie "Ctrl+Alt+K" oder "Shift+F12" → Modifikatoren und virtueller Tastencode (Windows).</summary>
 public sealed record HotkeyBinding(uint Modifiers, uint VirtualKey, string Text)
@@ -113,7 +114,7 @@ public sealed class GlobalHotkey : IDisposable
 
     private GlobalHotkey(HotkeyBinding binding, Action onPressed)
     {
-        _thread = new Thread(() => Run(binding, onPressed)) { IsBackground = true, Name = "Kopilot-Hotkey" };
+        _thread = new Thread(() => Run(binding, onPressed)) { IsBackground = true, Name = AppNames.Product + "-Hotkey" };
         _thread.SetApartmentState(ApartmentState.STA);
     }
 

@@ -1,8 +1,8 @@
-using Kopilot.Aircraft;
-using Kopilot.Atc;
-using Kopilot.Monitoring;
+using Duopilo.Aircraft;
+using Duopilo.Atc;
+using Duopilo.Monitoring;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
 public sealed class MonitorEngineTests
 {

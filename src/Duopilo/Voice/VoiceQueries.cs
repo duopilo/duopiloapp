@@ -1,11 +1,11 @@
 using System.Globalization;
-using Kopilot.FlightPlan;
-using Kopilot.Monitoring;
-using Kopilot.Sim;
-using Kopilot.Speech;
-using Kopilot.Traffic;
+using Duopilo.FlightPlan;
+using Duopilo.Monitoring;
+using Duopilo.Sim;
+using Duopilo.Speech;
+using Duopilo.Traffic;
 
-namespace Kopilot.Voice;
+namespace Duopilo.Voice;
 
 /// <summary>Nächster Wegpunkt laut SimBrief-Plan (bzw. FMS): Kennung, Name (Funkfeuer), Lage, Distanz und ETA (Sekunden seit Mitternacht UTC).</summary>
 public sealed record WaypointReading(string Ident, string? Name, double? Lat, double? Lon, double DistanceNm, double? EtaZuluSec);
@@ -179,12 +179,12 @@ public sealed class SimVoiceFlightState(
             WindDirectionDeg = sim.Num("windDir"),
             WindSpeedKt = sim.Num("windKt"),
             OutsideTempC = sim.Num("oatC"),
-            Squawk = Kopilot.Tools.Fmt.Squawk(sim.Num("xpdrCode")),
-            TransponderMode = Kopilot.Tools.Fmt.TransponderMode(sim.Num("xpdrState")),
+            Squawk = Duopilo.Tools.Fmt.Squawk(sim.Num("xpdrCode")),
+            TransponderMode = Duopilo.Tools.Fmt.TransponderMode(sim.Num("xpdrState")),
             Com1ActiveMhz = sim.Num("com1Active"),
             BeaconOn = sim.Bool("lightBeacon"),
             ParkingBrakeSet = signals.ParkingBrake,
-            ApuBleedOn = signals.Has(Kopilot.Aircraft.BindingKeys.ApuBleed) ? signals.Flag(Kopilot.Aircraft.BindingKeys.ApuBleed) : null,
+            ApuBleedOn = signals.Has(Duopilo.Aircraft.BindingKeys.ApuBleed) ? signals.Flag(Duopilo.Aircraft.BindingKeys.ApuBleed) : null,
             AutobrakeMode = signals.Autobrake,
             AutothrustStatus = signals.AutothrustStatus,
             DecisionHeightFt = signals.DecisionHeightFt,

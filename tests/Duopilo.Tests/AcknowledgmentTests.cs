@@ -1,9 +1,9 @@
-using Kopilot.Input;
-using Kopilot.Monitoring;
-using Kopilot.Speech;
-using Kopilot.Voice;
+using Duopilo.Input;
+using Duopilo.Monitoring;
+using Duopilo.Speech;
+using Duopilo.Voice;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
 /// <summary>
 /// Bestätigungspflicht (v0.9.2, Punkt 4): Wichtige Meldungen erwarten "check" oder "copy". Ohne Antwort nach etwa 10 s einmal

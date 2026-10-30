@@ -1,11 +1,11 @@
-using Kopilot.Aircraft;
-using Kopilot.Input;
-using Kopilot.Monitoring;
-using Kopilot.Voice;
+using Duopilo.Aircraft;
+using Duopilo.Input;
+using Duopilo.Monitoring;
+using Duopilo.Voice;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
 /// <summary>
 /// Sprachschleife ohne LLM kann alles, was Claude über die Kopilot-Tools kann (v0.9.2, Punkt 1): Jede Aktion jedes Profils hat
@@ -18,13 +18,13 @@ public sealed class VoiceCommandCoverageTests
     private static ProfileStore RepoProfiles()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !Directory.Exists(Path.Combine(dir.FullName, "src", "Kopilot", "profiles")))
+        while (dir is not null && !Directory.Exists(Path.Combine(dir.FullName, "src", "Duopilo", "profiles")))
         {
             dir = dir.Parent;
         }
 
         Assert.NotNull(dir);
-        var options = Options.Create(new KopilotOptions { ProfilesDirectory = Path.Combine(dir!.FullName, "src", "Kopilot", "profiles") });
+        var options = Options.Create(new DuopiloOptions { ProfilesDirectory = Path.Combine(dir!.FullName, "src", "Duopilo", "profiles") });
         var store = new ProfileStore(options, NullLogger<ProfileStore>.Instance);
         Assert.Empty(store.Errors);
         return store;
@@ -197,8 +197,8 @@ public sealed class VoiceCommandCoverageTests
     {
         var profile = RepoProfiles().All.Single(p => p.Name.Contains("A330", StringComparison.OrdinalIgnoreCase));
         var backend = new Backend { Profile = profile };
-        var dir = Path.Combine(Path.GetTempPath(), "kopilot-tests", Guid.NewGuid().ToString("N"));
-        var options = Options.Create(new KopilotOptions { DataDirectory = dir, Input = new InputOptions { Enabled = true } });
+        var dir = Path.Combine(Path.GetTempPath(), "duopilo-tests", Guid.NewGuid().ToString("N"));
+        var options = Options.Create(new DuopiloOptions { DataDirectory = dir, Input = new InputOptions { Enabled = true } });
         return (new InputService(options, backend, NullLogger<InputService>.Instance), backend);
     }
 

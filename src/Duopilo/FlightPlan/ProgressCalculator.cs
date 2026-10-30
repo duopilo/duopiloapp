@@ -1,4 +1,4 @@
-namespace Kopilot.FlightPlan;
+namespace Duopilo.FlightPlan;
 
 /// <summary>Markante Punkte der Route (TOC/TOD) vor dem Flugzeug.</summary>
 /// <param name="PointIndex">Index in der Punktliste der Route (für die Planzeit aus dem Navlog), -1 wenn unbekannt.</param>

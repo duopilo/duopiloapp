@@ -1,8 +1,8 @@
-using Kopilot.Aircraft;
-using Kopilot.Monitoring;
-using Kopilot.Speech;
+using Duopilo.Aircraft;
+using Duopilo.Monitoring;
+using Duopilo.Speech;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
 /// <summary>Pilot-Monitoring-Callouts (v0.6) und die Warteschlange der Sprachausgabe.</summary>
 public sealed class CalloutTests

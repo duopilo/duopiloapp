@@ -4,17 +4,17 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO.Compression;
 using System.Text;
-using Kopilot.Localization;
-using Kopilot.Voice;
+using Duopilo.Localization;
+using Duopilo.Voice;
 using Microsoft.Extensions.Options;
 
-namespace Kopilot.Speech;
+namespace Duopilo.Speech;
 
 /// <summary>
 /// Piper (MIT, rhasspy/piper) als zweite lokale Sprachsynthese – für Smalltalk in Sprachen ohne Kokoro-Stimme (Deutsch).
 /// Läuft als eigener Prozess (piper.exe, ONNX Runtime auf der CPU): ein Satz → WAV-Datei → Windows-Player wie Kokoro.
-/// Programm (~20 MB) und Stimme (~60 MB) lädt Kopilot erst, wenn Smalltalk in der Sprache gebraucht wird, nach
-/// %LOCALAPPDATA%\Kopilot\piper bzw. \models\piper. Callouts und Funk bleiben Englisch und laufen nie über Piper.
+/// Programm (~20 MB) und Stimme (~60 MB) lädt Duopilo erst, wenn Smalltalk in der Sprache gebraucht wird, nach
+/// %LOCALAPPDATA%\Duopilo\piper bzw. \models\piper. Callouts und Funk bleiben Englisch und laufen nie über Piper.
 /// </summary>
 public sealed class PiperSpeechEngine : ITtsEngine
 {
@@ -43,7 +43,7 @@ public sealed class PiperSpeechEngine : ITtsEngine
     private static readonly TimeSpan RetryAfter = TimeSpan.FromMinutes(10);
 
     /// <summary>
-    /// Stimmen, die Kopilot kennt: je Sprache weiblich und männlich. Neue Sprachen hier eintragen (Kennung wie auf Hugging Face:
+    /// Stimmen, die Duopilo kennt: je Sprache weiblich und männlich. Neue Sprachen hier eintragen (Kennung wie auf Hugging Face:
     /// &lt;locale&gt;-&lt;name&gt;-&lt;quality&gt;).
     /// </summary>
     public static readonly IReadOnlyList<TtsVoice> Catalog =
@@ -68,14 +68,16 @@ public sealed class PiperSpeechEngine : ITtsEngine
     private volatile bool _checksumRejected;
 
     /// <param name="downloadHandler">Eigener HTTP-Handler für die Downloads (Tests). null = normales Netz.</param>
-    public PiperSpeechEngine(IOptions<KopilotOptions> options, ILogger<PiperSpeechEngine> log, HttpMessageHandler? downloadHandler = null)
+    public PiperSpeechEngine(IOptions<DuopiloOptions> options, ILogger<PiperSpeechEngine> log, HttpMessageHandler? downloadHandler = null)
     {
         _downloadHandler = downloadHandler;
         var o = options.Value;
         var data = o.ResolveDataDirectory();
         _root = Path.Combine(data, "piper");
         _models = Path.Combine(data, "models", "piper");
-        _configuredExe = string.IsNullOrWhiteSpace(o.Smalltalk.PiperPath) ? null : Path.GetFullPath(o.Smalltalk.PiperPath, AppContext.BaseDirectory);
+        _configuredExe = string.IsNullOrWhiteSpace(o.Smalltalk.PiperPath)
+            ? null
+            : Duopilo.Hosting.DataDirectoryMigration.MapLegacyPath(Path.GetFullPath(o.Smalltalk.PiperPath, AppContext.BaseDirectory));
         _log = log;
     }
 
@@ -158,7 +160,7 @@ public sealed class PiperSpeechEngine : ITtsEngine
         }
 
         await _synthLock.WaitAsync(ct);
-        var output = Path.Combine(Path.GetTempPath(), $"kopilot-piper-{Guid.NewGuid():N}.wav");
+        var output = Path.Combine(Path.GetTempPath(), $"duopilo-piper-{Guid.NewGuid():N}.wav");
         try
         {
             var psi = new ProcessStartInfo(exe)

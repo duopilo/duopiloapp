@@ -1,12 +1,12 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
-using Kopilot.Localization;
-using Kopilot.Settings;
+using Duopilo.Localization;
+using Duopilo.Settings;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
 /// <summary>Einstellungsseite im Dashboard: schreibt in appsettings.Local.json, ohne Kommentare zu verlieren, und verrät keine Geheimnisse.</summary>
 /// <remarks>
@@ -24,7 +24,7 @@ public sealed class SettingsTests : IAsyncLifetime
         }
         """;
 
-    private readonly string _directory = Path.Combine(Path.GetTempPath(), "kopilot-settings-tests", Guid.NewGuid().ToString("N"));
+    private readonly string _directory = Path.Combine(Path.GetTempPath(), "duopilo-settings-tests", Guid.NewGuid().ToString("N"));
     private string _stateFile = "";
     private string _settingsFile = "";
     private TestApp _app = null!;
@@ -110,8 +110,8 @@ public sealed class SettingsTests : IAsyncLifetime
         var file = File.ReadAllText(_settingsFile);
         Assert.Contains("// Eigene Einstellungen", file);
         var saved = Load();
-        Assert.Equal("flo210500", saved["Kopilot:SimBrief:Username"]);
-        Assert.Equal("123456", saved["Kopilot:SimBrief:PilotId"]);
+        Assert.Equal("flo210500", saved["Duopilo:SimBrief:Username"]);
+        Assert.Equal("123456", saved["Duopilo:SimBrief:PilotId"]);
 
         using var dashboardAfter = JsonDocument.Parse(await _app.Local().GetStringAsync("/api/dashboard"));
         Assert.True(dashboardAfter.RootElement.GetProperty("plan").GetProperty("configured").GetBoolean());
@@ -138,11 +138,11 @@ public sealed class SettingsTests : IAsyncLifetime
 
         // Schlüssel nur in appsettings.Local.json, Kommentare bleiben; der Dienst hat die Werte sofort
         var saved = Load();
-        Assert.Equal(key, saved["Kopilot:Smalltalk:ApiKey"]);
-        Assert.Equal("30", saved["Kopilot:Smalltalk:MaxReplyWords"]);
-        Assert.Equal("Lena", saved["Kopilot:FirstOfficer:Name"]);
+        Assert.Equal(key, saved["Duopilo:Smalltalk:ApiKey"]);
+        Assert.Equal("30", saved["Duopilo:Smalltalk:MaxReplyWords"]);
+        Assert.Equal("Lena", saved["Duopilo:FirstOfficer:Name"]);
         Assert.Contains("// Eigene Einstellungen", File.ReadAllText(_settingsFile));
-        var service = _app.App.Services.GetRequiredService<Kopilot.Smalltalk.SmalltalkService>();
+        var service = _app.App.Services.GetRequiredService<Duopilo.Smalltalk.SmalltalkService>();
         Assert.Equal(key, service.Config.ApiKey);
         Assert.Equal(4, service.Config.RequestsPerMinute);
         Assert.Equal("Lena", service.FirstOfficer.Name);
@@ -192,13 +192,13 @@ public sealed class SettingsTests : IAsyncLifetime
         var modules = off.GetProperty("settings").GetProperty("modules");
         Assert.False(modules.GetProperty("monitoring").GetProperty("enabled").GetBoolean());
         Assert.True(modules.GetProperty("monitoring").GetProperty("running").GetBoolean());
-        Assert.Equal("False", Load()["Kopilot:Monitoring:Enabled"]);
-        Assert.Equal("False", Load()["Kopilot:Atc:Enabled"]);
+        Assert.Equal("False", Load()["Duopilo:Monitoring:Enabled"]);
+        Assert.Equal("False", Load()["Duopilo:Atc:Enabled"]);
 
         // Zurück auf den laufenden Stand: kein Neustart mehr nötig
         var on = await PostAsync("/api/settings/modules", """{"monitoring":true,"atc":true}""");
         Assert.False(on.GetProperty("settings").GetProperty("restart").GetProperty("required").GetBoolean());
-        Assert.Equal("True", Load()["Kopilot:Monitoring:Enabled"]);
+        Assert.Equal("True", Load()["Duopilo:Monitoring:Enabled"]);
     }
 
     [Fact]
@@ -223,7 +223,7 @@ public sealed class SettingsTests : IAsyncLifetime
 
         var token = result.GetProperty("token").GetString()!;
         Assert.True(token.Length >= 43);
-        Assert.Equal(token, Load()["Kopilot:Remote:BearerToken"]);
+        Assert.Equal(token, Load()["Duopilo:Remote:BearerToken"]);
         Assert.True(result.GetProperty("settings").GetProperty("restart").GetProperty("required").GetBoolean());
 
         var view = await _app.Local().GetStringAsync("/api/settings");
@@ -231,12 +231,12 @@ public sealed class SettingsTests : IAsyncLifetime
 
         var removed = await PostAsync("/api/settings/claude/token", """{"action":"remove"}""");
         Assert.Equal(JsonValueKind.Null, removed.GetProperty("token").ValueKind);
-        Assert.Equal("", Load()["Kopilot:Remote:BearerToken"]);
+        Assert.Equal("", Load()["Duopilo:Remote:BearerToken"]);
     }
 
     [Theory]
-    [InlineData("""{"publicUrl":"http://kopilot.example.com"}""", "https://")]
-    [InlineData("""{"publicUrl":"https://kopilot.example.com/mcp"}""", "without /mcp")]
+    [InlineData("""{"publicUrl":"http://duopilo.example.com"}""", "https://")]
+    [InlineData("""{"publicUrl":"https://duopilo.example.com/mcp"}""", "without /mcp")]
     [InlineData("""{"consentPassword":"zu-kurz"}""", "12 characters")]
     public async Task Ungueltiger_Zugang_wird_abgelehnt(string body, string message)
     {
@@ -250,17 +250,17 @@ public sealed class SettingsTests : IAsyncLifetime
     [Fact]
     public async Task Zugang_fuer_Claude_wird_gespeichert_und_gilt_nach_dem_Neustart()
     {
-        var result = await PostAsync("/api/settings/claude", """{"publicUrl":"https://kopilot.example.com/","consentPassword":"ein-langes-passwort"}""");
+        var result = await PostAsync("/api/settings/claude", """{"publicUrl":"https://duopilo.example.com/","consentPassword":"ein-langes-passwort"}""");
 
         Assert.True(result.GetProperty("ok").GetBoolean(), result.ToString());
         var claude = result.GetProperty("settings").GetProperty("claude");
-        Assert.Equal("https://kopilot.example.com", claude.GetProperty("publicUrl").GetString());
-        Assert.Equal("https://kopilot.example.com/mcp", claude.GetProperty("connectorUrl").GetString());
+        Assert.Equal("https://duopilo.example.com", claude.GetProperty("publicUrl").GetString());
+        Assert.Equal("https://duopilo.example.com/mcp", claude.GetProperty("connectorUrl").GetString());
         var changes = result.GetProperty("settings").GetProperty("restart").GetProperty("changes").EnumerateArray().Select(c => c.GetString()).ToList();
         Assert.Contains("Public address (tunnel)", changes);
         Assert.Contains("Consent password", changes);
-        Assert.Equal("https://kopilot.example.com", Load()["Kopilot:Remote:PublicUrl"]);
-        Assert.Equal("ein-langes-passwort", Load()["Kopilot:Remote:ConsentPassword"]);
+        Assert.Equal("https://duopilo.example.com", Load()["Duopilo:Remote:PublicUrl"]);
+        Assert.Equal("ein-langes-passwort", Load()["Duopilo:Remote:ConsentPassword"]);
         Assert.DoesNotContain("ein-langes-passwort", result.ToString());
     }
 
@@ -281,7 +281,7 @@ public sealed class SettingsTests : IAsyncLifetime
             var result = await PostAsync("/api/settings/language", """{"language":"de"}""");
 
             Assert.True(result.GetProperty("ok").GetBoolean(), result.ToString());
-            Assert.Equal("de", Load()["Kopilot:Language"]);
+            Assert.Equal("de", Load()["Duopilo:Language"]);
             Assert.Equal("de", result.GetProperty("settings").GetProperty("language").GetProperty("current").GetString());
             Assert.Contains("// Eigene Einstellungen", File.ReadAllText(_settingsFile));
         }
@@ -311,11 +311,11 @@ public sealed class SettingsTests : IAsyncLifetime
     [Fact]
     public void Leere_Datei_bekommt_lesbar_eingerueckte_Objekte()
     {
-        var text = LocalSettingsStore.Patch("", [SettingValue.Of(["Kopilot", "SimBrief", "Username"], "flo"), SettingValue.Of(["Kopilot", "Monitoring", "Enabled"], false)]);
+        var text = LocalSettingsStore.Patch("", [SettingValue.Of(["Duopilo", "SimBrief", "Username"], "flo"), SettingValue.Of(["Duopilo", "Monitoring", "Enabled"], false)]);
 
         var config = Parse(text);
-        Assert.Equal("flo", config["Kopilot:SimBrief:Username"]);
-        Assert.Equal("False", config["Kopilot:Monitoring:Enabled"]);
+        Assert.Equal("flo", config["Duopilo:SimBrief:Username"]);
+        Assert.Equal("False", config["Duopilo:Monitoring:Enabled"]);
         Assert.Contains("\n    \"SimBrief\": {", text.ReplaceLineEndings("\n"));
         Assert.Contains("\n      \"Username\": \"flo\"", text.ReplaceLineEndings("\n"));
     }
@@ -326,6 +326,30 @@ public sealed class SettingsTests : IAsyncLifetime
         const string original = """
             {
               // SimBrief-Konto
+              "Duopilo": {
+                "SimBrief": { "Username": "alt" }, // hinten
+                "Monitoring": { "DisabledRules": [ "SPEED_DEVIATION" ] }
+              }
+            }
+            """;
+
+        var text = LocalSettingsStore.Patch(original, [SettingValue.Of(["Duopilo", "SimBrief", "Username"], "neu"), SettingValue.Of(["Duopilo", "Atc", "Enabled"], false)]);
+
+        Assert.Contains("// SimBrief-Konto", text);
+        Assert.Contains("// hinten", text);
+        var config = Parse(text);
+        Assert.Equal("neu", config["Duopilo:SimBrief:Username"]);
+        Assert.Equal("SPEED_DEVIATION", config["Duopilo:Monitoring:DisabledRules:0"]);
+        Assert.Equal("False", config["Duopilo:Atc:Enabled"]);
+    }
+
+    [Fact]
+    public void Alter_Abschnitt_Kopilot_wird_beim_Speichern_umbenannt()
+    {
+        // appsettings.Local.json aus 0.9.x: Abschnitt "Kopilot" – beim ersten Speichern wird daraus "Duopilo", alte Werte bleiben
+        const string original = """
+            {
+              // SimBrief-Konto
               "Kopilot": {
                 "SimBrief": { "Username": "alt" }, // hinten
                 "Monitoring": { "DisabledRules": [ "SPEED_DEVIATION" ] }
@@ -333,22 +357,35 @@ public sealed class SettingsTests : IAsyncLifetime
             }
             """;
 
-        var text = LocalSettingsStore.Patch(original, [SettingValue.Of(["Kopilot", "SimBrief", "Username"], "neu"), SettingValue.Of(["Kopilot", "Atc", "Enabled"], false)]);
+        var text = LocalSettingsStore.Patch(original, [SettingValue.Of(["Duopilo", "SimBrief", "Username"], "neu")]);
 
         Assert.Contains("// SimBrief-Konto", text);
         Assert.Contains("// hinten", text);
+        Assert.DoesNotContain("\"Kopilot\"", text);
         var config = Parse(text);
-        Assert.Equal("neu", config["Kopilot:SimBrief:Username"]);
-        Assert.Equal("SPEED_DEVIATION", config["Kopilot:Monitoring:DisabledRules:0"]);
-        Assert.Equal("False", config["Kopilot:Atc:Enabled"]);
+        Assert.Equal("neu", config["Duopilo:SimBrief:Username"]);
+        Assert.Equal("SPEED_DEVIATION", config["Duopilo:Monitoring:DisabledRules:0"]);
+        Assert.Null(config["Kopilot:SimBrief:Username"]);
+    }
+
+    [Fact]
+    public void Gibt_es_beide_Abschnitte_wird_nichts_umbenannt()
+    {
+        const string original = """{ "Kopilot": { "Language": "de" }, "Duopilo": { "SimBrief": { "Username": "alt" } } }""";
+
+        var text = LocalSettingsStore.Patch(original, [SettingValue.Of(["Duopilo", "SimBrief", "Username"], "neu")]);
+
+        var config = Parse(text);
+        Assert.Equal("neu", config["Duopilo:SimBrief:Username"]);
+        Assert.Equal("de", config["Kopilot:Language"]);
     }
 
     [Theory]
-    [InlineData("""{ "Kopilot": { "SimBrief": """)]
+    [InlineData("""{ "Duopilo": { "SimBrief": """)]
     [InlineData("""[ 1, 2 ]""")]
     public void Kaputte_Datei_wird_nicht_ueberschrieben(string broken)
     {
-        Assert.Throws<SettingsWriteException>(() => LocalSettingsStore.Patch(broken, [SettingValue.Of(["Kopilot", "SimBrief", "Username"], "flo")]));
+        Assert.Throws<SettingsWriteException>(() => LocalSettingsStore.Patch(broken, [SettingValue.Of(["Duopilo", "SimBrief", "Username"], "flo")]));
     }
 
     [Fact]
@@ -359,17 +396,17 @@ public sealed class SettingsTests : IAsyncLifetime
         File.WriteAllText(file, "{ /* x */ }");
         var store = new LocalSettingsStore(file, backup);
 
-        store.Set([SettingValue.Of(["Kopilot", "SimBrief", "PilotId"], "42")]);
+        store.Set([SettingValue.Of(["Duopilo", "SimBrief", "PilotId"], "42")]);
 
         Assert.Equal("{ /* x */ }", File.ReadAllText(backup));
-        Assert.Equal("42", Parse(File.ReadAllText(file))["Kopilot:SimBrief:PilotId"]);
+        Assert.Equal("42", Parse(File.ReadAllText(file))["Duopilo:SimBrief:PilotId"]);
         Assert.NotNull(store.LastWriteUtc);
     }
 
     private async Task<JsonElement> PostAsync(string url, string body)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = Json(body) };
-        request.Headers.Add("X-Kopilot", "1");
+        request.Headers.Add("X-Duopilo", "1");
         using var response = await _app.Local().SendAsync(request);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());

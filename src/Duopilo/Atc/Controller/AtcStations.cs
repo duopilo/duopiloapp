@@ -1,9 +1,9 @@
 using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text.RegularExpressions;
-using Kopilot.Atc.Airspace;
+using Duopilo.Atc.Airspace;
 
-namespace Kopilot.Atc;
+namespace Duopilo.Atc;
 
 public enum AtcStationType
 {
@@ -321,7 +321,7 @@ public sealed partial class AtcStations
 
 /// <summary>
 /// Vergibt jeder Station eine Kokoro-Stimme: fest aus den Vorlagen, sonst zufällig aus dem Pool. Pro Flug fest
-/// (der Zufall hängt am Flug), möglichst jede Station eine andere, und nicht die Stimme der Kopilot-Callouts.
+/// (der Zufall hängt am Flug), möglichst jede Station eine andere, und nicht die Stimme der Duopilo-Callouts.
 /// </summary>
 public sealed partial class AtcVoiceAssigner
 {
@@ -337,7 +337,7 @@ public sealed partial class AtcVoiceAssigner
     /// <param name="calloutVoice">Kokoro-Stimme der Callouts, die ATC nicht bekommen soll.</param>
     /// <param name="installed">Vorhandene Stimmen (null = unbekannt, dann wird nicht gefiltert).</param>
     /// <param name="kopilotVoice">
-    /// Stimme von Kopilot zur Laufzeit (First Officer, wechselt pro Flug) – wird beim Vergeben jeder neuen Station abgefragt.
+    /// Stimme des Kopiloten zur Laufzeit (First Officer, wechselt pro Flug) – wird beim Vergeben jeder neuen Station abgefragt.
     /// </param>
     public AtcVoiceAssigner(AtcVoiceConfig config, string flightKey, string? calloutVoice, IReadOnlyCollection<string>? installed, Func<string?>? kopilotVoice = null)
     {
@@ -382,7 +382,7 @@ public sealed partial class AtcVoiceAssigner
     }
 
     /// <summary>
-    /// Zufällig, aber aus Flug und Station abgeleitet: Nach einem Neustart von Kopilot bekommt dieselbe Station im selben Flug
+    /// Zufällig, aber aus Flug und Station abgeleitet: Nach einem Neustart von Duopilo bekommt dieselbe Station im selben Flug
     /// wieder dieselbe Stimme. Ist sie schon vergeben, die nächste freie im Pool.
     /// </summary>
     private string Pick(string stationKey)
@@ -394,7 +394,7 @@ public sealed partial class AtcVoiceAssigner
         }
         catch (Exception)
         {
-            // Stimme von Kopilot gerade nicht lesbar – dann nur die feste vermeiden
+            // Stimme von Duopilo gerade nicht lesbar – dann nur die feste vermeiden
         }
 
         var pool = _config.Pool.Select(v => v.Trim()).Where(Usable).Distinct(StringComparer.Ordinal).Where(v => v != _avoid && v != live).ToList();

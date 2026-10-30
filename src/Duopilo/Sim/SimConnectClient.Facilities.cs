@@ -1,9 +1,9 @@
 using System.Runtime.InteropServices;
-using Kopilot.Atc;
-using Kopilot.Localization;
+using Duopilo.Atc;
+using Duopilo.Localization;
 using Microsoft.FlightSimulator.SimConnect;
 
-namespace Kopilot.Sim;
+namespace Duopilo.Sim;
 
 /// <summary>
 /// Flughafen-Frequenzen über die Facilities-API von SimConnect (AIRPORT → FREQUENCY). Anfragen laufen nacheinander:

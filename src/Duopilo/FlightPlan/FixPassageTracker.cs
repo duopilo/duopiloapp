@@ -1,4 +1,4 @@
-namespace Kopilot.FlightPlan;
+namespace Duopilo.FlightPlan;
 
 /// <summary>Letzter überflogener Fix: Index in der Punktliste der Route und wie lange der Überflug her ist (Sim-Zeit).</summary>
 public sealed record FixPassage(int PointIndex, string Ident, double ElapsedSec);

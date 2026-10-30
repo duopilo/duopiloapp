@@ -1,13 +1,14 @@
 using System.Diagnostics;
-using Kopilot.Aircraft;
-using Kopilot.Localization;
-using Kopilot.Monitoring;
-using Kopilot.Sim;
+using Duopilo.Aircraft;
+using Duopilo.Hosting;
+using Duopilo.Localization;
+using Duopilo.Monitoring;
+using Duopilo.Sim;
 using Microsoft.Win32;
 using Drawing = System.Drawing;
 using WinForms = System.Windows.Forms;
 
-namespace Kopilot.Desktop;
+namespace Duopilo.Desktop;
 
 /// <summary>Pfade und Adressen, die das Tray-Menü öffnet.</summary>
 /// <param name="DashboardUrl">z. B. http://127.0.0.1:5155/</param>
@@ -27,7 +28,7 @@ public sealed class TrayService(
     MonitoringService monitoring,
     IHostApplicationLifetime lifetime,
     ILogger<TrayService> log,
-    Kopilot.Speech.ISpeechOutput? speech = null) : IHostedService
+    Duopilo.Speech.ISpeechOutput? speech = null) : IHostedService
 {
     private Thread? _thread;
     private TrayContext? _context;
@@ -35,6 +36,19 @@ public sealed class TrayService(
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
+        // Autostart von Kopilot (bis 0.9.x) übernehmen: „Mit Windows starten“ gilt jetzt für Duopilo
+        try
+        {
+            if (Autostart.MigrateLegacy() is { } legacyCommand)
+            {
+                log.LogInformation(Loc.Log("log.tray.autostartMigrated"), legacyCommand);
+            }
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or IOException)
+        {
+            log.LogWarning(Loc.Log("log.tray.autostartMigrationFailed"), ex.Message);
+        }
+
         // Nicht disposen: Läuft das Warten ab, ruft der Tray-Thread Set() womöglich erst danach auf.
         var ready = new ManualResetEventSlim();
         _thread = new Thread(() =>
@@ -62,7 +76,7 @@ public sealed class TrayService(
         })
         {
             IsBackground = true,
-            Name = "Kopilot Tray",
+            Name = AppNames.Product + " Tray",
         };
         _thread.SetApartmentState(ApartmentState.STA);
         _thread.Start();
@@ -89,7 +103,7 @@ public sealed class TrayService(
         private readonly AlertBus _alerts;
         private readonly MonitoringService _monitoring;
         private readonly IHostApplicationLifetime _lifetime;
-        private readonly Kopilot.Speech.ISpeechOutput? _speech;
+        private readonly Duopilo.Speech.ISpeechOutput? _speech;
         private readonly SynchronizationContext _ui;
 
         private readonly WinForms.NotifyIcon _icon;
@@ -106,7 +120,7 @@ public sealed class TrayService(
         private string _state = "";
         private bool _closed;
 
-        public TrayContext(DesktopInfo info, SimConnectClient sim, ProfileStore profiles, AlertBus alerts, MonitoringService monitoring, IHostApplicationLifetime lifetime, Kopilot.Speech.ISpeechOutput? speech, SynchronizationContext ui)
+        public TrayContext(DesktopInfo info, SimConnectClient sim, ProfileStore profiles, AlertBus alerts, MonitoringService monitoring, IHostApplicationLifetime lifetime, Duopilo.Speech.ISpeechOutput? speech, SynchronizationContext ui)
         {
             _speech = speech;
             _ui = ui;
@@ -119,14 +133,14 @@ public sealed class TrayService(
 
             foreach (var name in new[] { "waiting", "ok", "caution", "warning" })
             {
-                using var stream = typeof(TrayService).Assembly.GetManifestResourceStream($"Kopilot.Assets.tray-{name}.ico");
+                using var stream = typeof(TrayService).Assembly.GetManifestResourceStream($"Duopilo.Assets.tray-{name}.ico");
                 if (stream is not null)
                 {
                     _icons[name] = new Drawing.Icon(stream, WinForms.SystemInformation.SmallIconSize);
                 }
             }
 
-            _statusItem = new WinForms.ToolStripMenuItem("Kopilot") { Enabled = false };
+            _statusItem = new WinForms.ToolStripMenuItem(AppNames.Product) { Enabled = false };
             _dashboardItem = new WinForms.ToolStripMenuItem("", null, (_, _) => Open(_info.DashboardUrl));
             _dashboardItem.Font = new Drawing.Font(_dashboardItem.Font, Drawing.FontStyle.Bold);
             _autostartItem = new WinForms.ToolStripMenuItem("", null, (_, _) => ToggleAutostart()) { Checked = Autostart.IsEnabled() };
@@ -159,7 +173,7 @@ public sealed class TrayService(
             _icon = new WinForms.NotifyIcon
             {
                 ContextMenuStrip = menu,
-                Text = "Kopilot",
+                Text = AppNames.Product,
                 Icon = _icons.GetValueOrDefault("waiting"),
                 Visible = true,
             };
@@ -247,7 +261,7 @@ public sealed class TrayService(
             else
             {
                 var profile = _sim.ActiveProfile?.Name ?? _sim.Str("title") ?? Loc.T("tray.tooltip.unknownAircraft");
-                text = $"Kopilot – {profile}";
+                text = $"{AppNames.Product} – {profile}";
                 var top = active.FirstOrDefault(a => a.Callout is not null);
                 if (top is not null)
                 {
@@ -299,8 +313,8 @@ public sealed class TrayService(
             _speechItem.Checked = st.Settings.Enabled;
             _speechItem.Text = st.Kokoro?.State switch
             {
-                Kopilot.Speech.KokoroState.Downloading when st.ActiveEngine is null => Loc.T("tray.menu.speechDownloading", st.Kokoro.Progress ?? 0),
-                Kopilot.Speech.KokoroState.Loading when st.ActiveEngine is null => Loc.T("tray.menu.speechStarting"),
+                Duopilo.Speech.KokoroState.Downloading when st.ActiveEngine is null => Loc.T("tray.menu.speechDownloading", st.Kokoro.Progress ?? 0),
+                Duopilo.Speech.KokoroState.Loading when st.ActiveEngine is null => Loc.T("tray.menu.speechStarting"),
                 _ when !st.Available => Loc.T("tray.menu.speechNoVoice"),
                 _ => Loc.T("tray.menu.speech"),
             };
@@ -360,11 +374,15 @@ public sealed class TrayService(
     }
 }
 
-/// <summary>Autostart über HKCU\Software\Microsoft\Windows\CurrentVersion\Run (nur für den angemeldeten Benutzer, keine Adminrechte).</summary>
-internal static class Autostart
+/// <summary>
+/// Autostart über HKCU\Software\Microsoft\Windows\CurrentVersion\Run (nur für den angemeldeten Benutzer, keine Adminrechte).
+/// Der Wert heißt wie das Produkt ("Duopilo"; muss zu AutostartName in installer/setup.iss passen). Bis 0.9.x hieß er "Kopilot".
+/// </summary>
+public static class Autostart
 {
     private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    private const string ValueName = "Kopilot";
+    private const string ValueName = AppNames.Product;
+    private const string LegacyValueName = AppNames.Legacy.AutostartValue;
 
     public static bool IsEnabled()
     {
@@ -385,5 +403,41 @@ internal static class Autostart
         {
             key.DeleteValue(ValueName, throwOnMissingValue: false);
         }
+    }
+
+    /// <summary>
+    /// Zeigt der alte Eintrag "Kopilot" auf eine Kopilot.exe, war „Mit Windows starten“ für die alte Version an: Er wird
+    /// entfernt und gilt jetzt für diese Programmdatei. Rückgabe: der alte Befehl, wenn übernommen, sonst null.
+    /// </summary>
+    public static string? MigrateLegacy()
+    {
+        if (!OperatingSystem.IsWindows() || Environment.ProcessPath is not { } exe)
+        {
+            return null;
+        }
+
+        using var key = Registry.CurrentUser.OpenSubKey(RunKey, writable: true);
+        if (key?.GetValue(LegacyValueName) is not string command || !IsLegacyCommand(command))
+        {
+            return null;
+        }
+
+        if (key.GetValue(ValueName) is null)
+        {
+            key.SetValue(ValueName, $"\"{exe}\" --autostart");
+        }
+
+        key.DeleteValue(LegacyValueName, throwOnMissingValue: false);
+        return command;
+    }
+
+    /// <summary>Startet der Befehl eine Kopilot.exe? (z. B. "C:\Tools\Kopilot\Kopilot.exe" --autostart)</summary>
+    internal static bool IsLegacyCommand(string command)
+    {
+        var text = command.Trim();
+        var end = text.StartsWith('"') ? text.IndexOf('"', 1) : -1;
+        var path = end > 0 ? text[1..end] : text.Split(' ', 2)[0];
+        var name = path.Replace('\\', '/').Split('/')[^1];
+        return string.Equals(name, AppNames.Legacy.Exe, StringComparison.OrdinalIgnoreCase);
     }
 }

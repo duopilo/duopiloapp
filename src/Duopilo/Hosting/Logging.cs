@@ -2,9 +2,9 @@ using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text;
 using System.Threading.Channels;
-using Kopilot.Localization;
+using Duopilo.Localization;
 
-namespace Kopilot.Hosting;
+namespace Duopilo.Hosting;
 
 /// <summary>Eine Logzeile für Dashboard und Logdatei.</summary>
 public sealed record LogLine(DateTimeOffset Time, LogLevel Level, string Category, string Message);
@@ -26,7 +26,7 @@ public sealed class LogBuffer(int capacity = 300)
 }
 
 /// <summary>
-/// Schreibt Logs nach %LOCALAPPDATA%\Kopilot\logs\kopilot.log (stdio-Modus: kopilot-stdio.log; bei 5 MB wird *.1.log daraus) und in den <see cref="LogBuffer"/>.
+/// Schreibt Logs nach %LOCALAPPDATA%\Duopilo\logs\duopilo.log (stdio-Modus: duopilo-stdio.log; bei 5 MB wird *.1.log daraus) und in den <see cref="LogBuffer"/>.
 /// Geschrieben wird auf einem eigenen Thread, damit SimConnect- und HTTP-Threads nie auf die Platte warten.
 /// </summary>
 public sealed class FileLoggerProvider : ILoggerProvider
@@ -41,7 +41,7 @@ public sealed class FileLoggerProvider : ILoggerProvider
 
     /// <param name="minLevel">
     /// Untergrenze der Datei. Standard Trace: Was im Log landet, entscheidet die Konfiguration ("Logging:LogLevel", Standard Information) –
-    /// z. B. "Kopilot.Voice": "Debug" in appsettings.Local.json für jede Satzgrenze der Sprachschleife.
+    /// z. B. "Duopilo.Voice": "Debug" in appsettings.Local.json für jede Satzgrenze der Sprachschleife.
     /// </param>
     public FileLoggerProvider(string directory, string fileName, LogBuffer buffer, LogLevel minLevel = LogLevel.Trace)
     {
@@ -53,6 +53,10 @@ public sealed class FileLoggerProvider : ILoggerProvider
     }
 
     public string FilePath => _path;
+
+    /// <summary>Name der Logdatei: duopilo.log (Tray/HTTP) bzw. duopilo-stdio.log. Bis 0.9.x hießen sie kopilot*.log.</summary>
+    public static string FileName(string mode) =>
+        mode == "stdio" ? $"{AppNames.Product.ToLowerInvariant()}-stdio.log" : $"{AppNames.Product.ToLowerInvariant()}.log";
 
     public ILogger CreateLogger(string categoryName) => new FileLogger(this, ShortCategory(categoryName));
 

@@ -1,10 +1,10 @@
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
-using Kopilot.FlightPlan;
-using Kopilot.Voice;
+using Duopilo.FlightPlan;
+using Duopilo.Voice;
 
-namespace Kopilot.Smalltalk;
+namespace Duopilo.Smalltalk;
 
 /// <summary>
 /// Lesender Kontext für das Sprachmodell: Flugphase, Position, Route, Sprit, Wetter. Nur Werte – nichts davon kann etwas auslösen.

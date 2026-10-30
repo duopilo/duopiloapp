@@ -1,6 +1,6 @@
-using Kopilot.FlightPlan;
+using Duopilo.FlightPlan;
 
-namespace Kopilot.Atc;
+namespace Duopilo.Atc;
 
 /// <summary>
 /// Was die Sprachschleife braucht, um Funksprüche an ATC zu erkennen: die Stationsnamen des Flugs (aktuelle Station,

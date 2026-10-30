@@ -1,10 +1,10 @@
 using System.Globalization;
 using System.Text.Json;
-using Kopilot.Aircraft;
-using Kopilot.Localization;
-using Kopilot.Monitoring;
+using Duopilo.Aircraft;
+using Duopilo.Localization;
+using Duopilo.Monitoring;
 
-namespace Kopilot.Input;
+namespace Duopilo.Input;
 
 /// <summary>
 /// Prüft eine angeforderte Aktion (Wert, Raster, Sperren) und rechnet aus, was an MSFS geht.

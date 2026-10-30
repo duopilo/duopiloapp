@@ -1,4 +1,4 @@
-namespace Kopilot.Atc;
+namespace Duopilo.Atc;
 
 /// <summary>Wofür eine Rollroute gebraucht wird.</summary>
 /// <param name="AirportIcao">Flughafen, an dem gerollt wird.</param>

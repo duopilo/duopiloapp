@@ -1,14 +1,14 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using Kopilot.Dashboard;
-using Kopilot.Hosting;
-using Kopilot.Localization;
+using Duopilo.Dashboard;
+using Duopilo.Hosting;
+using Duopilo.Localization;
 using Microsoft.Extensions.Logging;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
 /// <summary>
-/// Sprachdateien (src/Kopilot/i18n): Englisch ist vollständig, Übersetzungen passen zu den Platzhaltern, alle Schlüssel aus
+/// Sprachdateien (src/Duopilo/i18n): Englisch ist vollständig, Übersetzungen passen zu den Platzhaltern, alle Schlüssel aus
 /// Code und Dashboard gibt es, und Logs bleiben unabhängig von der Einstellung Englisch.
 /// </summary>
 public class LocalizationTests
@@ -76,7 +76,7 @@ public class LocalizationTests
     [Fact]
     public void TranslationFilesHaveNoLogKeys()
     {
-        foreach (var resource in typeof(Loc).Assembly.GetManifestResourceNames().Where(r => r.StartsWith("Kopilot.i18n.", StringComparison.Ordinal) && !r.EndsWith(".en.json", StringComparison.Ordinal)))
+        foreach (var resource in typeof(Loc).Assembly.GetManifestResourceNames().Where(r => r.StartsWith("Duopilo.i18n.", StringComparison.Ordinal) && !r.EndsWith(".en.json", StringComparison.Ordinal)))
         {
             using var stream = typeof(Loc).Assembly.GetManifestResourceStream(resource)!;
             using var doc = JsonDocument.Parse(stream);
@@ -112,14 +112,14 @@ public class LocalizationTests
     [Fact]
     public void FileLogIsEnglishWhateverTheLanguage()
     {
-        var directory = Path.Combine(Path.GetTempPath(), "kopilot-logtest-" + Guid.NewGuid().ToString("N"));
+        var directory = Path.Combine(Path.GetTempPath(), "duopilo-logtest-" + Guid.NewGuid().ToString("N"));
         var buffer = new LogBuffer();
         try
         {
             using (var provider = new FileLoggerProvider(directory, "test.log", buffer))
             using (Loc.Use("de"))
             {
-                var logger = provider.CreateLogger("Kopilot.Tests.Log");
+                var logger = provider.CreateLogger("Duopilo.Tests.Log");
                 var message = Loc.T("tools.traffic.none", "17");
                 logger.LogWarning(Loc.Log("log.atc.airspaceMessage"), message);
                 logger.LogError(new InvalidOperationException(Loc.T("tools.traffic.none", "18")), Loc.Log("log.atc.airspaceMessage"), "x");
@@ -206,7 +206,7 @@ public class LocalizationTests
     [Fact]
     public void DashboardKeysExist()
     {
-        using var stream = typeof(DashboardEndpoints).Assembly.GetManifestResourceStream("Kopilot.Dashboard.dashboard.html");
+        using var stream = typeof(DashboardEndpoints).Assembly.GetManifestResourceStream("Duopilo.Dashboard.dashboard.html");
         Assert.NotNull(stream);
         var html = new StreamReader(stream).ReadToEnd();
         var keys = Regex.Matches(html, @"data-i18n(?:-[a-z-]+)?=""([^""]+)""").Select(m => m.Groups[1].Value)
@@ -302,9 +302,9 @@ public class LocalizationTests
     {
         for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
         {
-            if (File.Exists(Path.Combine(dir.FullName, "Kopilot.slnx")))
+            if (File.Exists(Path.Combine(dir.FullName, "Duopilo.slnx")))
             {
-                var src = Path.Combine(dir.FullName, "src", "Kopilot");
+                var src = Path.Combine(dir.FullName, "src", "Duopilo");
                 return Directory.Exists(src) ? src : null;
             }
         }
@@ -523,7 +523,7 @@ internal static class CSharpCalls
             return true;
         }
 
-        // Grobe Prüfung auf "///" und Kommentarblöcke reicht für den Quelltext von Kopilot
+        // Grobe Prüfung auf "///" und Kommentarblöcke reicht für den Quelltext von Duopilo
         var trimmed = line.TrimStart();
         return trimmed.StartsWith('*');
     }

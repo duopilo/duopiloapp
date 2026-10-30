@@ -1,6 +1,6 @@
-using Kopilot.Input;
+using Duopilo.Input;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
 /// <summary>Modus "ausführen + Callout" der Sprachschleife im Eingabe-Modul (v0.9.2, Punkt 3).</summary>
 public sealed partial class InputTests

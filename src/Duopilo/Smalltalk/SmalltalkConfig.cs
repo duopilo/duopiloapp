@@ -1,6 +1,6 @@
-using Kopilot.Localization;
+using Duopilo.Localization;
 
-namespace Kopilot.Smalltalk;
+namespace Duopilo.Smalltalk;
 
 /// <summary>Anbieter für den Smalltalk.</summary>
 public static class SmalltalkProviders

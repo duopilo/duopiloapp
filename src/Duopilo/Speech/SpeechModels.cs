@@ -1,8 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Kopilot.Monitoring;
+using Duopilo.Monitoring;
 
-namespace Kopilot.Speech;
+namespace Duopilo.Speech;
 
 /// <summary>Einstellungen der Sprachausgabe, im Dashboard änderbar und in speech.json gespeichert.</summary>
 public sealed record SpeechSettings
@@ -25,7 +25,7 @@ public sealed record SpeechSettings
     /// <summary>Regeln, die angezeigt, aber nicht gesprochen werden.</summary>
     public IReadOnlyList<string> MutedRules { get; init; } = [];
 
-    /// <summary>Radiohöhen/Minimum/Retard auch von Kopilot (für Flugzeuge ohne eigene Ansagen).</summary>
+    /// <summary>Radiohöhen/Minimum/Retard auch von Duopilo (für Flugzeuge ohne eigene Ansagen).</summary>
     public bool AircraftAutoCallouts { get; init; }
 
     /// <summary>"auto", "windows" oder "kokoro" – siehe <see cref="SpeechEngines"/>.</summary>
@@ -130,7 +130,7 @@ public sealed record SpeechStatus(
     string? ActiveEngine = null,
     KokoroStatus? Kokoro = null);
 
-/// <summary>Sprachausgabe von Kopilot (gibt es nur im HTTP-Modus unter Windows).</summary>
+/// <summary>Sprachausgabe von Duopilo (gibt es nur im HTTP-Modus unter Windows).</summary>
 public interface ISpeechOutput
 {
     SpeechStatus Status { get; }
@@ -141,7 +141,7 @@ public interface ISpeechOutput
 
     Task SpeakNowAsync(string text, CancellationToken ct);
 
-    /// <summary>Kokoro-Stimme, mit der Kopilot gerade spricht (ATC meidet sie). Standard: die Stimme aus dem Dashboard.</summary>
+    /// <summary>Kokoro-Stimme, mit der Duopilo gerade spricht (ATC meidet sie). Standard: die Stimme aus dem Dashboard.</summary>
     string? KopilotVoice => Status.Settings.KokoroVoice;
 }
 

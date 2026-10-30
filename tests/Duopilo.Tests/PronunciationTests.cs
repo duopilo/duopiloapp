@@ -1,9 +1,9 @@
-using Kopilot.Atc;
-using Kopilot.FlightPlan;
-using Kopilot.Monitoring;
-using Kopilot.Speech;
+using Duopilo.Atc;
+using Duopilo.FlightPlan;
+using Duopilo.Monitoring;
+using Duopilo.Speech;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
 /// <summary>Gemeinsame Aussprache für ATC, Callouts, Fuel Check und Sprachschleife (Testflug CFG2205, Ergänzung zu Prompt C).</summary>
 public sealed class PronunciationTests

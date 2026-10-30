@@ -1,9 +1,9 @@
-using Kopilot.Localization;
+using Duopilo.Localization;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using OnnxSessionOptions = Microsoft.ML.OnnxRuntime.SessionOptions;
 
-namespace Kopilot.Voice;
+namespace Duopilo.Voice;
 
 /// <summary>Sprachwahrscheinlichkeit je Block von 512 Samples (16 kHz).</summary>
 public interface IVoiceActivityDetector : IDisposable

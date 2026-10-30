@@ -2,17 +2,17 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
-namespace Kopilot.Input;
+namespace Duopilo.Input;
 
 /// <summary>Eine im Sim geprüfte Aktion. Fingerprint = Definition im Profil – ändert sie sich, gilt die Prüfung nicht mehr.</summary>
 public sealed record VerifiedAction(string Profile, string Action, string Fingerprint, string Source, DateTimeOffset Utc, string? Value);
 
 /// <summary>
 /// Merkt sich, welche Aktionen im Sim nachweislich funktioniert haben (DataDirectory\verified-actions.json).
-/// Liegt außerhalb des Programmordners, damit update.cmd es nicht überschreibt, und gilt für alle Kopilot-Instanzen.
+/// Liegt außerhalb des Programmordners, damit update.cmd es nicht überschreibt, und gilt für alle Duopilo-Instanzen.
 /// <list type="bullet">
-/// <item>"sim": Kopilot hat nach dem Ausführen einen echten Flugzeugzustand gelesen, der zum Wert passt.</item>
-/// <item>"pilot": Der Pilot hat im Cockpit bestätigt, dass es funktioniert hat (für Aktionen, bei denen Kopilot nur die Schalterstellung lesen kann).</item>
+/// <item>"sim": Duopilo hat nach dem Ausführen einen echten Flugzeugzustand gelesen, der zum Wert passt.</item>
+/// <item>"pilot": Der Pilot hat im Cockpit bestätigt, dass es funktioniert hat (für Aktionen, bei denen Duopilo nur die Schalterstellung lesen kann).</item>
 /// </list>
 /// </summary>
 public sealed class VerifiedActionStore(string directory)

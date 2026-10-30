@@ -1,8 +1,8 @@
 using System.Globalization;
-using Kopilot.Atc;
-using Kopilot.Localization;
+using Duopilo.Atc;
+using Duopilo.Localization;
 
-namespace Kopilot.Monitoring;
+namespace Duopilo.Monitoring;
 
 /// <summary>
 /// Pilot-Monitoring-Callouts (Startlauf, Landung, Höhenmarken, Konfiguration) und – nur auf Wunsch – die Ansagen,
@@ -236,7 +236,7 @@ public sealed partial class MonitorEngine
                     _flapsAnnounced = flaps;
                     _flapsCandidate = null;
 
-                    // Hat Kopilot die Klappen selbst gesetzt, sagt das Eingabe-Modul sie erst bei erreichter Stellung an
+                    // Hat Duopilo die Klappen selbst gesetzt, sagt das Eingabe-Modul sie erst bei erreichter Stellung an
                     if (_settings.Claims?.IsClaimed(ConfigCalloutClaims.Flaps, now) != true)
                     {
                         Say(Rules.PmFlaps, callout, Loc.T("monitor.pm.flaps", flaps));
@@ -265,7 +265,7 @@ public sealed partial class MonitorEngine
                     _gearAnnounced = down;
                     _gearCandidate = null;
 
-                    // Hat Kopilot das Fahrwerk selbst bewegt, kommt "Gear down, three green" vom Eingabe-Modul
+                    // Hat Duopilo das Fahrwerk selbst bewegt, kommt "Gear down, three green" vom Eingabe-Modul
                     if (_settings.Claims?.IsClaimed(ConfigCalloutClaims.Gear, now) != true)
                     {
                         Say(Rules.PmGear, down ? "Gear down" : "Gear up", down ? Loc.T("monitor.pm.gearDown") : Loc.T("monitor.pm.gearUp"));
@@ -413,7 +413,7 @@ public sealed partial class MonitorEngine
     {
         "FULL" => "full",
         "1+F" => "one",
-        _ when int.TryParse(flaps, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) => Kopilot.Speech.Pronunciation.Digits(n),
+        _ when int.TryParse(flaps, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) => Duopilo.Speech.Pronunciation.Digits(n),
         _ => flaps.ToLowerInvariant(),
     };
 

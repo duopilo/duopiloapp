@@ -1,12 +1,12 @@
 using System.ComponentModel;
-using Kopilot.Atc;
-using Kopilot.FlightPlan;
-using Kopilot.Localization;
-using Kopilot.Monitoring;
-using Kopilot.Sim;
+using Duopilo.Atc;
+using Duopilo.FlightPlan;
+using Duopilo.Localization;
+using Duopilo.Monitoring;
+using Duopilo.Sim;
 using ModelContextProtocol.Server;
 
-namespace Kopilot.Tools;
+namespace Duopilo.Tools;
 
 /// <summary>Was das Ingame-ATC von MSFS 2024 über SimVars preisgibt.</summary>
 [McpServerToolType]
@@ -22,7 +22,7 @@ public static class AtcTools
     {
         if (!sim.Connection.IsConnected)
         {
-            return KopilotTools.NotConnected(alerts);
+            return DuopiloTools.NotConnected(alerts);
         }
 
         var runway = AtcReader.AssignedRunway(sim, simBrief.Current);

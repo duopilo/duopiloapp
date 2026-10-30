@@ -1,14 +1,14 @@
 using System.Globalization;
-using Kopilot.Localization;
+using Duopilo.Localization;
 
-namespace Kopilot.Monitoring;
+namespace Duopilo.Monitoring;
 
 public sealed class MonitorSettings
 {
     public ISet<string> DisabledRules { get; init; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Radiohöhen, Minimum und Retard auch von Kopilot ansagen. Standard aus – Airliner wie der FBW A32NX sprechen sie selbst (FWC).
+    /// Radiohöhen, Minimum und Retard auch von Duopilo ansagen. Standard aus – Airliner wie der FBW A32NX sprechen sie selbst (FWC).
     /// Zur Laufzeit umschaltbar (Dashboard).
     /// </summary>
     public bool AircraftAutoCallouts { get; set; }

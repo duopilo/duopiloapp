@@ -1,4 +1,4 @@
-namespace Kopilot.Atc;
+namespace Duopilo.Atc;
 
 /// <summary>Zuständige Stelle / Flugabschnitt.</summary>
 public enum AtcPhase
@@ -124,7 +124,7 @@ public sealed record AtcInput
     public double? Com1ActiveMhz { get; init; }
 }
 
-/// <summary>Was Kopilot überwacht: Transpondercode oder COM1-Frequenz.</summary>
+/// <summary>Was Duopilo überwacht: Transpondercode oder COM1-Frequenz.</summary>
 public enum AtcDeviationKind
 {
     Squawk,
@@ -132,7 +132,7 @@ public enum AtcDeviationKind
 }
 
 /// <summary>
-/// Abweichung vom Zugewiesenen, die ATC schon angesprochen hat ("check squawk, should be …"). Kopilot setzt nie selbst
+/// Abweichung vom Zugewiesenen, die ATC schon angesprochen hat ("check squawk, should be …"). Duopilo setzt nie selbst
 /// zurück – <paramref name="Actions"/> sind die Eingaben, die Claude dem Piloten anbieten kann (prepare_action).
 /// </summary>
 /// <param name="Expected">Zugewiesener Code bzw. Frequenz ("2340", "132.6").</param>
@@ -185,7 +185,7 @@ public sealed record AtcTransmission(
 /// Squawk aus dem Transponder übernehmen, wenn ihn das MSFS-ATC (auch stumm geschaltet) im Flug ändert – statt "check squawk".
 /// </param>
 /// <param name="KopilotVoice">
-/// Stimme von Kopilot zur Laufzeit (z. B. die des First Officers, die pro Flug wechselt) – neue Stationen bekommen sie nie.
+/// Stimme des Kopiloten zur Laufzeit (z. B. die des First Officers, die pro Flug wechselt) – neue Stationen bekommen sie nie.
 /// </param>
 public sealed record AtcSessionContext(
     Func<string, IReadOnlyList<AirportFrequency>?> FacilityFrequencies,

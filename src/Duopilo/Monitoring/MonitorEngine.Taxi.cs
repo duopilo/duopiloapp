@@ -1,6 +1,6 @@
-using Kopilot.Localization;
+using Duopilo.Localization;
 
-namespace Kopilot.Monitoring;
+namespace Duopilo.Monitoring;
 
 /// <summary>
 /// Taxi-Speed-Warnung: am Boden schneller als erlaubt gerollt (Standard 25 kt Groundspeed).

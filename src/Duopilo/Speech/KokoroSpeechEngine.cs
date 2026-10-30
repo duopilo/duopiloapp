@@ -1,11 +1,12 @@
 using System.Text.RegularExpressions;
 using KokoroSharp.Core;
 using KokoroSharp.Processing;
-using Kopilot.Localization;
+using Duopilo.Hosting;
+using Duopilo.Localization;
 using Microsoft.Extensions.Options;
 using OnnxSessionOptions = Microsoft.ML.OnnxRuntime.SessionOptions;
 
-namespace Kopilot.Speech;
+namespace Duopilo.Speech;
 
 /// <summary>Fertig synthetisierte Ansage: Mono-Samples (−1…1).</summary>
 public sealed record SpeechClip(float[] Samples, int SampleRate)
@@ -16,7 +17,7 @@ public sealed record SpeechClip(float[] Samples, int SampleRate)
 /// <summary>
 /// Kokoro-82M über KokoroSharp (ONNX Runtime, CPU). Nutzt bewusst nur Tokenizer und Modell, nicht die
 /// Abspiel-Warteschlange von KokoroSharp: Die Synthese läuft synchron im eigenen Hintergrund-Task, Fehler bleiben
-/// abfangbar und die Wiedergabe steuert Kopilot selbst (Warnings unterbrechen, veraltete Callouts verfallen).
+/// abfangbar und die Wiedergabe steuert Duopilo selbst (Warnings unterbrechen, veraltete Callouts verfallen).
 /// </summary>
 public sealed partial class KokoroSpeechEngine : IDisposable
 {
@@ -39,14 +40,14 @@ public sealed partial class KokoroSpeechEngine : IDisposable
     private OnnxSessionOptions? _sessionOptions;
     private KokoroModel? _model;
 
-    public KokoroSpeechEngine(IOptions<KopilotOptions> options, ILogger<KokoroSpeechEngine> log)
+    public KokoroSpeechEngine(IOptions<DuopiloOptions> options, ILogger<KokoroSpeechEngine> log)
     {
         var o = options.Value;
         _options = o.Speech;
         _log = log;
         ModelPath = string.IsNullOrWhiteSpace(_options.KokoroModelPath)
             ? Path.Combine(o.ResolveDataDirectory(), "models", "kokoro.onnx")
-            : Path.GetFullPath(_options.KokoroModelPath, AppContext.BaseDirectory);
+            : DataDirectoryMigration.MapLegacyPath(Path.GetFullPath(_options.KokoroModelPath, AppContext.BaseDirectory));
         _voicesDirectory = Path.Combine(AppContext.BaseDirectory, "voices");
     }
 
@@ -56,7 +57,7 @@ public sealed partial class KokoroSpeechEngine : IDisposable
 
     private IReadOnlyList<string>? _voiceList;
 
-    /// <summary>Englische Stimmen neben der Kopilot.exe (einmal gelesen).</summary>
+    /// <summary>Englische Stimmen neben der Duopilo.exe (einmal gelesen).</summary>
     public IReadOnlyList<string> Voices => _voiceList ??= ListVoices(_voicesDirectory);
 
     /// <summary>Englische Stimmen im Ordner: a = amerikanisch, b = britisch; f/m = weiblich/männlich. Weibliche zuerst wie bei Kokoro.</summary>
@@ -192,7 +193,7 @@ public sealed partial class KokoroSpeechEngine : IDisposable
 
         using (var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan })
         {
-            http.DefaultRequestHeaders.UserAgent.ParseAdd("Kopilot");
+            http.DefaultRequestHeaders.UserAgent.ParseAdd(AppNames.Product);
             using var response = await http.GetAsync(ModelUrl, HttpCompletionOption.ResponseHeadersRead, ct);
             response.EnsureSuccessStatusCode();
             var total = response.Content.Headers.ContentLength;

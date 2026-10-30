@@ -1,6 +1,6 @@
-using Kopilot.Localization;
+using Duopilo.Localization;
 
-namespace Kopilot.Monitoring;
+namespace Duopilo.Monitoring;
 
 /// <summary>Ein FMA-Wechsel mit dem, was sich geändert hat, und den Flugdaten in dem Moment.</summary>
 /// <param name="Changes">z. B. "vertical: G/S → LAND", "lateral: LAND → FLARE".</param>

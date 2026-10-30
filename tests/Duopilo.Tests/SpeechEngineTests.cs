@@ -1,7 +1,7 @@
 using System.Buffers.Binary;
-using Kopilot.Speech;
+using Duopilo.Speech;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
 /// <summary>Kokoro als zweite Stimme (v0.7.1): Auswahl, Text für die Synthese, WAV, Stimmennamen. Ohne echtes Modell und Audio.</summary>
 public sealed class SpeechEngineTests
@@ -76,7 +76,7 @@ public sealed class SpeechEngineTests
     [Fact]
     public void Stimmenliste_kommt_aus_dem_Ordner()
     {
-        var dir = Directory.CreateTempSubdirectory("kopilot-voices-").FullName;
+        var dir = Directory.CreateTempSubdirectory("duopilo-voices-").FullName;
         try
         {
             foreach (var name in new[] { "bm_george.npy", "af_heart.npy", "zf_001.npy", "readme.txt" })

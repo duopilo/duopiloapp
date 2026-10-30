@@ -1,7 +1,7 @@
-using Kopilot.Input;
-using Kopilot.Localization;
+using Duopilo.Input;
+using Duopilo.Localization;
 
-namespace Kopilot.Voice;
+namespace Duopilo.Voice;
 
 /// <summary>Zugriff auf das Eingabe-Modul (prepare_action → confirm_action / cancel_action) – austauschbar für Tests.</summary>
 public interface IVoiceActionGateway
@@ -31,7 +31,7 @@ public sealed class InputActionGateway(InputService input) : IVoiceActionGateway
     public Task<InputResult> ExecuteAsync(string actionId, string? value, CancellationToken ct) => input.ExecuteNowAsync(actionId, value, ct);
 }
 
-/// <summary>Antwort von Kopilot: Anzeigetext und Text für die Sprachsynthese.</summary>
+/// <summary>Antwort des Kopiloten: Anzeigetext und Text für die Sprachsynthese.</summary>
 public sealed record VoiceReply(string Text, string Spoken)
 {
     /// <summary>Readback einer vorbereiteten Aktion: Erst wenn er ganz gesprochen ist, zählt "Confirm" (siehe <see cref="VoiceDialog.Spoken"/>).</summary>
@@ -49,10 +49,10 @@ public sealed record VoiceReply(string Text, string Spoken)
     /// <summary>Sprache des Smalltalks ("de"); null = Englisch.</summary>
     public string? Language { get; init; }
 
-    /// <summary>Stimme für den Smalltalk in einer anderen Sprache ("piper:de_DE-thorsten-medium"); null = die Stimme von Kopilot.</summary>
+    /// <summary>Stimme für den Smalltalk in einer anderen Sprache ("piper:de_DE-thorsten-medium"); null = die Stimme des Kopiloten.</summary>
     public string? Voice { get; init; }
 
-    public static VoiceReply Of(string text) => new(text, Kopilot.Speech.Pronunciation.ForSpeech(text));
+    public static VoiceReply Of(string text) => new(text, Duopilo.Speech.Pronunciation.ForSpeech(text));
 
     /// <summary>Smalltalk: so sprechen, wie er ist.</summary>
     public static VoiceReply Chat(string text, string? language = null, string? voice = null) =>
@@ -64,9 +64,9 @@ public sealed record VoiceReply(string Text, string Spoken)
 public sealed record PendingVoiceAction(string Token, string ActionId, string? Value, string Readback, DateTimeOffset ExpiresUtc, DateTimeOffset? HeardUtc = null);
 
 /// <summary>
-/// Gesprächsablauf mit Kopilot (ohne Sprachmodell).
+/// Gesprächsablauf mit dem Kopiloten (ohne Sprachmodell).
 /// <para>
-/// Modus "ausführen + Callout" (Standard, <see cref="ExecuteWithCallout"/>): Der Befehl des Piloten ist die Anweisung – Kopilot
+/// Modus "ausführen + Callout" (Standard, <see cref="ExecuteWithCallout"/>): Der Befehl des Piloten ist die Anweisung – der Kopilot
 /// führt ihn sofort aus und sagt ihn nach der Prüfung an ("Speed 250 set", "Flaps 2"). Readback mit "Confirm" nur, wenn die
 /// Erkennung unsicher war (Konfidenz unter <see cref="MinConfidence"/>) oder die Aktion laut Plausibilitätssperren eine
 /// Rückfrage braucht. Gesperrte Aktionen bleiben gesperrt ("Unable").
@@ -127,13 +127,13 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
     /// <summary>Letzte Antwort (für "Say again" des Piloten).</summary>
     public VoiceReply? LastReply { get; private set; }
 
-    /// <summary>Wann Kopilot zuletzt geantwortet hat (für "Say again": Kopilot oder ATC?).</summary>
+    /// <summary>Wann der Kopilot zuletzt geantwortet hat (für "Say again": Kopilot oder ATC?).</summary>
     public DateTimeOffset? LastReplyUtc { get; private set; }
 
-    /// <summary>Ende der zuletzt ganz gesprochenen Antwort von Kopilot.</summary>
+    /// <summary>Ende der zuletzt ganz gesprochenen Antwort des Kopiloten.</summary>
     public DateTimeOffset? LastReplyHeardUtc { get; private set; }
 
-    /// <summary>Wann Kopilot zuletzt gesprochen hat (Antwort erzeugt oder zu Ende gesprochen, das Spätere).</summary>
+    /// <summary>Wann der Kopilot zuletzt gesprochen hat (Antwort erzeugt oder zu Ende gesprochen, das Spätere).</summary>
     public DateTimeOffset? LastSpokeUtc => Latest(LastReplyUtc, LastReplyHeardUtc);
 
     /// <summary>Letztes Ergebnis des Eingabe-Moduls (Status, Grund) – für Log und Status.</summary>
@@ -154,7 +154,7 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
         return Remember(VoiceReply.Of(muted ? Paused : Resumed));
     }
 
-    /// <summary>Verarbeitet einen erkannten Satz. Rückgabe: was Kopilot sagt (null = nichts).</summary>
+    /// <summary>Verarbeitet einen erkannten Satz. Rückgabe: was der Kopilot sagt (null = nichts).</summary>
     /// <param name="intent">Erkannter Befehl.</param>
     /// <param name="normalized">Der Satz in normalisierter Form (für "Confirm" und die Wortzahl).</param>
     /// <param name="addressed">Mit Anrede ("Kopilot, …").</param>
@@ -289,7 +289,7 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
 
     /// <summary>
     /// Regelmäßig aufrufen (Sekundentakt): verfallene Readbacks verwerfen, unbeantwortete Challenge einmal wiederholen.
-    /// Rückgabe: was Kopilot sagt (null = nichts).
+    /// Rückgabe: was der Kopilot sagt (null = nichts).
     /// </summary>
     public VoiceReply? Tick()
     {

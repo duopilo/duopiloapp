@@ -1,8 +1,8 @@
-using Kopilot.Aircraft;
-using Kopilot.FlightPlan;
-using Kopilot.Monitoring;
+using Duopilo.Aircraft;
+using Duopilo.FlightPlan;
+using Duopilo.Monitoring;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
 /// <summary>
 /// Fuel Check im Reiseflug: Ansage an OFP-Wegpunkten, Intervall-Check, Warnungen bei wachsender Abweichung oder knapper

@@ -228,7 +228,7 @@ namespace Microsoft.FlightSimulator.SimConnect
         public SimConnect(string szName, IntPtr hWnd, uint UserEventWin32, WaitHandle hEventHandle, uint ConfigIndex)
         {
             throw new NotSupportedException(
-                "Kopilot wurde gegen den SimConnect-Stub gebaut und kann sich nicht mit MSFS verbinden. " +
+                "Duopilo wurde gegen den SimConnect-Stub gebaut und kann sich nicht mit MSFS verbinden. " +
                 "Bitte das MSFS-2024-SDK installieren oder die SimConnect-DLLs nach lib\\ kopieren und neu bauen (siehe README).");
         }
 

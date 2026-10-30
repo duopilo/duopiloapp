@@ -1,13 +1,13 @@
-using Kopilot.Dashboard;
-using Kopilot.Hosting;
-using Kopilot.Localization;
-using Kopilot.Tools;
+using Duopilo.Dashboard;
+using Duopilo.Hosting;
+using Duopilo.Localization;
+using Duopilo.Tools;
 
-namespace Kopilot.Settings;
+namespace Duopilo.Settings;
 
 /// <summary>
 /// API der Einstellungsseite im Dashboard (nur lokal). Schreibende Aufrufe verlangen wie alle Dashboard-Knöpfe den Header
-/// "X-Kopilot: 1" – fremde Webseiten im selben Browser können ihn nicht ohne CORS-Freigabe setzen.
+/// "X-Duopilo: 1" – fremde Webseiten im selben Browser können ihn nicht ohne CORS-Freigabe setzen.
 /// Das Mikrofon läuft über die vorhandene API /api/voice.
 /// </summary>
 public static class SettingsEndpoints
@@ -101,8 +101,7 @@ public static class SettingsEndpoints
             Json.Serialize(new { ok = result.Ok, message = result.Message, error = result.Error, token = result.Token, settings = settings.View() }),
             "application/json");
 
-    private static bool IsDashboardAction(HttpContext context) =>
-        context.Request.Headers.TryGetValue(DashboardEndpoints.ActionHeader, out var value) && value == "1";
+    private static bool IsDashboardAction(HttpContext context) => DashboardEndpoints.IsDashboardAction(context);
 
     private static void NoCache(HttpContext context) => context.Response.Headers.CacheControl = "no-store";
 }

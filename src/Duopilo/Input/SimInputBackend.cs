@@ -1,8 +1,8 @@
-using Kopilot.Aircraft;
-using Kopilot.Monitoring;
-using Kopilot.Sim;
+using Duopilo.Aircraft;
+using Duopilo.Monitoring;
+using Duopilo.Sim;
 
-namespace Kopilot.Input;
+namespace Duopilo.Input;
 
 /// <summary>Eingabe-Modul über die bestehende SimConnect-Verbindung.</summary>
 public sealed class SimInputBackend(SimConnectClient sim, SnapshotFactory snapshots) : IInputBackend

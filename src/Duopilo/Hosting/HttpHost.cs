@@ -1,19 +1,19 @@
-using Kopilot.Aircraft;
-using Kopilot.Dashboard;
-using Kopilot.Ecam;
-using Kopilot.FlightPlan;
-using Kopilot.Localization;
-using Kopilot.Monitoring;
-using Kopilot.Remote;
-using Kopilot.Reports;
-using Kopilot.Settings;
-using Kopilot.Sim;
-using Kopilot.Tools;
+using Duopilo.Aircraft;
+using Duopilo.Dashboard;
+using Duopilo.Ecam;
+using Duopilo.FlightPlan;
+using Duopilo.Localization;
+using Duopilo.Monitoring;
+using Duopilo.Remote;
+using Duopilo.Reports;
+using Duopilo.Settings;
+using Duopilo.Sim;
+using Duopilo.Tools;
 using Microsoft.AspNetCore.HostFiltering;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 
-namespace Kopilot.Hosting;
+namespace Duopilo.Hosting;
 
 /// <summary>
 /// HTTP-Modus: Streamable HTTP unter /mcp, geschützt per Bearer-Token und/oder OAuth.
@@ -25,33 +25,33 @@ public static class HttpHost
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions
         {
-            Args = KopilotConfiguration.FilterSwitches(args),
+            Args = DuopiloConfiguration.FilterSwitches(args),
             ContentRootPath = AppContext.BaseDirectory,
         });
 
-        KopilotConfiguration.AddLocalSettings(builder.Configuration, AppContext.BaseDirectory, KopilotConfiguration.FilterSwitches(args));
+        DuopiloConfiguration.AddLocalSettings(builder.Configuration, AppContext.BaseDirectory, DuopiloConfiguration.FilterSwitches(args));
         return builder;
     }
 
     public static void AddServices(WebApplicationBuilder builder)
     {
-        builder.Services.AddKopilotCore(builder.Configuration);
+        builder.Services.AddDuopiloCore(builder.Configuration);
         builder.Services.TryAddSingleton(new LogBuffer());
         builder.Services.AddSingleton<DashboardData>();
 
         // Einstellungsseite und „Fehler melden“ im Dashboard
-        builder.Services.AddSingleton(sp => LocalSettingsStore.ForApplication(sp.GetRequiredService<IOptions<KopilotOptions>>().Value));
+        builder.Services.AddSingleton(sp => LocalSettingsStore.ForApplication(sp.GetRequiredService<IOptions<DuopiloOptions>>().Value));
         builder.Services.AddSingleton<SettingsService>();
 
         // Smalltalk mit einem Sprachmodell (optional, standardmäßig aus) – Einstellungsseite und Sprachschleife
-        builder.Services.AddSingleton<Kopilot.Smalltalk.SmalltalkService>();
+        builder.Services.AddSingleton<Duopilo.Smalltalk.SmalltalkService>();
         builder.Services.AddSingleton<BugReportService>();
 
         builder.Services.AddSingleton<OAuthStore>();
         builder.Services.AddSingleton<LoginThrottle>();
 
         // Erlaubte Hostnamen: lokal + die öffentliche Tunnel-Domain. Alles andere lehnt der Host-Filter ab.
-        var remote = builder.Configuration.GetSection($"{KopilotOptions.Section}:Remote").Get<RemoteOptions>() ?? new RemoteOptions();
+        var remote = builder.Configuration.GetSection($"{DuopiloOptions.Section}:Remote").Get<RemoteOptions>() ?? new RemoteOptions();
         var allowedHosts = new List<string> { "localhost", "127.0.0.1", "[::1]" };
         if (remote.PublicBaseUri is { } publicUri)
         {
@@ -69,7 +69,7 @@ public static class HttpHost
 
     public static void Configure(WebApplication app)
     {
-        var remote = app.Services.GetRequiredService<IOptions<KopilotOptions>>().Value.Remote;
+        var remote = app.Services.GetRequiredService<IOptions<DuopiloOptions>>().Value.Remote;
 
         app.UseMiddleware<McpAuthMiddleware>();
 
@@ -77,25 +77,25 @@ public static class HttpHost
         app.MapDashboard();
         app.MapSettings();
         app.MapReports();
-        app.MapGet("/status", (SimConnectClient sim, ProfileStore profiles, MonitoringService monitoring, SimBriefService simBrief, EcamCatalog ecam, AlertBus alerts, Kopilot.Input.InputService input, Kopilot.Voice.IVoiceStatusSource voice) =>
-            JsonText(KopilotTools.Status(sim, profiles, monitoring, simBrief, ecam, alerts, input, voice))).LocalOnly();
-        app.MapGet("/state", (SimConnectClient sim, AlertBus alerts) => JsonText(KopilotTools.GetFlightState(sim, alerts))).LocalOnly();
-        app.MapGet("/systems", (SimConnectClient sim, AlertBus alerts) => JsonText(KopilotTools.GetSystems(sim, alerts))).LocalOnly();
-        app.MapGet("/nav", (SimConnectClient sim, AlertBus alerts) => JsonText(KopilotTools.GetNavigation(sim, alerts))).LocalOnly();
-        app.MapGet("/env", (SimConnectClient sim, AlertBus alerts) => JsonText(KopilotTools.GetEnvironment(sim, alerts))).LocalOnly();
-        app.MapGet("/profile", (SimConnectClient sim, ProfileStore profiles, AlertBus alerts) => JsonText(KopilotTools.GetAircraftProfile(sim, profiles, alerts))).LocalOnly();
+        app.MapGet("/status", (SimConnectClient sim, ProfileStore profiles, MonitoringService monitoring, SimBriefService simBrief, EcamCatalog ecam, AlertBus alerts, Duopilo.Input.InputService input, Duopilo.Voice.IVoiceStatusSource voice) =>
+            JsonText(DuopiloTools.Status(sim, profiles, monitoring, simBrief, ecam, alerts, input, voice))).LocalOnly();
+        app.MapGet("/state", (SimConnectClient sim, AlertBus alerts) => JsonText(DuopiloTools.GetFlightState(sim, alerts))).LocalOnly();
+        app.MapGet("/systems", (SimConnectClient sim, AlertBus alerts) => JsonText(DuopiloTools.GetSystems(sim, alerts))).LocalOnly();
+        app.MapGet("/nav", (SimConnectClient sim, AlertBus alerts) => JsonText(DuopiloTools.GetNavigation(sim, alerts))).LocalOnly();
+        app.MapGet("/env", (SimConnectClient sim, AlertBus alerts) => JsonText(DuopiloTools.GetEnvironment(sim, alerts))).LocalOnly();
+        app.MapGet("/profile", (SimConnectClient sim, ProfileStore profiles, AlertBus alerts) => JsonText(DuopiloTools.GetAircraftProfile(sim, profiles, alerts))).LocalOnly();
         app.MapGet("/warnings", (SimConnectClient sim, EcamCatalog ecam, AlertBus alerts) => JsonText(MonitoringTools.GetWarnings(sim, ecam, alerts))).LocalOnly();
         app.MapGet("/alerts", (AlertBus alerts, long? sinceId) => JsonText(MonitoringTools.GetAlerts(alerts, sinceId ?? 0))).LocalOnly();
         app.MapGet("/monitoring", (MonitoringService monitoring, AlertBus alerts) => JsonText(MonitoringTools.GetMonitoringStatus(monitoring, alerts))).LocalOnly();
         app.MapGet("/atc", (SimConnectClient sim, SimBriefService simBrief, AlertBus alerts) => JsonText(AtcTools.GetAtc(sim, simBrief, alerts))).LocalOnly();
-        app.MapGet("/atc/controller", (Kopilot.Atc.AtcService atc, AlertBus alerts) => JsonText(AtcControllerTools.GetAtcController(atc, alerts))).LocalOnly();
+        app.MapGet("/atc/controller", (Duopilo.Atc.AtcService atc, AlertBus alerts) => JsonText(AtcControllerTools.GetAtcController(atc, alerts))).LocalOnly();
         app.MapGet("/plan", async (SimBriefService simBrief, AlertBus alerts, bool? refresh, CancellationToken ct) =>
             JsonText(await FlightPlanTools.GetFlightPlan(simBrief, alerts, refresh ?? false, ct))).LocalOnly();
         app.MapGet("/progress", async (SimConnectClient sim, SimBriefService simBrief, AlertBus alerts, MonitoringService monitoring, CancellationToken ct) =>
             JsonText(await FlightPlanTools.GetProgress(sim, simBrief, alerts, monitoring, ct))).LocalOnly();
         app.MapGet("/read", async (SimConnectClient sim, string name, string? unit, CancellationToken ct) =>
-            JsonText(await KopilotTools.ReadSimVar(sim, name, unit ?? "number", ct))).LocalOnly();
-        app.MapGet("/voice", (Kopilot.Voice.IVoiceStatusSource voice) => JsonText(Json.Serialize(KopilotTools.VoiceView(voice.Status)))).LocalOnly();
+            JsonText(await DuopiloTools.ReadSimVar(sim, name, unit ?? "number", ct))).LocalOnly();
+        app.MapGet("/voice", (Duopilo.Voice.IVoiceStatusSource voice) => JsonText(Json.Serialize(DuopiloTools.VoiceView(voice.Status)))).LocalOnly();
 
         if (remote.OAuthEnabled)
         {

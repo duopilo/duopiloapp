@@ -1,9 +1,9 @@
 using System.Buffers.Binary;
-using Kopilot.Localization;
+using Duopilo.Localization;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
 
-namespace Kopilot.Voice;
+namespace Duopilo.Voice;
 
 /// <summary>Ein Aufnahmegerät, wie WinMM es kennt (Name auf 31 Zeichen gekürzt), dazu der volle Windows-Name, wenn bekannt.</summary>
 /// <param name="Number">WinMM-Gerätenummer (ändert sich beim Ein- und Ausstecken).</param>

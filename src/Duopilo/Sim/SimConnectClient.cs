@@ -1,13 +1,13 @@
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using Kopilot.Aircraft;
-using Kopilot.Input;
-using Kopilot.Localization;
+using Duopilo.Aircraft;
+using Duopilo.Input;
+using Duopilo.Localization;
 using Microsoft.Extensions.Options;
 using Microsoft.FlightSimulator.SimConnect;
 
-namespace Kopilot.Sim;
+namespace Duopilo.Sim;
 
 /// <summary>
 /// Hält die Verbindung zu MSFS 2024 über SimConnect.
@@ -26,7 +26,7 @@ public sealed partial class SimConnectClient : BackgroundService
     private const string TitleKey = "title";
 
     private readonly ILogger<SimConnectClient> _log;
-    private readonly KopilotOptions _options;
+    private readonly DuopiloOptions _options;
     private readonly ProfileStore _profiles;
 
     private readonly AutoResetEvent _messageEvent = new(false);
@@ -58,7 +58,7 @@ public sealed partial class SimConnectClient : BackgroundService
     private volatile ConnectionInfo _connection = ConnectionInfo.Disconnected;
     private volatile AircraftProfile? _activeProfile;
 
-    public SimConnectClient(IOptions<KopilotOptions> options, ProfileStore profiles, ILogger<SimConnectClient> log)
+    public SimConnectClient(IOptions<DuopiloOptions> options, ProfileStore profiles, ILogger<SimConnectClient> log)
     {
         _options = options.Value;
         _profiles = profiles;
@@ -269,7 +269,7 @@ public sealed partial class SimConnectClient : BackgroundService
 
     /// <summary>
     /// Fängt Ladefehler der SimConnect-Bibliothek ab (sie treten schon beim JIT von <see cref="Run"/> auf),
-    /// damit der MCP-Server trotzdem läuft und den Fehler über kopilot_status melden kann.
+    /// damit der MCP-Server trotzdem läuft und den Fehler über duopilo_status melden kann.
     /// </summary>
     private void RunGuarded(CancellationToken ct)
     {
@@ -310,9 +310,9 @@ public sealed partial class SimConnectClient : BackgroundService
                 {
                     // Für das Absturz-Journal: Ein harter Absturz beim Auspacken einer Nachricht (AccessViolation im
                     // SimConnect-Marshaling) lässt diesen Zustand stehen – beim nächsten Start sichtbar.
-                    Kopilot.Hosting.CrashJournal.State("SimConnect.ReceiveMessage");
+                    Duopilo.Hosting.CrashJournal.State("SimConnect.ReceiveMessage");
                     _sc!.ReceiveMessage();
-                    Kopilot.Hosting.CrashJournal.State(null);
+                    Duopilo.Hosting.CrashJournal.State(null);
                 }
 
                 if (_quitRequested)

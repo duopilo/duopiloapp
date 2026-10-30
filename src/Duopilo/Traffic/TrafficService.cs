@@ -1,9 +1,9 @@
-using Kopilot.Localization;
-using Kopilot.Monitoring;
-using Kopilot.Sim;
+using Duopilo.Localization;
+using Duopilo.Monitoring;
+using Duopilo.Sim;
 using Microsoft.Extensions.Options;
 
-namespace Kopilot.Traffic;
+namespace Duopilo.Traffic;
 
 /// <summary>Ergebnis einer Verkehrsabfrage für get_traffic.</summary>
 /// <param name="RadiusNm">Tatsächlich abgefragter Radius (höchstens 200 km).</param>
@@ -38,7 +38,7 @@ public sealed class TrafficService : BackgroundService
     private volatile TrafficPicture? _monitoringPicture;
     private DateTimeOffset _lastErrorLogUtc;
 
-    public TrafficService(SimConnectClient sim, TrafficConnection connection, IOptions<KopilotOptions> options, ILogger<TrafficService> log)
+    public TrafficService(SimConnectClient sim, TrafficConnection connection, IOptions<DuopiloOptions> options, ILogger<TrafficService> log)
     {
         _sim = sim;
         _connection = connection;

@@ -1,11 +1,11 @@
 using System.Text.RegularExpressions;
-using Kopilot.Localization;
+using Duopilo.Localization;
 
-namespace Kopilot.Voice;
+namespace Duopilo.Voice;
 
 public enum VoiceTarget
 {
-    /// <summary>Befehl oder Abfrage an Kopilot.</summary>
+    /// <summary>Befehl oder Abfrage an den Kopiloten (Rolle im Cockpit).</summary>
     Kopilot,
 
     /// <summary>Funkspruch an eine ATC-Station (→ ATC-Modul).</summary>
@@ -18,7 +18,7 @@ public sealed record VoiceRoute(VoiceTarget Target, string? Station = null, stri
 /// <summary>
 /// Ordnet einen normalisierten Satz zu:
 /// enthält er ein Stationsrufzeichen ("Frankfurt Tower", "Langen Radar", "Shanwick") oder das eigene Rufzeichen
-/// (am Anfang beim Anruf, hinten beim Readback) → ATC-Modul, sonst → Kopilot. Mit Anrede ("Kopilot, …") immer Kopilot.
+/// (am Anfang beim Anruf, hinten beim Readback) → ATC-Modul, sonst → Kopilot. Mit Anrede ("Kopilot, …" oder "Duopilo, …") immer Kopilot.
 /// </summary>
 public sealed partial class VoiceRouter
 {
@@ -51,7 +51,7 @@ public sealed partial class VoiceRouter
     private readonly IReadOnlyList<string> _wakeWords;
     private readonly IReadOnlyList<string> _extraStations;
 
-    /// <param name="wakeWords">Anrede für Kopilot (normalisiert), z. B. "kopilot".</param>
+    /// <param name="wakeWords">Anrede für den Kopiloten (normalisiert), z. B. "kopilot" – "Duopilo" wird beim Normalisieren dazu.</param>
     /// <param name="extraStations">Weitere Stationen (Einstellungen, ATC-Modul), z. B. "Langen Information".</param>
     public VoiceRouter(IEnumerable<string>? wakeWords = null, IEnumerable<string>? extraStations = null)
     {
@@ -132,7 +132,7 @@ public sealed partial class VoiceRouter
 
     /// <summary>
     /// Kommt eines der eigenen Rufzeichen im Satz vor? Vergleich in kompakter Form ("lufthansa4ab").
-    /// Am Anfang reichen 3 Zeichen, sonst mindestens 5 – ein Kopilot-Befehl enthält nie das eigene Rufzeichen.
+    /// Am Anfang reichen 3 Zeichen, sonst mindestens 5 – ein Befehl an den Kopiloten enthält nie das eigene Rufzeichen.
     /// </summary>
     public static (string Callsign, bool AtStart)? MatchCallsign(string normalized, IEnumerable<string>? ownCallsigns)
     {

@@ -2,7 +2,7 @@ using System.Collections;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
 
-namespace Kopilot.Atc.Airspace;
+namespace Duopilo.Atc.Airspace;
 
 /// <summary>
 /// Telephony-Rufzeichen aller Airlines aus der OpenFlights-Datenbank (airlines.dat, Originalformat): ICAO-Kennung →

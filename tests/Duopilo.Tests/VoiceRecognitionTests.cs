@@ -1,6 +1,6 @@
-using Kopilot.Voice;
+using Duopilo.Voice;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
 /// <summary>
 /// Sprachschleife (v0.9): Normalisierung der Whisper-Abschrift, Kopilot-Befehle und Router – deutsch und englisch gemischt,

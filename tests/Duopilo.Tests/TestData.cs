@@ -1,7 +1,7 @@
-using Kopilot.Atc;
-using Kopilot.Atc.Airspace;
+using Duopilo.Atc;
+using Duopilo.Atc.Airspace;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
 /// <summary>Mitgelieferte Daten aus dem Repository: ATC-Vorlagen, OpenFlights-Airlines, VAT-Spy und Sektoren (einmal geladen).</summary>
 internal static class TestData
@@ -25,7 +25,7 @@ internal static class TestData
     public static string RepoFile(params string[] parts)
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "src", "Kopilot", AtcTemplateLoader.FileName)))
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "src", "Duopilo", AtcTemplateLoader.FileName)))
         {
             dir = dir.Parent;
         }
@@ -34,7 +34,7 @@ internal static class TestData
         return Path.Combine([dir!.FullName, .. parts]);
     }
 
-    public static string DataRoot => RepoFile("src", "Kopilot", AirspaceLoader.DataFolder);
+    public static string DataRoot => RepoFile("src", "Duopilo", AirspaceLoader.DataFolder);
 
     public static AirlineDirectory Airlines => LazyAirlines.Value;
 
@@ -43,7 +43,7 @@ internal static class TestData
     /// <summary>Mitgelieferte Vorlagen mit der Airline-Datenbank (wie im AtcService).</summary>
     public static AtcTemplates Templates()
     {
-        var templates = AtcTemplateLoader.Parse(File.ReadAllText(RepoFile("src", "Kopilot", AtcTemplateLoader.FileName)));
+        var templates = AtcTemplateLoader.Parse(File.ReadAllText(RepoFile("src", "Duopilo", AtcTemplateLoader.FileName)));
         templates.Airlines = Airlines;
         return templates;
     }

@@ -1,4 +1,4 @@
-namespace Kopilot.Atc.Airspace;
+namespace Duopilo.Atc.Airspace;
 
 /// <summary>FIR aus VAT-Spy: ICAO-Kennung, Name ("Gander", "Montreal") und Grenzen (leer, wenn VAT-Spy nur den Namen kennt).</summary>
 public sealed class AirspaceFir(string id, string? name, IReadOnlyList<GeoPolygon> polygons)
@@ -60,8 +60,8 @@ public sealed class AirspaceSector(string fir, string id, string position, strin
 }
 
 /// <summary>
-/// Luftraumdaten für das Kopilot-ATC: FIR-Grenzen aus VAT-Spy und Streckensektoren mit Frequenzen. Unveränderlich und
-/// threadsicher. <see cref="Empty"/> ohne Daten – dann teilt Kopilot die Route wie früher nur nach den FIR-Angaben des OFP.
+/// Luftraumdaten für das Duopilo-ATC: FIR-Grenzen aus VAT-Spy und Streckensektoren mit Frequenzen. Unveränderlich und
+/// threadsicher. <see cref="Empty"/> ohne Daten – dann teilt Duopilo die Route wie früher nur nach den FIR-Angaben des OFP.
 /// </summary>
 public sealed class AirspaceDatabase
 {

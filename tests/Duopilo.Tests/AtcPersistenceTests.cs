@@ -1,10 +1,10 @@
-using Kopilot.Atc;
-using Kopilot.FlightPlan;
+using Duopilo.Atc;
+using Duopilo.FlightPlan;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
 /// <summary>
-/// Testlog 0.9: Nach dem Absturz von Kopilot war die ATC-Sitzung weg. Jetzt wird sie gesichert und im selben Flug
+/// Testlog 0.9: Nach dem Absturz von Duopilo war die ATC-Sitzung weg. Jetzt wird sie gesichert und im selben Flug
 /// fortgesetzt – Station, Phase, freigegebene Höhe, Werte von Hand, Stimmen und Funkverlauf.
 /// </summary>
 public sealed partial class AtcTests
@@ -170,7 +170,7 @@ public sealed partial class AtcTests
             At(resno - 200, 2));
         Assert.Equal(OceanicClearanceState.ReadbackPending, session.Oceanic);
 
-        // Ohne den Rückruf des Readbacks: wieder "Due" – der Pilot fordert neu an, Kopilot sagt ihm wie
+        // Ohne den Rückruf des Readbacks: wieder "Due" – der Pilot fordert neu an, Duopilo sagt ihm wie
         var (pending, note) = RestartWith(session, ofp, At(resno - 199, 3));
         Assert.Equal(OceanicClearanceState.Due, pending.Oceanic);
         Assert.Null(pending.PendingOceanicReadback);
@@ -187,7 +187,7 @@ public sealed partial class AtcTests
     [Fact]
     public void Sicherungsdatei_schreiben_lesen_loeschen()
     {
-        var root = Directory.CreateTempSubdirectory("kopilot-atc-").FullName;
+        var root = Directory.CreateTempSubdirectory("duopilo-atc-").FullName;
         try
         {
             var (session, flight) = ToLangenRadar();

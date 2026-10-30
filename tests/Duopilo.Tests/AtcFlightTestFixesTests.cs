@@ -1,9 +1,9 @@
-using Kopilot.Atc;
-using Kopilot.FlightPlan;
+using Duopilo.Atc;
+using Duopilo.FlightPlan;
 
-namespace Kopilot.Tests;
+namespace Duopilo.Tests;
 
-/// <summary>Korrekturen am Kopilot-ATC nach dem Testflug CFG2205 EDDF–KLAX (v0.9): Rufzeichen, Radio Check, Oceanic-Status, Center-Fallback.</summary>
+/// <summary>Korrekturen am Duopilo-ATC nach dem Testflug CFG2205 EDDF–KLAX (v0.9): Rufzeichen, Radio Check, Oceanic-Status, Center-Fallback.</summary>
 public sealed class AtcFlightTestFixesTests
 {
     private static readonly DateTimeOffset T0 = new(2026, 10, 29, 18, 0, 0, TimeSpan.Zero);
@@ -220,7 +220,7 @@ public sealed class AtcFlightTestFixesTests
         var flight = new Cruise(session);
         var etari = flight.Fix(Etari);
 
-        // z. B. nach einem Neustart von Kopilot über dem Atlantik
+        // z. B. nach einem Neustart von Duopilo über dem Atlantik
         flight.Start(etari + 30);
         Assert.Equal(AtcPhase.Oceanic, session.Phase);
         Assert.Equal("Shanwick Oceanic", session.Station.Name);

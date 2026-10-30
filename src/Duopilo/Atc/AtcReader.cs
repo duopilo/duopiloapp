@@ -1,7 +1,7 @@
-using Kopilot.FlightPlan;
-using Kopilot.Sim;
+using Duopilo.FlightPlan;
+using Duopilo.Sim;
 
-namespace Kopilot.Atc;
+namespace Duopilo.Atc;
 
 /// <summary>Liest, was das Ingame-ATC von MSFS über SimVars preisgibt.</summary>
 public static class AtcReader

@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 
-namespace Kopilot.Remote;
+namespace Duopilo.Remote;
 
 /// <summary>Zufallswerte, Hashes und zeitkonstante Vergleiche.</summary>
 public static class Secrets

@@ -1,25 +1,28 @@
-using Kopilot.Aircraft;
-using Kopilot.FlightPlan;
-using Kopilot.Hosting;
-using Kopilot.Input;
-using Kopilot.Localization;
-using Kopilot.Sim;
-using Kopilot.Speech;
-using Kopilot.Tools;
-using Kopilot.Voice;
+using Duopilo.Aircraft;
+using Duopilo.FlightPlan;
+using Duopilo.Hosting;
+using Duopilo.Input;
+using Duopilo.Localization;
+using Duopilo.Sim;
+using Duopilo.Speech;
+using Duopilo.Tools;
+using Duopilo.Voice;
 
-namespace Kopilot.Dashboard;
+namespace Duopilo.Dashboard;
 
 /// <summary>
 /// Das Dashboard im Browser (nur lokal): Seite, Schriften, Daten-API und zwei Knöpfe (Profile neu laden, SimBrief laden).
-/// Schreibende Aufrufe verlangen den Header "X-Kopilot: 1" – fremde Webseiten im selben Browser können ihn
+/// Schreibende Aufrufe verlangen den Header "X-Duopilo: 1" (der alte "X-Kopilot: 1" gilt weiter) – fremde Webseiten im selben Browser können ihn
 /// nicht ohne CORS-Freigabe setzen.
 /// </summary>
 public static class DashboardEndpoints
 {
-    public const string ActionHeader = "X-Kopilot";
+    public const string ActionHeader = "X-" + AppNames.Product;
 
-    private const string ResourcePrefix = "Kopilot.Dashboard.";
+    /// <summary>Alter Header (bis 0.9.x) – wird weiter angenommen, z. B. von einem noch offenen Dashboard-Tab.</summary>
+    public const string LegacyActionHeader = AppNames.Legacy.ActionHeader;
+
+    private const string ResourcePrefix = "Duopilo.Dashboard.";
 
     private static readonly Dictionary<string, string> Fonts = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -122,7 +125,7 @@ public static class DashboardEndpoints
         }).LocalOnly();
 
         // Sprachschleife: an/aus und Mikrofon. Schreibt nur diese zwei Werte in voice-settings.json (Kommentare bleiben)
-        // und startet die Schleife neu – Kopilot selbst läuft weiter.
+        // und startet die Schleife neu – Duopilo selbst läuft weiter.
         app.MapGet("/api/voice", (HttpContext context) =>
         {
             NoCache(context);
@@ -212,7 +215,7 @@ public static class DashboardEndpoints
                 microphone = saved?.Microphone.Device ?? status.ConfiguredMicrophone ?? "",
             },
             microphones = status.Microphones ?? [],
-            status = KopilotTools.VoiceView(status),
+            status = DuopiloTools.VoiceView(status),
         };
     }
 
@@ -251,8 +254,12 @@ public static class DashboardEndpoints
         lastSpoken = s.LastSpoken,
     };
 
-    private static bool IsDashboardAction(HttpContext context) =>
-        context.Request.Headers.TryGetValue(ActionHeader, out var value) && value == "1";
+    /// <summary>Schreibender Aufruf aus dem Dashboard: Header "X-Duopilo: 1" (oder der alte "X-Kopilot: 1").</summary>
+    internal static bool IsDashboardAction(HttpContext context) =>
+        HasActionHeader(context, ActionHeader) || HasActionHeader(context, LegacyActionHeader);
+
+    private static bool HasActionHeader(HttpContext context, string name) =>
+        context.Request.Headers.TryGetValue(name, out var value) && value == "1";
 
     private static void NoCache(HttpContext context) => context.Response.Headers.CacheControl = "no-store";
 
@@ -260,7 +267,7 @@ public static class DashboardEndpoints
     public const string I18nPrefix = "dashboard.";
 
     /// <summary>Marker in dashboard.html, replaced with the texts of the selected language (no flash of English when German is set).</summary>
-    public const string I18nMarker = "<!--KOPILOT_I18N-->";
+    public const string I18nMarker = "<!--DUOPILO_I18N-->";
 
     private static readonly System.Text.Json.JsonSerializerOptions EmbedJson = new()
     {

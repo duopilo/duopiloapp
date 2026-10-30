@@ -1,4 +1,4 @@
-namespace Kopilot.Monitoring;
+namespace Duopilo.Monitoring;
 
 /// <summary>
 /// Sammelt die Meldungen des Monitorings: Verlauf (Ringpuffer), aktive Zustände und Warten auf neue Meldungen.

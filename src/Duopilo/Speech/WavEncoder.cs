@@ -1,6 +1,6 @@
 using System.Buffers.Binary;
 
-namespace Kopilot.Speech;
+namespace Duopilo.Speech;
 
 /// <summary>Mono-Samples (−1…1) → WAV (16 Bit PCM), damit Kokoro über denselben Windows-Player läuft wie die Windows-Stimmen.</summary>
 public static class WavEncoder

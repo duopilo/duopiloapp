@@ -1,7 +1,7 @@
-namespace Kopilot.Sim;
+namespace Duopilo.Sim;
 
 /// <summary>
-/// Standard-SimVars, die Kopilot dauerhaft (1x pro Sekunde) abonniert.
+/// Standard-SimVars, die Duopilo dauerhaft (1x pro Sekunde) abonniert.
 /// Jede Variable bekommt eine eigene Data Definition – ist ein Name in MSFS unbekannt,
 /// bleibt nur dieser eine Wert leer, alle anderen funktionieren weiter.
 /// </summary>

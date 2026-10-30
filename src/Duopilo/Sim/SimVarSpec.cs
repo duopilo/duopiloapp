@@ -1,4 +1,4 @@
-namespace Kopilot.Sim;
+namespace Duopilo.Sim;
 
 public enum SimVarKind
 {
@@ -8,7 +8,7 @@ public enum SimVarKind
 }
 
 /// <summary>
-/// Eine Variable, die Kopilot bei SimConnect abonniert.
+/// Eine Variable, die Duopilo bei SimConnect abonniert.
 /// </summary>
 /// <param name="Key">Interner Schlüssel, unter dem der Wert abgelegt wird.</param>
 /// <param name="Name">SimConnect-Name, z. B. "INDICATED ALTITUDE" oder "L:INI_IRGENDWAS".</param>

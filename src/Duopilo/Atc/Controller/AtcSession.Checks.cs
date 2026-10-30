@@ -1,12 +1,12 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 
-namespace Kopilot.Atc;
+namespace Duopilo.Atc;
 
 /// <summary>
 /// Überwachung von Transpondercode und COM1-Frequenz gegen die Zuweisung ("check squawk/frequency, should be …") und
 /// Funksprüche an die falsche Station ("this is Montreal Center"). MSFS setzt Squawk und Frequenz teils selbst, auch bei
-/// stumm geschaltetem Sim-ATC – Kopilot weist darauf hin, setzt aber nie selbst zurück.
+/// stumm geschaltetem Sim-ATC – Duopilo weist darauf hin, setzt aber nie selbst zurück.
 /// </summary>
 public sealed partial class AtcSession
 {
@@ -61,8 +61,11 @@ public sealed partial class AtcSession
 
     private readonly List<AtcDeviationEvent> _deviationEvents = [];
 
-    /// <summary>Herkunft des Squawks: "kopilot" (pro Flug fest) oder "sim" (aus dem Transponder übernommen, SquawkFromSim).</summary>
-    public string SquawkSource { get; private set; } = "kopilot";
+    /// <summary>Herkunft des Squawks: "duopilo" (pro Flug fest) oder "sim" (aus dem Transponder übernommen, SquawkFromSim).</summary>
+    public string SquawkSource { get; private set; } = SquawkSourceOwn;
+
+    /// <summary>Squawk von Duopilo vergeben (bis 0.9.x in Sicherungen: "kopilot").</summary>
+    public const string SquawkSourceOwn = "duopilo";
 
     /// <summary>Transponder weicht vom zugewiesenen Code ab und ATC hat es angesprochen (null = passt).</summary>
     public AtcDeviation? SquawkDeviation { get; private set; }
@@ -91,7 +94,7 @@ public sealed partial class AtcSession
     /// <summary>
     /// Im Flug: weicht der Transpondercode länger als <see cref="AtcRules.DeviationSeconds"/> vom zugewiesenen ab, sagt ATC
     /// "check squawk, should be …" (wiederholt nach <see cref="AtcRules.DeviationRepeatSeconds"/>, höchstens
-    /// <see cref="AtcRules.DeviationMaxCalls"/>-mal). Mit SquawkFromSim übernimmt Kopilot stattdessen einen vergebenen Code.
+    /// <see cref="AtcRules.DeviationMaxCalls"/>-mal). Mit SquawkFromSim übernimmt Duopilo stattdessen einen vergebenen Code.
     /// </summary>
     private void CheckSquawk(AtcInput input, List<AtcTransmission> output)
     {

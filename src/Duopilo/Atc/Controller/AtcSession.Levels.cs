@@ -1,4 +1,4 @@
-namespace Kopilot.Atc;
+namespace Duopilo.Atc;
 
 /// <summary>Höhenanfrage aus einem Funkspruch: Höhe in ft, falls genannt, und Richtung (+1 höher, −1 tiefer, 0 ohne Angabe).</summary>
 public sealed record AtcLevelRequest(int? Feet, int Direction);
@@ -339,8 +339,8 @@ public sealed partial class AtcSession
 
     /// <summary>
     /// Erstanruf mit gemeldeter Höhe ("maintaining FL340"), die nicht zur Freigabe passt: Liegt das Flugzeug laut Sim dort
-    /// (±400 ft, im Horizontalflug), übernimmt ATC sie – so wie nach einer Freigabe, die Kopilot nicht kennt (Stufe ohne
-    /// Kopilot-ATC, Neustart). Sonst bleibt die Freigabe.
+    /// (±400 ft, im Horizontalflug), übernimmt ATC sie – so wie nach einer Freigabe, die Duopilo nicht kennt (Stufe ohne
+    /// Duopilo-ATC, Neustart). Sonst bleibt die Freigabe.
     /// </summary>
     private bool AcceptReportedLevel(HeardText heard, AtcInput input)
     {

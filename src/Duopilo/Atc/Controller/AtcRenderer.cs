@@ -1,7 +1,7 @@
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace Kopilot.Atc;
+namespace Duopilo.Atc;
 
 /// <summary>Fertig eingesetzter Funkspruch: Anzeigetext und Sprechform für die Sprachausgabe.</summary>
 public sealed record AtcRendered(string MessageId, string Text, string Spoken);
