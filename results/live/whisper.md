@@ -1,0 +1,5 @@
+| Datei | Dauer s | Whisper base | Whisper medium |
+|---|---:|---|---|
+| duopilo-supertonic-F1.wav | 9.6 | Guten Abend, ich bin heute dein First Officer. Das Wetter in Frankfurt sieht gut aus, wir sollten pünktlich landen. Möchtest du noch einen Café vor dem Singflug? | Guten Abend, ich bin heute dein First Officer. Das Wetter in Frankfurt sieht gut aus, wir sollten pünktlich landen. Möchtest du noch einen Kaffee vor dem Sinkflug? |
+| duopilo-supertonic-M1.wav | 9.8 | Guten Abend, ich bin heute dein Festoffisser. Das Wetter in Frankfurt sieht gut aus, wir sollten pünktlich landen. Möchtest du noch einen Kaffee vor dem Singflug? | Guten Abend, ich bin heute dein First Officer. Das Wetter in Frankfurt sieht gut aus, wir sollten pünktlich landen. Möchtest du noch einen Kaffee vor dem Singflug? |
+| duopilo-supertonic-M2.wav | 9.2 | Guten Abend, ich bin heute dein First Officer. Das Wetter in Frankfurt sieht gut aus, wir sollten pünktlich landen. Möchtest du noch einen Kaffee vor dem Singflug? | Guten Abend, ich bin heute dein First Officer. Das Wetter in Frankfurt sieht gut aus, wir sollten pünktlich landen. Möchtest du noch einen Kaffee vor dem Singflug? |
