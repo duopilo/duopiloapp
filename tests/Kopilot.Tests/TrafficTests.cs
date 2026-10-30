@@ -412,4 +412,217 @@ public sealed class TrafficTests
         var again = Assert.Single(Feed(engine, Cruise(81, conflict)));
         Assert.Equal(AlertKind.Raise, again.Kind);
     }
+
+    // ------------------------------------------------------------------ Höhendifferenz gegen die eigene Druckhöhe (Testlog 0.9)
+
+    [Fact]
+    public void Testflug_Labrador_FL330_gegen_FL320_ist_1000_ft_darueber()
+    {
+        // Emirates 222 auf barometrisch 33.000 ft (Flightradar), eigenes FL320 bei −47 °C mit 30.630 ft wahrer Höhe.
+        // Kopilot 0.9 meldete 2.400 ft darüber, richtig ist FL330 gegen FL320.
+        var own = Own(altitudeFt: 30_630, headingTrueDeg: 270);
+        var emirates = Target(2, 330, 14, 33_000);
+
+        var picture = TrafficPictureBuilder.Build(T0, [own, emirates], null, 40, ownPressureAltitudeFt: 32_000);
+
+        var t = Assert.Single(picture.Targets);
+        Assert.Equal(1000, t.AltitudeDiffFt, 6);
+        Assert.Equal(33_000, t.AltitudeFt, 6);
+        Assert.Equal("Traffic, 2 o'clock, 14 miles, 1000 feet above", t.Callout);
+        Assert.Equal("pressure", picture.Own!.AltitudeReference);
+        Assert.Equal(32_000, picture.Own.ReferenceAltitudeFt, 6);
+        Assert.Equal(30_630, picture.Own.AltitudeFt, 6);
+    }
+
+    [Fact]
+    public void Ohne_Druckhoehe_bleibt_es_bei_der_wahren_Hoehe()
+    {
+        // Das alte Verhalten: genau die 2.400 ft aus dem Testlog
+        var picture = TrafficPictureBuilder.Build(T0, [Own(altitudeFt: 30_630, headingTrueDeg: 270), Target(2, 330, 14, 33_000)], null, 40);
+
+        var t = Assert.Single(picture.Targets);
+        Assert.Equal(2370, t.AltitudeDiffFt, 6);
+        Assert.Equal("Traffic, 2 o'clock, 14 miles, 2400 feet above", t.Callout);
+        Assert.Equal("true", picture.Own!.AltitudeReference);
+    }
+
+    [Theory]
+    // Porter 2355 (DHC8) FL240, eigenes FL340: 0.9 meldete 9.400 ft darunter
+    [InlineData(33_400, 34_000, 24_000, "10000 feet below")]
+    // Air Canada 148 (A220) mit 30.997 ft, eigenes FL340: 0.9 meldete 2.400 ft darunter
+    [InlineData(33_397, 34_000, 30_997, "3000 feet below")]
+    // Alaska 1427 (B737) FL340, eigenes FL360: 0.9 meldete 2.279 ft
+    [InlineData(36_279, 36_000, 34_000, "2000 feet below")]
+    // Gleiche Flugfläche bei warmer Luft (wahre Höhe über der Druckhöhe)
+    [InlineData(37_150, 36_000, 36_000, "same altitude")]
+    public void Weitere_Ziele_aus_dem_Testflug(double ownTrueFt, double ownPressureFt, double targetFt, string expected)
+    {
+        var picture = TrafficPictureBuilder.Build(T0, [Own(altitudeFt: ownTrueFt), Target(2, 0, 10, targetFt)], null, 40, ownPressureAltitudeFt: ownPressureFt);
+
+        var t = Assert.Single(picture.Targets);
+        Assert.Equal(targetFt - ownPressureFt, t.AltitudeDiffFt, 6);
+        Assert.Equal(expected, TrafficMath.AltitudeText(t.AltitudeDiffFt));
+    }
+
+    [Theory]
+    [InlineData(32_000.0, 32_000.0, "pressure")]
+    [InlineData(null, 30_630.0, "true")]
+    [InlineData(double.NaN, 30_630.0, "true")]
+    [InlineData(double.PositiveInfinity, 30_630.0, "true")]
+    public void Bezugshoehe_des_eigenen_Flugzeugs(double? pressureAltitudeFt, double expectedFt, string expectedReference)
+    {
+        var own = new OwnAircraft(OwnLat, OwnLon, 30_630, 270, false, pressureAltitudeFt);
+
+        Assert.Equal(expectedFt, own.ReferenceAltitudeFt, 6);
+        Assert.Equal(expectedReference, own.AltitudeReference);
+        Assert.Equal(1000, TrafficMath.AltitudeDifference(expectedFt + 1000, own), 6);
+    }
+
+    [Fact]
+    public void Druckhoehe_gilt_auch_fuer_die_Ersatzposition()
+    {
+        // Eigenes Flugzeug fehlt in der Abfrage – die Werte aus den abonnierten SimVars bringen die Druckhöhe mit
+        var fallback = new OwnAircraft(OwnLat, OwnLon, 30_630, 270, false, PressureAltitudeFt: 32_000);
+
+        var picture = TrafficPictureBuilder.Build(T0, [Target(2, 330, 14, 33_000)], fallback, 40);
+        Assert.Equal(1000, Assert.Single(picture.Targets).AltitudeDiffFt, 6);
+
+        // Ein ausdrücklich übergebener Wert hat Vorrang
+        var explicitPa = TrafficPictureBuilder.Build(T0, [Target(2, 330, 14, 33_000)], fallback, 40, ownPressureAltitudeFt: 32_500);
+        Assert.Equal(500, Assert.Single(explicitPa.Targets).AltitudeDiffFt, 6);
+    }
+
+    [Fact]
+    public void Eigenes_Objekt_wird_weiter_ueber_die_wahre_Hoehe_erkannt()
+    {
+        // Ohne IS USER SIM: Objekt an der eigenen Position mit der eigenen wahren Höhe – auch wenn die Druckhöhe 1.400 ft höher ist
+        var ownWithoutFlag = Own(altitudeFt: 30_630) with { IsUser = false };
+        var fallback = new OwnAircraft(OwnLat, OwnLon, 30_630, 90, false, PressureAltitudeFt: 32_000);
+
+        var picture = TrafficPictureBuilder.Build(T0, [ownWithoutFlag, Target(2, 0, 4, 33_000)], fallback, 40);
+
+        Assert.Equal(2u, Assert.Single(picture.Targets).ObjectId);
+    }
+
+    // ------------------------------------------------------------------ Groundspeed aus der Positionsänderung (Testlog 0.9)
+
+    // 12 NM nördlich des eigenen Flugzeugs, von dort nach Osten
+    private const double TrackStartLat = OwnLat + 0.2;
+    private const double TrackStartLon = OwnLon;
+
+    /// <summary>Ziel auf Kurs 090, das mit <paramref name="groundSpeedKt"/> fliegt; GROUND VELOCITY liefert <paramref name="simVarKt"/>.</summary>
+    private static AircraftSample Moving(uint id, double seconds, double groundSpeedKt, double simVarKt, double startOffsetNm = 0)
+    {
+        var (lat, lon) = RouteMath.Destination(TrackStartLat, TrackStartLon, 90, startOffsetNm + groundSpeedKt * seconds / 3600);
+        return Target(id, 0, 1, 33_000) with { Latitude = lat, Longitude = lon, GroundSpeedKt = simVarKt, HeadingTrueDeg = 90 };
+    }
+
+    [Fact]
+    public void Groundspeed_aus_der_Positionsaenderung_Emirates_222()
+    {
+        // Flightradar 556 kt, die SimVar lieferte 169 kt. Hintergrundabfrage alle 3 s.
+        var tracker = new GroundSpeedTracker();
+        Assert.Empty(tracker.Update([Moving(2, 0, 556, 169)], T0));
+        Assert.Empty(tracker.Update([Moving(2, 3, 556, 169)], T0.AddSeconds(3)));
+
+        // Ab 5 s Abstand gibt es einen Wert
+        var early = tracker.Update([Moving(2, 6, 556, 169)], T0.AddSeconds(6));
+        Assert.Equal(556, early[2].Knots, 0);
+        Assert.Equal(6, early[2].BaselineSec, 6);
+
+        IReadOnlyDictionary<uint, DerivedGroundSpeed> derived = early;
+        for (var sec = 9; sec <= 21; sec += 3)
+        {
+            derived = tracker.Update([Moving(2, sec, 556, 169)], T0.AddSeconds(sec));
+        }
+
+        // Bezug ist die Position, die am nächsten an 20 s zurückliegt
+        Assert.Equal(556, derived[2].Knots, 0);
+        Assert.Equal(21, derived[2].BaselineSec, 6);
+
+        var now = T0.AddSeconds(21);
+        var picture = TrafficPictureBuilder.Build(now, [Own(), Moving(2, 21, 556, 169)], null, 40, derivedGroundSpeed: derived);
+        var t = Assert.Single(picture.Targets);
+        Assert.Equal(556, t.GroundSpeedKt, 0);
+        Assert.Equal(TrafficTarget.GroundSpeedFromPosition, t.GroundSpeedSource);
+        Assert.Equal(169, t.GroundSpeedSimVarKt, 6);
+        Assert.Equal(21, t.GroundSpeedBaselineSec!.Value, 6);
+    }
+
+    [Fact]
+    public void Ohne_fruehere_Position_gilt_die_SimVar_mit_Quelle()
+    {
+        var picture = TrafficPictureBuilder.Build(T0, [Own(), Moving(2, 0, 464, 146)], null, 40);
+
+        var t = Assert.Single(picture.Targets);
+        Assert.Equal(146, t.GroundSpeedKt, 6);
+        Assert.Equal(TrafficTarget.GroundSpeedFromSimVar, t.GroundSpeedSource);
+        Assert.Null(t.GroundSpeedBaselineSec);
+    }
+
+    [Fact]
+    public void Zwei_get_traffic_Aufrufe_ohne_Hintergrundabfrage_reichen()
+    {
+        // Verkehrswarnung aus (Workaround gegen den Absturz): nur get_traffic, 90 s auseinander
+        var tracker = new GroundSpeedTracker();
+        tracker.Update([Own(), Moving(2, 0, 410, 125)], T0);
+
+        var derived = tracker.Update([Own(), Moving(2, 90, 410, 125)], T0.AddSeconds(90));
+        Assert.Equal(410, derived[2].Knots, 0);
+        Assert.Equal(90, derived[2].BaselineSec, 6);
+        Assert.DoesNotContain(1u, derived.Keys);
+
+        // Mehr als 120 s: zu alt, kein Wert
+        Assert.Empty(tracker.Update([Moving(2, 300, 410, 125)], T0.AddSeconds(300)));
+    }
+
+    [Fact]
+    public void Positionssprung_wird_verworfen()
+    {
+        var tracker = new GroundSpeedTracker();
+        tracker.Update([Moving(2, 0, 450, 137)], T0);
+
+        // 40 NM in 10 s (Sim setzt das Ziel um oder vergibt die ID neu) → kein Wert, alte Positionen verfallen
+        Assert.Empty(tracker.Update([Moving(2, 10, 450, 137, startOffsetNm: 40)], T0.AddSeconds(10)));
+
+        // Danach zählt nur die neue Bahn
+        var derived = tracker.Update([Moving(2, 20, 450, 137, startOffsetNm: 40)], T0.AddSeconds(20));
+        Assert.Equal(450, derived[2].Knots, 0);
+        Assert.Equal(10, derived[2].BaselineSec, 6);
+    }
+
+    [Fact]
+    public void Ziel_am_Boden_hat_Groundspeed_null()
+    {
+        var tracker = new GroundSpeedTracker();
+        var parked = Target(3, 200, 1.5, 120, onGround: true);
+        tracker.Update([parked], T0);
+
+        var derived = tracker.Update([parked], T0.AddSeconds(15));
+        Assert.Equal(0, derived[3].Knots, 6);
+    }
+
+    // ------------------------------------------------------------------ TRAFFIC_PROXIMITY mit Druckhöhe
+
+    private static FlightSnapshot CruiseFl320(double sec, AircraftSample target, double? ownPressureAltitudeFt) => Cruise(sec) with
+    {
+        Traffic = TrafficPictureBuilder.Build(T0.AddSeconds(sec), [Own(altitudeFt: 30_630), target], null, 40, ownPressureAltitudeFt: ownPressureAltitudeFt),
+    };
+
+    [Fact]
+    public void Verkehrswarnung_rechnet_mit_der_Druckhoehe()
+    {
+        // Ziel auf FL328, eigenes FL320 mit 30.630 ft wahrer Höhe: 800 ft darüber (gegen die wahre Höhe wären es 2.170).
+        // Eigener Kurs 090, Ziel genau im Norden → 9 Uhr
+        var target = Target(2, 0, 2.0, 32_800);
+
+        var engine = WarmedUp();
+        Assert.Empty(Feed(engine, CruiseFl320(12, target, 32_000)));
+        var e = Assert.Single(Feed(engine, CruiseFl320(13.2, target, 32_000)));
+        Assert.Equal("Traffic, 9 o'clock, 2 miles, 800 feet above", e.Callout);
+        Assert.Contains("800 ft darüber", e.Message);
+
+        var withTrueAltitude = WarmedUp();
+        Assert.Empty(Feed(withTrueAltitude, CruiseFl320(12, target, null), CruiseFl320(13.2, target, null), CruiseFl320(16, target, null)));
+    }
 }

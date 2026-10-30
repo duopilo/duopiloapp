@@ -20,7 +20,13 @@ public static class TrafficTools
         "Other aircraft around the pilot's aircraft in MSFS 2024 (AI traffic and multiplayer, if enabled in the sim; helicopters included), " +
         "sorted by distance. Per target: callsign/ATC ID, aircraft type (ATC MODEL), horizontal distance in NM, relative bearing as clock position " +
         "(e.g. '2 o'clock') and true bearing, altitude and altitude difference in ft (positive = above), vertical trend (climbing/descending/level, " +
-        "±500 ft/min), ground speed in knots, heading, on ground. Altitudes are true MSL for both aircraft. The nearest target has 'closest': true, " +
+        "±500 ft/min), ground speed in knots, heading, on ground. " +
+        "Altitude difference: the target's altitude as SimConnect reports it (for MSFS live traffic its barometric altitude) minus the own " +
+        "pressure altitude, like TCAS and flight levels ('ownAircraft.altitudeReference': 'pressure'; 'true' = own true altitude, if no pressure " +
+        "altitude is available or the setting says so). " +
+        "Ground speed: 'groundSpeedSource' 'position' = derived from the target's position change between traffic queries (reliable); " +
+        "'simvar' = the sim's GROUND VELOCITY, which is far too low for MSFS live traffic (roughly a factor of 3) – don't state it as fact. " +
+        "Calling get_traffic again after about 10–20 s gives position-based values. The nearest target has 'closest': true, " +
         "and 'callout' is a short traffic call for it, e.g. 'Traffic, 2 o'clock, 5 miles, 1000 feet above, descending'. " +
         "If 'status' is 'no_traffic', no other aircraft are within the radius (or traffic is disabled in the sim).")]
     public static async Task<string> GetTraffic(
@@ -80,7 +86,10 @@ public static class TrafficTools
             ownAircraft = picture.Own is { } own
                 ? new
                 {
-                    altitudeFt = Fmt.Int(own.AltitudeFt),
+                    altitudeFt = Fmt.Int(own.ReferenceAltitudeFt),
+                    altitudeReference = own.AltitudeReference,
+                    pressureAltitudeFt = Fmt.Int(own.PressureAltitudeFt),
+                    trueAltitudeFt = Fmt.Int(own.AltitudeFt),
                     headingTrueDeg = Fmt.Heading(own.HeadingTrueDeg),
                     onGround = own.OnGround,
                 }
@@ -139,6 +148,9 @@ public static class TrafficTools
         verticalSpeedFpm = Fmt.Int(t.VerticalSpeedFpm),
         verticalSpeedSource = t.VerticalSpeedDerived ? "derived" : null,
         groundSpeedKt = Fmt.Int(t.GroundSpeedKt),
+        groundSpeedSource = t.GroundSpeedSource,
+        groundSpeedBaselineSec = Fmt.Int(t.GroundSpeedBaselineSec),
+        groundSpeedSimVarKt = t.GroundSpeedSource == TrafficTarget.GroundSpeedFromPosition ? Fmt.Int(t.GroundSpeedSimVarKt) : null,
         headingTrueDeg = Fmt.Heading(t.HeadingTrueDeg),
         headingMagDeg = Fmt.Heading(t.HeadingMagDeg),
         onGround = t.OnGround,

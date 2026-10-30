@@ -29,6 +29,7 @@ public sealed class TrafficService : BackgroundService
     private readonly ILogger<TrafficService> _log;
 
     private readonly VerticalSpeedTracker _verticalSpeeds = new();
+    private readonly GroundSpeedTracker _groundSpeeds = new();
 
     private volatile TrafficPicture? _monitoringPicture;
     private DateTimeOffset _lastErrorLogUtc;
@@ -63,10 +64,15 @@ public sealed class TrafficService : BackgroundService
             return new TrafficScanResult(TrafficPicture.Empty(now), radius, false, scan.Error);
         }
 
-        var derived = _verticalSpeeds.Update(scan.Samples, now);
-        var picture = TrafficPictureBuilder.Build(now, scan.Samples, FallbackOwn(), radius, derived);
+        var verticalSpeeds = _verticalSpeeds.Update(scan.Samples, now);
+        var groundSpeeds = _groundSpeeds.Update(scan.Samples, now);
+        var picture = TrafficPictureBuilder.Build(now, scan.Samples, FallbackOwn(), radius, verticalSpeeds, groundSpeeds, OwnPressureAltitude());
         return new TrafficScanResult(picture, radius, scan.Complete, null);
     }
+
+    /// <summary>Eigene Druckhöhe als Bezug für die Höhendifferenz – null, wenn auf die wahre Höhe eingestellt oder (noch) kein Wert da ist.</summary>
+    private double? OwnPressureAltitude() =>
+        _options.AltitudeReference == TrafficAltitudeReference.Pressure && _sim.Num("altPressure") is { } pa && double.IsFinite(pa) ? pa : null;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {

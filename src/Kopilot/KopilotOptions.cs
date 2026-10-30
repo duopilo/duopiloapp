@@ -111,6 +111,24 @@ public sealed class TrafficMonitoringOptions
 
     /// <summary>Abstand der Verkehrsabfragen im Hintergrund (nur in der Luft und wenn die Regel an ist).</summary>
     public int ScanIntervalSec { get; set; } = 3;
+
+    /// <summary>
+    /// Womit die Höhe der Ziele (PLANE ALTITUDE) verglichen wird – gilt für get_traffic und die Verkehrswarnung.
+    /// Pressure (Standard): eigene Druckhöhe. Passt zum Live-Traffic von MSFS, der seine barometrische Höhe aus ADS-B liefert.
+    /// True: eigene wahre Höhe (Verhalten bis 0.9) – für Ziele, deren PLANE ALTITUDE eine wahre Höhe ist
+    /// (bei KI-Verkehr und Multiplayer noch nicht im Sim geprüft).
+    /// </summary>
+    public TrafficAltitudeReference AltitudeReference { get; set; } = TrafficAltitudeReference.Pressure;
+}
+
+/// <summary>Eigene Bezugshöhe für die Höhendifferenz zum Verkehr.</summary>
+public enum TrafficAltitudeReference
+{
+    /// <summary>PRESSURE ALTITUDE (Bezug 1013,25 hPa), wie TCAS und Flugflächen.</summary>
+    Pressure,
+
+    /// <summary>PLANE ALTITUDE (wahre Höhe über MSL).</summary>
+    True,
 }
 
 /// <summary>Sprachausgabe über Windows (nur HTTP-Modus mit Tray). Die Einstellungen aus dem Dashboard liegen in DataDirectory\speech.json.</summary>

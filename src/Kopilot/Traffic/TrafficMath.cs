@@ -61,6 +61,14 @@ public static partial class TrafficMath
         return miles == 1 ? "1 mile" : miles.ToString(CultureInfo.InvariantCulture) + " miles";
     }
 
+    /// <summary>
+    /// Höhe des Ziels minus eigene Höhe, positiv = darüber. Das Ziel geht mit dem Wert ein, den SimConnect liefert (PLANE ALTITUDE);
+    /// bei MSFS-Live-Traffic ist das die barometrische Höhe aus ADS-B. Verglichen wird deshalb – wie beim TCAS – mit der eigenen
+    /// Druckhöhe, nicht mit der wahren Höhe. Testflug über Labrador: eigene wahre Höhe 30.630 ft auf FL320 (−47 °C), ein Ziel
+    /// auf FL330 erschien so 2.400 ft statt 1.000 ft darüber. Ohne Druckhöhe bleibt es bei der wahren Höhe.
+    /// </summary>
+    public static double AltitudeDifference(double targetAltitudeFt, OwnAircraft own) => targetAltitudeFt - own.ReferenceAltitudeFt;
+
     /// <summary>Höhendifferenz für den Callout, auf 100 ft gerundet: "1000 feet above", "500 feet below", "same altitude".</summary>
     public static string AltitudeText(double altitudeDiffFt)
     {

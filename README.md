@@ -59,7 +59,7 @@ Kopilot prüft alle 200 ms ein paar Regeln und legt Meldungen mit einem kurzen e
 | `TOP_OF_DESCENT` | Top of descent | A32NX: FMS-Meldung T/D REACHED; sonst TOD laut SimBrief-Plan |
 | `LANDING_CHECK` | Landing checklist complete / Spoilers not armed | bei 2000 ft RA im Sinkflug: Fahrwerk, Landeklappen, Ground Spoiler; bei 1000 ft RA erneut, falls noch etwas fehlt |
 | `RUNWAY_ASSIGNED` | Runway two three left assigned | Ingame-ATC hat eine Bahn zugewiesen |
-| `TRAFFIC_PROXIMITY` | Traffic, 2 o'clock, 2 miles, 500 feet above, climbing | Ziel in der Luft näher als 3 NM und innerhalb ±1000 ft, eigenes Flugzeug über 500 ft AGL; danach 60 s Ruhe (siehe [Verkehr](#verkehr)) |
+| `TRAFFIC_PROXIMITY` | Traffic, 2 o'clock, 2 miles, 500 feet above, climbing | Ziel in der Luft näher als 3 NM und innerhalb ±1000 ft (gegen die eigene Druckhöhe), eigenes Flugzeug über 500 ft AGL; danach 60 s Ruhe (siehe [Verkehr](#verkehr)) |
 | `SIM_PAUSED` | Sim paused | Sim pausiert – alle anderen Regeln ruhen |
 
 Dazu kommen die Callouts, die ein Pilot Monitoring macht:
@@ -98,14 +98,16 @@ Nach dem Laden eines Flugs, einem Flugzeugwechsel oder einem Air-Start schweigt 
 | `limit` | 10 | höchstens so viele Ziele, nächstes zuerst (1–50) |
 | `airborneOnly` | false | Flugzeuge am Boden (Gate, Rollweg) weglassen |
 
-Pro Ziel: `ident` (Callsign, sonst ATC-ID), `type` (ATC MODEL, z. B. `A320`), `distanceNm`, `clock` („2 o'clock“), `relativeBearingDeg`, `bearingTrueDeg`, `altitudeFt`, `altitudeDiffFt` (+ = darüber), `verticalTrend` (climbing/descending/level ab ±500 ft/min), `groundSpeedKt`, `headingTrueDeg`/`headingMagDeg`, `onGround`. Das nächste Ziel hat `closest: true`; `callout` ist die Verkehrsmeldung dazu:
+Pro Ziel: `ident` (Callsign, sonst ATC-ID), `type` (ATC MODEL, z. B. `A320`), `distanceNm`, `clock` („2 o'clock“), `relativeBearingDeg`, `bearingTrueDeg`, `altitudeFt`, `altitudeDiffFt` (+ = darüber), `verticalTrend` (climbing/descending/level ab ±500 ft/min), `groundSpeedKt` mit `groundSpeedSource`, `headingTrueDeg`/`headingMagDeg`, `onGround`. Das nächste Ziel hat `closest: true`; `callout` ist die Verkehrsmeldung dazu:
 
 ```
 Traffic, 2 o'clock, 5 miles, 1000 feet above, descending
 ```
 
 - **Uhrzeit:** relativ zum eigenen Steuerkurs, je 30°: 12 Uhr = 345° bis unter 15°.
-- **Abstand:** horizontal (Großkreis). Höhen sind bei beiden Flugzeugen wahre Höhe über MSL (`PLANE ALTITUDE`), deshalb weicht die eigene Höhe leicht von `get_flight_state` (indicated) ab.
+- **Abstand:** horizontal (Großkreis).
+- **Höhe:** `altitudeFt` ist die Höhe des Ziels, wie SimConnect sie liefert (`PLANE ALTITUDE`). Beim Live-Traffic von MSFS ist das die barometrische Höhe aus ADS-B, also die Flugfläche – nicht die wahre Höhe. `altitudeDiffFt` rechnet deshalb wie TCAS gegen die eigene Druckhöhe (`PRESSURE ALTITUDE`, 1013,25 hPa). Gegen die wahre Höhe lag die Differenz bei kalter Luft oder tiefem Luftdruck weit daneben: auf FL320 mit 30.630 ft wahrer Höhe erschien ein Ziel auf FL330 2.400 ft statt 1.000 ft darüber. `ownAircraft` zeigt Druckhöhe, wahre Höhe und mit `altitudeReference` (`pressure`/`true`), welche gezählt hat; ohne Druckhöhe nimmt Kopilot die wahre Höhe.
+- **Groundspeed:** Die SimVar `GROUND VELOCITY` ist beim Live-Traffic unbrauchbar (im Testflug meist rund Faktor 3,3 zu klein, z. B. 169 statt 556 kt). Kopilot rechnet die Groundspeed deshalb aus der Positionsänderung zwischen zwei Abfragen, 5–120 s auseinander, bevorzugt etwa 20 s (`groundSpeedSource: "position"`, Abstand in `groundSpeedBaselineSec`, Rohwert der SimVar zum Vergleich in `groundSpeedSimVarKt`). Läuft die Hintergrundabfrage der Verkehrswarnung, gibt es das nach wenigen Sekunden; sonst ab dem zweiten `get_traffic`-Aufruf. Bis dahin steht dort die SimVar (`groundSpeedSource: "simvar"`) – mit Vorsicht lesen.
 - **Trend:** aus `VERTICAL SPEED`. Liefert ein Ziel dort 0 (oft bei Multiplayer), rechnet Kopilot die V/S aus der Höhenänderung zwischen zwei Abfragen (`verticalSpeedSource: "derived"`).
 - **Keine Daten:** `status: "no_traffic"` mit Hinweis, wenn MSFS kein fremdes Flugzeug liefert – meist ist dann KI-Verkehr bzw. Multiplayer im Sim aus. `no_response`, wenn MSFS gar nicht antwortet.
 
@@ -114,6 +116,8 @@ Traffic, 2 o'clock, 5 miles, 1000 feet above, descending
 ```jsonc
 "Kopilot": { "Monitoring": { "Traffic": { "ProximityRangeNm": 3, "ProximityAltitudeFt": 1000, "ProximityCooldownSec": 60, "ScanIntervalSec": 3 } } }
 ```
+
+`"AltitudeReference": "True"` im selben Abschnitt stellt die Höhendifferenz (get_traffic und Verkehrswarnung) zurück auf die eigene wahre Höhe – für Ziele, deren `PLANE ALTITUDE` eine wahre Höhe ist. Bei KI-Verkehr und Multiplayer ist das noch nicht im Sim geprüft; Standard ist `"Pressure"`.
 
 Das ist kein TCAS: keine Ausweichempfehlung, keine Vorhersage des Annäherungspunkts – nur Abstand und Höhe im Moment.
 
