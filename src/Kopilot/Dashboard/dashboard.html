@@ -175,6 +175,10 @@ main {
 .speech-panel select.btn { max-width: 220px; }
 .speech-panel .speech-info { flex-basis: 100%; margin: 0; color: var(--du-dim); }
 .speech-error { flex-basis: 100%; margin: 0; color: var(--amber); }
+.voice-loop { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding-top: 8px; border-top: 1px solid #1d242b; }
+.voice-loop h3 { flex-basis: 100%; margin: 0; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--du-dim); }
+.voice-loop .level { display: inline-block; width: 90px; height: 6px; background: #1d242b; border-radius: 3px; overflow: hidden; vertical-align: middle; }
+.voice-loop .level i { display: block; height: 100%; width: 0; background: var(--cyan); }
 select.btn { padding: 4px 6px; max-width: 190px; }
 .btn.input-on { border-color: var(--amber); color: var(--amber); }
 .btn.arm { border-color: var(--amber); color: var(--amber); }
@@ -368,6 +372,14 @@ select.btn { padding: 4px 6px; max-width: 190px; }
       <label class="check"><input type="checkbox" id="srvAuto"> Radiohöhen, Minimum und Retard auch von Kopilot (nur für Flugzeuge ohne eigene Ansagen)</label>
       <p class="speech-info" id="srvInfo"></p>
       <p class="speech-error" id="srvError" hidden></p>
+      <div class="voice-loop" id="voiceLoop" hidden>
+        <h3>Sprachschleife (Mikrofon → Kopilot und ATC)</h3>
+        <label class="check"><input type="checkbox" id="vlEnabled"> Sprachschleife an – Mikrofon dauerhaft offen, Befehle und Funk ohne Claude</label>
+        <label>Mikrofon <select class="btn" id="vlMic"></select></label>
+        <span>Pegel <span class="level" title="Spitzenpegel der letzten Sekunden"><i id="vlLevel"></i></span> <span id="vlLevelText"></span></span>
+        <p class="speech-info" id="vlInfo"></p>
+        <p class="speech-error" id="vlError" hidden></p>
+      </div>
     </div>
     <div class="pending" id="pending" hidden>
       <div class="rb" id="pendingReadback"></div>
@@ -788,6 +800,61 @@ $("srvKokoroVoice").addEventListener("change", async (e) => {
   await saveServerSpeech({ kokoroVoice: e.target.value });
   try { await fetch("/api/speech/test", { method: "POST", headers: { "X-Kopilot": "1" } }); } catch { /* egal */ }
 });
+/* ------------------------------------------------------------------ Sprachschleife (im Panel "Stimme") */
+const VOICE_STATE = { off: "aus", loading: "lädt Modelle", listening: "hört zu", muted: "stumm", error: "Fehler", unavailable: "nicht verfügbar" };
+const voiceLoop = { data: null, timer: null, saving: false };
+function renderVoiceLoop() {
+  const d = voiceLoop.data;
+  const box = $("voiceLoop");
+  box.hidden = !d || !d.available;
+  if (box.hidden) return;
+  const st = d.status || {};
+  if (!voiceLoop.saving) $("vlEnabled").checked = !!d.settings.enabled;
+  const mics = d.microphones || [];
+  const configured = d.settings.microphone || "";
+  const known = !configured || mics.some((m) => m.name === configured);
+  setHtml("vlMic",
+    `<option value="">Windows-Standardgerät${st.defaultMicrophone ? " (" + esc(st.defaultMicrophone) + ")" : ""}</option>` +
+    mics.map((m) => `<option value="${esc(m.name)}">${esc(m.fullName)}${m.isDefault ? " – Standard" : ""}</option>`).join("") +
+    (known ? "" : `<option value="${esc(configured)}">${esc(configured)} (nicht gefunden)</option>`));
+  if (!voiceLoop.saving) $("vlMic").value = configured;
+  const level = st.levelDbfs;
+  $("vlLevel").style.width = level == null ? "0" : Math.max(0, Math.min(100, (level + 60) / 60 * 100)) + "%";
+  setText("vlLevelText", level == null ? DASH : `${Math.round(level)} dBFS`);
+  const info = [`Zustand: ${VOICE_STATE[st.state] || st.state}`];
+  if (st.microphone) info.push(`Mikrofon: ${st.microphone}`);
+  if (st.downloadProgress != null) info.push(`Modell lädt ${Math.round(st.downloadProgress * 100)} %`);
+  if (st.lastTranscript) info.push(`zuletzt: „${st.lastTranscript}“ → ${st.lastRoute || "?"}${st.lastReply ? " → " + st.lastReply : ""}`);
+  if (st.utterances) info.push(`${st.recognized}/${st.utterances} Sätze erkannt${st.dropped ? `, ${st.dropped} verworfen (${st.lastDropReason})` : ""}`);
+  if (st.state === "off") info.push("Einstellungsdatei: " + (st.settingsFile || ""));
+  setText("vlInfo", info.join(" · "));
+  const err = $("vlError");
+  const problem = d.error || st.error || (st.microphoneFound === false ? `Mikrofon „${st.microphoneConfigured}“ nicht gefunden – es läuft das Standardgerät.` : "");
+  err.hidden = !problem;
+  err.textContent = problem || "";
+  clearTimeout(voiceLoop.timer);
+  if (!$("speechPanel").hidden) voiceLoop.timer = setTimeout(loadVoiceLoop, st.state === "listening" || st.state === "loading" ? 1000 : 3000);
+}
+async function loadVoiceLoop() {
+  try {
+    const r = await fetch("/api/voice", { cache: "no-store" });
+    voiceLoop.data = await r.json();
+  } catch { voiceLoop.data = null; }
+  renderVoiceLoop();
+}
+async function saveVoiceLoop(patch) {
+  voiceLoop.saving = true;
+  try {
+    const r = await fetch("/api/voice", { method: "POST", headers: { "X-Kopilot": "1", "Content-Type": "application/json" }, body: JSON.stringify(patch) });
+    if (r.ok) voiceLoop.data = await r.json();
+  } catch { /* nächster Abruf zeigt den Stand */ }
+  voiceLoop.saving = false;
+  renderVoiceLoop();
+}
+$("vlEnabled").addEventListener("change", (e) => saveVoiceLoop({ enabled: e.target.checked }));
+$("vlMic").addEventListener("change", (e) => saveVoiceLoop({ microphone: e.target.value }));
+$("speechSettings").addEventListener("click", () => { if (!$("speechPanel").hidden) loadVoiceLoop(); });
+
 $("voice").addEventListener("change", (e) => { ui.voice = e.target.value; save("voice", ui.voice); });
 if ("speechSynthesis" in window) { fillVoices(); speechSynthesis.onvoiceschanged = fillVoices; }
 renderSpeechButton();

@@ -22,6 +22,8 @@ public static class KopilotTools
     [Description(
         "Connection status of the Kopilot bridge to Microsoft Flight Simulator 2024: whether the sim is connected and paused, " +
         "loaded aircraft (title and aircraft.cfg path), active aircraft profile, monitoring, input module, SimBrief and ECAM table status and any setup error. " +
+        "'voiceLoop' shows the local voice loop (microphone → Whisper → Kopilot commands/ATC): whether it runs, the microphone in use, " +
+        "the available microphones, input level, the last recognized phrase and where it went. It only exists in the tray (HTTP) instance. " +
         "Call this first if other tools return no data. Every Kopilot response includes 'activeAlerts' (current monitoring alerts with short callouts).")]
     public static string Status(
         SimConnectClient sim,
@@ -30,7 +32,8 @@ public static class KopilotTools
         SimBriefService simBrief,
         EcamCatalog ecam,
         AlertBus alerts,
-        Kopilot.Input.InputService input)
+        Kopilot.Input.InputService input,
+        Kopilot.Voice.IVoiceStatusSource voice)
     {
         var connection = sim.Connection;
         var status = sim.Status;
@@ -75,6 +78,7 @@ public static class KopilotTools
                 loaded = simBrief.Current is { } ofp ? $"{ofp.Origin.Icao} → {ofp.Destination.Icao}" : null,
                 error = simBrief.LastError,
             },
+            voiceLoop = VoiceView(voice.Status),
             receivingValues = sim.ReceivingCount,
             lastError = sim.LastError,
             profilesDirectory = profiles.DirectoryPath,
@@ -460,6 +464,41 @@ public static class KopilotTools
     /// FBW-ARINC-429-Wort erkennen und dekodieren: Das Profil kennt die Variable als arinc429, oder der Rohwert sieht so aus
     /// (ganzzahlig, SSM-Bits über 2^32 gesetzt). Sonst null.
     /// </summary>
+    /// <summary>Sprachschleife für kopilot_status: läuft sie, welches Mikrofon, was wurde zuletzt erkannt.</summary>
+    internal static object VoiceView(Kopilot.Voice.VoiceStatus v) => new
+    {
+        available = v.Available,
+        active = v.State is "listening" or "muted",
+        state = v.State,
+        enabled = v.Enabled,
+        note = v.Note,
+        error = v.Error,
+        microphone = v.Microphone,
+        microphoneConfigured = string.IsNullOrEmpty(v.ConfiguredMicrophone) ? null : v.ConfiguredMicrophone,
+        microphoneFound = v.MicrophoneFound,
+        defaultMicrophone = v.DefaultMicrophone,
+        microphones = v.Microphones?.Select(m => m.IsDefault ? $"{m.FullName} (Windows-Standard)" : m.FullName),
+        levelDbfs = v.LevelDbfs,
+        lastAudioUtc = v.LastAudioUtc,
+        lastHeardUtc = v.LastHeardUtc,
+        lastTranscript = v.LastTranscript,
+        lastRoute = v.LastRoute,
+        lastIntent = v.LastIntent,
+        lastReply = v.LastReply,
+        lastResult = v.LastInputResult,
+        lastTranscriptionMs = v.LastTranscriptionMs,
+        utterances = v.Utterances,
+        recognized = v.Recognized,
+        dropped = v.Dropped,
+        lastDropReason = v.LastDropReason,
+        pendingReadback = v.PendingReadback,
+        model = v.Model,
+        runtime = v.Runtime,
+        downloadProgress = v.DownloadProgress,
+        hotkey = v.Hotkey,
+        settingsFile = v.SettingsFile,
+    };
+
     public static object? ArincView(string name, double raw, AircraftProfile? profile)
     {
         var normalized = SimVarSpec.NormalizeName(name);

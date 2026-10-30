@@ -5,6 +5,7 @@ using Kopilot.Input;
 using Kopilot.Sim;
 using Kopilot.Speech;
 using Kopilot.Tools;
+using Kopilot.Voice;
 
 namespace Kopilot.Dashboard;
 
@@ -111,6 +112,43 @@ public static class DashboardEndpoints
             }
         }).LocalOnly();
 
+        // Sprachschleife: an/aus und Mikrofon. Schreibt nur diese zwei Werte in voice-settings.json (Kommentare bleiben)
+        // und startet die Schleife neu – Kopilot selbst läuft weiter.
+        app.MapGet("/api/voice", (HttpContext context) =>
+        {
+            NoCache(context);
+            if (context.RequestServices.GetService<VoiceLoop>() is not { } loop)
+            {
+                return Results.Content(Json.Serialize(new { available = false, error = VoiceUnavailable }), "application/json");
+            }
+
+            loop.RefreshDevices();
+            return Results.Content(Json.Serialize(VoiceView(loop, null)), "application/json");
+        }).LocalOnly();
+
+        app.MapPost("/api/voice", (HttpContext context, VoiceToggle body) =>
+        {
+            if (!IsDashboardAction(context) || context.RequestServices.GetService<VoiceLoop>() is not { } loop)
+            {
+                return Results.BadRequest();
+            }
+
+            VoiceSettings saved;
+            try
+            {
+                saved = loop.Store.Update(body.Enabled, body.Microphone);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+            {
+                return Results.Content(
+                    Json.Serialize(new { available = true, error = $"{VoiceSettingsStore.FileName} nicht geschrieben: {ex.Message}" }),
+                    "application/json");
+            }
+
+            loop.Reload($"Dashboard: Sprachschleife {(saved.Enabled ? "an" : "aus")}, Mikrofon \"{(saved.Microphone.Device.Length > 0 ? saved.Microphone.Device : "Windows-Standardgerät")}\"");
+            return Results.Content(Json.Serialize(VoiceView(loop, saved)), "application/json");
+        }).LocalOnly();
+
         app.MapPost("/api/input", (HttpContext context, InputToggle body, InputService input) =>
         {
             if (!IsDashboardAction(context))
@@ -147,6 +185,28 @@ public static class DashboardEndpoints
 
     /// <summary>Body von POST /api/input.</summary>
     public sealed record InputToggle(bool Enabled);
+
+    /// <summary>Body von POST /api/voice. null = unverändert; Mikrofon "" = Windows-Standardgerät.</summary>
+    public sealed record VoiceToggle(bool? Enabled, string? Microphone);
+
+    private const string VoiceUnavailable = "Die Sprachschleife gibt es nur in der Tray-Instanz (HTTP-Modus).";
+
+    /// <param name="saved">Gerade gespeicherte Einstellungen (der Neustart der Schleife läuft noch) – sonst der aktuelle Stand.</param>
+    private static object VoiceView(VoiceLoop loop, VoiceSettings? saved)
+    {
+        var status = loop.Status;
+        return new
+        {
+            available = true,
+            settings = new
+            {
+                enabled = saved?.Enabled ?? status.Enabled,
+                microphone = saved?.Microphone.Device ?? status.ConfiguredMicrophone ?? "",
+            },
+            microphones = status.Microphones ?? [],
+            status = KopilotTools.VoiceView(status),
+        };
+    }
 
     internal static object SpeechView(SpeechStatus s) => new
     {

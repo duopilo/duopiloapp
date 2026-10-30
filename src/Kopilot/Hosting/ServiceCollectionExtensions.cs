@@ -6,6 +6,7 @@ using Kopilot.Input;
 using Kopilot.Monitoring;
 using Kopilot.Sim;
 using Kopilot.Traffic;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 
 namespace Kopilot.Hosting;
@@ -41,6 +42,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ITaxiRouteProvider, NoTaxiRouteProvider>();
         services.AddSingleton<AtcService>();
         services.AddHostedService(sp => sp.GetRequiredService<AtcService>());
+
+        // Zustand der Sprachschleife für kopilot_status – die Tray-Instanz ersetzt den Platzhalter (AddKopilotVoice)
+        services.TryAddSingleton<Kopilot.Voice.IVoiceStatusSource, Kopilot.Voice.NoVoiceLoop>();
         return services;
     }
 }
