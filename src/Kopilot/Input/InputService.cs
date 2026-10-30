@@ -52,6 +52,9 @@ public sealed record InputResult(
     /// <summary>Was nach der Ausführung noch geprüft wird (z. B. Fahrwerk verriegelt) – das Ergebnis kommt als Callout.</summary>
     public string? FollowUp { get; init; }
 
+    /// <summary>Callout nach der Ausführung ("Speed 250 set") – für den Modus "ausführen + Callout" der Sprachschleife.</summary>
+    public string? Callout { get; init; }
+
     /// <summary>Readback bestätigt: jetzt die Rückfrage mit Warnhinweis vorlesen und mit demselben Token erneut bestätigen lassen.</summary>
     public const string AwaitingCautionConfirmation = "awaiting_caution_confirmation";
 
@@ -349,6 +352,12 @@ public sealed partial class InputService
             return Refuse(action.Id, planned.ValueText, safety.Refusal!);
         }
 
+        return Hold(plan, value, profile, sequence, ct);
+    }
+
+    /// <summary>Geplante Aktion als offene Aktion anlegen (Readback, wartet auf "confirm") – nur, wenn es die neueste Anfrage ist.</summary>
+    private InputResult Hold(ActionPlan plan, string? value, AircraftProfile profile, long sequence, CancellationToken ct)
+    {
         var now = _time.GetUtcNow();
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(3)).ToLowerInvariant();
         var pending = new PendingAction(token, plan, now, now + ConfirmWindow);
@@ -409,6 +418,161 @@ public sealed partial class InputService
             CautionFollows = plan.NeedsCrossConfirmation,
             Cautions = plan.NeedsCrossConfirmation ? plan.Cautions.Select(c => c.Reason).ToList() : null,
         };
+    }
+
+    // ------------------------------------------------------------------ Sprachschleife: ausführen + Callout
+
+    /// <summary>
+    /// Modus "ausführen + Callout" der Sprachschleife: Der Befehl des Piloten ist die Anweisung (PF → PM) – Kopilot führt ihn
+    /// sofort aus, ohne Readback und "confirm". Alle Prüfungen bleiben: Freigabe, Flugzeug, Sperrliste, Sperren, Bedingungen.
+    /// Verlangt die Aktion eine Rückfrage mit Warnhinweis (<see cref="SafetyRules"/>), wird sie stattdessen wie bei
+    /// <see cref="PrepareAsync"/> als offene Aktion angelegt (<see cref="InputResult.AwaitingConfirmation"/>) – der zweistufige Ablauf
+    /// mit Readback, "confirm" und Rückfrage gilt dann unverändert. Nur für die Sprachschleife, nicht als MCP-Tool.
+    /// </summary>
+    public async Task<InputResult> ExecuteNowAsync(string? actionId, string? value, CancellationToken ct)
+    {
+        try
+        {
+            return await ExecuteNowCoreAsync(actionId ?? "", value, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            _log.LogWarning(Loc.Log("log.input.prepareCancelled"), actionId, value);
+            return new InputResult(InputResult.Failed, Loc.T("input.prepare.callCancelled"), Action: actionId, Value: value);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, Loc.Log("log.input.prepareFailed"), actionId, value);
+            return new InputResult(InputResult.Error, Loc.T("input.error.internal", ex.Message), Action: actionId, Value: value);
+        }
+    }
+
+    private async Task<InputResult> ExecuteNowCoreAsync(string actionId, string? value, CancellationToken ct)
+    {
+        if (!Enabled)
+        {
+            return new InputResult(InputResult.Disabled, Loc.T("input.prepare.disabled"));
+        }
+
+        // Wie eine neue Anfrage: Die offene Aktion verfällt, ein älterer Aufruf darf danach nichts mehr anlegen
+        var sequence = Interlocked.Increment(ref _prepareSequence);
+        lock (_lock)
+        {
+            ExpireLocked();
+            if (_pending is not null)
+            {
+                RetireLocked(InputOutcome.Replaced, Loc.T("input.detail.newRequested"));
+            }
+        }
+
+        var profile = _backend.Profile;
+        if (Precheck(profile) is { } problem)
+        {
+            return Refuse(actionId, value, problem);
+        }
+
+        var action = profile!.Actions.FirstOrDefault(a => a.Id.Equals(actionId?.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (action is null)
+        {
+            return Refuse(actionId, value, Loc.T("input.prepare.unknownAction", actionId, profile.Name));
+        }
+
+        var snapshot = _backend.Snapshot();
+        var result = ActionPlanner.Plan(action, value, profile.Limits, snapshot);
+        if (result.Plan is not { } planned)
+        {
+            return Refuse(action.Id, value, result.Refusal!);
+        }
+
+        if (await CheckRequirementsAsync(planned, ct) is { } unmet)
+        {
+            return Refuse(action.Id, planned.ValueText, unmet);
+        }
+
+        var safety = await ApplySafetyAsync(planned, profile, snapshot, ct);
+        if (safety.Plan is not { } plan)
+        {
+            return Refuse(action.Id, planned.ValueText, safety.Refusal!);
+        }
+
+        // Rückfrage nötig: nie sofort ausführen – zweistufiger Ablauf wie bei prepare_action
+        if (plan.NeedsCrossConfirmation)
+        {
+            return Hold(plan, value, profile, sequence, ct);
+        }
+
+        var epoch = Epoch;
+
+        // Ab hier läuft die Aktion zu Ende, auch wenn die Sprachschleife neu startet – sonst bliebe sie halb ausgeführt
+        using var timeout = new CancellationTokenSource(ExecutionTimeout, _time);
+        await _execution.WaitAsync(CancellationToken.None);
+        try
+        {
+            // Unmittelbar vor dem Senden alles erneut prüfen: Eine vorherige Aktion kann die Sperre einige Sekunden gehalten haben
+            if (sequence != Interlocked.Read(ref _prepareSequence))
+            {
+                lock (_lock)
+                {
+                    AddLogLocked(plan.Action.Id, plan.ValueText, InputOutcome.Discarded, Loc.T("input.prepare.superseded"), null);
+                }
+
+                return new InputResult(InputResult.Failed, Loc.T("input.prepare.superseded"), Action: plan.Action.Id, Value: plan.ValueText);
+            }
+
+            if (!Enabled)
+            {
+                return Refuse(action.Id, plan.ValueText, Loc.T("input.confirm.disabledMeanwhile"));
+            }
+
+            if (Epoch != epoch)
+            {
+                return Refuse(action.Id, plan.ValueText, Loc.T("input.confirm.cancelledInDashboard"));
+            }
+
+            var current = _backend.Profile;
+            if (Precheck(current) is { } again)
+            {
+                return Refuse(action.Id, plan.ValueText, again);
+            }
+
+            if (!ReferenceEquals(current, profile))
+            {
+                return Refuse(action.Id, plan.ValueText, Loc.T("input.confirm.profileChanged"));
+            }
+
+            var fresh = ActionPlanner.Plan(action, value, profile.Limits, _backend.Snapshot());
+            if (fresh.Plan is not { } replanned)
+            {
+                return Refuse(action.Id, plan.ValueText, fresh.Refusal!);
+            }
+
+            var freshSafety = await ApplySafetyAsync(replanned, profile, _backend.Snapshot(), timeout.Token);
+            if (freshSafety.Plan is not { } final)
+            {
+                return Refuse(action.Id, plan.ValueText, freshSafety.Refusal!);
+            }
+
+            if (final.NeedsCrossConfirmation)
+            {
+                // Zustand hat sich inzwischen geändert – jetzt doch mit Readback und Rückfrage
+                return Hold(final, value, profile, sequence, timeout.Token);
+            }
+
+            lock (_lock)
+            {
+                AddLogLocked(final.Action.Id, final.ValueText, InputOutcome.Prepared, Loc.T("input.detail.voiceDirect", final.Readback), null);
+            }
+
+            return await ExecuteAsync(final, profile, timeout.Token);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult(plan, ex, executedAny: true);
+        }
+        finally
+        {
+            _execution.Release();
+        }
     }
 
     // ------------------------------------------------------------------ Schritt 2: bestätigen und ausführen
@@ -718,6 +882,7 @@ public sealed partial class InputService
             StateAfterText: afterText)
         {
             FollowUp = followUp,
+            Callout = plan.Callout,
         };
     }
 

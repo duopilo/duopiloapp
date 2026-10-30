@@ -166,13 +166,31 @@ public static class ActionPlanner
         var readback = string.IsNullOrWhiteSpace(action.Readback)
             ? (spoken is null ? action.Label : $"{action.Label} {spoken}")
             : action.Readback.Replace("{value}", spoken ?? "", StringComparison.OrdinalIgnoreCase);
+        readback = readback.Trim();
 
-        return PlanResult.Ok(new ActionPlan(action, valueText, readback.Trim(), steps, check, requires)
+        return PlanResult.Ok(new ActionPlan(action, valueText, readback, steps, check, requires)
         {
             Value = action.Parameter is null ? null : value,
             Option = option,
             Cautions = cautions,
+            Callout = CalloutFor(action, readback, spoken),
         });
+    }
+
+    /// <summary>
+    /// Callout nach dem Ausführen ("ausführen + Callout"): "callout" aus dem Profil, sonst der Readback – ein "selected" am Ende
+    /// wird dabei zu "set" ("Speed 250 selected" → "Speed 250 set"), so wie der PM die Eingabe ansagt.
+    /// </summary>
+    public static string CalloutFor(ProfileAction action, string readback, string? spokenValue)
+    {
+        if (!string.IsNullOrWhiteSpace(action.Callout))
+        {
+            return action.Callout.Replace("{value}", spokenValue ?? "", StringComparison.OrdinalIgnoreCase).Trim();
+        }
+
+        return readback.EndsWith(" selected", StringComparison.OrdinalIgnoreCase)
+            ? readback[..^" selected".Length] + " set"
+            : readback;
     }
 
     /// <summary>

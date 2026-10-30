@@ -456,7 +456,11 @@ public sealed class AtcService : BackgroundService
                         _raisedAlerts.Add(rule);
                     }
 
-                    alerts.Add(new AlertEvent(0, now, rule, AlertSeverity.Caution, AlertKind.Raise, null, message));
+                    // Ohne Callout (ATC hat es schon gesagt), aber mit Erinnerung für die Bestätigungspflicht der Sprachschleife
+                    alerts.Add(new AlertEvent(0, now, rule, AlertSeverity.Caution, AlertKind.Raise, null, message)
+                    {
+                        Reminder = d.Kind == AtcDeviationKind.Squawk ? $"Check squawk {d.Expected}" : $"Check frequency {d.Expected}",
+                    });
                     break;
                 case AtcDeviationChange.Cleared:
                     message = d.Kind == AtcDeviationKind.Squawk

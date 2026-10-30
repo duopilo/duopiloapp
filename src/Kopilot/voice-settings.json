@@ -67,7 +67,28 @@
     // So lange wartet ein Readback auf "Confirm" / "Correct" / "Affirm" (s), ab dem Ende des Readbacks. "Ja" / "OK" bestätigen nicht.
     "confirmTimeoutSec": 60,
     // Unbekannte Sätze bis zu so vielen Wörtern bekommen "Say again", längere werden still verworfen.
-    "sayAgainMaxWords": 8
+    "sayAgainMaxWords": 8,
+    // "Ausführen + Callout": sicher erkannte Befehle sofort ausführen und danach ansagen ("Speed 250 set", "Flaps 2") – wie der PM.
+    // Readback mit "Confirm" nur bei unsicherer Erkennung und bei Aktionen mit Rückfrage (z. B. Transponder STBY im Flug).
+    // false = jeder Befehl mit Readback und "Confirm" (wie bis 0.9.1).
+    "executeWithCallout": true,
+    // Darunter gilt die Erkennung als unsicher (0–1, Mittel der Whisper-Token-Wahrscheinlichkeiten) → Readback mit "Confirm".
+    "minConfidence": 0.6
+  },
+
+  "acknowledge": {
+    // Bestätigungspflicht: wichtige Meldungen erwarten "check" oder "copy" (auch "checked", "copied", "correcting").
+    // Ohne Antwort einmal wiederholen, danach Warnton und Eintrag im Dashboard – nie endlos.
+    "enabled": true,
+    // Wartezeit bis zur Wiederholung und noch einmal bis zur Eskalation (s, 5–60).
+    "repeatAfterSec": 10,
+    // Meldungen (ab Caution), die eine Quittung brauchen. Leer = Standardliste.
+    "rules": [
+      "FUEL_WARNING", "ATC_SQUAWK", "ATC_FREQUENCY", "TCAS_RA",
+      "MASTER_WARNING", "MASTER_CAUTION", "STALL", "OVERSPEED", "GEAR_SPEED", "FLAP_SPEED", "SINK_RATE", "BANK_ANGLE",
+      "GEAR_DOWN_HIGH", "SPEED_LIMIT_FL100", "SPEED_DEVIATION", "TRAFFIC_PROXIMITY", "LANDING_CHECK",
+      "ATHR_OFF", "APPR_NOT_ACTIVE", "LOC_DEVIATION", "GS_DEVIATION"
+    ]
   },
 
   "atc": {

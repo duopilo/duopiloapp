@@ -17,6 +17,9 @@ public interface IAtcLink
 
     /// <summary>Funkspruch des Piloten (Abschrift, wie gesprochen). Startet bei Bedarf die ATC-Sitzung.</summary>
     Task<AtcTransmitResult> TransmitAsync(string text, CancellationToken ct);
+
+    /// <summary>Aktive Station der laufenden Sitzung mit Frequenz (für die Abfrage "Station"), null ohne Sitzung.</summary>
+    StationReading? ActiveStation() => null;
 }
 
 /// <summary>Das echte ATC-Modul.</summary>
@@ -27,4 +30,9 @@ public sealed class AtcServiceLink(AtcService atc) : IAtcLink
     public AtcRoutingInfo RoutingInfo() => atc.RoutingInfo();
 
     public Task<AtcTransmitResult> TransmitAsync(string text, CancellationToken ct) => atc.TransmitAsync(text, ct);
+
+    public StationReading? ActiveStation() => atc.WithSession((session, _) =>
+        session is null || session.Phase is AtcPhase.Inactive or AtcPhase.Done
+            ? null
+            : new StationReading(session.Station.Name, session.Station.Frequency.Number));
 }

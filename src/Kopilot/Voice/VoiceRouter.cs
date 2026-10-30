@@ -36,6 +36,10 @@ public sealed partial class VoiceRouter
         "engines", "eng", "triebwerk", "triebwerke", "kurs", "hdg", "spd", "apu", "speedbrake", "bremsklappen", "luftbremse", "spoilers",
         "seatbelts", "anschnallzeichen", "baro", "qnh", "altimeter", "höhenmesser", "autopilot", "ap", "autobrake", "status", "system",
         "bitte", "please", "jetzt", "now", "mal", "noch", "dann", "then", "ok", "okay",
+        // Abfragen und Checklisten (v0.9.2): "Verkehr Kontrolle", "Wind Kontrolle", "start approach checklist"
+        "verkehr", "traffic", "wind", "wetter", "temperatur", "temperature", "squawk", "transponder", "station", "frequenz", "frequency",
+        "wegpunkt", "waypoint", "landemenge", "start", "run", "read", "begin", "starte", "lies", "checklist", "nav", "logo", "battery",
+        "batterie", "batterien", "power",
     };
 
     // Ozeanische und andere Stationen, die ohne Zusatz gerufen werden

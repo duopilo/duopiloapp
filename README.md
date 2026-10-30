@@ -62,7 +62,15 @@ Every 200 ms Kopilot checks a few rules and stores alerts with a short English c
 | `LANDING_CHECK` | Landing checklist complete / Spoilers not armed | at 2000 ft RA in the descent: gear, landing flaps, ground spoilers; again at 1000 ft RA if something is still missing |
 | `RUNWAY_ASSIGNED` | Runway two three left assigned | in-game ATC has assigned a runway |
 | `TRAFFIC_PROXIMITY` | Traffic, 2 o'clock, 2 miles, 500 feet above, climbing | airborne target closer than 3 NM and within ±1000 ft (against own pressure altitude), own aircraft above 500 ft AGL; then 60 s quiet (see [Traffic](#traffic)) |
+| `TCAS_RA` | TCAS RA / Clear of conflict | vertical FMA shows TCAS (resolution advisory) for 0.3 s – warning; "Clear of conflict" 1.5 s after it ends |
+| `ATHR_OFF` | Autothrust off | A/THR goes from armed/active to off in the air (not when it disconnects below 100 ft RA at touchdown) |
+| `FMA_CHANGE` | Loc star / Glideslope star / Alt blue | new lateral or vertical mode, or a newly armed mode ("… blue"), in the air once it has stood for 1 s – info |
+| `LOC_DEVIATION` | Loc | LOC or LAND engaged, 50–2000 ft RA, localizer deviation more than ¼ dot for 1 s |
+| `GS_DEVIATION` | Glideslope | G/S or LAND engaged, 100–2000 ft RA, glideslope deviation more than 1 dot for 1 s |
+| `APPR_NOT_ACTIVE` | Approach phase not activated | from 15 NM before the destination with managed speed, but the FMGC is not in the approach phase yet – once per approach |
 | `SIM_PAUSED` | Sim paused | sim paused – all other rules rest |
+
+The autoflight callouts (`TCAS_RA` to `APPR_NOT_ACTIVE`) depend on profile bindings (FMA, A/THR, FMGC phase, LOC/GS deviation). Kopilot doesn't guess: without a binding, the callout stays off for that aircraft. `get_aircraft_profile` → `callouts` shows per rule whether it is `verified`, `unverified` (binding present, not yet checked in the sim) or `missing` – the overview per aircraft is in [docs/aircraft.md](docs/aircraft.md#autoflight-callouts-v092).
 
 On top of that come the callouts a Pilot Monitoring makes:
 
@@ -373,27 +381,44 @@ Microphone → Silero VAD (utterance end) → Whisper (transcript) → Router �
 - **Router:** if the utterance contains a station callsign ("Frankfurt Delivery", "Langen Radar", "Shanwick") or your own callsign – at the start of an initial call or at the end of a readback ("…, squawk two two zero five, Lufthansa four alpha bravo") –, it goes to the ATC module. Everything else is a Kopilot command ("Squawk two two zero five" without a callsign sets the transponder). Starting with "Kopilot, …" always goes to Kopilot.
 - Sim paused → Kopilot says nothing and processes nothing.
 
-**Commands** (fixed patterns, German and English, examples):
+**Commands** (fixed patterns, German and English, examples) – the voice loop can do everything Claude can do via the Kopilot tools: **every action of every aircraft profile has a voice command**, every switch with every position (a test checks this for all profiles; the complete list with an English and a German example per action is in `src/Kopilot/Voice/VoiceCommandCatalog.cs`):
 
 | Area | Phrases |
 |---|---|
 | Configuration | Gear up/down, Fahrwerk ein/aus · Flaps 0/1/2/3/Full, Klappen null/eins/voll/einfahren (not "Klappen ein" – too close to "eins") · Speedbrake retract/half/full · Arm/Disarm spoilers, Spoiler armen |
-| Brakes, lights, signs | Autobrake low/medium/max/off · Landing lights on/off, Landelichter an · Strobe on/auto/off · Beacon on · Taxi light on · Seat belts on/off, Anschnallzeichen an |
-| APU | APU start · APU master on/off · APU bleed on/off |
-| EFIS, FCU | QNH 1013 / QNH one zero one three · Baro standard · Altitude five thousand · Flight level one two zero · Speed two five zero · Heading zero niner zero · Managed speed · Vertical speed minus one thousand · Autopilot one on · Approach on |
-| Transponder | Squawk seven thousand / Squawk 1 2 3 4 · TCAS TA/RA · TCAS TA only |
+| Brakes, lights, signs | Autobrake low/medium/max/off · Landing lights on/off, Landelichter an · Strobe on/auto/off · Beacon on · Taxi light on · Nav lights on, Nav and logo lights off · Logo lights on · Seat belts on/off, Anschnallzeichen an · No smoking on/auto, Rauchverbot an |
+| Electrics, APU | Batteries on/off, Batterien aus · External power on/off, Bodenstrom an · APU start · APU master on/off · APU bleed on/off |
+| Anti-ice | Engine anti ice on, Engine one anti ice on, Triebwerk zwei Enteisung aus · Wing anti ice on · Probe heat on/auto, Sondenheizung auto |
+| EFIS, FCU | QNH 1013 / QNH one zero one three · Baro standard · Altitude five thousand · Flight level one two zero · Speed two five zero · Heading zero niner zero · Managed speed · Vertical speed minus one thousand · Autopilot one on · Approach on · ND mode ARC/ROSE NAV/PLAN, ND Modus Plan · ND range one hundred sixty, Range forty · Altitude increment one thousand · Expedite climb, Expedite off |
+| Transponder, TCAS, radio | Squawk seven thousand / Squawk 1 2 3 4 · Transponder standby/auto · Altitude reporting on/off, Höhenübermittlung aus · TCAS TA/RA · TCAS TA only · TCAS traffic all/above/below/threat · COM one standby one two one decimal five · Swap COM one |
 
-Every command goes through the existing two-step flow: Kopilot calls `prepare_action` and speaks the readback ("Flaps one"). Only on **"Confirm"**, **"Correct"** or **"Affirm"** (also German "Korrekt") does `confirm_action` follow; **"Negative"** or **"Cancel"** discards the action ("Cancelled"). "Yes"/"Ja", "OK" or "Roger" alone confirm nothing – after a readback Kopilot then asks "Say again". Only what you have heard gets confirmed: "Confirm" only counts once the readback has been spoken completely, and only in an utterance you started after that. Without an answer, the action expires silently 60 seconds after the readback; if the readback isn't spoken at all (no voice, pause), immediately. Once executed, Kopilot says nothing – only "Not confirmed" if the aircraft didn't accept the value, "Unable" for an interlock and "Input disabled" if input is locked. Critical actions (see Input module) ask again with a caution after the first "Confirm" ("Caution, autothrust off. Confirm autothrust off?"); only a second "Confirm" executes. After gear and flaps comes the callout with the position reached ("Gear down, three green"). Two commands in one utterance or something unknown → "Say again" (longer conversations in the room are silently discarded).
+**Execute + callout** (default, `commands.executeWithCallout`): as in a real crew, your command is the instruction – Kopilot executes it right away and calls it out once the aircraft has accepted it ("Speed two five zero set", "Altitude five thousand set"). For gear and flaps the callout comes with the position reached ("Gear down, three green", "Flaps two"). Kopilot says "Not confirmed" if the aircraft didn't accept the value, "Unable" for an interlock (blocked actions stay blocked, e.g. batteries off or external power in flight) and "Input disabled" if input is locked. The input module logs every one of these commands like `prepare_action` → `confirm_action`.
 
-**Queries** – answered only with the plain callout, speeds always in knots:
+A **readback with "Confirm"** only comes when the recognition was uncertain (Whisper confidence below `commands.minConfidence`, default 0.6 – the confidence is in the log for every utterance) and for every action that needs a confirmation according to the interlocks (see Input module, e.g. transponder standby or altitude reporting off in flight). Then the two-step flow applies: Kopilot speaks the readback ("Flaps one"); only on **"Confirm"**, **"Correct"** or **"Affirm"** (also German "Korrekt") is it executed; **"Negative"** or **"Cancel"** discards the action ("Cancelled"). "Yes"/"Ja", "OK" or "Roger" alone confirm nothing – after a readback Kopilot then asks "Say again". Only what you have heard gets confirmed: "Confirm" only counts once the readback has been spoken completely, and only in an utterance you started after that. Without an answer, the action expires silently 60 seconds after the readback; if the readback isn't spoken at all (no voice, pause), immediately. Critical actions ask again with a caution after the first "Confirm" ("Caution, autothrust off. Confirm autothrust off?"); only a second "Confirm" executes. With `"executeWithCallout": false` every command takes this route. Two commands in one utterance or something unknown → "Say again" (longer conversations in the room are silently discarded).
+
+**Queries** – answered only with the plain callout (no extra information), spoken with the same pronunciation as all callouts, speeds always in knots:
 
 | Question | Answer (example) |
 |---|---|
 | Speed check | Speed two five zero (on the ground: Ground speed one two) |
 | Altitude check | Altitude five thousand / Flight level three five zero (with STD) |
 | Fuel check | Fuel twelve point four tons |
+| Fuel versus plan, Landing fuel, Landemenge | Fuel thirty four point one, two point two below plan, landing fuel six point eight (", below minimum" if so) |
+| Next waypoint, Nächster Wegpunkt | Hendy, one hundred twenty miles, E T A zero three four two |
+| ETA, Ankunftszeit | E T A zero four one eight |
+| Top of descent, Sinkflugbeginn | Top of descent eighty five miles, E T A zero three one two / Top of descent passed |
+| Traffic check, Verkehr | Traffic, 2 o'clock, 5 miles, 1000 feet above, descending (like `get_traffic`) / No traffic |
+| Wind check, Temperature, Wind and temperature | Wind two seven one at forty five · Temperature minus forty seven |
+| Squawk check, Transponder Code | Squawk two three four zero (", standby" if the transponder is in standby) |
+| Station check, Which frequency, Aktive Station | Montreal Center, one three two decimal two five (active ATC station; without an ATC session: Active frequency …) |
 | Engine check | Engines normal / Engine two not running / N1 split |
 | Gear, Flaps, Speedbrake, Spoilers, Seat belts, APU, Baro, Heading check | Gear down · Flaps one · Speedbrake retracted · Spoilers armed · … |
+
+Plan values (fuel against plan, waypoint, ETA, top of descent) are calculated like `get_progress` from the SimBrief plan – without a plan: "Unable".
+
+**Acknowledgment:** important messages expect **"Check"** or **"Copy"** (also "Checked", "Copied"): fuel warnings, safety cautions and warnings (stall, overspeed, gear/flap speed, sink rate, bank angle, master warning/caution, speed deviation, traffic, landing check, autothrust off, approach phase, LOC/GS deviation), squawk and frequency deviations reported by the ATC module ("Check squawk two three four zero") and TCAS RA. Without an answer, Kopilot repeats the message once after about 10 s; if there is still no answer, it escalates – an attention tone and the dashboard alert `ACK_MISSING` (warning) – and stops repeating. A "Check" afterwards or the end of the condition (e.g. sink rate corrected) clears the alert. The waiting time stops while the sim is paused; muting voice input drops pending acknowledgments (you can't answer). Which messages count and the waiting time: `acknowledge` in `voice-settings.json`.
+
+**Checklists** (challenge-response after the Airbus Normal Checklist): start with "Before start checklist" (German "Checkliste vor dem Anlassen"), "After start", "Before takeoff" ("vor dem Start"), "Approach" ("Anflug"), "Landing" ("Landung"), "After landing" ("nach der Landung"), "Parking" ("Parken"). Kopilot reads the challenge ("Before start checklist, cockpit preparation"), waits for your answer and compares it with the sim where it can: signs and seat belts, fuel quantity (said tonnes against fuel on board), baro reference (standard or QNH against the altimeter), beacon, flap setting, autothrust, autobrake, landing memo (gear down, signs, ground spoilers armed, landing flaps), flaps, spoilers and APU after landing, APU bleed, engines off. A deviation is called out ("Beacon off") and the item stays open – answer again after correcting it; if it still deviates, the item is noted as open and the checklist continues ("… checklist complete, open: beacon"). "Standby" holds the item, "Skip" ("Next item", "Überspringen") skips it (open), "Say again" repeats the challenge, "Stop checklist" ("Checkliste abbrechen") interrupts. Without an answer Kopilot repeats the challenge once after 30 s. While a checklist is running, every utterance without the wake word is the answer ("Seat belts on" is not executed) – commands and queries work with "Kopilot, …"; "Check"/"Copy" still acknowledge messages.
 
 **Control:** "Kopilot pause" / "Kopilot resume" (German "Kopilot weiter") or the hotkey (default `Ctrl+Alt+K`, system-wide) mute and unmute voice input – callouts keep running. "Say again" repeats the last reply.
 
@@ -409,7 +434,8 @@ Every command goes through the existing two-step flow: Kopilot calls `prepare_ac
 | `recognition` | Whisper model (`tiny`/`base`/`small`, also `-q5_1`/`-q8_0`), `cpu`/`gpu`, threads, language `auto`/`de`/`en`, vocabulary hint |
 | `voices` | Kokoro voice for Kopilot, volume for Kopilot and ATC |
 | `hotkeys` | Hotkey for mute/unmute |
-| `commands` | Wake word, whether the wake word is required (`requireWakeWord`), timeout for the confirmation |
+| `commands` | Wake word, whether the wake word is required (`requireWakeWord`), timeout for the confirmation, execute + callout (`executeWithCallout`, default on), confidence threshold for the readback (`minConfidence`, 0–1, default 0.6) |
+| `acknowledge` | Acknowledgment on/off, waiting time until the repeat and the escalation (`repeatAfterSec`, default 10), rules that expect "check"/"copy" |
 | `atc` | Additional callsigns and stations (the flight's own come from the ATC module), callsign from MSFS |
 | `callouts` | Active and muted rules, silence while paused, taxi speed warning |
 

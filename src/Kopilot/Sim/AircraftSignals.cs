@@ -145,6 +145,18 @@ public sealed class AircraftSignals(SimConnectClient sim)
     /// <summary>FMS-Meldung "T/D REACHED" (nur mit Profil-Binding).</summary>
     public bool? TdReached => Flag(BindingKeys.TdReached);
 
+    /// <summary>FMGC-Flugphase als Text ("CRUISE", "APPROACH" …), nur mit Profil-Binding.</summary>
+    public string? FmgcPhase => Text(BindingKeys.FmgcPhase);
+
+    /// <summary>LOC-Abweichung in Punkten (dots), null ohne Binding oder ohne gültiges Signal.</summary>
+    public double? LocDeviationDots => Deviation(BindingKeys.LocDeviation, BindingKeys.LocValid);
+
+    /// <summary>Glideslope-Abweichung in Punkten (dots), null ohne Binding oder ohne gültiges Signal.</summary>
+    public double? GsDeviationDots => Deviation(BindingKeys.GsDeviation, BindingKeys.GsValid);
+
+    private double? Deviation(string key, string validKey) =>
+        Has(validKey) && Flag(validKey) != true ? null : Raw(key);
+
     // ------------------------------------------------------------------ Geschwindigkeiten (immer Knoten)
 
     /// <summary>Ziel-Speed in kt: managed (FMS), wenn aktiv und bekannt, sonst die im FCU gewählte. Mach-Ziele werden in kt umgerechnet.</summary>

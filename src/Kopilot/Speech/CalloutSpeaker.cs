@@ -188,6 +188,7 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
             Volume = Math.Clamp(double.IsFinite(request.Volume) ? request.Volume : 1, 0, 1),
             Source = request.Source,
             OnSpoken = request.OnSpoken,
+            Tone = request.Tone,
         };
 
         var (accepted, preempt) = _queue.Offer(item, now, _current?.Priority);
@@ -532,6 +533,22 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
         if (item.Priority == SpeechPriority.Atc)
         {
             await SpeakAtcAsync(speech, item, ct);
+            return;
+        }
+
+        if (item.Tone)
+        {
+            // Warnton (Bestätigungspflicht ohne Antwort) über denselben Player wie Kokoro
+            await _engineLock.WaitAsync(ct);
+            try
+            {
+                await speech.PlayWavAsync(ToneGenerator.AttentionWav(_settings.Volume * item.Volume), ct);
+            }
+            finally
+            {
+                _engineLock.Release();
+            }
+
             return;
         }
 

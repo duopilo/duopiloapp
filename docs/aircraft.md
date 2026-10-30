@@ -155,6 +155,21 @@ Inputs: all actions of the A32NX profile, plus `elec.battery`, `lights.nav` and 
 
 iniBuilds doesn't publish a list of its L: variables (around 3000), the MCDU/FMS can't be read from outside, and there is no failure menu. So the profile only contains detection and limits. Please check new bindings with `read_simvar` and a state change first (see [README](../README.md)).
 
+## Autoflight callouts (v0.9.2)
+
+The callouts from the KLAX approach in testlog 0.9 depend on these bindings. Without a binding Kopilot doesn't guess – the callout stays off for that aircraft. `get_aircraft_profile` → `callouts` shows the same status live.
+
+| Rule | Needs | A32NX | A330-900neo | A380X | A321LR |
+|---|---|---|---|---|---|
+| `TCAS_RA` | `fmaVertical` | verified | verified | unverified | missing |
+| `ATHR_OFF` | `athrStatus` | unverified | verified | unverified | missing |
+| `FMA_CHANGE` | `fmaLateral`, `fmaVertical` (armed modes with `fmaLateralArmed`/`fmaVerticalArmed`) | verified | verified | unverified | missing |
+| `LOC_DEVIATION` | `locDeviation`, `fmaLateral` | unverified | missing | missing | missing |
+| `GS_DEVIATION` | `gsDeviation`, `fmaVertical` | unverified | missing | missing | missing |
+| `APPR_NOT_ACTIVE` | `fmgcPhase`, `speedManaged` | unverified | missing | missing | missing |
+
+New A32NX bindings (names from the FBW documentation, not yet checked in the sim): `fmgcPhase` = `L:A32NX_FMGC_FLIGHT_PHASE` (0 PREFLIGHT … 5 APPROACH, 6 GO AROUND, 7 DONE), `locDeviation` = `L:A32NX_RADIO_RECEIVER_LOC_DEVIATION` and `gsDeviation` = `L:A32NX_RADIO_RECEIVER_GS_DEVIATION` (degrees, converted to dots like the FBW PFD: LOC 0.8°/dot, G/S 0.4°/dot), valid flags `_LOC_IS_VALID`/`_GS_IS_VALID`. For the A330-900neo the variables for FMGC phase and LOC/GS deviation are not known yet – they will be added after a test flight.
+
 ## In-game ATC (all aircraft)
 
 | Value | Status |

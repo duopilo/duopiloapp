@@ -29,6 +29,12 @@ public sealed class ProfileAction
     /// <summary>Readback auf Englisch, "{value}" wird ersetzt, z. B. "Speed {value} selected".</summary>
     public string Readback { get; set; } = "";
 
+    /// <summary>
+    /// Callout nach dem Ausführen im Modus "ausführen + Callout" der Sprachschleife, "{value}" wird ersetzt, z. B. "Speed {value} set".
+    /// Fehlt = der Readback (ein "selected" am Ende wird zu "set").
+    /// </summary>
+    public string? Callout { get; set; }
+
     /// <summary>Prüfung nach dem Ausführen: Hat das Flugzeug den Wert übernommen?</summary>
     public ActionCheck? Check { get; set; }
 
@@ -196,6 +202,9 @@ public sealed record ActionPlan(
 
     /// <summary>Gewählte Option (Schlüssel aus dem Profil), null bei Zahlen oder ohne Parameter.</summary>
     public string? Option { get; init; }
+
+    /// <summary>Callout nach dem Ausführen ("Speed 250 set", "Flaps 2") – Modus "ausführen + Callout" der Sprachschleife.</summary>
+    public string Callout { get; init; } = "";
 
     /// <summary>
     /// Warnhinweise, die eine zusätzliche Rückfrage verlangen (Gegenbestätigung nach dem Readback). Gilt in jedem Ablauf –

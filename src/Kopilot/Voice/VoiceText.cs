@@ -71,6 +71,11 @@ public static partial class VoiceText
         (Fold(@"say again|repeat|wiederholen|noch ?mal|nochmal"), "say again"),
         (Fold(@"stand ?by|stand by"), "standby"),
         (Fold(@"vertical speed|v ?s"), "vs"),
+        (Fold(@"check ?lists?|check listen?|checklisten?"), "checklist"),
+        (Fold(@"take off"), "takeoff"),
+        (Fold(@"n d|navigation display"), "nd"),
+        (Fold(@"e t a"), "eta"),
+        (Fold(@"t o d"), "tod"),
     ];
 
     private static readonly Dictionary<string, char> Nato = new(StringComparer.Ordinal)

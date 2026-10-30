@@ -67,6 +67,11 @@ public sealed class SnapshotFactory(SimConnectClient sim, EcamCatalog ecam, SimB
             TdReached = signals.TdReached,
             PlanTodDistanceNm = _todDistance,
             Fma = Fma(signals),
+            FmgcPhase = signals.FmgcPhase,
+            SpeedManaged = signals.SpeedManaged,
+            LocDeviationDots = signals.LocDeviationDots,
+            GsDeviationDots = signals.GsDeviationDots,
+            DestinationDistanceNm = DestinationDistance(),
             MasterWarning = signals.MasterWarning,
             MasterCaution = signals.MasterCaution,
             EcamTitles = ecamState.Titles,
@@ -80,6 +85,12 @@ public sealed class SnapshotFactory(SimConnectClient sim, EcamCatalog ecam, SimB
             FuelPlan = _fuelSample,
         };
     }
+
+    /// <summary>Direkte Entfernung zum Zielflughafen des geladenen Plans (nm), null ohne Plan oder Position.</summary>
+    private double? DestinationDistance() =>
+        simBrief.Current?.Destination is { Lat: { } dlat, Lon: { } dlon } && sim.Num("lat") is { } lat && sim.Num("lon") is { } lon
+            ? RouteMath.DistanceNm(lat, lon, dlat, dlon)
+            : null;
 
     public static FmaState Fma(AircraftSignals s)
     {

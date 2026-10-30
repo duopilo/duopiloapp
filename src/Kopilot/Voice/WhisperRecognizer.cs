@@ -7,7 +7,11 @@ using Whisper.net.LibraryLoader;
 namespace Kopilot.Voice;
 
 /// <summary>Ergebnis der Spracherkennung.</summary>
-public sealed record Transcript(string Text, string? Language, int ElapsedMs);
+public sealed record Transcript(string Text, string? Language, int ElapsedMs)
+{
+    /// <summary>Wie sicher Whisper ist (0–1, Mittel der Token-Wahrscheinlichkeiten), null = unbekannt.</summary>
+    public double? Confidence { get; init; }
+}
 
 /// <summary>Spracherkennung – austauschbar für Tests.</summary>
 public interface ISpeechRecognizer : IDisposable
@@ -114,12 +118,25 @@ public sealed class WhisperRecognizer : ISpeechRecognizer
             }
 
             var sb = new StringBuilder();
+            double weighted = 0;
+            var weight = 0;
             await foreach (var segment in _processor.ProcessAsync(samples, ct))
             {
                 sb.Append(segment.Text);
+
+                // Konfidenz: Token-Wahrscheinlichkeit, nach Textlänge gewichtet (ein Satz ist meist ein Segment)
+                var length = Math.Max(1, segment.Text?.Trim().Length ?? 0);
+                if (float.IsFinite(segment.Probability))
+                {
+                    weighted += segment.Probability * length;
+                    weight += length;
+                }
             }
 
-            return new Transcript(sb.ToString().Trim(), _currentLanguage, (int)watch.ElapsedMilliseconds);
+            return new Transcript(sb.ToString().Trim(), _currentLanguage, (int)watch.ElapsedMilliseconds)
+            {
+                Confidence = weight > 0 ? Math.Clamp(weighted / weight, 0, 1) : null,
+            };
         }
         finally
         {

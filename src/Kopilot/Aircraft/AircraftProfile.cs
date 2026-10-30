@@ -390,6 +390,21 @@ public static class BindingKeys
     public const string ApuBleed = "apuBleed";
     public const string ApuFlapOpen = "apuFlapOpen";
 
+    /// <summary>FMGC-Flugphase (enum, z. B. 5 = APPROACH) – für "Approach phase not activated".</summary>
+    public const string FmgcPhase = "fmgcPhase";
+
+    /// <summary>LOC-Abweichung in Punkten (dots, über "scale" umgerechnet), Vorzeichen egal.</summary>
+    public const string LocDeviation = "locDeviation";
+
+    /// <summary>Glideslope-Abweichung in Punkten (dots, über "scale" umgerechnet), Vorzeichen egal.</summary>
+    public const string GsDeviation = "gsDeviation";
+
+    /// <summary>LOC-Signal gültig (bool). Fehlt = Abweichung gilt, sobald sie gelesen wird.</summary>
+    public const string LocValid = "locValid";
+
+    /// <summary>Glideslope-Signal gültig (bool).</summary>
+    public const string GsValid = "gsValid";
+
     /// <summary>Alle bekannten Schlüssel (für get_aircraft_profile).</summary>
     public static readonly IReadOnlyList<string> All =
     [
@@ -399,6 +414,7 @@ public static class BindingKeys
         FmgcDiscreteWord1, FmAltitudeConstraint, FmsToWptDistance, FmsToWptBearing, GroundSpoilersOut, DecelLight,
         TransitionAltitude, TransitionLevel, DecisionHeight, MinimumDescentAltitude,
         ApuMaster, ApuStart, ApuAvailable, ApuN, ApuEgt, ApuBleed, ApuFlapOpen,
+        FmgcPhase, LocDeviation, GsDeviation, LocValid, GsValid,
     ];
 
     /// <summary>Schlüssel, die standardmäßig schnell abonniert werden (Monitoring).</summary>
@@ -407,5 +423,6 @@ public static class BindingKeys
         Ap1, Ap2, AthrStatus, FmaLateral, FmaVertical, MasterWarning, MasterCaution, SpeedTarget, SpeedManaged,
         SelectedSpeed, MachMode, SelectedAltitude, Vls, FmaLateralArmed, FmaVerticalArmed, AthrMode, Flaps, SpoilersArmed,
         FmgcDiscreteWord1, TdReached, GroundSpoilersOut, DecelLight, V1, Vr,
+        FmgcPhase, LocDeviation, GsDeviation, LocValid, GsValid,
     };
 }
