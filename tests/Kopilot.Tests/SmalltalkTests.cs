@@ -34,7 +34,7 @@ public sealed class SmalltalkTests
     {
         public List<string> Calls { get; } = [];
 
-        public InputResult Next { get; set; } = new(InputResult.Executed, Action: "gear.up", Callout: "Gear up", Confirmed: true);
+        public InputResult Next { get; set; } = new(InputResult.Executed, Action: "gear.up", Confirmed: true) { Callout = "Gear up" };
 
         public Task<InputResult> PrepareAsync(string actionId, string? value, CancellationToken ct)
         {
