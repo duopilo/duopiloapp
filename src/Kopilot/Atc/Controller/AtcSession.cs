@@ -62,7 +62,7 @@ public sealed partial class AtcSession
         _stations = new AtcStations(
             templates,
             context.FacilityFrequencies,
-            new AtcVoiceAssigner(templates.Voices, plan.FlightKey, context.CalloutVoice, context.InstalledVoices),
+            new AtcVoiceAssigner(templates.Voices, plan.FlightKey, context.CalloutVoice, context.InstalledVoices, context.KopilotVoice),
             plan.Airspace);
         Squawk = GenerateSquawk(plan.FlightKey);
         Oceanic = plan.Oceanic is null ? OceanicClearanceState.NotRequired : OceanicClearanceState.NotYetDue;

@@ -42,6 +42,9 @@ public static class HttpHost
         // Einstellungsseite und „Fehler melden“ im Dashboard
         builder.Services.AddSingleton(sp => LocalSettingsStore.ForApplication(sp.GetRequiredService<IOptions<KopilotOptions>>().Value));
         builder.Services.AddSingleton<SettingsService>();
+
+        // Smalltalk mit einem Sprachmodell (optional, standardmäßig aus) – Einstellungsseite und Sprachschleife
+        builder.Services.AddSingleton<Kopilot.Smalltalk.SmalltalkService>();
         builder.Services.AddSingleton<BugReportService>();
 
         builder.Services.AddSingleton<OAuthStore>();

@@ -329,16 +329,21 @@ public sealed partial class AtcVoiceAssigner
 
     private readonly AtcVoiceConfig _config;
     private readonly string? _avoid;
+    private readonly Func<string?>? _avoidLive;
     private readonly IReadOnlyCollection<string>? _installed;
     private readonly Dictionary<string, string> _assigned = new(StringComparer.OrdinalIgnoreCase);
 
     /// <param name="flightKey">Kennung des Flugs (SimBrief-Request-ID) – gleicher Flug, gleiche Stimmen.</param>
     /// <param name="calloutVoice">Kokoro-Stimme der Callouts, die ATC nicht bekommen soll.</param>
     /// <param name="installed">Vorhandene Stimmen (null = unbekannt, dann wird nicht gefiltert).</param>
-    public AtcVoiceAssigner(AtcVoiceConfig config, string flightKey, string? calloutVoice, IReadOnlyCollection<string>? installed)
+    /// <param name="kopilotVoice">
+    /// Stimme von Kopilot zur Laufzeit (First Officer, wechselt pro Flug) – wird beim Vergeben jeder neuen Station abgefragt.
+    /// </param>
+    public AtcVoiceAssigner(AtcVoiceConfig config, string flightKey, string? calloutVoice, IReadOnlyCollection<string>? installed, Func<string?>? kopilotVoice = null)
     {
         _config = config;
         _avoid = config.AvoidCalloutVoice ? calloutVoice : null;
+        _avoidLive = config.AvoidCalloutVoice ? kopilotVoice : null;
         _installed = installed is { Count: > 0 } ? installed : null;
         _flightKey = flightKey;
     }
@@ -382,7 +387,17 @@ public sealed partial class AtcVoiceAssigner
     /// </summary>
     private string Pick(string stationKey)
     {
-        var pool = _config.Pool.Select(v => v.Trim()).Where(Usable).Distinct(StringComparer.Ordinal).Where(v => v != _avoid).ToList();
+        string? live = null;
+        try
+        {
+            live = _avoidLive?.Invoke();
+        }
+        catch (Exception)
+        {
+            // Stimme von Kopilot gerade nicht lesbar – dann nur die feste vermeiden
+        }
+
+        var pool = _config.Pool.Select(v => v.Trim()).Where(Usable).Distinct(StringComparer.Ordinal).Where(v => v != _avoid && v != live).ToList();
         if (pool.Count == 0)
         {
             pool = _config.Pool.Select(v => v.Trim()).Where(Usable).Distinct(StringComparer.Ordinal).ToList();

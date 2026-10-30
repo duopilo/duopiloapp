@@ -9,7 +9,11 @@ namespace Kopilot.Voice;
 /// <param name="Intent">Erkannter Kopilot-Befehl (null bei ATC).</param>
 /// <param name="Reply">Was Kopilot sagt (null = nichts). ATC-Antworten spricht das ATC-Modul selbst.</param>
 /// <param name="Atc">Ergebnis des ATC-Moduls (null bei Kopilot).</param>
-public sealed record VoiceOutcome(string Normalized, VoiceRoute Route, VoiceIntent? Intent, VoiceReply? Reply, AtcTransmitResult? Atc);
+/// <param name="Chat">
+/// Smalltalk: weder Befehl noch Abfrage noch Funkspruch – der Satz geht ans Sprachmodell (die Antwort kommt später und wird nur
+/// gesprochen). <paramref name="Reply"/> ist dann null.
+/// </param>
+public sealed record VoiceOutcome(string Normalized, VoiceRoute Route, VoiceIntent? Intent, VoiceReply? Reply, AtcTransmitResult? Atc, bool Chat = false);
 
 /// <summary>
 /// Ein abgeschriebener Satz → Router → ATC-Modul oder Kopilot-Dialog. Kurze Antworten ohne Station und ohne Anrede
@@ -30,6 +34,18 @@ public sealed class VoiceDispatcher(VoiceDialog dialog, IAtcLink atc, VoiceRoute
     /// <summary>Ende des zuletzt gesprochenen ATC-Funkspruchs (Sprachausgabe) – genauer als die Zeit im Protokoll des ATC-Moduls.</summary>
     public Func<DateTimeOffset?> AtcHeardUtc { get; init; } = () => null;
 
+    /// <summary>Name des First Officers als Anrede (normalisiert, z. B. "sam") – zusätzlich zu "Kopilot". null = keiner.</summary>
+    public Func<string?> PersonaName { get; init; } = () => null;
+
+    /// <summary>
+    /// Smalltalk an: Höchstzahl der Wörter für Sätze ohne Anrede (0 = nur mit Anrede). null = Smalltalk aus – dann bleibt es bei
+    /// "Say again".
+    /// </summary>
+    public Func<int?> ChatWords { get; init; } = () => null;
+
+    // Vor der Anrede erlaubt: "Hey Sam, …", "Okay Kopilot, …"
+    private static readonly HashSet<string> Greetings = new(StringComparer.Ordinal) { "hey", "hi", "hello", "hallo", "ok", "okay" };
+
     public Task<VoiceOutcome> HandleAsync(string text, CancellationToken ct) => HandleAsync(text, null, ct);
 
     /// <param name="text">Abschrift.</param>
@@ -43,7 +59,7 @@ public sealed class VoiceDispatcher(VoiceDialog dialog, IAtcLink atc, VoiceRoute
     /// <param name="ct">Abbruch.</param>
     public async Task<VoiceOutcome> HandleAsync(string text, DateTimeOffset? startUtc, double? confidence, CancellationToken ct)
     {
-        var normalized = VoiceText.Normalize(text);
+        var normalized = Address(VoiceText.Normalize(text), PersonaName(), wakeWords);
         var info = atc.Enabled ? atc.RoutingInfo() : AtcRoutingInfo.Empty;
         var callsigns = info.Callsigns.Concat(ExtraCallsigns()).ToList();
         var route = router.Route(normalized, callsigns, info.Stations.Concat(ExtraStations));
@@ -72,8 +88,37 @@ public sealed class VoiceDispatcher(VoiceDialog dialog, IAtcLink atc, VoiceRoute
             }
         }
 
+        // Weder Befehl noch Abfrage noch Funkspruch: Smalltalk (Sprachmodell), statt "Say again" – nur wenn nichts Wichtigeres offen ist
+        if (ChatWords() is { } chatWords && dialog.CanChat(intent, normalized, addressed, chatWords))
+        {
+            return new VoiceOutcome(normalized, route with { Reason = Loc.T("voice.route.smalltalk") }, intent, null, null, Chat: true);
+        }
+
         var reply = await dialog.HandleAsync(intent, normalized, addressed, startUtc, confidence, ct);
         return new VoiceOutcome(normalized, route, intent, reply, null);
+    }
+
+    /// <summary>
+    /// Anrede vereinheitlichen: Name des First Officers am Satzanfang ("Sam, gear up") oder mit Gruß davor ("Hey Sam", "Okay Kopilot")
+    /// wird zur ersten Anrede ("kopilot gear up") – Router, Befehle und Checklisten kennen nur diese. Sonst unverändert.
+    /// </summary>
+    public static string Address(string normalized, string? personaName, IReadOnlyCollection<string> wakeWords)
+    {
+        var words = VoiceText.Words(normalized);
+        if (words.Length == 0)
+        {
+            return normalized;
+        }
+
+        var wake = wakeWords.FirstOrDefault() ?? "kopilot";
+        var i = words.Length > 1 && Greetings.Contains(words[0]) ? 1 : 0;
+        var isName = !string.IsNullOrEmpty(personaName) && words[i] == personaName;
+        if (!isName && !(i == 1 && wakeWords.Contains(words[1])))
+        {
+            return normalized;
+        }
+
+        return string.Join(' ', words.Skip(i + 1).Prepend(wake));
     }
 
     private async Task<VoiceOutcome> ToAtcAsync(string text, string normalized, VoiceRoute route, CancellationToken ct)

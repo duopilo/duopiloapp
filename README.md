@@ -358,12 +358,13 @@ Settings in `appsettings.Local.json` under `Kopilot:Atc`: `Enabled` (on by defau
 
 ## Voice loop
 
-You talk to Kopilot directly – without Claude, without push-to-talk (VR-friendly), fully local and without a language model:
+You talk to Kopilot directly – without Claude, without push-to-talk (VR-friendly), fully local and without a language model (only the optional [small talk](#first-officer-and-small-talk) can use one):
 
 ```
 Microphone → Silero VAD (utterance end) → Whisper (transcript) → Router ─┬→ Kopilot commands → Input module
-                                                                         └→ ATC module
-                                     Speech output (Kokoro) ←────────────┘   Warnings > Callouts > Replies > ATC
+                                                                         ├→ ATC module
+                                                                         └→ small talk (optional, language model – read-only)
+                                     Speech output (Kokoro, Piper) ←─────┘   Warnings > Callouts > Replies > ATC > Small talk
 ```
 
 **Switching it on:** in the dashboard under **Callouts → Voice → Voice loop**, tick the box and choose the microphone – this applies immediately, without restarting Kopilot. It is saved in `%LOCALAPPDATA%\Kopilot\voice-settings.json` (Kopilot creates it from the template on first start); you can also set `"enabled": true` there by hand and restart. Do **not** edit the `voice-settings.json` next to `Kopilot.exe` – that is only the template, and `update.cmd` overwrites it (Kopilot warns in the log if it contains something different). On first start Kopilot downloads the Whisper model (`base-q5_1`, ~60 MB) and Silero VAD (~2 MB) to `%LOCALAPPDATA%\Kopilot\models`. For commands, input must also be unlocked in the dashboard. The voice loop only runs in the tray instance, not in the stdio instance of Claude Desktop.
@@ -422,7 +423,7 @@ Plan values (fuel against plan, waypoint, ETA, top of descent) are calculated li
 
 **Control:** "Kopilot pause" / "Kopilot resume" (German "Kopilot weiter") or the hotkey (default `Ctrl+Alt+K`, system-wide) mute and unmute voice input – callouts keep running. "Say again" repeats the last reply.
 
-**Speech output:** Kokoro with a fixed voice for Kopilot (`voices.kopilot`, empty = dashboard voice); the ATC stations speak with the voices the ATC module assigns. Everything runs through one queue: warnings > callouts > replies > ATC – ATC transmissions also keep the microphone muted. Numbers, NATO alphabet and radio phraseology in English: speed, heading, squawk and QNH digit by digit, altitudes in thousands, 9 as "niner". An interrupted reply or ATC message is repeated once after the warning.
+**Speech output:** Kokoro with the voice of the [first officer](#first-officer-and-small-talk) (a fixed one with `voices.kopilot`; first officer off and empty = dashboard voice); the ATC stations speak with the voices the ATC module assigns. Everything runs through one queue: warnings > callouts > replies > ATC > small talk – ATC transmissions also keep the microphone muted, and anything interrupts small talk. Numbers, NATO alphabet and radio phraseology in English: speed, heading, squawk and QNH digit by digit, altitudes in thousands, 9 as "niner". An interrupted reply or ATC message is repeated once after the warning.
 
 **ATC:** transmissions go directly to the ATC module (`AtcService.TransmitAsync`, like `atc_transmit` – just without Claude). Station names and your own callsign (code and spoken form, e.g. "Lufthansa four alpha bravo") come from the ATC module, based on the SimBrief plan and `atc-templates.json`; the station's reply comes through the queue. "Say again", "Affirm" and "Negative" without a station go to whoever spoke last – ATC or Kopilot. If ATC transmits after a Kopilot readback, the pending action expires so that an "Affirm" to ATC doesn't trigger anything in the cockpit. If ATC is off or the SimBrief plan is missing, Kopilot says "ATC unavailable".
 
@@ -442,6 +443,30 @@ Plan values (fuel against plan, waypoint, ETA, top of descent) are calculated li
 **Resources** (MSFS has priority): the default is Whisper on the CPU with 4 threads – it only computes after you have spoken. `gpu` tries CUDA, then Vulkan, and otherwise falls back to the CPU; alongside MSFS in VR that can cause stutters. It gets faster with a fixed language (`"language": "en"` or `"de"`), `"audioContext": 768` or the model `tiny-q5_1`; `small-q5_1` (~190 MB) understands German better.
 
 Licenses: Whisper.net and whisper.cpp (MIT), Silero VAD (MIT), NAudio (MIT).
+
+### First officer and small talk
+
+**First officer:** with the voice loop on, every flight gets its own first officer – a name picked at random from a list of internationally easy-to-pronounce names, split into female and male (e.g. Anna, Emma, Sophie / Sam, Ben, Daniel), and a Kokoro voice of the same gender (`af_`/`bf_` female, `am_`/`bm_` male) that is never the voice of an ATC station (stations assigned later also avoid it). Name and voice stay the same for the whole flight – also after a restart of Kopilot (`%LOCALAPPDATA%\Kopilot\first-officer.json`); a new SimBrief plan means a new flight and a new first officer. The voice is used for callouts, replies and small talk. If a Windows voice speaks instead of Kokoro, the name matches its gender.
+
+- **Name in the dashboard:** in the header ("F/O Sam"), in the voice panel and under Settings.
+- **Introduction at the briefing:** once per flight at the gate (on the ground, at most 5 NM from the departure airport) – "Hi, I'm Sam, I'll be your first officer today" – or when you say **"Briefing"** ("Start briefing", "Let's do the briefing", German "Briefing starten").
+- **Addressed by name:** "Sam, gear up", "Hey Sam, how's the weather in Berlin?" work like "Kopilot, …" – "Kopilot" always stays valid.
+- **Fixed name:** Settings → **First officer and small talk** (with gender for names not on the list). A fixed Kokoro voice (`voices.kopilot` in `voice-settings.json`) decides the gender. The first officer can also be switched off (Kopilot then speaks with the dashboard voice as before).
+
+**Small talk (optional, off by default):** a sentence that is neither a command, a query nor a radio call goes to a language model instead of "Say again":
+
+| Provider | What you need |
+|---|---|
+| **Claude** | your own API key (console.anthropic.com); model empty = `claude-haiku-5-5` |
+| **OpenAI-compatible** | base URL (default `https://api.openai.com/v1`, also LM Studio, vLLM …), model, API key if the server wants one |
+| **Ollama** | the address of the other computer (e.g. `http://192.168.1.20:11434`) and the model |
+
+There is deliberately no local model inside Kopilot – it would cost too much GPU and RAM next to MSFS. Set it up under Settings → **First officer and small talk** (applies immediately, **Test** asks a short question). The API key is stored only in `appsettings.Local.json` (or the environment variable `Kopilot__Smalltalk__ApiKey`), is never sent back to the browser and never appears in logs or problem reports.
+
+- **Priority:** callouts, warnings, acknowledgments, checklists and radio always come first – small talk is at the very bottom of the queue and anything else interrupts it immediately (it is not repeated). While a readback waits for "Confirm", a checklist runs, a message waits for "Check" or voice input is muted, nothing goes to the model. Sentences without address go to the model only up to `UnaddressedMaxWords` words (default 12); longer ones are usually conversations in the room.
+- **Read-only:** the model only gets read-only context (flight phase, position, route, next waypoint, ETA, fuel and fuel against plan, wind and temperature, METARs of the plan, ATC station) and the last few sentences. Its answer is only spoken – never evaluated as a command, never prepared with "Confirm"; a "Confirm" afterwards confirms nothing.
+- **Language:** small talk in the dashboard language; callouts and radio always in English. English uses Kokoro (the first officer's voice). For languages without a Kokoro voice (German) Kopilot uses **Piper** as a second local voice (e.g. `de_DE-thorsten-medium` male, `de_DE-kerstin-low` female – gender matching the name). Kopilot downloads Piper (~20 MB, rhasspy/piper 2023.11.14-2, MIT) and the voice (~60 MB, rhasspy/piper-voices, license per voice in its model card) the first time it's needed to `%LOCALAPPDATA%\Kopilot\piper` and `…\models\piper`; until then, and for languages without any voice, small talk is in English with a short note in the dashboard. Your own `piper.exe`: `Smalltalk:PiperPath`. With small talk off, the introduction is in English.
+- **Privacy and costs:** the settings page states where the conversation goes. Answer length (`MaxReplyWords`, default 40 words) and requests per minute (`RequestsPerMinute`, default 6) are adjustable. Above the limit, without a network or on any error, Kopilot answers immediately with "I can't chat right now" instead of hanging; every request has a time limit (`TimeoutSec`, default 10 s).
 
 ## SimBrief
 
@@ -536,6 +561,7 @@ The "Brightness" slider only dims the displays – for night flights.
 | **SimBrief** | username or pilot ID, then loads the plan right away | immediately |
 | **Microphone** | recording device of the voice loop, with level | immediately |
 | **Modules** | Monitoring, Input (click twice), ATC, Voice loop | Monitoring/ATC after restart, otherwise immediately |
+| **First officer and small talk** | fixed name and gender, introduction, small talk provider (Claude, OpenAI-compatible, Ollama), model, address, API key, answer length, requests per minute, test | immediately |
 | **Language** | dashboard, tool messages, tray menu, problem reports (see [Language](#language)); logs stay English | immediately |
 
 The page writes to the existing files: `appsettings.Local.json` next to `Kopilot.exe` (comments and order are preserved; a backup goes to `%LOCALAPPDATA%\Kopilot\appsettings.Local.backup.json` first), and input and voice loop as before to `input.json` and `voice-settings.json`. Anything that is only read at startup is marked "applies after restart" on the page – the **Restart Kopilot** button restarts the tray instance (the ATC session comes back from its saved state). Password and token are never sent back to the browser; a newly generated token is shown exactly once for copying. If an environment variable (`Kopilot__…`) sets the same value, the page points this out – the variable takes precedence over the file.
@@ -761,8 +787,9 @@ src/Kopilot/
   Program.cs              Startup: --stdio (Claude Desktop) or HTTP with tray, --console, --generate-secret
   Dashboard/              Dashboard in the browser (HTML, embedded B612 font), data API
   Desktop/                Tray icon, autostart
-  Speech/                 Speech output: Windows voice or Kokoro, priority queue, output device, one pronunciation for ATC, callouts and fuel check
-  Voice/                  Voice loop: microphone, Silero VAD, Whisper, normalization, router, commands, dialog, ATC interface
+  Speech/                 Speech output: Windows voice or Kokoro (Piper for small talk in other languages), priority queue, output device, one pronunciation for ATC, callouts and fuel check
+  Voice/                  Voice loop: microphone, Silero VAD, Whisper, normalization, router, commands, dialog, ATC interface, first officer
+  Smalltalk/              Optional small talk with a language model (Claude, OpenAI-compatible, Ollama): read-only context, limits, prompt
   Input/                  Input module: planning actions, interlocks, confirmation, execution via SimConnect
   Hosting/                Transport selection, configuration, HTTP host
   Remote/                 Bearer token, OAuth server, consent page, token store

@@ -666,7 +666,8 @@ public sealed class AtcService : BackgroundService
                 _services.GetService<ITaxiRouteProvider>() ?? new NoTaxiRouteProvider(),
                 CalloutVoice(),
                 InstalledVoices(),
-                _options.Atc.SquawkFromSim);
+                _options.Atc.SquawkFromSim,
+                CalloutVoice);
             var session = new AtcSession(templates, plan, context);
             if (snapshot is not null)
             {
@@ -820,8 +821,9 @@ public sealed class AtcService : BackgroundService
         return airline is not null && number is not null ? airline + number : _sim.Str("atcId");
     }
 
+    /// <summary>Stimme, mit der Kopilot gerade spricht (First Officer der Sprachschleife, sonst die Stimme aus dem Dashboard).</summary>
     private string? CalloutVoice() =>
-        _services.GetService<Speech.ISpeechOutput>()?.Status.Settings.KokoroVoice ?? _options.Speech.KokoroVoice;
+        _services.GetService<Speech.ISpeechOutput>()?.KopilotVoice ?? _options.Speech.KokoroVoice;
 
     private IReadOnlyCollection<string>? InstalledVoices()
     {

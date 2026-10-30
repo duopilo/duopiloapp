@@ -507,6 +507,23 @@ public static class KopilotTools
         downloadProgress = v.DownloadProgress,
         hotkey = v.Hotkey,
         settingsFile = v.SettingsFile,
+        firstOfficer = v.FirstOfficer is { } fo
+            ? new
+            {
+                name = fo.Name,
+                gender = fo.Gender,
+                voice = fo.Voice,
+                smalltalkVoice = fo.SmalltalkVoice,
+                introduced = fo.Introduced,
+                fixedName = fo.FixedName,
+                flight = fo.Flight,
+            }
+            : null,
+        smalltalk = v.Smalltalk,
+        smalltalkLanguage = v.SmalltalkLanguage,
+        smalltalkNote = v.SmalltalkNote,
+        smalltalkPending = v.SmalltalkPending,
+        lastSmalltalk = v.LastSmalltalk,
     };
 
     public static object? ArincView(string name, double raw, AircraftProfile? profile)

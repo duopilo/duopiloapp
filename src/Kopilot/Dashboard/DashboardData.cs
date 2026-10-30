@@ -24,10 +24,20 @@ public sealed class DashboardData(
     FmaLog fmaLog,
     LogBuffer logs,
     InputService? input = null,
-    ISpeechOutput? speech = null)
+    ISpeechOutput? speech = null,
+    Kopilot.Voice.IVoiceStatusSource? voice = null)
 {
     /// <summary>So lange bleibt eine einmalige Ansage groß stehen.</summary>
     public static readonly TimeSpan HeadlineWindow = TimeSpan.FromSeconds(60);
+
+    /// <summary>Name des First Officers für die Kopfzeile (nur mit laufender Sprachschleife).</summary>
+    private object? FirstOfficerView()
+    {
+        var status = voice?.Status;
+        return status?.FirstOfficer is { } fo && status.State is "listening" or "muted" or "loading"
+            ? new { name = fo.Name, gender = fo.Gender, voice = fo.Voice, smalltalk = status.Smalltalk, note = status.SmalltalkNote, pending = status.SmalltalkPending }
+            : null;
+    }
 
     public object Build(long sinceId, bool includeLog)
     {
@@ -56,6 +66,7 @@ public sealed class DashboardData(
                 }
                 : null,
             input = input is null ? null : InputView(input, now),
+            firstOfficer = FirstOfficerView(),
             monitoring = new
             {
                 enabled = monitoring.Enabled,

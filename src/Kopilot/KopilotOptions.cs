@@ -57,6 +57,15 @@ public sealed class KopilotOptions
     /// <summary>Knopf „Fehler melden“ im Dashboard: GitHub-Issue mit Kontext, Kopie im Datenordner.</summary>
     public ReportOptions Reports { get; set; } = new();
 
+    /// <summary>
+    /// Smalltalk mit einem Sprachmodell (Claude, OpenAI-kompatibel oder Ollama) – optional, standardmäßig aus. Nur für freie
+    /// Gespräche und Erklärungen, nie für Aktionen. Im Dashboard unter Einstellungen → First Officer und Smalltalk.
+    /// </summary>
+    public SmalltalkOptions Smalltalk { get; set; } = new();
+
+    /// <summary>Der First Officer der Sprachschleife: Name und Stimme pro Flug, Vorstellung beim Briefing.</summary>
+    public FirstOfficerOptions FirstOfficer { get; set; } = new();
+
     /// <summary>Ordner für Caches (ECAM-Tabellen). Leer = %LOCALAPPDATA%\Kopilot.</summary>
     public string DataDirectory { get; set; } = "";
 
@@ -319,4 +328,58 @@ public sealed class InputOptions
 
     /// <summary>So lange wartet eine vorbereitete Aktion auf die Bestätigung des Piloten.</summary>
     public int ConfirmWindowSeconds { get; set; } = 60;
+}
+
+/// <summary>
+/// Smalltalk über ein Sprachmodell: Sätze, die weder Befehl noch Abfrage noch Funkspruch sind, gehen an den gewählten Anbieter.
+/// Das Modell bekommt nur lesenden Kontext (Flugphase, Position, Route, Sprit, Wetter) und löst nie etwas aus.
+/// Der Schlüssel gehört nur in appsettings.Local.json (oder eine Umgebungsvariable) – nie in Logs oder Fehlerberichte.
+/// </summary>
+public sealed class SmalltalkOptions
+{
+    /// <summary>"off" (Standard), "claude" (eigener API-Schlüssel), "openai" (OpenAI-kompatible Schnittstelle) oder "ollama" (anderer Rechner).</summary>
+    public string Provider { get; set; } = "off";
+
+    /// <summary>Modell. Leer bei Claude = claude-haiku-5-5; bei OpenAI-kompatibel und Ollama Pflicht.</summary>
+    public string Model { get; set; } = "";
+
+    /// <summary>Adresse: OpenAI-kompatibel die Basis-URL (Standard https://api.openai.com/v1), Ollama z. B. http://192.168.1.20:11434.</summary>
+    public string Url { get; set; } = "";
+
+    /// <summary>API-Schlüssel (Claude: Pflicht, OpenAI-kompatibel: je nach Server). Nur in appsettings.Local.json.</summary>
+    public string ApiKey { get; set; } = "";
+
+    /// <summary>Antworten höchstens so viele Wörter lang (10–150).</summary>
+    public int MaxReplyWords { get; set; } = 40;
+
+    /// <summary>Höchstens so viele Anfragen pro Minute (1–30) – darüber antwortet Kopilot sofort „I can't chat right now“.</summary>
+    public int RequestsPerMinute { get; set; } = 6;
+
+    /// <summary>So lange wartet Kopilot höchstens auf eine Antwort (s, 2–30).</summary>
+    public int TimeoutSec { get; set; } = 10;
+
+    /// <summary>
+    /// Sätze ohne Anrede (Name des First Officers oder „Kopilot“) gehen nur bis zu dieser Wortzahl ans Modell – längere sind
+    /// meist Gespräche im Raum. 0 = nur mit Anrede.
+    /// </summary>
+    public int UnaddressedMaxWords { get; set; } = 12;
+
+    /// <summary>Eigene piper.exe. Leer = Kopilot lädt Piper bei Bedarf nach %LOCALAPPDATA%\Kopilot\piper.</summary>
+    public string PiperPath { get; set; } = "";
+}
+
+/// <summary>Der First Officer: pro Flug ein Name aus einer Liste (weiblich/männlich) und eine passende Stimme.</summary>
+public sealed class FirstOfficerOptions
+{
+    /// <summary>Name und Stimme pro Flug. false = Kopilot spricht wie bisher mit der Stimme aus dem Dashboard.</summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>Fester Name. Leer = pro Flug zufällig.</summary>
+    public string Name { get; set; } = "";
+
+    /// <summary>Geschlecht für einen festen Namen, der nicht in der Liste steht: "auto", "female" oder "male".</summary>
+    public string Gender { get; set; } = "auto";
+
+    /// <summary>Vorstellung beim Briefing („Hi, I'm Sam, I'll be your first officer today“).</summary>
+    public bool Introduce { get; set; } = true;
 }

@@ -2,9 +2,15 @@ using Kopilot.Monitoring;
 
 namespace Kopilot.Speech;
 
-/// <summary>Rangfolge der Sprachausgabe: Warnungen vor Callouts vor Antworten vor ATC.</summary>
+/// <summary>Rangfolge der Sprachausgabe: Warnungen vor Callouts vor Antworten vor ATC vor Smalltalk.</summary>
 public enum SpeechPriority
 {
+    /// <summary>
+    /// Smalltalk des First Officers (Sprachmodell, Vorstellung). Ganz unten: Jede andere Ansage – Callout, Warnung, Antwort,
+    /// Checkliste, Quittung, ATC – unterbricht ihn sofort, und er wird danach nicht wiederholt.
+    /// </summary>
+    Smalltalk = -1,
+
     /// <summary>Funkspruch einer ATC-Station (vom ATC-Modul).</summary>
     Atc = 0,
 
@@ -46,6 +52,12 @@ public sealed record SpeechRequest(string Text, SpeechPriority Priority)
 
     /// <summary>Statt Sprache den Warnton spielen (<see cref="ToneGenerator"/>); <see cref="Text"/> steht dann nur in Log und Status.</summary>
     public bool Tone { get; init; }
+
+    /// <summary>
+    /// Freier Text (Smalltalk): so sprechen, wie er ist – ohne die Funk-Aussprache (Ziffern einzeln, NATO-Alphabet) und ohne
+    /// Zwischenspeicher. <see cref="Voice"/> darf dann auch eine Stimme einer anderen Engine sein ("piper:de_DE-thorsten-medium").
+    /// </summary>
+    public bool Plain { get; init; }
 }
 
 /// <summary>Eine Ansage in der Warteschlange.</summary>
@@ -89,6 +101,9 @@ public sealed record SpeechItem
     /// <summary>Siehe <see cref="SpeechRequest.Tone"/>.</summary>
     public bool Tone { get; init; }
 
+    /// <summary>Siehe <see cref="SpeechRequest.Plain"/>.</summary>
+    public bool Plain { get; init; }
+
     public bool IsAlert => Priority >= SpeechPriority.Callout;
 }
 
@@ -108,6 +123,9 @@ public sealed class CalloutQueue
 
     /// <summary>ATC-Funksprüche warten höchstens so lange (z. B. hinter einer Warnung oder während einer Pause).</summary>
     public static readonly TimeSpan AtcMaxAge = TimeSpan.FromSeconds(60);
+
+    /// <summary>Smalltalk wartet höchstens so lange – danach passt er nicht mehr zum Gespräch.</summary>
+    public static readonly TimeSpan SmalltalkMaxAge = TimeSpan.FromSeconds(20);
 
     /// <summary>Dieselbe Ansage innerhalb dieser Zeit nur einmal.</summary>
     public static readonly TimeSpan RepeatWindow = TimeSpan.FromSeconds(4);
@@ -132,6 +150,7 @@ public sealed class CalloutQueue
     {
         SpeechPriority.Atc => AtcMaxAge,
         SpeechPriority.Response => ResponseMaxAge,
+        SpeechPriority.Smalltalk => SmalltalkMaxAge,
         _ => MaxAge,
     };
 
@@ -200,14 +219,22 @@ public sealed class CalloutQueue
             }
 
             _items.Add(item with { Seq = ++_seq });
-            return (true, item.Priority == SpeechPriority.Warning && speaking is { } current && current < SpeechPriority.Warning);
+            return (true, Interrupts(item.Priority, speaking));
         }
     }
 
-    /// <summary>Unterbrochene Antwort oder ATC-Meldung einmal neu einreihen (mit frischer Wartezeit).</summary>
+    /// <summary>
+    /// Unterbricht eine neue Ansage die laufende? Warnungen unterbrechen alles darunter; Smalltalk wird von allem anderen
+    /// unterbrochen (Callouts, Antworten, Checklisten, Quittungen, ATC).
+    /// </summary>
+    public static bool Interrupts(SpeechPriority incoming, SpeechPriority? speaking) => speaking is { } current
+        && ((incoming == SpeechPriority.Warning && current < SpeechPriority.Warning)
+            || (current == SpeechPriority.Smalltalk && incoming > SpeechPriority.Smalltalk));
+
+    /// <summary>Unterbrochene Antwort oder ATC-Meldung einmal neu einreihen (mit frischer Wartezeit). Smalltalk nie.</summary>
     public bool Requeue(SpeechItem item, DateTimeOffset now)
     {
-        if (item.Requeued || item.IsAlert)
+        if (item.Requeued || item.IsAlert || item.Priority == SpeechPriority.Smalltalk)
         {
             return false;
         }

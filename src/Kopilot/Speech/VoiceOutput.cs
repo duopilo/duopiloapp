@@ -29,6 +29,9 @@ public interface IVoiceOutput
 
     /// <summary>Einstellungen aus voice-settings.json übernehmen (Stimme von Kopilot, aktive Callouts, Pause).</summary>
     void ConfigureVoice(VoiceOutputOptions options);
+
+    /// <summary>Geschlecht der Windows-Stimme, wenn sie statt Kokoro spricht (null = Kokoro oder unbekannt).</summary>
+    VoiceGender? EngineVoiceGender => null;
 }
 
 /// <summary>Was die Sprachschleife an der Sprachausgabe einstellt.</summary>

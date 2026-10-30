@@ -20,6 +20,9 @@ public interface IAtcLink
 
     /// <summary>Aktive Station der laufenden Sitzung mit Frequenz (für die Abfrage "Station"), null ohne Sitzung.</summary>
     StationReading? ActiveStation() => null;
+
+    /// <summary>Kokoro-Stimmen, die die Stationen der laufenden Sitzung schon haben (die Stimme des First Officers meidet sie).</summary>
+    IReadOnlyCollection<string> AssignedVoices() => [];
 }
 
 /// <summary>Das echte ATC-Modul.</summary>
@@ -35,4 +38,7 @@ public sealed class AtcServiceLink(AtcService atc) : IAtcLink
         session is null || session.Phase is AtcPhase.Inactive or AtcPhase.Done
             ? null
             : new StationReading(session.Station.Name, session.Station.Frequency.Number));
+
+    public IReadOnlyCollection<string> AssignedVoices() => atc.WithSession<IReadOnlyCollection<string>>((session, _) =>
+        session is null ? Array.Empty<string>() : session.Voices.Values.Append(session.Station.Voice).Distinct(StringComparer.Ordinal).ToList());
 }
