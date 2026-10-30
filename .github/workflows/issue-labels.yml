@@ -1,7 +1,7 @@
 name: Labels für Meldungen
 
-# Meldungen aus dem Kopilot-Dashboard tragen ihre Art als unsichtbare Markierung im Kontext
-# (<!-- kopilot-meldung labels: data/frequency,bug -->). Der Link aus dem Dashboard setzt die Labels zwar auch direkt,
+# Meldungen aus dem Duopilo-Dashboard tragen ihre Art als unsichtbare Markierung im Kontext
+# (<!-- duopilo-meldung labels: data/frequency,bug -->; bis 0.9.x hieß sie kopilot-meldung). Der Link aus dem Dashboard setzt die Labels zwar auch direkt,
 # das wirkt aber nur für Leute mit Triage-Rechten. Diese Action setzt sie für alle anderen – und bei Issues, die von
 # Hand über die Vorlage angelegt wurden, anhand von „Type of report“ (bzw. „Art der Meldung“ in der alten Vorlage).
 
@@ -34,7 +34,7 @@ jobs:
           )
 
           wanted=()
-          marker=$(printf '%s' "$BODY" | grep -oE 'kopilot-meldung labels:[^>]*' | head -n1 | sed -E 's/^kopilot-meldung labels:[[:space:]]*//; s/[[:space:]]*-*$//')
+          marker=$(printf '%s' "$BODY" | grep -oE '(duopilo|kopilot)-meldung labels:[^>]*' | head -n1 | sed -E 's/^(duopilo|kopilot)-meldung labels:[[:space:]]*//; s/[[:space:]]*-*$//')
           IFS=',' read -ra from_marker <<< "$marker"
           for label in "${from_marker[@]}"; do
             label=$(printf '%s' "$label" | tr -d '[:space:]')
@@ -49,7 +49,7 @@ jobs:
           grep -qE '\bBug\b|Programmfehler' <<< "$art" && wanted+=("bug")
 
           if [[ ${#wanted[@]} -eq 0 ]]; then
-            echo "Keine Meldung aus Kopilot – nichts zu tun."
+            echo "Keine Meldung aus Duopilo – nichts zu tun."
             exit 0
           fi
 

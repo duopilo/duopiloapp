@@ -40,6 +40,20 @@ public sealed class RenameMigrationTests : IDisposable
         Assert.Equal("duopilo-stdio.log", FileLoggerProvider.FileName("stdio"));
     }
 
+    [Fact]
+    public void Build_Installer_und_Code_nennen_dasselbe_Produkt()
+    {
+        // <Product> (Installer, ZIP, Release) und AppNames.Product (Datenordner, Autostart, Konfiguration) müssen gleich sein
+        Assert.Contains($"<Product>{AppNames.Product}</Product>", File.ReadAllText(TestData.RepoFile("Directory.Build.props")));
+        Assert.Contains($"<AssemblyName>{AppNames.Product}</AssemblyName>", File.ReadAllText(TestData.RepoFile("src", "Duopilo", "Duopilo.csproj")));
+
+        var setup = File.ReadAllText(TestData.RepoFile("installer", "setup.iss"));
+        Assert.Contains("AppId={{A9BF1AF5-AD01-4EF4-9A95-94830AA2324F}", setup); // nie ändern – sonst kein Update von Kopilot
+        Assert.Contains($"#define LegacyName \"{AppNames.Legacy.Product}\"", setup);
+        Assert.Contains($"#define Website \"{AppNames.Website}\"", setup);
+        Assert.Contains($"#define RepoUrl \"{AppNames.RepositoryUrl}\"", setup);
+    }
+
     // ------------------------------------------------------------------ Datenordner
 
     [Fact]

@@ -1,4 +1,4 @@
-# Release: Kopilot für Windows bauen (self-contained, win-x64), Installer (Inno Setup) und ZIP erzeugen und beides
+# Release: Duopilo für Windows bauen (self-contained, win-x64), Installer (Inno Setup) und ZIP erzeugen und beides
 # an ein automatisch erstelltes GitHub Release mit Changelog hängen.
 #
 # Läuft
@@ -18,7 +18,8 @@
 # SimConnect bricht ein Release ab – ein Build gegen den Stub könnte sich nicht mit MSFS verbinden. Testbuilds laufen
 # dann mit Warnung gegen den Stub.
 #
-# Der Produktname steht zentral als <Product> in Directory.Build.props, die Programmdatei als <AssemblyName> im Projekt.
+# Der Produktname steht zentral als <Product> in Directory.Build.props (Duopilo, bis 0.9.x Kopilot), die Programmdatei
+# als <AssemblyName> im Projekt. Der Installer übernimmt eine vorhandene Kopilot-Installation (installer/setup.iss).
 name: Release
 
 on:
@@ -74,7 +75,7 @@ jobs:
           EINGABE: ${{ inputs.version }}
           PR: ${{ github.event.pull_request.number }}
         run: |
-          $props = (dotnet msbuild src/Kopilot/Kopilot.csproj -getProperty:Product -getProperty:AssemblyName | Out-String | ConvertFrom-Json).Properties
+          $props = (dotnet msbuild src/Duopilo/Duopilo.csproj -getProperty:Product -getProperty:AssemblyName | Out-String | ConvertFrom-Json).Properties
           if (-not $props.Product -or -not $props.AssemblyName) { Write-Output "::error::Product/AssemblyName ließen sich nicht aus dem Projekt lesen."; exit 1 }
           if ($env:EREIGNIS -eq 'push') {
             if ($env:REF_NAME -notmatch '^v') { Write-Output "::error::Tag '$env:REF_NAME' beginnt nicht mit v."; exit 1 }
@@ -141,7 +142,7 @@ jobs:
           ECHT: ${{ steps.simconnect.outputs.echt }}
         run: |
           $stub = if ($env:ECHT -eq 'true') { 'false' } else { 'true' }
-          dotnet publish src/Kopilot/Kopilot.csproj -c Release -r win-x64 --self-contained true `
+          dotnet publish src/Duopilo/Duopilo.csproj -c Release -r win-x64 --self-contained true `
             "-p:Version=$env:VERSION" "-p:UseSimConnectStub=$stub" -p:ContinuousIntegrationBuild=true `
             -o "out/$env:APP_NAME"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -168,7 +169,7 @@ jobs:
           }
 
       - name: Tests
-        run: dotnet test Kopilot.slnx -c Release -p:UseSimConnectStub=true --logger "console;verbosity=minimal"
+        run: dotnet test Duopilo.slnx -c Release -p:UseSimConnectStub=true --logger "console;verbosity=minimal"
 
       - name: ZIP (ohne Installation)
         shell: pwsh

@@ -2,13 +2,13 @@
 <#
   Windows-Installer bauen (Inno Setup 6.3 oder neuer).
 
-    pwsh installer/installer.ps1 -Quelle out/Kopilot -Version 0.9.1
+    pwsh installer/installer.ps1 -Quelle out/Duopilo -Version 0.9.1
 
   -Quelle   Ordner von "dotnet publish" (self-contained, win-x64)
   -Version  Version wie im Tag, ohne "v": 0.9.1 oder 1.0.0-beta.1
   -Ziel     Ordner für die Setup-Datei (Standard: aktueller Ordner)
   -Name     Produktname (Standard: <Product> aus Directory.Build.props)
-  -Exe      Programmdatei (Standard: <AssemblyName> aus src/Kopilot/Kopilot.csproj plus .exe)
+  -Exe      Programmdatei (Standard: <AssemblyName> aus src/Duopilo/Duopilo.csproj plus .exe)
 
   Fehlt Inno Setup, installiert das Skript es in GitHub Actions über Chocolatey (lokal: winget install JRSoftware.InnoSetup).
   In GitHub Actions stehen Pfad und Name der Setup-Datei danach in $env:GITHUB_ENV (SETUP, SETUP_NAME).
@@ -26,7 +26,7 @@ $repo = Split-Path -Parent $PSScriptRoot
 
 # Name und Programmdatei aus dem Projekt – eine Stelle für alles.
 if (-not $Name -or -not $Exe) {
-    $json = dotnet msbuild (Join-Path $repo 'src/Kopilot/Kopilot.csproj') -getProperty:Product -getProperty:AssemblyName
+    $json = dotnet msbuild (Join-Path $repo 'src/Duopilo/Duopilo.csproj') -getProperty:Product -getProperty:AssemblyName
     if ($LASTEXITCODE -ne 0) { Write-Output "::error::Could not read the product name and program file from the project."; exit 1 }
     $props = ($json | Out-String | ConvertFrom-Json).Properties
     if (-not $Name) { $Name = $props.Product }

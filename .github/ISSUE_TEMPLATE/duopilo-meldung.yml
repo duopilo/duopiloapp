@@ -1,5 +1,5 @@
-name: Report from Kopilot
-description: Data error (FIR boundary, station, frequency, airline) or bug – easiest via “Report a problem” in the Kopilot dashboard, which sends the context along.
+name: Report from Duopilo
+description: Data error (FIR boundary, station, frequency, airline) or bug – easiest via “Report a problem” in the Duopilo dashboard, which sends the context along.
 title: "[Report] "
 body:
   - type: markdown
@@ -25,13 +25,13 @@ body:
     id: beschreibung
     attributes:
       label: What is wrong, and what would be right?
-      description: What Kopilot did, what would have been right, and how you know (e.g. “Sim ATC hands over to Montreal Center 132.25 here”).
+      description: What Duopilo did, what would have been right, and how you know (e.g. “Sim ATC hands over to Montreal Center 132.25 here”).
     validations:
       required: true
   - type: textarea
     id: kontext
     attributes:
-      label: Context from Kopilot
-      description: Filled in by the dashboard (position, altitude, station and frequency per Kopilot, COM1, time, version, last radio calls). Please don't delete it.
+      label: Context from Duopilo
+      description: Filled in by the dashboard (position, altitude, station and frequency per Duopilo, COM1, time, version, last radio calls). Please don't delete it.
     validations:
       required: false
