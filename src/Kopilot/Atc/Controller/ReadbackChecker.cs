@@ -434,7 +434,7 @@ public sealed partial class HeardText
     public static HeardText Parse(string text)
     {
         var raw = new List<HeardToken>();
-        var lower = text.ToLowerInvariant().Replace("x-ray", "xray", StringComparison.Ordinal);
+        var lower = FoldDiacritics(text.ToLowerInvariant()).Replace("x-ray", "xray", StringComparison.Ordinal);
         var matches = TokenRegex().Matches(lower);
         for (var k = 0; k < matches.Count; k++)
         {
@@ -483,6 +483,39 @@ public sealed partial class HeardText
         }
 
         return new HeardText(MergeNumbers(raw));
+    }
+
+    /// <summary>
+    /// Umlaute und Akzente auf Grundbuchstaben ("düsseldorf" → "dusseldorf", "zürich" → "zurich", "ß" → "ss"), damit Namen
+    /// als ganze Wörter verglichen werden – sonst zerfällt "düsseldorf" in "d" und "sseldorf".
+    /// </summary>
+    public static string FoldDiacritics(string text)
+    {
+        if (text.All(char.IsAscii))
+        {
+            return text;
+        }
+
+        var sb = new StringBuilder(text.Length);
+        foreach (var c in text.Normalize(NormalizationForm.FormD))
+        {
+            switch (c)
+            {
+                case 'ß': sb.Append("ss"); break;
+                case 'ø': sb.Append('o'); break;
+                case 'æ': sb.Append("ae"); break;
+                case 'ł': sb.Append('l'); break;
+                default:
+                    if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark)
+                    {
+                        sb.Append(c);
+                    }
+
+                    break;
+            }
+        }
+
+        return sb.ToString().Normalize(NormalizationForm.FormC);
     }
 
     /// <summary>
