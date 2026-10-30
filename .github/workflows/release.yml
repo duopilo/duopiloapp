@@ -2,8 +2,9 @@
 # an ein automatisch erstelltes GitHub Release mit Changelog hängen.
 #
 # Läuft
-#  - bei einem Tag „v…“ (v0.9.1, v1.0.0-beta.1): baut und veröffentlicht. Die Version im Programm kommt aus dem Tag.
-#    Tags mit Zusatz („-beta.1“, „-rc.1“) werden als Pre-release veröffentlicht.
+#  - bei einem Tag „v…“ (v0.9.1, v1.0.0-beta.1): baut und legt das Release als Entwurf (Draft) an – nicht öffentlich.
+#    Die Version im Programm kommt aus dem Tag. Tags mit Zusatz („-beta.1“, „-rc.1“) werden als Pre-release markiert.
+#    Veröffentlichen bewusst von Hand: auf GitHub im Entwurf „Publish release“ oder gh release edit v0.9.1 --draft=false.
 #  - von Hand: Actions → Release → Run workflow (Version angeben) – nur bauen, Ergebnis unter „Artifacts“.
 #  - bei Pull Requests, die diesen Workflow oder installer/ ändern – nur bauen, zum Testen.
 #
@@ -271,12 +272,13 @@ jobs:
         run: |
           set -euo pipefail
           if gh release view "$TAG" >/dev/null 2>&1; then
-            # Lauf wiederholt: Dateien und Text ersetzen.
+            # Lauf wiederholt: Dateien und Text ersetzen. Entwurf bleibt Entwurf, ein veröffentlichtes Release bleibt veröffentlicht.
             gh release upload "$TAG" pakete/* --clobber
             gh release edit "$TAG" --title "$TITEL" --notes-file notes.md
           else
-            extra=()
+            # Immer als Entwurf: Veröffentlichen ist ein eigener, bewusster Schritt (Lizenz der mitgelieferten SimConnect-DLLs).
+            extra=(--draft)
             if [ "$PRERELEASE" = "true" ]; then extra+=(--prerelease); fi
             gh release create "$TAG" pakete/* --title "$TITEL" --notes-file notes.md --verify-tag "${extra[@]}"
           fi
-          echo "Release: $(gh release view "$TAG" --json url --jq .url)"
+          echo "Release (Entwurf: $(gh release view "$TAG" --json isDraft --jq .isDraft)): $(gh release view "$TAG" --json url --jq .url)"

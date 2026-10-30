@@ -464,7 +464,7 @@ Im Ordner `C:\Tools\Kopilot` müssen nach dem Veröffentlichen `Kopilot.exe`, `M
 
 ## Release und Installer
 
-Ein Tag `v…` startet den Workflow „Release“ (`.github/workflows/release.yml`): self-contained Build für win-x64 mit der Version aus dem Tag, Installer (Inno Setup, `installer/`) und ZIP, beides an ein GitHub Release mit Changelog aus den Commits seit dem letzten Tag. Tags mit Zusatz (`v1.0.0-beta.1`) werden Pre-releases.
+Ein Tag `v…` startet den Workflow „Release“ (`.github/workflows/release.yml`): self-contained Build für win-x64 mit der Version aus dem Tag, Installer (Inno Setup, `installer/`) und ZIP, beides an ein GitHub Release mit Changelog aus den Commits seit dem letzten Tag. Das Release entsteht als **Entwurf** (nicht öffentlich); veröffentlichen bewusst über „Publish release“ auf GitHub oder `gh release edit v0.9.1 --draft=false`. Tags mit Zusatz (`v1.0.0-beta.1`) werden Pre-releases.
 
 ```powershell
 git switch main; git pull
