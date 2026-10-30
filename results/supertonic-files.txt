@@ -1,0 +1,283 @@
+127 ./.gitattributes
+22 ./.gitignore
+15007 ./LICENSE
+9189 ./README.md
+1152044 ./audio_samples/alphonse_reference.wav
+970796 ./audio_samples/alphonse_supertonic3.wav
+1152044 ./audio_samples/keld_reference.wav
+1148972 ./audio_samples/keld_supertonic3.wav
+1152044 ./audio_samples/luna_reference.wav
+712748 ./audio_samples/luna_supertonic3.wav
+480044 ./audio_samples/moka_reference.wav
+479276 ./audio_samples/moka_supertonic3.wav
+264644 ./audio_samples/nora_reference.wav
+374828 ./audio_samples/nora_supertonic3.wav
+2304044 ./audio_samples/watson_reference.wav
+1019948 ./audio_samples/watson_supertonic3.wav
+174 ./config.json
+1499338 ./img/Supertonic3_HeroImage.png
+94546 ./img/metrics/model_size_comparison.png
+262397 ./img/metrics/runtime_cpu_gpu_latency_memory.png
+197548 ./img/metrics/s3_vs_measured_wer_range_voxcpm2.png
+161950 ./img/metrics/supertonic2_vs_3_comparison.png
+3700147 ./onnx/duration_predictor.onnx
+36416150 ./onnx/text_encoder.onnx
+8253 ./onnx/tts.json
+277676 ./onnx/unicode_indexer.json
+256534781 ./onnx/vector_estimator.onnx
+101424195 ./onnx/vocoder.onnx
+292046 ./voice_styles/F1.json
+292423 ./voice_styles/F2.json
+290794 ./voice_styles/F3.json
+291808 ./voice_styles/F4.json
+291479 ./voice_styles/F5.json
+291748 ./voice_styles/M1.json
+292055 ./voice_styles/M2.json
+290198 ./voice_styles/M3.json
+291522 ./voice_styles/M4.json
+291469 ./voice_styles/M5.json
+
+71da9814fb887a641658bbf45844621d725e8179cfcdf84cf68a8934a300d924  ./.gitattributes
+0562091e4be77c4262c11672de88360efc6d1819c999612e5d6d0e292baa1eda  ./.gitignore
+0d944a9110fed9a9602d60e0423a272903e7bd21ab060490774efc77c2275e9f  ./LICENSE
+d414e4b085fb9989ebfd2b64f868ff861694022b4bdb805b09e702386dbdc7d5  ./README.md
+09e613442124ee0cb31146431bbe0b3acd727569a55fc0ae4b4082b5de27c9f3  ./audio_samples/alphonse_reference.wav
+f3dacbfa5695d6416fb46a3ea72e202e16a467a4cb5ead9425073ef83596811c  ./audio_samples/alphonse_supertonic3.wav
+8d7f3c2b15ee6ebafe88307658bf0787d3ca19f6347fd9e936e7bff786d1f70a  ./audio_samples/keld_reference.wav
+818c2b25bbf3e568ae8d4aeea5441605ed3e124ab28d746928972066902b35d9  ./audio_samples/keld_supertonic3.wav
+1fcec63c22ad76711ec9835a6ca21cb84227045e3aad808f841bcbec455a9470  ./audio_samples/luna_reference.wav
+34527bf7ed968ebc5024f985d48ccf06c5c4418fb2d7fc7e3fb7a873e367c273  ./audio_samples/luna_supertonic3.wav
+ad50e1f13c18aa6af2e0f518714675c03ed98f0e85653a642527f56c2d181a56  ./audio_samples/moka_reference.wav
+bec7d6a5261240935d8436f3ada17aa50774878e8e6ad1696d131e4ec4ecd5f3  ./audio_samples/moka_supertonic3.wav
+a59576e7ffe84093439924f14d7070fb8174f8306c27049c00e63d747434a772  ./audio_samples/nora_reference.wav
+6d11415a428949df69191361b9dc5f567aaf6eccd89c13013c2fbb381b353321  ./audio_samples/nora_supertonic3.wav
+5449908651219298eab47a32a04b96291baceea00e772ea9cb16853a93127c30  ./audio_samples/watson_reference.wav
+e8ffb0051f00e3f6476694604a3d21f6e87b3570b9b73fc2fdb9560c9e6f1c67  ./audio_samples/watson_supertonic3.wav
+4099082b107a9d4029849ac76b89eca65e03732660969c2babe5bf308c7357f2  ./config.json
+7498880b738494d758a6e37b0c730c46ad0f22775c5076cb0e3ad4062ef8e8be  ./img/Supertonic3_HeroImage.png
+c7fcffffdb70b3850f3e3e9552eaf2c263749314f4e39ff9d88e189ce3593322  ./img/metrics/model_size_comparison.png
+a80c0def839ea570b207e06cc1d3d5aa99e58a24dc85b3dda2688b2dd2c79ec0  ./img/metrics/runtime_cpu_gpu_latency_memory.png
+b04a427ca1f7a97b6021ba4c518f3318104d2e85023ac0af3373b844021a1db1  ./img/metrics/s3_vs_measured_wer_range_voxcpm2.png
+b40da99bfe032f8ce4713bb18305842a1a9a23b01a9642992721a4172949fb28  ./img/metrics/supertonic2_vs_3_comparison.png
+c3eb91414d5ff8a7a239b7fe9e34e7e2bf8a8140d8375ffb14718b1c639325db  ./onnx/duration_predictor.onnx
+c7befd5ea8c3119769e8a6c1486c4edc6a3bc8365c67621c881bbb774b9902ff  ./onnx/text_encoder.onnx
+42078d3aef1cd43ab43021f3c54f47d2d75ceb4e75f627f118890128b06a0d09  ./onnx/tts.json
+9bf7346e43883a81f8645c81224f786d43c5b57f3641f6e7671a7d6c493cb24f  ./onnx/unicode_indexer.json
+883ac868ea0275ef0e991524dc64f16b3c0376efd7c320af6b53f5b780d7c61c  ./onnx/vector_estimator.onnx
+085de76dd8e8d5836d6ca66826601f615939218f90e519f70ee8a36ed2a4c4ba  ./onnx/vocoder.onnx
+bbdec6ee00231c2c742ad05483df5334cab3b52fda3ba38e6a07059c4563dbc2  ./voice_styles/F1.json
+7c722c6a72707b1a77f035d67f0d1351ba187738e06f7683e8c72b1df3477fc6  ./voice_styles/F2.json
+12f6ef2573baa2defa1128069cb59f203e3ab67c92af77b42df8a0e3a2f7c6ab  ./voice_styles/F3.json
+c2fa764c1225a76dfc3e2c73e8aa4f70d9ee48793860eb34c295fff01c2e032b  ./voice_styles/F4.json
+45966e73316415626cf41a7d1c6f3b4c70dbc1ba2bee5c1978ef0ce33244fc8d  ./voice_styles/F5.json
+e35604687f5d23694b8e91593a93eec0e4eca6c0b02bb8ed69139ab2ea6b0a5b  ./voice_styles/M1.json
+b76cbf62bac707c710cf0ae5aba5e31eea1a6339a9734bfae33ab98499534a50  ./voice_styles/M2.json
+ea1ac35ccb91b0d7ecad533a2fbd0eec10c91513d8951e3b25fbba99954e159b  ./voice_styles/M3.json
+ca8eefad4fcd989c9379032ff3e50738adc547eeb5e221b82593a6d7b3bac303  ./voice_styles/M4.json
+dd22b92740314321f8ae11c5e87f8dd60d060f15dd3a632b5adf77f471f77af2  ./voice_styles/M5.json
+
+{
+    "tts_version": "v1.7.3",
+    "split": "opensource-multilingual",
+    "ttl": {
+        "latent_dim": 24,
+        "chunk_compress_factor": 6,
+        "batch_expander": {
+            "n_batch_expand": 6
+        },
+        "normalizer": {
+            "scale": 0.25
+        },
+        "text_encoder": {
+            "n_langs": 0,
+            "lang_emb_dim": 0,
+            "text_embedder": {
+                "char_emb_dim": 256
+            },
+            "convnext": {
+                "idim": 256,
+                "ksz": 5,
+                "intermediate_dim": 1024,
+                "num_layers": 6,
+ 
+{
+ "ttl": {
+  "latent_dim": 24,
+  "chunk_compress_factor": 6,
+  "batch_expander": {
+   "n_batch_expand": 6
+  },
+  "normalizer": {
+   "scale": 0.25
+  },
+  "text_encoder": {
+   "n_langs": 0,
+   "lang_emb_dim": 0,
+   "text_embedder": {
+    "char_emb_dim": 256
+   },
+   "convnext": {
+    "idim": 256,
+    "ksz": 5,
+    "intermediate_dim": 1024,
+    "num_layers": 6,
+    "dilation_lst": [
+     1,
+     1,
+     2,
+     2,
+     4,
+     4
+    ]
+   },
+   "attn_encoder": {
+    "hidden_channels": 256,
+    "filter_channels": 1024,
+    "n_heads": 4,
+    "n_layers": 4,
+    "p_dropout": 0.0
+   },
+   "proj_out": {
+    "idim": 256,
+    "odim": 256
+   }
+  },
+  "flow_matching": {
+   "sig_min": 1e-08
+  },
+  "style_encoder": {
+   "proj_in": {
+    "ldim": 24,
+    "chunk_compress_factor": 6,
+    "odim": 256
+   },
+   "convnext": {
+    "idim": 256,
+    "ksz": 5,
+    "intermediate_dim": 1024,
+    "num_layers": 6,
+    "dilation_lst": [
+     1,
+     1,
+     1,
+     1,
+     1,
+     1
+    ]
+   },
+   "style_token_layer": {
+    "input_dim": 256,
+    "n_style": 50,
+    "style_key_dim": 256,
+    "style_value_dim": 256,
+    "prototype_dim": 256,
+    "n_units": 256,
+    "n_heads": 2
+   }
+  },
+  "speech_prompted_text_encoder": {
+   "text_dim": 256,
+   "style_dim": 256,
+   "n_units": 256,
+   "n_heads": 2
+  },
+  "uncond_masker": {
+   "prob_both_uncond": 0.04,
+   "prob_text_uncond": 0.01,
+   "std": 0.1,
+   "text_dim": 256,
+   "n_style": 50,
+   "style_key_dim": 256,
+   "style_value_dim": 256
+  },
+  "vector_field": {
+   "n_langs": 0,
+   "lang_emb_dim": 0,
+   "proj_in": {
+    "ldim": 24,
+    "chunk_compress_factor": 6,
+    "odim": 512
+   },
+   "time_encoder": {
+    "time_dim": 64,
+    "hdim": 256
+   },
+   "main_blocks": {
+    "n_blocks": 4,
+    "time_cond_layer": {
+     "idim": 512,
+     "time_dim": 64
+    },
+    "style_cond_layer": {
+     "idim": 512,
+     "style_dim": 256
+    },
+    "text_cond_layer": {
+     "idim": 512,
+     "text_dim": 256,
+     "n_heads": 8,
+     "n_units": 512,
+     "use_residual": true,
+     "rotary_base": 10000,
+     "rotary_scale": 10
+    },
+    "convnext_0": {
+     "idim": 512,
+     "ksz": 5,
+     "intermediate_dim": 2048,
+     "num_layers": 4,
+     "dilation_lst": [
+      1,
+      2,
+      4,
+      8
+     ]
+    },
+    "convnext_1": {
+     "idim": 512,
+     "ksz": 5,
+     "intermediate_dim": 2048,
+     "num_layers": 1,
+     "dilation_lst": [
+      1
+     ]
+    },
+    "convnext_2": {
+     "idim": 512,
+     "ksz": 5,
+     "intermediate_dim": 2048,
+     "num_layers": 1,
+     "dilation_lst": [
+      1
+     ]
+    }
+   },
+   "last_convnext": {
+    "idim": 512,
+    "ksz": 5,
+    "intermediate_dim": 2048,
+    "num_layers": 4,
+    "dilation_lst": [
+     1,
+     1,
+     1,
+     1
+    ]
+   },
+   "proj_out": {
+    "idim": 512,
+    "chunk_compress_factor": 6,
+    "ldim": 24
+   }
+  }
+ },
+ "ae": {
+  "sample_rate": 44100,
+  "n_delay": 0,
+  "base_chunk_size": 512,
+  "chunk_compress_factor": 1,
+  "ldim": 24,
+  "encoder": {
+   "spec_processor": {
+    "n_fft": 2048,
+    "win_length": 2
