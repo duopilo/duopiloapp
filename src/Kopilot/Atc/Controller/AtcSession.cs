@@ -77,7 +77,8 @@ public sealed partial class AtcSession
 
     public AtcStation Station { get; private set; }
 
-    public string Squawk { get; }
+    /// <summary>Zugewiesener Squawk: pro Flug fest, mit SquawkFromSim der vom MSFS-ATC übernommene.</summary>
+    public string Squawk { get; private set; }
 
     /// <summary>Zuletzt freigegebene Höhe (ft).</summary>
     public int? ClearedAltitudeFt { get; private set; }
@@ -158,6 +159,9 @@ public sealed partial class AtcSession
                 break;
         }
 
+        TickLevels(input, output);
+        CheckSquawk(input, output);
+        CheckFrequency(input, output);
         UpdateOceanicClearance(input);
         return output;
     }
@@ -208,8 +212,16 @@ public sealed partial class AtcSession
             return output;
         }
 
+        // Anruf an eine andere Station ("Gander, Condor 2205, …" bei Montreal): Hinweis statt Antwort. Nicht bei offenem
+        // Readback – Readbacks enden mit dem Rufzeichen und nennen keine Station.
+        if (PendingReadback is null && HandleWrongStation(heard, input, output))
+        {
+            return output;
+        }
+
         if (PendingReadback is { } pending)
         {
+            StationContacted(input.TimeUtc);
             HandleReadback(pending, heard, input, output, oceanic: false);
             return output;
         }
@@ -219,13 +231,20 @@ public sealed partial class AtcSession
             _ackPending = false;
             if (!LooksLikeNewCall(heard))
             {
-                // Quittung einer Übergabe oder Anweisung – ATC antwortet nicht
+                // Quittung einer Übergabe oder Anweisung – ATC antwortet nicht (nach einer Übergabe noch auf der alten Frequenz)
                 _ackFrequency = null;
                 return output;
             }
         }
 
+        // Neuer Anruf bei der aktuellen Station: ab jetzt muss COM1 auf ihrer Frequenz stehen
+        StationContacted(input.TimeUtc);
         _ackFrequency = null;
+        if (HandleLevelRequest(heard, input, output))
+        {
+            return output;
+        }
+
         HandleCall(heard, input, output);
         return output;
     }
@@ -267,6 +286,13 @@ public sealed partial class AtcSession
         if (next.Id is not null && RenderMessage(next.Id, next.Locals, Station) is { } rendered)
         {
             calls.Add(rendered);
+        }
+
+        // Stufensteigflug laut OFP in Sicht: der Pilot kann ihn anfragen
+        if (Step is AtcStep.CenterCruise or AtcStep.OceanicReports && _expectedLevel is null && UpcomingStepClimb() is { } step
+            && RenderMessage(AtcMessageIds.CenterLevelRequest, LevelLocals(step.AltitudeFt, "climb"), Station) is { } request)
+        {
+            calls.Add(request);
         }
 
         return calls;
@@ -340,13 +366,18 @@ public sealed partial class AtcSession
         }
         else
         {
-            ClearedAltitudeFt = Plan.CruiseFt;
+            ClearedAltitudeFt = EnrouteLevel(input);
             EnterFir(Plan.FirAt(along), now);
         }
     }
 
     private void Enter(AtcPhase phase, AtcStep step, AtcStation station, DateTimeOffset now)
     {
+        if (!string.Equals(Station.Key, station.Key, StringComparison.OrdinalIgnoreCase))
+        {
+            StationChanged(now, handoff: false);
+        }
+
         Phase = phase;
         Station = station;
         PendingReadback = null;
@@ -480,10 +511,7 @@ public sealed partial class AtcSession
         if (!_descentIssued && Step != AtcStep.CenterReadback && TopOfDescentReached(input)
             && (input.AltitudeFt ?? 0) > Rules.CenterDescentFt + 1000)
         {
-            _descentIssued = true;
-            ClearedAltitudeFt = Rules.CenterDescentFt;
-            SetStep(AtcStep.CenterReadback, now);
-            SayWithReadback(output, AtcMessageIds.CenterDescend, LevelLocals(Rules.CenterDescentFt, "descend"), (o, i) => SetStep(AtcStep.CenterCruise, i.TimeUtc));
+            IssueTopOfDescent(output, now);
         }
     }
 
@@ -651,6 +679,8 @@ public sealed partial class AtcSession
                 break;
 
             case AtcStep.CenterContact:
+                // "maintaining FL340" bei Freigabe FL320: liegt das Flugzeug dort, gilt die gemeldete Höhe
+                AcceptReportedLevel(heard, input);
                 if (!_descentIssued && (ClearedAltitudeFt ?? 0) < Plan.CruiseFt)
                 {
                     ClearedAltitudeFt = Plan.CruiseFt;
@@ -829,7 +859,11 @@ public sealed partial class AtcSession
             ["nextCenter"] = next.NameValue,
         };
         Say(output, messageId, locals);
+        _handoffFrom = Station;
+        _handoffMessageId = messageId;
+        _handoffAtUtc = now;
         Enter(phase, step, next, now);
+        StationChanged(now, handoff: true);
         _ackPending = true;
         _ackFrequency = next.Frequency;
     }
@@ -863,18 +897,19 @@ public sealed partial class AtcSession
         return segment.StartNm > _firSegment.StartNm + 0.01 ? segment : null;
     }
 
-    private bool TopOfDescentReached(AtcInput input)
+    /// <summary>Top of Descent erreicht (<paramref name="extraLeadNm"/>: so viel früher, z. B. für "request descent").</summary>
+    private bool TopOfDescentReached(AtcInput input, double extraLeadNm = 0)
     {
         var along = _alongNm ?? 0;
         if (Plan.TodNm is { } tod)
         {
-            return along >= tod - Rules.TopOfDescentLeadNm;
+            return along >= tod - Rules.TopOfDescentLeadNm - extraLeadNm;
         }
 
         // Ohne TOD im Plan: 3-zu-1-Regel (3 nm je 1000 ft) plus Reserve
         var toGo = Plan.TotalNm - along;
         var elevation = Plan.Ofp.Destination.ElevationFt ?? 0;
-        return toGo <= ((input.AltitudeFt ?? 0) - elevation) / 1000.0 * 3 + 10;
+        return toGo <= ((input.AltitudeFt ?? 0) - elevation) / 1000.0 * 3 + 10 + extraLeadNm;
     }
 
     private void StartReports()
@@ -1010,7 +1045,8 @@ public sealed partial class AtcSession
         Record(output, "atc", speaker, messageId, rendered.Text, rendered.Spoken);
 
         // Auf Anweisungen folgt meist eine Quittung des Piloten, auf die ATC nicht antwortet
-        if (messageId is not (AtcMessageIds.CommonRoger or AtcMessageIds.CommonSayAgain or AtcMessageIds.CommonNegative or AtcMessageIds.CommonRadioCheck or AtcMessageIds.OceanicRoger))
+        if (messageId is not (AtcMessageIds.CommonRoger or AtcMessageIds.CommonSayAgain or AtcMessageIds.CommonNegative or AtcMessageIds.CommonRadioCheck
+            or AtcMessageIds.OceanicRoger or AtcMessageIds.CommonWrongStation))
         {
             _ackPending = true;
         }

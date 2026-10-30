@@ -116,7 +116,56 @@ public sealed record AtcInput
 
     /// <summary>Vom MSFS-ATC zugewiesene Bahn, falls der Plan keine hat.</summary>
     public string? AssignedRunway { get; init; }
+
+    /// <summary>Eingestellter Transpondercode (TRANSPONDER CODE, vier Oktalziffern), null = unbekannt.</summary>
+    public string? TransponderCode { get; init; }
+
+    /// <summary>Aktive Frequenz von COM1 (COM ACTIVE FREQUENCY:1, MHz), null = unbekannt.</summary>
+    public double? Com1ActiveMhz { get; init; }
 }
+
+/// <summary>Was Kopilot überwacht: Transpondercode oder COM1-Frequenz.</summary>
+public enum AtcDeviationKind
+{
+    Squawk,
+    Frequency,
+}
+
+/// <summary>
+/// Abweichung vom Zugewiesenen, die ATC schon angesprochen hat ("check squawk, should be …"). Kopilot setzt nie selbst
+/// zurück – <paramref name="Actions"/> sind die Eingaben, die Claude dem Piloten anbieten kann (prepare_action).
+/// </summary>
+/// <param name="Expected">Zugewiesener Code bzw. Frequenz ("2340", "132.6").</param>
+/// <param name="Actual">Eingestellter Code bzw. Frequenz.</param>
+/// <param name="Station">Station, deren Frequenz erwartet wird (nur Frequenz).</param>
+/// <param name="Calls">Wie oft ATC schon darauf hingewiesen hat.</param>
+public sealed record AtcDeviation(
+    AtcDeviationKind Kind,
+    string Expected,
+    string Actual,
+    string? Station,
+    DateTimeOffset SinceUtc,
+    int Calls,
+    IReadOnlyList<AtcSuggestedAction> Actions);
+
+/// <summary>Eingabe für prepare_action ("xpdr.code" mit "2340", "com1.standby" mit "132.600", dann "com1.swap").</summary>
+public sealed record AtcSuggestedAction(string Action, string? Value);
+
+public enum AtcDeviationChange
+{
+    /// <summary>ATC hat die Abweichung angesprochen (Hinweis an Claude: Zurücksetzen anbieten).</summary>
+    Raised,
+
+    /// <summary>Wieder wie zugewiesen.</summary>
+    Cleared,
+
+    /// <summary>Squawk aus dem Transponder übernommen (Einstellung SquawkFromSim).</summary>
+    Adopted,
+}
+
+/// <summary>Änderung an einer Abweichung – der <see cref="AtcService"/> macht daraus Meldungen im AlertBus.</summary>
+/// <param name="Previous">Bei <see cref="AtcDeviationChange.Adopted"/>: der bisher zugewiesene Squawk.</param>
+public sealed record AtcDeviationEvent(AtcDeviationKind Kind, AtcDeviationChange Change, string Expected, string? Actual, string? Station, string? Previous = null);
 
 /// <summary>Ein Funkspruch im Verlauf (ATC oder Pilot).</summary>
 public sealed record AtcTransmission(
@@ -132,11 +181,15 @@ public sealed record AtcTransmission(
     string Spoken);
 
 /// <summary>Was die Sitzung von außen bekommt: Frequenzen, Rollrouten, Stimmen.</summary>
+/// <param name="SquawkFromSim">
+/// Squawk aus dem Transponder übernehmen, wenn ihn das MSFS-ATC (auch stumm geschaltet) im Flug ändert – statt "check squawk".
+/// </param>
 public sealed record AtcSessionContext(
     Func<string, IReadOnlyList<AirportFrequency>?> FacilityFrequencies,
     ITaxiRouteProvider TaxiRoutes,
     string? CalloutVoice = null,
-    IReadOnlyCollection<string>? InstalledVoices = null);
+    IReadOnlyCollection<string>? InstalledVoices = null,
+    bool SquawkFromSim = false);
 
 /// <summary>Offenes Readback: welche Werte der Pilot noch zurücklesen muss und was danach passiert.</summary>
 public sealed record AtcPendingReadback(string MessageId, AtcStation Station, IReadOnlyList<ReadbackItem> Items, Action<List<AtcTransmission>, AtcInput> OnCorrect);

@@ -25,6 +25,9 @@ public sealed record AtcFirSegment(string Fir, double StartNm, bool Oceanic)
 /// <summary>Oceanic-Teil der Route: Eintrittspunkt, Meldepunkte (inkl. Ein- und Austritt) und Austrittspunkt (Indizes in <see cref="Ofp.Fixes"/>).</summary>
 public sealed record AtcOceanicSegment(int EntryFix, int ExitFix, IReadOnlyList<int> ReportFixes, string EntryFir);
 
+/// <summary>Stufensteigflug laut OFP: ab dem Fix <paramref name="FixIndex"/> (Streckenposition <paramref name="AlongNm"/>) die Höhe <paramref name="AltitudeFt"/>.</summary>
+public sealed record AtcStepClimb(int FixIndex, string Fix, int AltitudeFt, double AlongNm);
+
 /// <summary>
 /// Was die ATC-Zustandsmaschine aus dem SimBrief-OFP braucht: Rufzeichen, SID/STAR, Bahnen, FIR-Abschnitte mit
 /// Übergabepunkten und – auf Langstrecken – den Oceanic-Teil.
@@ -65,6 +68,9 @@ public sealed partial class AtcPlan
 
     /// <summary>Streckenposition des Top of Descent laut Plan.</summary>
     public double? TodNm { get; init; }
+
+    /// <summary>Stufensteigflüge im Reiseflug laut OFP (Höhe der Fixe), in Flugrichtung.</summary>
+    public IReadOnlyList<AtcStepClimb> StepClimbs { get; init; } = [];
 
     /// <summary>Kennung des Flugs für die Stimmen ("SimBrief-Request-ID", sonst Route).</summary>
     public required string FlightKey { get; init; }
@@ -154,6 +160,7 @@ public sealed partial class AtcPlan
             Oceanic = oceanic,
             DirectFix = DirectCandidate(ofp.Fixes),
             TodNm = TodDistance(points, distances),
+            StepClimbs = StepClimbs(ofp.Fixes, points, distances, cruise),
             FlightKey = ofp.RequestId ?? $"{ofp.Origin.Icao}-{ofp.Destination.Icao}-{ofp.GeneratedUtc?.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture)}",
             Airspace = airspace,
         };
@@ -486,6 +493,59 @@ public sealed partial class AtcPlan
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Stufensteigflüge: Fixe im Reiseflug (SimBrief-Stage "CRZ", ohne Stages zwischen TOC und TOD), deren geplante Höhe
+    /// mindestens 1000 ft über der bisherigen Reiseflughöhe liegt. Ein Stufensinkflug setzt die Basis nur herunter.
+    /// </summary>
+    private static List<AtcStepClimb> StepClimbs(IReadOnlyList<OfpFix> fixes, IReadOnlyList<RoutePoint> points, IReadOnlyList<double> distances, int cruise)
+    {
+        var result = new List<AtcStepClimb>();
+        var withStages = fixes.Any(f => !string.IsNullOrWhiteSpace(f.Stage));
+        var toc = -1;
+        var tod = fixes.Count;
+        for (var i = 0; i < fixes.Count; i++)
+        {
+            if (fixes[i].Ident.Equals("TOC", StringComparison.OrdinalIgnoreCase) && toc < 0)
+            {
+                toc = i;
+            }
+            else if (fixes[i].Ident.Equals("TOD", StringComparison.OrdinalIgnoreCase))
+            {
+                tod = i;
+            }
+        }
+
+        var level = cruise;
+        for (var i = 0; i < fixes.Count; i++)
+        {
+            var fix = fixes[i];
+            var inCruise = withStages
+                ? string.Equals(fix.Stage?.Trim(), "CRZ", StringComparison.OrdinalIgnoreCase)
+                : toc >= 0 && i > toc && i < tod;
+            if (!inCruise || fix.AltitudeFt is not { } altitude || fix.Ident is "TOC" or "TOD" || fix.Type == "apt")
+            {
+                continue;
+            }
+
+            if (altitude >= level + 1000)
+            {
+                var nm = Enumerable.Range(0, points.Count).Where(p => points[p].FixIndex == i).Select(p => (double?)distances[p]).FirstOrDefault();
+                if (nm is { } along)
+                {
+                    result.Add(new AtcStepClimb(i, fix.Ident, altitude, along));
+                }
+
+                level = altitude;
+            }
+            else if (altitude <= level - 1000)
+            {
+                level = altitude;
+            }
+        }
+
+        return result;
     }
 
     private static double? TodDistance(IReadOnlyList<RoutePoint> points, IReadOnlyList<double> distances)

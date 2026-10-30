@@ -82,6 +82,17 @@ public sealed record AtcSessionSnapshot
 
     /// <summary>Beim Sichern offenes Readback (Nachrichten-ID) – nur zur Information.</summary>
     public string? PendingReadback { get; init; }
+
+    /// <summary>"kopilot" oder "sim" (Squawk aus dem Transponder übernommen). Fehlt in älteren Sicherungen.</summary>
+    public string? SquawkSource { get; init; }
+
+    /// <summary>Stufensteigflüge des OFP vor diesem Index sind erledigt.</summary>
+    public int StepClimbIndex { get; init; }
+
+    public int LevelRequests { get; init; }
+
+    /// <summary>Abgelehnte Höhenanfrage, die ATC später freigibt.</summary>
+    public AtcExpectedLevel? ExpectedLevel { get; init; }
 }
 
 public sealed partial class AtcSession
@@ -119,6 +130,10 @@ public sealed partial class AtcSession
         TaxiClearedAtUtc = _taxiClearedAt,
         LineUpAtUtc = _lineUpAt,
         PendingReadback = (PendingReadback ?? _oceanicReadback)?.MessageId,
+        SquawkSource = SquawkSource,
+        StepClimbIndex = _stepClimbIndex,
+        LevelRequests = _levelRequests,
+        ExpectedLevel = _expectedLevel,
     };
 
     /// <summary>
@@ -131,6 +146,9 @@ public sealed partial class AtcSession
             Step,
             Station.Key,
             ClearedAltitudeFt,
+            Squawk,
+            _stepClimbIndex,
+            _expectedLevel?.AltitudeFt,
             Oceanic,
             _nextId,
             _reportIndex,
@@ -176,6 +194,17 @@ public sealed partial class AtcSession
 
         _lastAtcStation = s.LastAtcStation is { } lastStation ? ResolveStation(lastStation) : null;
         ClearedAltitudeFt = s.ClearedAltitudeFt;
+
+        // Squawk: aus der Sicherung (auch einer vom MSFS-ATC übernommenen), sonst der feste des Flugs
+        if (IsValidSquawk(s.Squawk))
+        {
+            Squawk = s.Squawk;
+            SquawkSource = s.SquawkSource is "sim" ? "sim" : "kopilot";
+        }
+
+        _stepClimbIndex = Math.Clamp(s.StepClimbIndex, 0, Plan.StepClimbs.Count);
+        _levelRequests = Math.Max(0, s.LevelRequests);
+        _expectedLevel = s.ExpectedLevel;
         Oceanic = Plan.Oceanic is null
             ? OceanicClearanceState.NotRequired
             : s.Oceanic == OceanicClearanceState.ReadbackPending ? OceanicClearanceState.Due : s.Oceanic;
@@ -199,6 +228,9 @@ public sealed partial class AtcSession
         _oceanicReadback = null;
         _ackPending = false;
         _ackFrequency = null;
+
+        // Der Pilot war auf der Frequenz der gesicherten Station – nach einer kurzen Schonfrist wird wieder geprüft
+        StationChanged(input.TimeUtc, handoff: true);
 
         UpdateRoute(input);
         UpdateOceanicClearance(input);

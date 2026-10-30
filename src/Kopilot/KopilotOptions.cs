@@ -290,6 +290,13 @@ public sealed class AtcOptions
 
     /// <summary>Ältere Sicherungen werden nicht wiederhergestellt (Stunden).</summary>
     public double SessionMaxAgeHours { get; set; } = 24;
+
+    /// <summary>
+    /// Squawk vom MSFS-ATC übernehmen: Ändert der Sim den Transpondercode im Flug selbst (auch bei stumm geschaltetem
+    /// Sim-ATC), gilt der neue Code als zugewiesen – statt "check squawk, should be …". Nur vergebene Codes, nie 2000/1200/7000
+    /// oder Notfallcodes.
+    /// </summary>
+    public bool SquawkFromSim { get; set; }
 }
 
 /// <summary>Fehlermeldungen aus dem Dashboard (Knopf „Fehler melden“).</summary>
