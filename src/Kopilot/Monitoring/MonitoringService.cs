@@ -17,7 +17,14 @@ public sealed class MonitoringService : BackgroundService
     private DateTimeOffset _lastErrorLogUtc;
     private DateTimeOffset _lastSimBriefAttemptUtc;
 
-    public MonitoringService(IOptions<KopilotOptions> options, SnapshotFactory factory, AlertBus bus, SimBriefService simBrief, FmaLog fmaLog, ILogger<MonitoringService> log)
+    public MonitoringService(
+        IOptions<KopilotOptions> options,
+        SnapshotFactory factory,
+        AlertBus bus,
+        SimBriefService simBrief,
+        FmaLog fmaLog,
+        ILogger<MonitoringService> log,
+        ConfigCalloutClaims? claims = null)
     {
         _fmaLog = fmaLog;
         _options = options.Value.Monitoring;
@@ -41,6 +48,7 @@ public sealed class MonitoringService : BackgroundService
                 LandingBufferKg = Math.Max(0, _options.FuelCheck.LandingBufferKg),
                 MinSpacingMinutes = Math.Max(0, _options.FuelCheck.MinSpacingMinutes),
             },
+            Claims = claims,
         });
     }
 

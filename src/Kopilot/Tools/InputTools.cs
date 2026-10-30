@@ -11,12 +11,17 @@ public static class InputTools
     private const string Rules =
         "Two-step rule: prepare_action returns a readback. Say exactly that readback to the pilot and ask for confirmation. " +
         "Only call confirm_action after the pilot clearly answers 'confirm' (or 'affirm', 'yes', 'correct'). " +
-        "If the pilot corrects, hesitates or says no, call cancel_action. Never confirm on your own initiative, never chain prepare and confirm without the pilot's answer in between.";
+        "If the pilot corrects, hesitates or says no, call cancel_action. Never confirm on your own initiative, never chain prepare and confirm without the pilot's answer in between. " +
+        "Critical actions (transponder/TCAS standby or ALT RPTG off in flight, squawk 7500/7600/7700, ADIRS off, AP/ATHR off in flight, " +
+        "FCU altitude below MSA or outside the ATC clearance, missing aircraft limits) need a second confirmation: after the first confirm_action " +
+        "the status is 'awaiting_caution_confirmation' – read the 'caution' text to the pilot word for word and call confirm_action again with the same token " +
+        "only after the pilot confirms again.";
 
     [McpServerTool(Name = "list_actions", ReadOnly = true)]
     [Description(
         "Lists the cockpit inputs Kopilot may operate in the current aircraft (FCU, EFIS, gear/flaps/speedbrake, lights, signs, anti-ice, packs, APU, " +
-        "transponder/TCAS, radios, baro, autobrake). Engine masters, fire handles, fuel and the MCDU are never available. " +
+        "transponder/TCAS, radios, baro, autobrake). Engine masters, fire handles, fuel pumps/crossfeed, hydraulics, IDG and the MCDU are never available. " +
+        "'safety' names the built-in plausibility locks and cautions of an action. " +
         "Shows whether input is enabled; it is disabled by default and only the pilot can enable it in the Kopilot dashboard. " + Rules)]
     public static string ListActions(
         InputService input,
@@ -32,6 +37,7 @@ public static class InputTools
                 value = a.Parameter is { } p ? ActionPlanner.Describe(p) : null,
                 verified = input.VerifiedBy(a),
                 interlocks = a.Interlocks.Count > 0 ? a.Interlocks : null,
+                safety = SafetyRules.Describe(a.Id),
             })
             .ToList();
 
@@ -47,8 +53,9 @@ public static class InputTools
 
     [McpServerTool(Name = "prepare_action", Destructive = false, Idempotent = false)]
     [Description(
-        "Step 1 of a cockpit input: checks the action, its value and the interlocks (no gear up on ground, no flaps above VFE, gear only below VLO) " +
-        "and returns a readback plus a token valid for about 60 s. Nothing is changed in the aircraft yet. " +
+        "Step 1 of a cockpit input: checks the action, its value and the interlocks (no gear up on ground, no flaps above VFE, gear only below VLO " +
+        "and the gear altitude limit, no speedbrake in inhibited flap settings, batteries off and both packs off only on ground, APU master off not with APU bleed on) " +
+        "and returns a readback plus a token valid for about 60 s. Nothing is changed in the aircraft yet. 'cautionFollows' = a second confirmation with a caution follows. " +
         "Only one action is open at a time: every new prepare_action discards the open one (even if the new one is refused), " +
         "so always confirm with the token of the latest successful prepare_action, through the same Kopilot connection. " + Rules)]
     public static async Task<string> PrepareAction(
@@ -67,7 +74,9 @@ public static class InputTools
 
             var result = await input.PrepareAsync(action, value, cancellationToken);
             return View(result, result.Status == InputResult.AwaitingConfirmation
-                ? "Read this back to the pilot now and wait for 'confirm'. Then call confirm_action with the token and the pilot's words."
+                ? result.CautionFollows
+                    ? "Read this back to the pilot now and wait for 'confirm'. Then call confirm_action with the token and the pilot's words – a caution with a second confirmation follows."
+                    : "Read this back to the pilot now and wait for 'confirm'. Then call confirm_action with the token and the pilot's words."
                 : null);
         });
     }
@@ -75,6 +84,9 @@ public static class InputTools
     [McpServerTool(Name = "confirm_action", Destructive = true, Idempotent = false)]
     [Description(
         "Step 2: executes the prepared action after the pilot confirmed the readback. Interlocks are checked again with the current state. " +
+        "For critical actions the first call returns 'awaiting_caution_confirmation' with a 'caution' text instead of executing – read it to the pilot, " +
+        "and call confirm_action again with the same token after the pilot confirms. " +
+        "After gear and flaps Kopilot reads the position back and calls it out itself ('Gear down, three green', 'Flaps two', or 'Gear disagree') – see 'followUp'. " +
         "Afterwards Kopilot reads the aircraft state back ('verification': confirmed/unverified/failed). 'stateAfter' is the raw value of the checked variable – " +
         "for selector switches the position number (e.g. 0 = ON on a 3-position ON/AUTO/OFF switch), so never read it as on/off; " +
         "'stateAfterText' names the matching option. " + Rules)]
@@ -85,7 +97,13 @@ public static class InputTools
         [Description("The pilot's answer to the readback, word for word, e.g. 'confirm'.")] string? pilotConfirmation = null,
         CancellationToken cancellationToken = default)
     {
-        return await Guard(log, "confirm_action", async () => View(await input.ConfirmAsync(token, pilotConfirmation, cancellationToken), null));
+        return await Guard(log, "confirm_action", async () =>
+        {
+            var result = await input.ConfirmAsync(token, pilotConfirmation, cancellationToken);
+            return View(result, result.Status == InputResult.AwaitingCautionConfirmation
+                ? "Do not execute yet: read the 'caution' text to the pilot word for word and wait for 'confirm'. Then call confirm_action again with the same token."
+                : null);
+        });
     }
 
     [McpServerTool(Name = "mark_action_verified", Destructive = false, Idempotent = true)]
@@ -134,6 +152,9 @@ public static class InputTools
         action = r.Action,
         value = r.Value,
         readback = r.Readback,
+        caution = r.Caution,
+        cautions = r.Cautions,
+        cautionFollows = r.CautionFollows ? true : (bool?)null,
         expiresInSec = r.ExpiresInSec,
 
         // confirmed = echter Flugzeugzustand geprüft; unverified = nur die Schalterstellung steht, Wirkung nicht nachgewiesen
@@ -159,10 +180,11 @@ public static class InputTools
             null => null,
         },
         actionVerified = r.Verified,
+        followUp = r.FollowUp,
         instruction,
     };
 
     private static object? Pending(InputService input) => input.Pending is { } p
-        ? new { token = p.Token, action = p.Plan.Action.Id, value = p.Plan.ValueText, readback = p.Plan.Readback, expiresInSec = Math.Max(0, (int)(p.ExpiresUtc - DateTimeOffset.UtcNow).TotalSeconds) }
+        ? new { token = p.Token, action = p.Plan.Action.Id, value = p.Plan.ValueText, readback = p.Prompt, cautionStage = p.CautionStage, expiresInSec = Math.Max(0, (int)(p.ExpiresUtc - DateTimeOffset.UtcNow).TotalSeconds) }
         : null;
 }

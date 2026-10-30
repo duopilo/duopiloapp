@@ -9,25 +9,61 @@ namespace Kopilot.Input;
 /// <list type="bullet">
 /// <item>Events nur aus einer festen Liste (FCU, Autobrake, Fahrwerk, Klappen, Spoiler, Licht, Schilder, Transponder, COM).</item>
 /// <item>Schreiben nur von L:-Variablen, nie von A:-SimVars. Fahrwerk, Klappen und Spoiler nur über ihre Events mit Sperren.</item>
-/// <item>Sperrliste für Triebwerk, Feuer, Treibstoff, Schub, MCDU und Sim-Steuerung – auch bei L:-Variablen.</item>
+/// <item>Sperrliste für Triebwerk, Feuer, Treibstoff (Pumpen, Crossfeed), Hydraulik (auch PTU, RAT), IDG, Schub, MCDU und
+/// Sim-Steuerung – auch bei L:-Variablen. Solche Aktionen gibt es nie, auch nicht mit Rückfrage: Schädigendes oder
+/// Irreversibles bestätigen die Piloten gegenseitig selbst.</item>
+/// <item>Sicherheitsrelevante Schalter (Fahrwerk, Klappen, Speedbrake, Batterien, Packs, APU Master, Transponder, TCAS, AP/ATHR,
+/// FCU-Höhe, ADIRS) nur unter ihrer Standard-ID – sonst greifen die Plausibilitätssperren in <see cref="SafetyRules"/> nicht.</item>
 /// </list>
 /// Geprüft beim Laden des Profils, beim Planen und unmittelbar vor dem Senden.
 /// </summary>
 public static partial class ActionSafety
 {
-    [GeneratedRegex(
+    private const string ForbiddenCore =
         @"ENG(INE)?_?\d?_?(MASTER|START|MODE)|MASTER_?ENG|ENGINE|STARTER|IGNIT|COMBUSTION|FIRE|AGENT|FUEL|X_?FEED|CROSS_?FEED|THROTTLE|" +
         @"MIXTURE|PROP|CONDITION_?LEVER|CUTOFF|SHUTOFF|MCDU|CDU|EFB|FLYPAD|SLEW|SIM_?RATE|SIM_?DISABLED|PAUSE|FREEZE|REPAIR|" +
-        @"FAILURE|CRASH|SITUATION|RELOAD|PLANE_|VELOCITY|PUSHBACK|TUG|GEAR|FLAP|SLAT|SPOILER",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+        @"FAILURE|CRASH|SITUATION|RELOAD|PLANE_|VELOCITY|PUSHBACK|TUG|" +
+        // Hydraulik (Pumpen, PTU, RAT) und IDG-Trennung: irreversibel bzw. schädigend
+        @"HYD|(?<![A-Z])IDG|(?<![A-Z])PTU(?![A-Z])|(?<![A-Z])RAT(?![A-Z])";
+
+    [GeneratedRegex(ForbiddenCore + @"|GEAR|FLAP|SLAT|SPOILER", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex ForbiddenVariable();
 
-    [GeneratedRegex(
-        @"ENG(INE)?_?\d?_?(MASTER|START|MODE)|MASTER_?ENG|ENGINE|STARTER|IGNIT|COMBUSTION|FIRE|AGENT|FUEL|X_?FEED|CROSS_?FEED|THROTTLE|" +
-        @"MIXTURE|PROP|CONDITION_?LEVER|CUTOFF|SHUTOFF|MCDU|CDU|EFB|FLYPAD|SLEW|SIM_?RATE|SIM_?DISABLED|PAUSE|FREEZE|REPAIR|" +
-        @"FAILURE|CRASH|SITUATION|RELOAD|PLANE_|VELOCITY|PUSHBACK|TUG",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    [GeneratedRegex(ForbiddenCore, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex ForbiddenEvent();
+
+    /// <summary>Bereiche, die es im Profil nicht geben darf (Groß-/Kleinschreibung egal).</summary>
+    private static readonly HashSet<string> ForbiddenAreas = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Engine", "Engines", "Eng", "Fuel", "Fire", "Hydraulic", "Hydraulics", "Hyd", "IDG",
+    };
+
+    /// <summary>Teile einer Aktions-ID, die auf gesperrte Systeme zeigen ("eng.master1", "fuel.xfeed", "elec.idg1", "hyd.ptu").</summary>
+    [GeneratedRegex(@"^(eng\d*|engines?|fuel|fire|hyd\w*)(\.|$)|(^|\.)(idg\d*|x?feed|crossfeed|ptu|rat|fire\w*)(\.|$)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex ForbiddenId();
+
+    /// <summary>
+    /// Sicherheitsrelevante Schritte (Event oder Variable) und die IDs, unter denen sie stehen dürfen. Die Plausibilitätssperren
+    /// in <see cref="SafetyRules"/> hängen an diesen IDs – eine umbenannte Aktion käme sonst an ihnen vorbei.
+    /// </summary>
+    private static readonly (Regex Pattern, string[] Ids, string What)[] Sensitive =
+    [
+        (new(@"^GEAR_DOWN$", RegexOptions.IgnoreCase), ["gear.down"], "Fahrwerk ausfahren"),
+        (new(@"^GEAR_UP$", RegexOptions.IgnoreCase), ["gear.up"], "Fahrwerk einfahren"),
+        (new(@"^FLAPS_", RegexOptions.IgnoreCase), ["flaps"], "Klappen"),
+        (new(@"(^|_)SPOILERS_SET$", RegexOptions.IgnoreCase), ["speedbrake"], "Speedbrake"),
+        (new(@"(?<![A-Z])BAT(T|TERY)?(?![A-Z])", RegexOptions.IgnoreCase), ["elec.battery", "elec.bat1", "elec.bat2"], "Batterien"),
+        (new(@"PACK_?\d", RegexOptions.IgnoreCase), ["air.pack1", "air.pack2"], "Packs"),
+        (new(@"APU_?MASTER", RegexOptions.IgnoreCase), ["apu.master"], "APU Master"),
+        (new(@"TRANSPONDER_(MODE|STATE)|XPNDR_?MODE", RegexOptions.IgnoreCase), ["xpdr.mode"], "Transponder-Modus"),
+        (new(@"ATC_ALT|ALT_?RPTG|ALT_?REPORT", RegexOptions.IgnoreCase), ["xpdr.altReporting"], "ALT RPTG"),
+        (new(@"TCAS_(POSITION|MODE)", RegexOptions.IgnoreCase), ["tcas.mode"], "TCAS-Modus"),
+        (new(@"XPNDR_SET|XPNDR_CODE|TRANSPONDER_CODE", RegexOptions.IgnoreCase), ["xpdr.code"], "Squawk"),
+        (new(@"FCU_AP_?\d|(?<![A-Z])AP_?\d_(PUSH|DISC)", RegexOptions.IgnoreCase), ["fcu.ap1", "fcu.ap2"], "Autopilot"),
+        (new(@"ATHR|AUTOTHRUST|AUTO_?THROTTLE", RegexOptions.IgnoreCase), ["fcu.athr"], "Autothrust"),
+        (new(@"FCU_ALT_(SET|INC|DEC)(?![A-Z])", RegexOptions.IgnoreCase), ["fcu.altitude"], "FCU-Höhe"),
+        (new(@"ADIRS|ADIRU|(?<![A-Z])IR_?\d_?MODE", RegexOptions.IgnoreCase), ["adirs.*"], "ADIRS"),
+    ];
 
     /// <summary>Erlaubte Standard-Events (genauer Name).</summary>
     private static readonly HashSet<string> AllowedEvents = new(StringComparer.OrdinalIgnoreCase)
@@ -113,9 +149,71 @@ public static partial class ActionSafety
             : null;
     }
 
-    /// <summary>Erstes Problem einer Aktion aus dem Profil (Schritte, Pflicht-Sperren), sonst null.</summary>
+    /// <summary>Gesperrter Bereich oder gesperrte ID (Triebwerk, Treibstoff, Feuer, Hydraulik, IDG), sonst null.</summary>
+    public static string? ForbiddenActionProblem(ProfileAction action)
+    {
+        if (!string.IsNullOrWhiteSpace(action.Area) && ForbiddenAreas.Contains(action.Area.Trim()))
+        {
+            return $"Bereich {action.Area} ist gesperrt (Triebwerk, Treibstoff, Feuer, Hydraulik, IDG – nie über Kopilot)";
+        }
+
+        return !string.IsNullOrWhiteSpace(action.Id) && ForbiddenId().IsMatch(action.Id.Trim())
+            ? $"{action.Id} ist gesperrt (Triebwerk, Treibstoff, Feuer, Hydraulik, IDG – nie über Kopilot)"
+            : null;
+    }
+
+    /// <summary>
+    /// Sicherheitsrelevanter Schritt unter einer anderen als der Standard-ID (z. B. Pack-Variable in "air.packs"), sonst null.
+    /// </summary>
+    public static string? CanonicalIdProblem(ProfileAction action)
+    {
+        var id = action.Id?.Trim() ?? "";
+        foreach (var step in action.Steps)
+        {
+            var raw = !string.IsNullOrWhiteSpace(step?.Event) ? step.Event : step?.Set;
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                continue;
+            }
+
+            var name = Flat(StripPrefix(raw));
+            foreach (var (pattern, ids, what) in Sensitive)
+            {
+                if (pattern.IsMatch(name) && !ids.Any(allowed => IdMatches(id, allowed)))
+                {
+                    return $"{raw.Trim()} ({what}) nur unter {string.Join(" / ", ids)} – dort greifen die Sicherheitssperren";
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>"adirs.*" passt auf jede ID mit diesem Präfix.</summary>
+    private static bool IdMatches(string id, string allowed) =>
+        allowed.EndsWith(".*", StringComparison.Ordinal)
+            ? id.StartsWith(allowed[..^1], StringComparison.OrdinalIgnoreCase)
+            : id.Equals(allowed, StringComparison.OrdinalIgnoreCase);
+
+    private static string StripPrefix(string name)
+    {
+        var n = name.Trim();
+        return n.Length > 2 && n[1] == ':' && char.IsLetter(n[0]) ? n[2..].Trim() : n;
+    }
+
+    /// <summary>Erstes Problem einer Aktion aus dem Profil (gesperrter Bereich, Schritte, Standard-ID, Pflicht-Sperren), sonst null.</summary>
     public static string? Problem(ProfileAction action)
     {
+        if (ForbiddenActionProblem(action) is { } forbidden)
+        {
+            return forbidden;
+        }
+
+        if (CanonicalIdProblem(action) is { } canonical)
+        {
+            return canonical;
+        }
+
         foreach (var step in action.Steps)
         {
             if (step is null)
@@ -167,7 +265,20 @@ public static partial class ActionSafety
     }
 }
 
-/// <summary>Sperren, die eine Aktion im Profil anfordern kann. Unbekannte Namen und fehlende Grenzwerte sperren die Aktion.</summary>
+/// <summary>Ergebnis einer Sperre: abgelehnt (Refusal), nur mit Rückfrage (Caution) oder erlaubt (beides null).</summary>
+public sealed record InterlockOutcome(string? Refusal, SafetyCaution? Caution)
+{
+    public static readonly InterlockOutcome Allowed = new(null, null);
+
+    public static InterlockOutcome Refuse(string reason) => new(reason, null);
+
+    public static InterlockOutcome Ask(SafetyCaution caution) => new(null, caution);
+}
+
+/// <summary>
+/// Sperren, die eine Aktion im Profil anfordern kann. Unbekannte Namen sperren die Aktion. Fehlt ein Grenzwert im Profil
+/// (VLO/VLE, VFE der Stellung), geht die Aktion nur mit Rückfrage – vermerkt im Log.
+/// </summary>
 public static class Interlocks
 {
     /// <summary>Nicht am Boden (z. B. Fahrwerk einfahren).</summary>
@@ -184,21 +295,25 @@ public static class Interlocks
 
     public static readonly IReadOnlyList<string> All = [NotOnGround, OnGround, GearSpeed, FlapsSpeed];
 
-    /// <summary>Grund für die Sperre, oder null, wenn die Aktion erlaubt ist.</summary>
-    public static string? Check(string? name, FlightSnapshot s, AircraftLimits limits, string? option)
+    /// <summary>Grund für die Sperre, oder null, wenn die Aktion erlaubt ist (Rückfragen zählen hier als erlaubt).</summary>
+    public static string? Check(string? name, FlightSnapshot s, AircraftLimits limits, string? option) =>
+        Evaluate(name, s, limits, option).Refusal;
+
+    /// <summary>Sperre auswerten: ablehnen, nur mit Rückfrage oder erlaubt.</summary>
+    public static InterlockOutcome Evaluate(string? name, FlightSnapshot s, AircraftLimits limits, string? option)
     {
         if (name is null)
         {
-            return "Leere Sperre im Profil – Aktion gesperrt.";
+            return InterlockOutcome.Refuse("Leere Sperre im Profil – Aktion gesperrt.");
         }
 
         if (name.Equals(NotOnGround, StringComparison.OrdinalIgnoreCase))
         {
             return s.OnGround switch
             {
-                true => "Am Boden gesperrt.",
-                null => "Unklar, ob das Flugzeug am Boden ist – gesperrt.",
-                _ => null,
+                true => InterlockOutcome.Refuse("Am Boden gesperrt."),
+                null => InterlockOutcome.Refuse("Unklar, ob das Flugzeug am Boden ist – gesperrt."),
+                _ => InterlockOutcome.Allowed,
             };
         }
 
@@ -206,9 +321,9 @@ public static class Interlocks
         {
             return s.OnGround switch
             {
-                true => null,
-                false => "Nur am Boden möglich.",
-                null => "Unklar, ob das Flugzeug am Boden ist – gesperrt.",
+                true => InterlockOutcome.Allowed,
+                false => InterlockOutcome.Refuse("Nur am Boden möglich."),
+                null => InterlockOutcome.Refuse("Unklar, ob das Flugzeug am Boden ist – gesperrt."),
             };
         }
 
@@ -216,43 +331,54 @@ public static class Interlocks
         {
             if (s.OnGround == true)
             {
-                return null;
+                return InterlockOutcome.Allowed;
+            }
+
+            if (s.IasKt is not { } ias)
+            {
+                return InterlockOutcome.Refuse("Fahrt unbekannt – Fahrwerk gesperrt.");
             }
 
             if ((limits.VloKt ?? limits.VleKt) is not { } limit)
             {
-                return "Im Profil fehlt VLO/VLE – Fahrwerk gesperrt.";
+                return InterlockOutcome.Ask(new SafetyCaution(
+                    "LIMIT_MISSING_VLO", "gear speed limit unknown", "Im Profil fehlt VLO/VLE – Fahrwerk nur mit Rückfrage.", MissingLimit: true));
             }
 
             var label = limits.VloKt is null ? "VLE" : "VLO";
-            return s.IasKt switch
-            {
-                null => "Fahrt unbekannt – Fahrwerk gesperrt.",
-                { } ias when ias > limit => $"Fahrwerk gesperrt: {ias:0} kt über {label} {limit:0} kt.",
-                _ => null,
-            };
+            return ias > limit
+                ? InterlockOutcome.Refuse($"Fahrwerk gesperrt: {ias:0} kt über {label} {limit:0} kt.")
+                : InterlockOutcome.Allowed;
         }
 
         if (name.Equals(FlapsSpeed, StringComparison.OrdinalIgnoreCase))
         {
             if (s.OnGround == true || option is "0")
             {
-                return null;
+                return InterlockOutcome.Allowed;
             }
 
-            if (option is null || limits.VfeFor(null, option) is not { } vfe)
+            if (option is null)
             {
-                return $"Im Profil fehlt die VFE für Flaps {option} – gesperrt.";
+                return InterlockOutcome.Refuse("Klappenstellung fehlt – gesperrt.");
             }
 
-            return s.IasKt switch
+            if (s.IasKt is not { } ias)
             {
-                null => "Fahrt unbekannt – Klappen gesperrt.",
-                { } ias when ias > vfe => $"Flaps {option} gesperrt: {ias:0} kt über VFE {vfe:0} kt.",
-                _ => null,
-            };
+                return InterlockOutcome.Refuse("Fahrt unbekannt – Klappen gesperrt.");
+            }
+
+            if (limits.VfeFor(null, option) is not { } vfe)
+            {
+                return InterlockOutcome.Ask(new SafetyCaution(
+                    "LIMIT_MISSING_VFE", "flap speed limit unknown", $"Im Profil fehlt die VFE für Flaps {option} – nur mit Rückfrage.", MissingLimit: true));
+            }
+
+            return ias > vfe
+                ? InterlockOutcome.Refuse($"Flaps {option} gesperrt: {ias:0} kt über VFE {vfe:0} kt.")
+                : InterlockOutcome.Allowed;
         }
 
-        return $"Unbekannte Sperre \"{name}\" im Profil – Aktion gesperrt.";
+        return InterlockOutcome.Refuse($"Unbekannte Sperre \"{name}\" im Profil – Aktion gesperrt.");
     }
 }

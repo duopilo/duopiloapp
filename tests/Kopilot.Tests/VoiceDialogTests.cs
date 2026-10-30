@@ -432,4 +432,51 @@ public sealed class VoiceDialogTests
     {
         Assert.Equal(spoken, VoicePhraseology.Spell(text));
     }
+
+    // ------------------------------------------------------------------ Kritische Aktion: Rückfrage mit Warnhinweis (v0.9.1)
+
+    [Fact]
+    public async Task Kritische_Aktion_Rueckfrage_dann_zweites_Confirm()
+    {
+        var (dialog, gateway, _) = Create();
+        const string caution = "Caution, transponder standby in flight. Confirm transponder standby?";
+        gateway.NextPrepare = new InputResult(InputResult.AwaitingConfirmation, Token: "t1", Action: "xpdr.mode", Value: "stby", Readback: "Transponder standby")
+        {
+            CautionFollows = true,
+        };
+        gateway.NextConfirm = new InputResult(InputResult.AwaitingCautionConfirmation, Token: "t1", Action: "xpdr.mode", Value: "stby", Readback: caution)
+        {
+            Caution = caution,
+        };
+
+        await Say(dialog, "Flaps one");
+        var question = await Say(dialog, "Confirm");
+
+        // Erstes Confirm: nicht ausgeführt, sondern die Rückfrage mit Warnhinweis
+        Assert.Equal(caution, question?.Text);
+        Assert.Equal("t1", question?.ReadbackToken);
+        Assert.NotNull(dialog.Pending);
+
+        gateway.NextConfirm = new InputResult(InputResult.Executed, Action: "xpdr.mode", Value: "stby", Confirmed: true);
+        var done = await Say(dialog, "Confirm");
+
+        Assert.Null(done);
+        Assert.Null(dialog.Pending);
+        Assert.Equal(new[] { "prepare flaps 1", "confirm t1 confirm", "confirm t1 confirm" }, gateway.Calls);
+    }
+
+    [Fact]
+    public async Task Kritische_Aktion_Negative_bei_der_Rueckfrage()
+    {
+        var (dialog, gateway, _) = Create();
+        gateway.NextConfirm = new InputResult(InputResult.AwaitingCautionConfirmation, Token: "t1", Action: "fcu.athr", Value: "off")
+        {
+            Caution = "Caution, autothrust off. Confirm autothrust off?",
+        };
+
+        await Say(dialog, "Flaps one");
+        await Say(dialog, "Confirm");
+        Assert.Equal("Cancelled", (await Say(dialog, "Negative"))?.Text);
+        Assert.Equal("cancel t1", gateway.Calls[^1]);
+    }
 }

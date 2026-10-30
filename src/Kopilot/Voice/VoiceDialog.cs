@@ -234,6 +234,14 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
         Pending = null;
         var result = await gateway.ConfirmAsync(pending.Token, normalized, ct);
         LastResult = result;
+        if (result.Status == InputResult.AwaitingCautionConfirmation && result.Token is { } token)
+        {
+            // Kritische Aktion: Rückfrage mit Warnhinweis vorlesen, erst ein weiteres "Confirm" danach führt aus
+            var caution = result.Caution ?? result.Readback ?? pending.Readback;
+            Pending = new PendingVoiceAction(token, result.Action ?? pending.ActionId, result.Value, caution, _time.GetUtcNow() + ConfirmTimeout);
+            return Remember(VoiceReply.Of(caution) with { ReadbackToken = token });
+        }
+
         return result.Status switch
         {
             // Ausgeführt: nichts sagen (die Bewegung im Cockpit ist die Antwort), nur wenn das Flugzeug den Wert nicht übernommen hat

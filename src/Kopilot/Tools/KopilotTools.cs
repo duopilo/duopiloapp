@@ -84,6 +84,7 @@ public static class KopilotTools
             profilesDirectory = profiles.DirectoryPath,
             profilesLoaded = profiles.All.Select(p => p.Name),
             profileErrors = profiles.Errors,
+            profileWarnings = profiles.Warnings.Count > 0 ? profiles.Warnings : null,
             kopilotVersion = typeof(KopilotTools).Assembly.GetName().Version?.ToString(3),
             message = connection.IsConnected ? null : NotConnectedMessage,
             activeAlerts = AlertView.Active(alerts),
@@ -531,6 +532,7 @@ public static class KopilotTools
         {
             profilesLoaded = profiles.All.Select(p => new { p.Name, file = p.SourceFile, bindings = p.Bindings.Count, variables = p.Variables.Count }),
             errors = profiles.Errors,
+            warnings = profiles.Warnings.Count > 0 ? profiles.Warnings : null,
         });
     }
 

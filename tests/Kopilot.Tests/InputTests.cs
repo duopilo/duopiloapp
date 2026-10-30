@@ -279,12 +279,20 @@ public sealed partial class InputTests
     public void Erlaubte_Variablen(string name, bool allowed) => Assert.Equal(allowed, ActionSafety.VariableProblem(name) is null);
 
     [Fact]
-    public void Fehlende_Grenzwerte_sperren()
+    public void Fehlende_Grenzwerte_nur_mit_Rueckfrage()
     {
+        // v0.9.1: Fehlt ein Grenzwert im Profil, ist die Aktion nicht mehr gesperrt, sondern geht nur mit Rückfrage (im Log vermerkt)
         var none = new AircraftLimits();
-        Assert.Contains("VLO/VLE", ActionPlanner.Plan(GearDown(), null, none, Air(150)).Refusal);
-        Assert.Contains("VFE", ActionPlanner.Plan(Flaps(), "2", none, Air(150)).Refusal);
-        Assert.NotNull(ActionPlanner.Plan(Flaps(), "0", none, Air(150)).Plan);
+        var gear = ActionPlanner.Plan(GearDown(), null, none, Air(150)).Plan!;
+        var gearCaution = Assert.Single(gear.Cautions);
+        Assert.Equal("LIMIT_MISSING_VLO", gearCaution.Code);
+        Assert.True(gearCaution.MissingLimit);
+        Assert.Contains("VLO/VLE", gearCaution.Reason);
+        Assert.Contains("VFE", Assert.Single(ActionPlanner.Plan(Flaps(), "2", none, Air(150)).Plan!.Cautions).Reason);
+        Assert.Empty(ActionPlanner.Plan(Flaps(), "0", none, Air(150)).Plan!.Cautions);
+
+        // Fahrt unbekannt bleibt gesperrt
+        Assert.Contains("Fahrt unbekannt", ActionPlanner.Plan(GearDown(), null, none, Air(150) with { IasKt = null }).Refusal);
 
         // Groß-/Kleinschreibung der Stellung egal
         var mixed = new AircraftLimits { VfeKt = new() { ["Full"] = 177, ["2"] = 200, ["1"] = 230, ["3"] = 185 } };

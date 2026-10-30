@@ -234,7 +234,12 @@ public sealed partial class MonitorEngine
 
                     _flapsAnnounced = flaps;
                     _flapsCandidate = null;
-                    Say(Rules.PmFlaps, callout, $"Klappen {flaps}.");
+
+                    // Hat Kopilot die Klappen selbst gesetzt, sagt das Eingabe-Modul sie erst bei erreichter Stellung an
+                    if (_settings.Claims?.IsClaimed(ConfigCalloutClaims.Flaps, now) != true)
+                    {
+                        Say(Rules.PmFlaps, callout, $"Klappen {flaps}.");
+                    }
                 }
             }
         }
@@ -258,7 +263,12 @@ public sealed partial class MonitorEngine
                 {
                     _gearAnnounced = down;
                     _gearCandidate = null;
-                    Say(Rules.PmGear, down ? "Gear down" : "Gear up", down ? "Fahrwerkshebel unten." : "Fahrwerkshebel oben.");
+
+                    // Hat Kopilot das Fahrwerk selbst bewegt, kommt "Gear down, three green" vom Eingabe-Modul
+                    if (_settings.Claims?.IsClaimed(ConfigCalloutClaims.Gear, now) != true)
+                    {
+                        Say(Rules.PmGear, down ? "Gear down" : "Gear up", down ? "Fahrwerkshebel unten." : "Fahrwerkshebel oben.");
+                    }
                 }
             }
         }

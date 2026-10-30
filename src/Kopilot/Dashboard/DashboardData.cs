@@ -368,7 +368,7 @@ public sealed class DashboardData(
             {
                 action = p.Plan.Action.Id,
                 value = p.Plan.ValueText,
-                readback = p.Plan.Readback,
+                readback = p.Prompt,
                 expiresInSec = Math.Max(0, (int)Math.Ceiling((p.ExpiresUtc - now).TotalSeconds)),
                 other = false,
             }
