@@ -63,8 +63,8 @@ public static class HttpHost
 
         // Prüfseiten für den Browser – nur lokal, über den Tunnel nicht erreichbar.
         app.MapDashboard();
-        app.MapGet("/status", (SimConnectClient sim, ProfileStore profiles, MonitoringService monitoring, SimBriefService simBrief, EcamCatalog ecam, AlertBus alerts, Kopilot.Input.InputService input) =>
-            JsonText(KopilotTools.Status(sim, profiles, monitoring, simBrief, ecam, alerts, input))).LocalOnly();
+        app.MapGet("/status", (SimConnectClient sim, ProfileStore profiles, MonitoringService monitoring, SimBriefService simBrief, EcamCatalog ecam, AlertBus alerts, Kopilot.Input.InputService input, Kopilot.Voice.IVoiceStatusSource voice) =>
+            JsonText(KopilotTools.Status(sim, profiles, monitoring, simBrief, ecam, alerts, input, voice))).LocalOnly();
         app.MapGet("/state", (SimConnectClient sim, AlertBus alerts) => JsonText(KopilotTools.GetFlightState(sim, alerts))).LocalOnly();
         app.MapGet("/systems", (SimConnectClient sim, AlertBus alerts) => JsonText(KopilotTools.GetSystems(sim, alerts))).LocalOnly();
         app.MapGet("/nav", (SimConnectClient sim, AlertBus alerts) => JsonText(KopilotTools.GetNavigation(sim, alerts))).LocalOnly();
@@ -81,8 +81,7 @@ public static class HttpHost
             JsonText(await FlightPlanTools.GetProgress(sim, simBrief, alerts, ct))).LocalOnly();
         app.MapGet("/read", async (SimConnectClient sim, string name, string? unit, CancellationToken ct) =>
             JsonText(await KopilotTools.ReadSimVar(sim, name, unit ?? "number", ct))).LocalOnly();
-        app.MapGet("/voice", (IServiceProvider services) =>
-            JsonText(Json.Serialize(services.GetService<Kopilot.Voice.VoiceLoop>()?.Status ?? (object)new { state = "unavailable" }))).LocalOnly();
+        app.MapGet("/voice", (Kopilot.Voice.IVoiceStatusSource voice) => JsonText(Json.Serialize(KopilotTools.VoiceView(voice.Status)))).LocalOnly();
 
         if (remote.OAuthEnabled)
         {

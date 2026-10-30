@@ -18,6 +18,8 @@ public sealed record AtcTransmitResult(bool Ok, string? Error, IReadOnlyList<Atc
 /// Hält die ATC-Sitzung des aktuellen Flugs: lädt atc-templates.json, baut den Plan aus dem SimBrief-OFP, taktet die
 /// Zustandsmaschine mit den SimConnect-Werten, holt Frequenzen über die Facilities-API und gibt die Funksprüche an die
 /// Sprachausgabe. Eine Sitzung beginnt mit dem ersten Pilotenspruch (oder atc_control start).
+/// Die Sitzung wird laufend gesichert (atc-session.json) und nach einem Neustart oder Absturz von Kopilot automatisch
+/// fortgesetzt, sobald MSFS verbunden ist und derselbe SimBrief-Plan geladen ist.
 /// </summary>
 public sealed class AtcService : BackgroundService
 {
@@ -34,9 +36,18 @@ public sealed class AtcService : BackgroundService
     private AtcTemplates? _templates;
     private string? _templatesPath;
     private IReadOnlyList<string> _templateErrors = [];
+    private readonly AtcSessionStore _store;
+
+    /// <summary>Spätestens so oft sichern, auch ohne Zustandswechsel (Streckenposition, Funkverlauf).</summary>
+    private static readonly TimeSpan SaveInterval = TimeSpan.FromSeconds(60);
+
     private AtcSession? _session;
     private string? _sessionOfpId;
     private string? _lastError;
+    private string? _savedFingerprint;
+    private DateTimeOffset _savedUtc;
+    private bool _autoRestoreDone;
+    private DateTimeOffset? _restoredFromUtc;
 
     public AtcService(IOptions<KopilotOptions> options, SimConnectClient sim, SimBriefService simBrief, IServiceProvider services, ILogger<AtcService> log)
     {
@@ -45,6 +56,7 @@ public sealed class AtcService : BackgroundService
         _simBrief = simBrief;
         _services = services;
         _log = log;
+        _store = AtcSessionStore.From(_options);
         ReloadTemplates();
     }
 
@@ -55,6 +67,18 @@ public sealed class AtcService : BackgroundService
     public IReadOnlyList<string> TemplateErrors => _templateErrors;
 
     public AtcFrequencyBook Frequencies => _frequencies;
+
+    /// <summary>Datei der Sitzungssicherung (null = aus).</summary>
+    public string? SessionFile => _store.FilePath;
+
+    /// <summary>Zuletzt gesichert.</summary>
+    public DateTimeOffset? SessionSavedUtc => _store.LastSavedUtc;
+
+    /// <summary>Fehler beim Sichern oder Laden der Sitzung.</summary>
+    public string? SessionStoreError => _store.LastError;
+
+    /// <summary>Die laufende Sitzung wurde aus einer Sicherung von diesem Zeitpunkt fortgesetzt (null = neu begonnen).</summary>
+    public DateTimeOffset? RestoredFromUtc => _restoredFromUtc;
 
     /// <summary>Kann ATC sprechen (Tray-Instanz mit Sprachausgabe)?</summary>
     public bool HasRadio => _services.GetService<IAtcRadio>() is not null && _options.Atc.Speak;
@@ -142,6 +166,7 @@ public sealed class AtcService : BackgroundService
         }
 
         Broadcast(responses);
+        SaveSession(force: true);
         return new AtcTransmitResult(true, null, responses);
     }
 
@@ -159,14 +184,18 @@ public sealed class AtcService : BackgroundService
                     _sessionOfpId = null;
                 }
 
+                // Neu heißt neu: nicht aus der Sicherung fortsetzen
+                _store.Delete();
                 return await EnsureSessionAsync(ct) ?? "ATC-Sitzung neu gestartet.";
             case "stop":
                 lock (_lock)
                 {
                     _session = null;
                     _sessionOfpId = null;
+                    _restoredFromUtc = null;
                 }
 
+                _store.Delete();
                 return "ATC-Sitzung beendet.";
             case "reload":
                 var errors = ReloadTemplates();
@@ -197,6 +226,7 @@ public sealed class AtcService : BackgroundService
             _session.SetOverride(key, value);
         }
 
+        SaveSession(force: true);
         return string.IsNullOrWhiteSpace(value) ? $"{key} zurückgesetzt." : $"{key} = {value.Trim()}";
     }
 
@@ -214,7 +244,9 @@ public sealed class AtcService : BackgroundService
         {
             while (await timer.WaitForNextTickAsync(stoppingToken))
             {
+                await AutoRestoreAsync(stoppingToken);
                 Tick();
+                SaveSession(force: false);
                 _ = PrefetchFrequenciesAsync(stoppingToken);
             }
         }
@@ -264,8 +296,119 @@ public sealed class AtcService : BackgroundService
         Broadcast(output);
     }
 
+    /// <summary>
+    /// Nach dem Start von Kopilot einmal: Gibt es eine gesicherte Sitzung, die nicht zu alt ist, wird sie fortgesetzt, sobald
+    /// MSFS verbunden ist – ohne dass der Pilot erst funken muss. Eine Sicherung eines anderen Flugs bleibt liegen.
+    /// </summary>
+    private async Task AutoRestoreAsync(CancellationToken ct)
+    {
+        if (_autoRestoreDone || !_sim.Connection.IsConnected)
+        {
+            return;
+        }
+
+        _autoRestoreDone = true;
+        lock (_lock)
+        {
+            if (_session is not null)
+            {
+                return;
+            }
+        }
+
+        if (RestorableSnapshot(null) is null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (await EnsureSessionAsync(ct, restoreOnly: true) is { } error)
+            {
+                _log.LogInformation("ATC-Sitzung nicht fortgesetzt: {Reason}", error);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _log.LogWarning("ATC-Sitzung nicht fortgesetzt: {Message}", ex.Message);
+        }
+    }
+
+    /// <summary>Sicherung, die zu diesem Flug passt und nicht zu alt ist (flightKey null = nur Alter und Version prüfen).</summary>
+    private AtcSessionSnapshot? RestorableSnapshot(string? flightKey)
+    {
+        if (_store.Load() is not { } snapshot)
+        {
+            if (_store.LastError is { } error)
+            {
+                _log.LogWarning("ATC-Sitzungssicherung: {Error}", error);
+            }
+
+            return null;
+        }
+
+        if (snapshot.Phase is AtcPhase.Inactive or AtcPhase.Done)
+        {
+            return null;
+        }
+
+        var age = DateTimeOffset.UtcNow - snapshot.SavedUtc;
+        if (age > TimeSpan.FromHours(Math.Max(0.1, _options.Atc.SessionMaxAgeHours)))
+        {
+            _log.LogInformation("ATC-Sitzungssicherung von {Saved:u} ist zu alt ({Hours:0.0} h) – neue Sitzung.", snapshot.SavedUtc, age.TotalHours);
+            return null;
+        }
+
+        if (flightKey is not null && !string.Equals(snapshot.FlightKey, flightKey, StringComparison.Ordinal))
+        {
+            _log.LogInformation("ATC-Sitzungssicherung gehört zu einem anderen Flug ({Saved}) – neue Sitzung.", snapshot.FlightKey);
+            return null;
+        }
+
+        return snapshot;
+    }
+
+    /// <summary>
+    /// Sitzung sichern, wenn sich etwas geändert hat (<paramref name="force"/>: nach jedem Funkspruch) oder spätestens alle 60 s.
+    /// </summary>
+    private void SaveSession(bool force)
+    {
+        if (_store.FilePath is null)
+        {
+            return;
+        }
+
+        AtcSessionSnapshot snapshot;
+        string fingerprint;
+        lock (_lock)
+        {
+            if (_session is null)
+            {
+                return;
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            fingerprint = _session.StateFingerprint();
+            if (!force && fingerprint == _savedFingerprint && now - _savedUtc < SaveInterval)
+            {
+                return;
+            }
+
+            snapshot = _session.Snapshot(now);
+            _savedFingerprint = fingerprint;
+            _savedUtc = now;
+        }
+
+        if (!_store.Save(snapshot) && _store.LastError is { } error)
+        {
+            _log.LogWarning("ATC-Sitzung: {Error}", error);
+        }
+    }
+
     /// <summary>Sitzung anlegen, falls keine läuft. Rückgabe: Fehlermeldung oder null.</summary>
-    private async Task<string?> EnsureSessionAsync(CancellationToken ct)
+    /// <param name="ct">Abbruch.</param>
+    /// <param name="restoreOnly">Nur aus einer passenden Sicherung fortsetzen, sonst keine Sitzung anlegen (Autostart).</param>
+    private async Task<string?> EnsureSessionAsync(CancellationToken ct, bool restoreOnly = false)
     {
         if (!Enabled)
         {
@@ -301,25 +444,58 @@ public sealed class AtcService : BackgroundService
 
             var templates = _templates!;
             var plan = AtcPlan.Build(ofp, SimCallsign(), templates);
+            var snapshot = RestorableSnapshot(plan.FlightKey);
+            if (snapshot is null && restoreOnly)
+            {
+                return "keine passende Sicherung für diesen Flug.";
+            }
+
             var context = new AtcSessionContext(
                 _frequencies.Get,
                 _services.GetService<ITaxiRouteProvider>() ?? new NoTaxiRouteProvider(),
                 CalloutVoice(),
                 InstalledVoices());
-            _session = new AtcSession(templates, plan, context);
-            _session.Start(BuildInput());
+            var session = new AtcSession(templates, plan, context);
+            if (snapshot is not null)
+            {
+                var note = session.Restore(snapshot, BuildInput());
+                _restoredFromUtc = snapshot.SavedUtc;
+                _log.LogInformation(
+                    "ATC-Sitzung fortgesetzt (Sicherung von {Saved:HH:mm:ss}Z): {Callsign} {Orig} → {Dest}, {Station}, Phase {Phase}/{Step}, " +
+                    "freigegeben {Cleared} ft, Squawk {Squawk}, {Lines} Funksprüche{Note}",
+                    snapshot.SavedUtc,
+                    plan.Callsign,
+                    ofp.Origin.Icao,
+                    ofp.Destination.Icao,
+                    session.Station.Name,
+                    session.Phase,
+                    session.Step,
+                    session.ClearedAltitudeFt,
+                    session.Squawk,
+                    session.Transcript.Count,
+                    note is null ? "" : $" – {note}");
+            }
+            else
+            {
+                session.Start(BuildInput());
+                _restoredFromUtc = null;
+                _log.LogInformation(
+                    "ATC-Sitzung: {Callsign} {Orig} → {Dest}, Phase {Phase}, Squawk {Squawk}{Oceanic}",
+                    plan.Callsign,
+                    ofp.Origin.Icao,
+                    ofp.Destination.Icao,
+                    session.Phase,
+                    session.Squawk,
+                    plan.Oceanic is null ? "" : ", mit Oceanic-Teil");
+            }
+
+            _session = session;
             _sessionOfpId = ofp.RequestId;
             _lastError = null;
-            _log.LogInformation(
-                "ATC-Sitzung: {Callsign} {Orig} → {Dest}, Phase {Phase}, Squawk {Squawk}{Oceanic}",
-                plan.Callsign,
-                ofp.Origin.Icao,
-                ofp.Destination.Icao,
-                _session.Phase,
-                _session.Squawk,
-                plan.Oceanic is null ? "" : ", mit Oceanic-Teil");
+            _savedFingerprint = null;
         }
 
+        SaveSession(force: true);
         _ = PrefetchFrequenciesAsync(ct);
         return null;
     }

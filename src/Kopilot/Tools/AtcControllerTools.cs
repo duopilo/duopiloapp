@@ -27,7 +27,8 @@ public static class AtcControllerTools
         "'cleared to Berlin, MARUN seven golf departure, runway two five center, climb five thousand feet, squawk two two zero five'. " +
         "Readbacks are checked (SID, altitude, squawk, runway, frequency …); a wrong value gets 'negative' with the correct one. " +
         "'say again' repeats the last transmission. Kopilot speaks the reply itself with the station's voice – do not read it aloud " +
-        "again unless the pilot asks. Starts the ATC session on the first call.")]
+        "again unless the pilot asks. Starts the ATC session on the first call; after a Kopilot restart the saved session of the same " +
+        "SimBrief flight continues (station, cleared altitude, transcript).")]
     public static async Task<string> AtcTransmit(
         AtcService atc,
         AlertBus alerts,
@@ -84,7 +85,9 @@ public static class AtcControllerTools
                 enabled = atc.Enabled,
                 templates = atc.TemplatesPath,
                 templateErrors = atc.TemplateErrors,
-                hint = "Die Sitzung beginnt mit dem ersten Funkspruch (atc_transmit) oder atc_control start.",
+                hint = "Die Sitzung beginnt mit dem ersten Funkspruch (atc_transmit) oder atc_control start. " +
+                       "Eine gesicherte Sitzung desselben Flugs wird dabei fortgesetzt.",
+                persistence = Persistence(atc),
                 activeAlerts = AlertView.Active(alerts),
             };
         }
@@ -145,9 +148,19 @@ public static class AtcControllerTools
             transcript = session.Transcript.TakeLast(12).Select(View).ToList(),
             templates = atc.TemplatesPath,
             templateErrors = atc.TemplateErrors,
+            persistence = Persistence(atc),
             activeAlerts = AlertView.Active(alerts),
         };
     }
+
+    /// <summary>Sitzungssicherung: Datei, zuletzt gesichert, fortgesetzt aus einer Sicherung von wann.</summary>
+    private static object Persistence(AtcService atc) => new
+    {
+        file = atc.SessionFile,
+        lastSavedUtc = atc.SessionSavedUtc,
+        restoredFromUtc = atc.RestoredFromUtc,
+        error = atc.SessionStoreError,
+    };
 
     private static object View(AtcTransmission t) => new
     {

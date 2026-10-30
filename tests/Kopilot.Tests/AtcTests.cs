@@ -4,7 +4,7 @@ using Kopilot.FlightPlan;
 namespace Kopilot.Tests;
 
 /// <summary>Kopilot-ATC: Vorlagen, Sprechweise, Readback-Prüfung und Zustandsübergänge – ohne MSFS.</summary>
-public sealed class AtcTests
+public sealed partial class AtcTests
 {
     // ------------------------------------------------------------------ Testdaten
 

@@ -13,6 +13,7 @@ using Microsoft.Extensions.Options;
 //   Kopilot.exe --generate-secret  → zufälliges Geheimnis für BearerToken / ConsentPassword ausgeben
 //
 // Sprachschleife (Mikrofon, Whisper, Kopilot-Befehle) nur im HTTP-Modus: %LOCALAPPDATA%\Kopilot\voice-settings.json
+// bzw. im Dashboard unter Ansagen → Stimme. Nach einem Absturz startet Windows die Tray-Instanz mit --restarted neu.
 //
 // Ohne --stdio/--http entscheidet Kopilot:Transport in appsettings(.Local).json.
 
@@ -41,8 +42,18 @@ if (transport == KopilotTransport.Stdio)
     // Im stdio-Modus gehört stdout exklusiv dem MCP-Protokoll – alle Logs gehen nach stderr und in die Logdatei.
     builder.Logging.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
     AddFileLog(builder.Logging, builder.Configuration, builder.Services, "stdio");
+    CrashReporter.InstallHandlers(LogDirectory(builder.Configuration), "stdio");
 
     builder.Services.AddKopilotCore(builder.Configuration);
+
+    // Eigene ATC-Sitzungsdatei, damit sich stdio- und Tray-Instanz nicht gegenseitig überschreiben
+    builder.Services.PostConfigure<KopilotOptions>(o =>
+    {
+        if (o.Atc.SessionFile == AtcOptions.DefaultSessionFile)
+        {
+            o.Atc.SessionFile = "atc-session-stdio.json";
+        }
+    });
     builder.Services
         .AddMcpServer()
         .WithStdioServerTransport()
@@ -71,6 +82,8 @@ else
 
     var builder = HttpHost.CreateBuilder(args);
     var logFile = AddFileLog(builder.Logging, builder.Configuration, builder.Services, "http");
+    var logDirectory = LogDirectory(builder.Configuration);
+    CrashReporter.InstallHandlers(logDirectory, "http");
     HttpHost.AddServices(builder);
 
     var url = builder.Configuration.GetSection(KopilotOptions.Section).Get<KopilotOptions>()?.HttpUrl ?? new KopilotOptions().HttpUrl;
@@ -111,8 +124,32 @@ else
     }
 
     app.Logger.LogInformation("Kopilot {Version} HTTP-Modus: Dashboard {Dashboard}, MCP-Endpunkt {McpUrl}", typeof(KopilotOptions).Assembly.GetName().Version?.ToString(3), dashboardUrl, url.TrimEnd('/') + "/mcp");
-    await app.RunAsync(url);
+    if (Has(args, "--restarted"))
+    {
+        app.Logger.LogWarning("Kopilot wurde nach einem Absturz von Windows neu gestartet.");
+    }
+
+    // Absturz-Journal (nur Tray-Instanz – es gibt nur eine) und Neustart durch Windows nach einem Absturz
+    var journal = CrashReporter.StartJournal(logDirectory, "http", app.Logger);
+    app.Lifetime.ApplicationStopped.Register(() => journal?.MarkClean());
+    if (app.Services.GetRequiredService<IOptions<KopilotOptions>>().Value.RestartAfterCrash)
+    {
+        CrashReporter.RegisterRestart(args, app.Logger);
+    }
+
+    try
+    {
+        await app.RunAsync(url);
+    }
+    finally
+    {
+        journal?.MarkClean();
+        journal?.Dispose();
+    }
 }
+
+static string LogDirectory(IConfiguration configuration) =>
+    Path.Combine((configuration.GetSection(KopilotOptions.Section).Get<KopilotOptions>() ?? new KopilotOptions()).ResolveDataDirectory(), "logs");
 
 // Logdatei unter %LOCALAPPDATA%\Kopilot\logs (bzw. Kopilot:DataDirectory\logs) plus Puffer fürs Dashboard.
 static string? AddFileLog(ILoggingBuilder logging, IConfiguration configuration, IServiceCollection services, string mode)

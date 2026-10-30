@@ -292,4 +292,68 @@ public sealed class VoiceSettingsStore(string dataDirectory, string? templateDir
 
     public static VoiceSettings Parse(string json) =>
         (JsonSerializer.Deserialize<VoiceSettings>(json, Options) ?? new VoiceSettings()).Normalized();
+
+    /// <summary>
+    /// Schalter und Mikrofon ändern (Dashboard). Nur diese Werte werden in der Datei ersetzt – Kommentare und alle anderen
+    /// Einstellungen bleiben, wie sie sind. null = unverändert lassen. Geschrieben wird erst, wenn das Ergebnis gültig ist.
+    /// </summary>
+    public VoiceSettings Update(bool? enabled, string? microphone)
+    {
+        if (!File.Exists(FilePath))
+        {
+            // Legt die Datei aus der Vorlage an (oder es bleibt bei den Standardwerten ohne Datei)
+            Load();
+        }
+
+        var text = File.Exists(FilePath) ? File.ReadAllText(FilePath) : "{\n}\n";
+        if (enabled is { } on)
+        {
+            text = JsonTextPatcher.Set(text, ["enabled"], on ? "true" : "false");
+        }
+
+        if (microphone is not null)
+        {
+            text = JsonTextPatcher.Set(text, ["microphone", "device"], JsonTextPatcher.Quote(microphone.Trim()));
+        }
+
+        var parsed = Parse(text);
+        Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
+        var temp = FilePath + ".tmp";
+        File.WriteAllText(temp, text, new System.Text.UTF8Encoding(false));
+        File.Move(temp, FilePath, overwrite: true);
+        return parsed;
+    }
+
+    /// <summary>
+    /// Hinweis, wenn die Vorlage neben der Kopilot.exe bearbeitet wurde, die wirksame Datei im Datenordner aber nicht:
+    /// update.cmd überschreibt die Vorlage, und Kopilot liest nur die Datei im Datenordner. null = alles in Ordnung.
+    /// </summary>
+    public string? TemplateMismatch(VoiceSettings effective)
+    {
+        try
+        {
+            if (!File.Exists(TemplatePath) || string.Equals(Path.GetFullPath(TemplatePath), Path.GetFullPath(FilePath), StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            var template = Parse(File.ReadAllText(TemplatePath));
+            if (template.Enabled && !effective.Enabled)
+            {
+                return $"In der Vorlage {TemplatePath} steht \"enabled\": true – wirksam ist aber nur {FilePath} (dort steht false). " +
+                       "Die Vorlage überschreibt update.cmd bei jedem Update.";
+            }
+
+            if (template.Microphone.Device.Length > 0 && template.Microphone.Device != effective.Microphone.Device)
+            {
+                return $"Mikrofon \"{template.Microphone.Device}\" steht nur in der Vorlage {TemplatePath} – wirksam ist {FilePath}.";
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            // Vorlage kaputt oder gesperrt – kein Hinweis
+        }
+
+        return null;
+    }
 }

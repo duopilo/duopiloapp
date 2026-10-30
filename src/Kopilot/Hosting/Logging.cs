@@ -38,7 +38,11 @@ public sealed class FileLoggerProvider : ILoggerProvider
     private readonly Channel<LogLine> _channel = Channel.CreateBounded<LogLine>(new BoundedChannelOptions(5000) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true });
     private readonly Task _writer;
 
-    public FileLoggerProvider(string directory, string fileName, LogBuffer buffer, LogLevel minLevel = LogLevel.Information)
+    /// <param name="minLevel">
+    /// Untergrenze der Datei. Standard Trace: Was im Log landet, entscheidet die Konfiguration ("Logging:LogLevel", Standard Information) –
+    /// z. B. "Kopilot.Voice": "Debug" in appsettings.Local.json für jede Satzgrenze der Sprachschleife.
+    /// </param>
+    public FileLoggerProvider(string directory, string fileName, LogBuffer buffer, LogLevel minLevel = LogLevel.Trace)
     {
         Directory.CreateDirectory(directory);
         _path = Path.Combine(directory, fileName);

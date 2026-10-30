@@ -65,7 +65,7 @@ public static class KopilotConfiguration
         return true;
     }
 
-    private static readonly string[] Switches = ["--stdio", "--http", "--generate-secret", "--console", "--no-tray", "--autostart"];
+    private static readonly string[] Switches = ["--stdio", "--http", "--generate-secret", "--console", "--no-tray", "--autostart", "--restarted"];
 
     /// <summary>Entfernt Kopilot-eigene Schalter, die der Kommandozeilen-Provider nicht versteht.</summary>
     public static string[] FilterSwitches(string[] args) =>

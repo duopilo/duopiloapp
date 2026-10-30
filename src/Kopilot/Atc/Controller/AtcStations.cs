@@ -90,6 +90,13 @@ public sealed partial class AtcStations
     /// <summary>Stimmen, die in diesem Flug schon vergeben sind (Stations-Schlüssel → Stimme).</summary>
     public IReadOnlyDictionary<string, string> AssignedVoices => _voices.Assigned;
 
+    /// <summary>Vergebene Stimmen aus einer gesicherten Sitzung übernehmen (vor dem ersten Abruf einer Station).</summary>
+    public void RestoreVoices(IReadOnlyDictionary<string, string> voices)
+    {
+        _cache.Clear();
+        _voices.Restore(voices);
+    }
+
     /// <summary>Station am Flughafen (Delivery, Ground, Tower, Departure, Approach).</summary>
     public AtcStation Airport(string icao, string? ofpName, AtcStationType type)
     {
@@ -248,6 +255,18 @@ public sealed partial class AtcVoiceAssigner
     private readonly string _flightKey;
 
     public IReadOnlyDictionary<string, string> Assigned => _assigned;
+
+    /// <summary>Stimmen einer gesicherten Sitzung: Nach dem Neustart spricht jede Station wieder mit derselben Stimme.</summary>
+    public void Restore(IReadOnlyDictionary<string, string> voices)
+    {
+        foreach (var (key, voice) in voices)
+        {
+            if (!string.IsNullOrWhiteSpace(key) && !string.IsNullOrWhiteSpace(voice))
+            {
+                _assigned[key] = voice.Trim();
+            }
+        }
+    }
 
     public string VoiceFor(string stationKey, AtcStationType type)
     {

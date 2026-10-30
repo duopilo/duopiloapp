@@ -1,8 +1,10 @@
 {
   // Kopilot – Sprachschleife (Mikrofon → Whisper → Kopilot-Befehle / ATC → Sprachausgabe), komplett lokal, ohne Sprachmodell.
-  // Diese Datei ist die Vorlage. Kopilot kopiert sie beim ersten Start nach %LOCALAPPDATA%\Kopilot\voice-settings.json –
-  // dort bearbeiten (update.cmd überschreibt sie nicht). Änderungen gelten nach einem Neustart von Kopilot.
-  // Status zur Laufzeit: http://127.0.0.1:5155/voice
+  // ACHTUNG: Diese Datei neben der Kopilot.exe ist nur die VORLAGE und wird von update.cmd überschrieben.
+  // Kopilot kopiert sie beim ersten Start nach %LOCALAPPDATA%\Kopilot\voice-settings.json – nur DIESE Datei gilt.
+  // Einfacher: im Dashboard unter Ansagen → Stimme die Sprachschleife einschalten und das Mikrofon wählen (gilt sofort).
+  // Andere Änderungen von Hand gelten nach einem Neustart von Kopilot.
+  // Status zur Laufzeit: kopilot_status (Abschnitt voiceLoop) oder http://127.0.0.1:5155/voice
   // Alles hier gilt nur mit "enabled": true – sonst verhalten sich die Callouts wie ohne Sprachschleife.
 
   // Mikrofon dauerhaft offen, Befehle per Sprache. Standard: aus.
@@ -10,6 +12,8 @@
 
   "microphone": {
     // Teil des Gerätenamens, z. B. "Headset", "Quest" oder "Index". Leer = Windows-Standardmikrofon.
+    // Die vorhandenen Geräte stehen beim Start im Log ("Aufnahmegeräte: …"), in kopilot_status und im Dashboard.
+    // Fehlt das Gerät (VR-Brille aus), nimmt Kopilot das Standardgerät und wechselt, sobald es auftaucht.
     "device": "",
     // VAD-Empfindlichkeit (Silero, 0,1–0,95): kleiner = empfindlicher, größer = nur deutliche Sprache.
     "threshold": 0.5,
