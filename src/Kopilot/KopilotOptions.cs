@@ -47,6 +47,9 @@ public sealed class KopilotOptions
     /// <summary>ATC-Modul: Zustandsmaschine mit festen Textvorlagen (atc-templates.json).</summary>
     public AtcOptions Atc { get; set; } = new();
 
+    /// <summary>Knopf „Fehler melden“ im Dashboard: GitHub-Issue mit Kontext, Kopie im Datenordner.</summary>
+    public ReportOptions Reports { get; set; } = new();
+
     /// <summary>Ordner für Caches (ECAM-Tabellen). Leer = %LOCALAPPDATA%\Kopilot.</summary>
     public string DataDirectory { get; set; } = "";
 
@@ -280,6 +283,19 @@ public sealed class AtcOptions
 
     /// <summary>Ältere Sicherungen werden nicht wiederhergestellt (Stunden).</summary>
     public double SessionMaxAgeHours { get; set; } = 24;
+}
+
+/// <summary>Fehlermeldungen aus dem Dashboard (Knopf „Fehler melden“).</summary>
+public sealed class ReportOptions
+{
+    /// <summary>GitHub-Repository für die Issues ("Besitzer/Name"). Leer = nur lokal speichern.</summary>
+    public string GitHubRepository { get; set; } = "Shin-Jin-Jin/Kopilot";
+
+    /// <summary>Issue-Vorlage in .github/ISSUE_TEMPLATE des Repositorys.</summary>
+    public string IssueTemplate { get; set; } = "kopilot-meldung.yml";
+
+    /// <summary>Ordner für die lokale Kopie jeder Meldung. Leer = DataDirectory\reports.</summary>
+    public string Directory { get; set; } = "";
 }
 
 public sealed class InputOptions
