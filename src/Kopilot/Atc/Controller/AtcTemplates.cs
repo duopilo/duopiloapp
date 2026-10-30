@@ -1,5 +1,7 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using Kopilot.Atc.Airspace;
 
 namespace Kopilot.Atc;
 
@@ -9,12 +11,32 @@ namespace Kopilot.Atc;
 /// </summary>
 public sealed class AtcTemplates
 {
+    /// <summary>Aktuelles Format. Ältere Dateien hebt <see cref="AtcTemplateMigration"/> beim Laden an.</summary>
+    public const int CurrentVersion = 2;
+
     public int Version { get; set; } = 1;
 
     public AtcVoiceConfig Voices { get; set; } = new();
 
-    /// <summary>ICAO-Airline-Kennung → Telephony-Rufzeichen ("DLH" → "Lufthansa").</summary>
+    /// <summary>
+    /// ICAO-Airline-Kennung → Telephony-Rufzeichen ("DLH" → "Lufthansa"). Seit Version 2 nur noch Ausnahmen und Korrekturen –
+    /// alle anderen Airlines kommen aus der OpenFlights-Datenbank (<see cref="Airlines"/>).
+    /// </summary>
     public Dictionary<string, string> Telephony { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Zusatz für FIRs ohne eigenen Eintrag, deren Namen Kopilot aus VAT-Spy nimmt ("Minneapolis" → "Minneapolis Center"):
+    /// ICAO-Präfix → Stationsart, der längste passende Präfix gewinnt, "" für alle übrigen.
+    /// </summary>
+    public Dictionary<string, string> FirSuffixes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Airline-Datenbank (OpenFlights), von <see cref="AtcService"/> gesetzt – nicht Teil der Datei.</summary>
+    [JsonIgnore]
+    public AirlineDirectory Airlines { get; set; } = AirlineDirectory.Empty;
+
+    /// <summary>Rufzeichen für den Funk: zuerst <see cref="Telephony"/>, dann <see cref="Airlines"/>.</summary>
+    [JsonIgnore]
+    public IReadOnlyDictionary<string, string> CallsignTelephony => new TelephonyView(Telephony, Airlines.Telephony);
 
     /// <summary>Stationsart ("delivery", "ground" …) → Anzeigename und Platzhalter-Frequenz.</summary>
     public Dictionary<string, AtcStationTypeConfig> StationTypes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
@@ -54,6 +76,7 @@ public sealed class AtcTemplates
     public AtcTemplates Normalized()
     {
         Telephony = Ci(Telephony);
+        FirSuffixes = Ci(FirSuffixes);
         StationTypes = Ci(StationTypes);
         Airports = Ci(Airports);
         Firs = Ci(Firs);
@@ -74,6 +97,11 @@ public sealed class AtcTemplates
         {
             message.Variants ??= [];
             message.Readback ??= [];
+        }
+
+        foreach (var fir in Firs.Values)
+        {
+            fir.Members ??= [];
         }
 
         return this;
@@ -140,9 +168,19 @@ public sealed class AtcFirConfig
     /// <summary>Name der Kontrollstelle ("Langen Radar", "Shanwick Oceanic").</summary>
     public string? Name { get; set; }
 
+    /// <summary>Frequenz der Stelle, wenn die Sektordaten für diese FIR (oder an dieser Stelle) keine liefern.</summary>
     public string? Frequency { get; set; }
 
     public bool Oceanic { get; set; }
+
+    /// <summary>
+    /// FIR mit eigener Oceanic-Stelle: deren Kennung (bei Gander "CZQO"). Oceanic-Fixe, die das OFP unter dieser FIR führt,
+    /// gehören dann zur Oceanic-Stelle, der Rest zur Domestic-Stelle (Gander Center).
+    /// </summary>
+    public string? OceanicFir { get; set; }
+
+    /// <summary>Stellen, deren Sektoren in dieser FIR mitzählen (z. B. für eine UIR wie EDVV: "EDYY", "EDWW").</summary>
+    public List<string> Members { get; set; } = [];
 }
 
 /// <summary>Schwellwerte der Zustandsmaschine (Höhen in ft, Strecken in nm, Zeiten in s/min).</summary>
@@ -184,6 +222,9 @@ public sealed class AtcRules
     public int TakeoffClearanceMaxSeconds { get; set; } = 60;
 
     public string DefaultApproach { get; set; } = "ILS";
+
+    /// <summary>Sektoren, die die Route kürzer als diese Strecke berührt, bekommen keine eigene Übergabe (gegen Hin und Her).</summary>
+    public double SectorMinNm { get; set; } = 20;
 }
 
 public sealed class AtcMessageTemplate
@@ -197,7 +238,11 @@ public sealed class AtcMessageTemplate
     public List<string> Readback { get; set; } = [];
 }
 
-/// <summary>Lädt und prüft atc-templates.json.</summary>
+/// <summary>
+/// Lädt und prüft atc-templates.json. Die mitgelieferte Datei neben der Kopilot.exe ist die Grundlage; eine eigene Kopie
+/// (z. B. %LOCALAPPDATA%\Kopilot\atc-templates.json) wird darübergelegt – sie braucht nur noch die Abweichungen. Ältere
+/// Formate hebt <see cref="AtcTemplateMigration"/> vorher an.
+/// </summary>
 public static class AtcTemplateLoader
 {
     public const string FileName = "atc-templates.json";
@@ -209,22 +254,94 @@ public static class AtcTemplateLoader
         NumberHandling = JsonNumberHandling.AllowReadingFromString,
     };
 
-    public static AtcTemplates Parse(string json) =>
-        (JsonSerializer.Deserialize<AtcTemplates>(json, Options) ?? throw new JsonException("Leere Vorlagendatei.")).Normalized();
+    private static readonly JsonDocumentOptions DocumentOptions = new()
+    {
+        CommentHandling = JsonCommentHandling.Skip,
+        AllowTrailingCommas = true,
+    };
+
+    /// <summary>Eine Datei (Format wird bei Bedarf angehoben).</summary>
+    public static AtcTemplates Parse(string json) => ParseLayered(json, null, []);
+
+    /// <summary>Grundlage und eigene Kopie zusammenführen: Objekte werden je Schlüssel gemischt, die Kopie gewinnt; Listen ersetzt sie ganz.</summary>
+    public static AtcTemplates ParseLayered(string? baseJson, string? userJson, List<string> notes)
+    {
+        var merged = baseJson is null ? new JsonObject() : AtcTemplateMigration.Migrate(ParseObject(baseJson), notes, "Grundlage");
+        if (userJson is not null)
+        {
+            Merge(merged, AtcTemplateMigration.Migrate(ParseObject(userJson), notes, "eigene Kopie"));
+        }
+
+        return (merged.Deserialize<AtcTemplates>(Options) ?? throw new JsonException("Leere Vorlagendatei.")).Normalized();
+    }
 
     /// <summary>Datei lesen. Fehler beim Lesen oder im JSON landen in <paramref name="errors"/>.</summary>
-    public static AtcTemplates? Load(string path, List<string> errors)
+    public static AtcTemplates? Load(string path, List<string> errors) => Load(null, path, errors, []);
+
+    /// <summary>
+    /// Grundlage <paramref name="basePath"/> und eigene Kopie <paramref name="userPath"/> laden (beide optional). Ist die
+    /// Kopie fehlerhaft, gilt nur die Grundlage – der Fehler steht in <paramref name="errors"/>.
+    /// </summary>
+    public static AtcTemplates? Load(string? basePath, string? userPath, List<string> errors, List<string> notes)
     {
+        string? Read(string? path)
+        {
+            if (path is null)
+            {
+                return null;
+            }
+
+            try
+            {
+                var text = File.ReadAllText(path);
+                ParseObject(text);
+                return text;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException)
+            {
+                errors.Add($"{path}: {ex.Message}");
+                return null;
+            }
+        }
+
+        var baseJson = Read(basePath);
+        var userJson = Read(userPath);
+        if (baseJson is null && userJson is null)
+        {
+            return null;
+        }
+
         try
         {
-            var templates = Parse(File.ReadAllText(path));
+            var templates = ParseLayered(baseJson, userJson, notes);
             errors.AddRange(Validate(templates));
             return templates;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or NotSupportedException)
         {
-            errors.Add($"{Path.GetFileName(path)}: {ex.Message}");
+            errors.Add($"{Path.GetFileName(userPath ?? basePath)}: {ex.Message}");
             return null;
+        }
+    }
+
+    private static JsonObject ParseObject(string json) =>
+        JsonNode.Parse(json, documentOptions: DocumentOptions) as JsonObject ?? throw new JsonException("Die Vorlagendatei muss ein JSON-Objekt sein.");
+
+    /// <summary>Tiefe Mischung: gleichnamige Objekte rekursiv, sonst ersetzt <paramref name="overlay"/> den Wert (Schlüssel ohne Groß-/Kleinschreibung).</summary>
+    public static void Merge(JsonObject target, JsonObject overlay)
+    {
+        foreach (var (key, value) in overlay.ToList())
+        {
+            var existingKey = target.Select(p => p.Key).FirstOrDefault(k => k.Equals(key, StringComparison.OrdinalIgnoreCase)) ?? key;
+            if (value is JsonObject overlayObject && target[existingKey] is JsonObject targetObject)
+            {
+                Merge(targetObject, overlayObject);
+            }
+            else
+            {
+                target.Remove(existingKey);
+                target[key] = value?.DeepClone();
+            }
         }
     }
 

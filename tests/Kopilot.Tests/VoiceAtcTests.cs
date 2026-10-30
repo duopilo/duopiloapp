@@ -18,17 +18,7 @@ public sealed class VoiceAtcTests
     private const double BerLat = 52.3667;
     private const double BerLon = 13.5033;
 
-    private static AtcTemplates Templates()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "src", "Kopilot", AtcTemplateLoader.FileName)))
-        {
-            dir = dir.Parent;
-        }
-
-        Assert.NotNull(dir);
-        return AtcTemplateLoader.Parse(File.ReadAllText(Path.Combine(dir!.FullName, "src", "Kopilot", AtcTemplateLoader.FileName)));
-    }
+    private static AtcTemplates Templates() => TestData.Templates();
 
     /// <summary>EDDF → EDDB, Rufzeichen DLH4AB, FIR Langen → Bremen.</summary>
     private static Ofp ShortHaul()

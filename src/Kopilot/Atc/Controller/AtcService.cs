@@ -1,4 +1,5 @@
 using System.Threading.Channels;
+using Kopilot.Atc.Airspace;
 using Kopilot.FlightPlan;
 using Kopilot.Sim;
 using Microsoft.Extensions.Options;
@@ -33,9 +34,15 @@ public sealed class AtcService : BackgroundService
     private readonly Dictionary<string, DateTimeOffset> _frequencyAttempts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Channel<AtcTransmission> _radioQueue = Channel.CreateUnbounded<AtcTransmission>(new UnboundedChannelOptions { SingleReader = true });
 
+    private readonly object _airspaceLock = new();
+
     private AtcTemplates? _templates;
     private string? _templatesPath;
+    private string? _templatesBasePath;
     private IReadOnlyList<string> _templateErrors = [];
+    private IReadOnlyList<string> _templateNotes = [];
+    private AirspaceDatabase? _airspace;
+    private IReadOnlyList<string> _airspaceMessages = [];
     private readonly AtcSessionStore _store;
 
     /// <summary>Spätestens so oft sichern, auch ohne Zustandswechsel (Streckenposition, Funkverlauf).</summary>
@@ -62,9 +69,34 @@ public sealed class AtcService : BackgroundService
 
     public bool Enabled => _options.Atc.Enabled;
 
+    /// <summary>Eigene Kopie der Vorlagen, sonst die mitgelieferte Datei.</summary>
     public string? TemplatesPath => _templatesPath;
 
+    /// <summary>Mitgelieferte Grundlage, über die die eigene Kopie gelegt wird.</summary>
+    public string? TemplatesBasePath => _templatesBasePath;
+
     public IReadOnlyList<string> TemplateErrors => _templateErrors;
+
+    /// <summary>Was beim Laden angepasst wurde (Formatwechsel der eigenen Kopie).</summary>
+    public IReadOnlyList<string> TemplateNotes => _templateNotes;
+
+    /// <summary>Herkunft der Luftraumdaten und Rufzeichen (für den Status).</summary>
+    public IReadOnlyList<string> AirspaceSources
+    {
+        get
+        {
+            var airspace = _airspace;
+            var airlines = _templates?.Airlines;
+            var sources = new List<string>(airspace?.Sources ?? []);
+            if (airlines is { Count: > 0 })
+            {
+                sources.Add($"Airlines: {airlines.Source} ({airlines.Count} Rufzeichen, OpenFlights)");
+            }
+
+            sources.AddRange(_airspaceMessages);
+            return sources;
+        }
+    }
 
     public AtcFrequencyBook Frequencies => _frequencies;
 
@@ -105,40 +137,97 @@ public sealed class AtcService : BackgroundService
         }
     }
 
-    /// <summary>Vorlagen neu laden. Die Datei in DataDirectory hat Vorrang vor der mitgelieferten neben der Kopilot.exe.</summary>
+    /// <summary>
+    /// Vorlagen, Airline-Datenbank und Luftraumdaten neu laden. Die mitgelieferte atc-templates.json neben der Kopilot.exe
+    /// ist die Grundlage, eine eigene Kopie in DataDirectory wird darübergelegt. Die Luftraumdaten lädt Kopilot im
+    /// Hintergrund nach (beim ersten Bedarf spätestens).
+    /// </summary>
     public IReadOnlyList<string> ReloadTemplates()
     {
         var errors = new List<string>();
-        var path = ResolveTemplatesPath();
+        var notes = new List<string>();
+        var (basePath, userPath) = ResolveTemplatesPaths();
         AtcTemplates? templates = null;
-        if (path is null)
+        if (basePath is null && userPath is null)
         {
             errors.Add($"{AtcTemplateLoader.FileName} nicht gefunden.");
         }
         else
         {
-            templates = AtcTemplateLoader.Load(path, errors);
+            templates = AtcTemplateLoader.Load(basePath, userPath, errors, notes);
+        }
+
+        var airlineMessages = new List<string>();
+        if (templates is not null)
+        {
+            templates.Airlines = AirspaceLoader.LoadAirlines(AirspaceLoader.Roots(_options.ResolveDataDirectory()), airlineMessages);
         }
 
         lock (_lock)
         {
-            _templatesPath = path;
+            _templatesPath = userPath ?? basePath;
+            _templatesBasePath = basePath;
             _templateErrors = errors;
+            _templateNotes = notes;
             _templates = templates;
             _session = null;
             _sessionOfpId = null;
         }
 
+        lock (_airspaceLock)
+        {
+            _airspace = null;
+            _airspaceMessages = airlineMessages;
+        }
+
+        foreach (var note in notes)
+        {
+            _log.LogInformation("ATC-Vorlagen: {Note}", note);
+        }
+
         if (errors.Count > 0)
         {
-            _log.LogWarning("ATC-Vorlagen ({Path}): {Errors}", path ?? AtcTemplateLoader.FileName, string.Join(" | ", errors));
+            _log.LogWarning("ATC-Vorlagen ({Path}): {Errors}", userPath ?? basePath ?? AtcTemplateLoader.FileName, string.Join(" | ", errors));
         }
         else
         {
-            _log.LogInformation("ATC-Vorlagen geladen: {Path} ({Count} Funksprüche)", path, templates?.Messages.Count ?? 0);
+            _log.LogInformation(
+                "ATC-Vorlagen geladen: {Path}{Base} ({Count} Funksprüche, {Airlines} Airlines aus OpenFlights)",
+                userPath ?? basePath,
+                userPath is not null && basePath is not null ? $" über {basePath}" : "",
+                templates?.Messages.Count ?? 0,
+                templates?.Airlines.Count ?? 0);
         }
 
         return errors;
+    }
+
+    /// <summary>FIR-Grenzen und Sektoren – beim ersten Aufruf geladen (ein bis zwei Sekunden), danach aus dem Speicher.</summary>
+    public AirspaceDatabase Airspace()
+    {
+        lock (_airspaceLock)
+        {
+            if (_airspace is { } loaded)
+            {
+                return loaded;
+            }
+
+            var messages = new List<string>();
+            var started = DateTimeOffset.UtcNow;
+            var airspace = AirspaceLoader.Load(AirspaceLoader.Roots(_options.ResolveDataDirectory()), messages);
+            _airspace = airspace;
+            _airspaceMessages = _airspaceMessages.Concat(messages).ToList();
+            foreach (var message in messages)
+            {
+                _log.LogWarning("Luftraumdaten: {Message}", message);
+            }
+
+            _log.LogInformation(
+                "Luftraumdaten geladen in {Ms} ms: {Sources}",
+                (int)(DateTimeOffset.UtcNow - started).TotalMilliseconds,
+                string.Join(" | ", airspace.Sources));
+            return airspace;
+        }
     }
 
     /// <summary>Funkspruch des Piloten. Startet bei Bedarf die Sitzung.</summary>
@@ -239,6 +328,17 @@ public sealed class AtcService : BackgroundService
         }
 
         var radio = RadioLoopAsync(stoppingToken);
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                Airspace();
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, "Luftraumdaten nicht geladen");
+            }
+        }, stoppingToken);
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
         try
         {
@@ -435,6 +535,8 @@ public sealed class AtcService : BackgroundService
             return "ATC braucht den SimBrief-Plan: " + _lastError;
         }
 
+        var airspace = await Task.Run(() => Airspace(), ct);
+
         lock (_lock)
         {
             if (_session is not null)
@@ -443,7 +545,7 @@ public sealed class AtcService : BackgroundService
             }
 
             var templates = _templates!;
-            var plan = AtcPlan.Build(ofp, SimCallsign(), templates);
+            var plan = AtcPlan.Build(ofp, SimCallsign(), templates, airspace);
             var snapshot = RestorableSnapshot(plan.FlightKey);
             if (snapshot is null && restoreOnly)
             {
@@ -480,13 +582,14 @@ public sealed class AtcService : BackgroundService
                 session.Start(BuildInput());
                 _restoredFromUtc = null;
                 _log.LogInformation(
-                    "ATC-Sitzung: {Callsign} {Orig} → {Dest}, Phase {Phase}, Squawk {Squawk}{Oceanic}",
+                    "ATC-Sitzung: {Callsign} {Orig} → {Dest}, Phase {Phase}, Squawk {Squawk}{Oceanic}, Stationen: {Stations}",
                     plan.Callsign,
                     ofp.Origin.Icao,
                     ofp.Destination.Icao,
                     session.Phase,
                     session.Squawk,
-                    plan.Oceanic is null ? "" : ", mit Oceanic-Teil");
+                    plan.Oceanic is null ? "" : ", mit Oceanic-Teil",
+                    string.Join(" → ", plan.Firs.Select(f => FormattableString.Invariant($"{session.StationName(f)} {f.FrequencyMhz:0.000} ab {f.StartNm:0} nm"))));
             }
 
             _session = session;
@@ -616,7 +719,11 @@ public sealed class AtcService : BackgroundService
         return voices.Count > 0 ? voices.ToList() : null;
     }
 
-    private string? ResolveTemplatesPath()
+    /// <summary>
+    /// Grundlage: TemplatesFile neben der Kopilot.exe. Eigene Kopie: TemplatesFile in DataDirectory (oder ein absoluter Pfad).
+    /// Zeigen beide auf dieselbe Datei, gibt es nur die Grundlage.
+    /// </summary>
+    private (string? BasePath, string? UserPath) ResolveTemplatesPaths()
     {
         var configured = _options.Atc.TemplatesFile;
         if (string.IsNullOrWhiteSpace(configured))
@@ -624,20 +731,12 @@ public sealed class AtcService : BackgroundService
             configured = AtcTemplateLoader.FileName;
         }
 
-        if (Path.IsPathRooted(configured))
-        {
-            return File.Exists(configured) ? configured : null;
-        }
-
-        foreach (var directory in new[] { _options.ResolveDataDirectory(), AppContext.BaseDirectory })
-        {
-            var candidate = Path.Combine(directory, configured);
-            if (File.Exists(candidate))
-            {
-                return candidate;
-            }
-        }
-
-        return null;
+        var bundled = Path.Combine(AppContext.BaseDirectory, Path.IsPathRooted(configured) ? AtcTemplateLoader.FileName : configured);
+        var basePath = File.Exists(bundled) ? bundled : null;
+        var own = Path.IsPathRooted(configured) ? configured : Path.Combine(_options.ResolveDataDirectory(), configured);
+        var userPath = File.Exists(own) && (basePath is null || !Path.GetFullPath(own).Equals(Path.GetFullPath(basePath), StringComparison.OrdinalIgnoreCase))
+            ? own
+            : null;
+        return (basePath, userPath);
     }
 }

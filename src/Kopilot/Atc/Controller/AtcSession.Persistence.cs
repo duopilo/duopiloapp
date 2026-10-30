@@ -1,7 +1,7 @@
 namespace Kopilot.Atc;
 
 /// <summary>Verweis auf eine Station, aus dem sich die Station nach einem Neustart wieder bauen lässt.</summary>
-/// <param name="Key">z. B. "EDDF/tower" oder "FIR/CZQX".</param>
+/// <param name="Key">z. B. "EDDF/tower", "FIR/CZQX" oder "FIR/CZUL/MC" (Kontrollposition aus den Sektordaten).</param>
 /// <param name="Facility">Flughafen oder FIR (ICAO), leer bei einer unbekannten FIR.</param>
 public sealed record AtcStationRef(string Key, AtcStationType Type, string Facility)
 {
@@ -227,7 +227,17 @@ public sealed partial class AtcSession
     {
         if (r.Type is AtcStationType.Center or AtcStationType.Oceanic)
         {
-            return _stations.Fir(r.Facility.Length > 0 ? r.Facility : null, r.Type == AtcStationType.Oceanic);
+            // Station einer Kontrollposition ("FIR/CZUL/MC"): aus dem passenden Routenabschnitt neu bauen – Rufname und
+            // Frequenz aus den Sektordaten, die Stimme kommt über den Schlüssel aus der Sicherung
+            var oceanic = r.Type == AtcStationType.Oceanic;
+            if (Plan.Firs.FirstOrDefault(f => f.Oceanic == oceanic
+                                               && f.Sector is { Length: > 0 } sector
+                                               && string.Equals(AtcStations.SectorKey(f.Fir, sector), r.Key, StringComparison.OrdinalIgnoreCase)) is { } segment)
+            {
+                return _stations.Segment(segment);
+            }
+
+            return _stations.Fir(r.Facility.Length > 0 ? r.Facility : null, oceanic);
         }
 
         if (string.Equals(r.Facility, OriginIcao, StringComparison.OrdinalIgnoreCase))

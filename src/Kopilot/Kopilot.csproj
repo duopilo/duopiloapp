@@ -77,6 +77,16 @@
   </ItemGroup>
 
   <!--
+    Luftraum- und Airline-Daten (data\README.md): VAT-Spy (FIR-Grenzen, CC BY-SA 4.0), Streckensektoren aus VATGlasses
+    (CC BY-NC-SA 4.0, erzeugt mit tools\import_sectors.py) und OpenFlights-Airlines (ODbL). Lizenzen liegen jeweils daneben.
+  -->
+  <ItemGroup>
+    <None Remove="data\**" />
+    <Content Remove="data\**" />
+    <Content Include="data\**\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!--
     SimConnect-Referenz. Reihenfolge der Suche:
       1. lib\ im Repo (DLLs manuell hineinkopiert)
       2. Umgebungsvariable MSFS2024_SDK

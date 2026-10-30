@@ -28,6 +28,7 @@ public sealed record AtcRoutingInfo(IReadOnlyList<string> Stations, IReadOnlyLis
         if (session is not null)
         {
             stations.Add(session.Station.Name);
+            stations.AddRange(session.RouteStationNames());
         }
 
         if (templates is not null)
@@ -66,7 +67,7 @@ public sealed record AtcRoutingInfo(IReadOnlyList<string> Stations, IReadOnlyLis
             callsigns.Add(code);
             if (templates is not null)
             {
-                callsigns.Add(AtcSpeech.Callsign(code, templates.Telephony).Spoken);
+                callsigns.Add(AtcSpeech.Callsign(code, templates.CallsignTelephony).Spoken);
             }
         }
 

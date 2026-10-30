@@ -3,12 +3,14 @@
   "_hinweise": {
     "voices": "Jede Station bekommt pro Flug zufällig eine Stimme aus pool. Feste Stimmen unter stations, z. B. \"EDDF/tower\": \"bf_emma\", \"FIR/EGGX\": \"bm_daniel\" oder für eine ganze Art \"delivery\": \"af_heart\".",
     "airports": "Rufname, Steigflughöhe der Streckenfreigabe ({initialAlt}), abweichende Stationsnamen und feste Frequenzen (\"frequencies\": { \"tower\": \"118.775\" } – haben Vorrang vor der Facilities-API).",
-    "firs": "FIR (ICAO) → Name der Kontrollstelle und Frequenz. oceanic: true = Positionsmeldungen, vorher Oceanic-Freigabe. Ohne FIR-Angaben im OFP gilt auf dem Nordatlantik: östlich 30°W EGGX, westlich CZQX. FIRs ohne eigenen Eintrag nehmen OCEANIC bzw. CENTER (generische Station).",
-    "rules": "Schwellwerte der Zustandsmaschine: Höhen in ft, Strecken in nm, Zeiten in Sekunden bzw. Minuten.",
+    "telephony": "Nur Ausnahmen und Korrekturen – alle übrigen Rufzeichen kommen aus der OpenFlights-Datenbank (data/openflights/airlines.dat). Ein Eintrag hier hat Vorrang.",
+    "firs": "FIR (ICAO) → Name der Kontrollstelle und Frequenz. Grenzen kommen aus VAT-Spy (data/vatspy), Sektoren mit eigenen Frequenzen aus den VATSIM-Sektordaten (data/sectors); frequency gilt nur, wo die Sektordaten nichts liefern. oceanic: true = Positionsmeldungen, vorher Oceanic-Freigabe. oceanicFir: Kennung der Oceanic-Stelle einer FIR mit Domestic- und Oceanic-Teil (Gander: CZQX → CZQO). members: weitere Stellen, deren Sektoren in dieser FIR mitzählen. Ohne FIR-Angaben im OFP gilt auf dem Nordatlantik: östlich 30°W EGGX, westlich CZQO. FIRs ohne eigenen Eintrag heißen wie in VAT-Spy plus Zusatz aus firSuffixes (Winnipeg Center), sonst OCEANIC bzw. CENTER (generische Station). Für KZMP, KZDV und KZLA gibt es keine VATSIM-Sektordaten – deren Frequenzen sind die des MSFS-ATC an der FIR-Grenze im Testflug CFG2205.",
+    "firSuffixes": "ICAO-Präfix → Stationsart für FIRs ohne eigenen Eintrag. Der längste passende Präfix gewinnt, \"\" für alle übrigen.",
+    "rules": "Schwellwerte der Zustandsmaschine: Höhen in ft, Strecken in nm, Zeiten in Sekunden bzw. Minuten. sectorMinNm: Sektoren, die die Route kürzer berührt, bekommen keine eigene Übergabe.",
     "messages": "from: atc = Kopilot spricht, pilot = erwarteter Pilotenspruch (Hinweis). readback: Variablen, die der Pilot zurücklesen muss.",
     "corrections": "Was nach \"negative\" gesagt wird, je Readback-Punkt."
   },
-  "version": 1,
+  "version": 2,
 
   "voices": {
     "pool": [
@@ -20,49 +22,42 @@
   },
 
   "telephony": {
-    "DLH": "Lufthansa",
-    "CLH": "Hansaline",
-    "EWG": "Eurowings",
-    "CFG": "Condor",
-    "TUI": "Tuifly",
-    "DCS": "Twin Star",
-    "BAW": "Speedbird",
-    "EZY": "Easy",
-    "RYR": "Ryanair",
+    "_hinweis": "Abweichungen von OpenFlights: dort fehlend, veraltet oder fehlerhaft (Schreibweise bei KLM/UPS).",
     "AFR": "Airfrance",
-    "KLM": "KLM",
-    "SWR": "Swiss",
-    "AUA": "Austrian",
-    "SAS": "Scandinavian",
-    "FIN": "Finnair",
-    "IBE": "Iberia",
-    "VLG": "Vueling",
-    "TAP": "Air Portugal",
-    "AZA": "Alitalia",
-    "ITY": "Itarrow",
-    "LOT": "Pollot",
+    "ASA": "Alaska",
+    "AVA": "Avianca",
     "BEL": "Beeline",
-    "THY": "Turkish",
-    "PGT": "Sunturk",
-    "SXS": "Sunexpress",
-    "WZZ": "Wizz Air",
-    "EIN": "Shamrock",
-    "ICE": "Iceair",
-    "UAE": "Emirates",
-    "QTR": "Qatari",
-    "ETD": "Etihad",
-    "SIA": "Singapore",
-    "UAL": "United",
-    "DAL": "Delta",
-    "AAL": "American",
-    "ACA": "Air Canada",
-    "WJA": "Westjet",
-    "JBU": "Jetblue",
-    "SWA": "Southwest",
-    "FDX": "Fedex",
-    "UPS": "UPS",
     "BOX": "German Cargo",
-    "GEC": "Lufthansa Cargo"
+    "EDV": "Endeavor",
+    "EJU": "Alpine",
+    "EZS": "Topswiss",
+    "GJS": "Lindbergh",
+    "ITY": "Itarrow",
+    "KLM": "KLM",
+    "MXY": "Moxy",
+    "POE": "Porter",
+    "QXE": "Horizon",
+    "ROU": "Rouge",
+    "TFL": "Orange",
+    "THY": "Turkish",
+    "TSC": "Air Transat",
+    "TUI": "Tuifly",
+    "UPS": "UPS",
+    "VXP": "Avelo"
+  },
+
+  "firSuffixes": {
+    "": "Control",
+    "K": "Center",
+    "P": "Center",
+    "C": "Center",
+    "Y": "Center",
+    "ED": "Radar",
+    "EH": "Radar",
+    "EP": "Radar",
+    "LK": "Radar",
+    "LO": "Radar",
+    "LS": "Radar"
   },
 
   "stationTypes": {
@@ -87,9 +82,14 @@
     "EHAM": { "name": "Schiphol", "initialClimbFt": 6000 },
     "LSZH": { "name": "Zurich", "initialClimbFt": 5000 },
     "LOWW": { "name": "Vienna", "initialClimbFt": 5000 },
-    "KJFK": { "name": "Kennedy", "initialClimbFt": 5000 },
-    "KEWR": { "name": "Newark", "initialClimbFt": 2500 },
-    "KBOS": { "name": "Boston", "initialClimbFt": 5000 }
+    "KJFK": { "name": "Kennedy", "initialClimbFt": 5000, "stations": { "departure": "New York Departure", "approach": "New York Approach" } },
+    "KEWR": { "name": "Newark", "initialClimbFt": 2500, "stations": { "departure": "New York Departure", "approach": "New York Approach" } },
+    "KBOS": { "name": "Boston", "initialClimbFt": 5000 },
+    "KLGA": { "name": "La Guardia", "initialClimbFt": 5000, "stations": { "departure": "New York Departure", "approach": "New York Approach" } },
+    "KLAX": { "name": "Los Angeles", "initialClimbFt": 5000, "stations": { "departure": "SoCal Departure", "approach": "SoCal Approach" } },
+    "KSAN": { "name": "San Diego", "stations": { "departure": "SoCal Departure", "approach": "SoCal Approach" } },
+    "KSFO": { "name": "San Francisco", "stations": { "departure": "NorCal Departure", "approach": "NorCal Approach" } },
+    "KOAK": { "name": "Oakland", "stations": { "departure": "NorCal Departure", "approach": "NorCal Approach" } }
   },
 
   "firs": {
@@ -97,6 +97,7 @@
     "EDWW": { "name": "Bremen Radar" },
     "EDMM": { "name": "Munich Radar" },
     "EDUU": { "name": "Rhein Radar" },
+    "EDVV": { "name": "Bremen Radar", "members": [ "EDYY", "EDWW", "EDGG" ] },
     "EDYY": { "name": "Maastricht Radar" },
     "EHAA": { "name": "Amsterdam Radar" },
     "EBBU": { "name": "Brussels Control" },
@@ -109,18 +110,22 @@
     "EGPX": { "name": "Scottish Control" },
     "EISN": { "name": "Shannon Control" },
     "EGGX": { "name": "Shanwick Oceanic", "oceanic": true },
-    "CZQX": { "name": "Gander Oceanic", "oceanic": true },
+    "CZQO": { "name": "Gander Oceanic", "oceanic": true },
     "BIRD": { "name": "Reykjavik Control", "oceanic": true },
     "KZWY": { "name": "New York Oceanic", "oceanic": true },
     "LPPO": { "name": "Santa Maria Oceanic", "oceanic": true },
     "OCEANIC": { "name": "Oceanic", "oceanic": true },
     "CENTER": { "name": "Center" },
+    "CZQX": { "name": "Gander Center", "oceanicFir": "CZQO" },
     "CZQM": { "name": "Moncton Center" },
     "CZUL": { "name": "Montreal Center" },
     "CZYZ": { "name": "Toronto Center" },
     "KZBW": { "name": "Boston Center" },
     "KZNY": { "name": "New York Center" },
-    "KZDC": { "name": "Washington Center" }
+    "KZDC": { "name": "Washington Center" },
+    "KZMP": { "name": "Minneapolis Center", "frequency": "119.100" },
+    "KZDV": { "name": "Denver Center", "frequency": "132.700" },
+    "KZLA": { "name": "Los Angeles Center", "frequency": "124.200" }
   },
 
   "rules": {
@@ -141,7 +146,8 @@
     "oceanicRequestMinutes": 30,
     "holdShortSeconds": 8,
     "takeoffClearanceMaxSeconds": 60,
-    "defaultApproach": "ILS"
+    "defaultApproach": "ILS",
+    "sectorMinNm": 20
   },
 
   "messages": {
