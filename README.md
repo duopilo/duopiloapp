@@ -420,6 +420,24 @@ dotnet publish src/Kopilot -c Release -o C:\Tools\Kopilot
 
 Im Ordner `C:\Tools\Kopilot` müssen nach dem Veröffentlichen `Kopilot.exe`, `Microsoft.FlightSimulator.SimConnect.dll`, `SimConnect.dll` und der Ordner `profiles` liegen.
 
+## Release und Installer
+
+Ein Tag `v…` startet den Workflow „Release“ (`.github/workflows/release.yml`): self-contained Build für win-x64 mit der Version aus dem Tag, Installer (Inno Setup, `installer/`) und ZIP, beides an ein GitHub Release mit Changelog aus den Commits seit dem letzten Tag. Tags mit Zusatz (`v1.0.0-beta.1`) werden Pre-releases.
+
+```powershell
+git switch main; git pull
+git tag v0.9.1
+git push origin v0.9.1
+```
+
+**Einmalig vorher:** SimConnect für GitHub hinterlegen – auf dem PC mit dem MSFS-2024-SDK im Repo-Ordner `pwsh installer/simconnect-secret.ps1` (braucht die GitHub CLI). Das legt die DLLs als Secrets `SIMCONNECT_ZIP_*` ab; ohne sie bricht ein Release ab, statt gegen den Stub zu bauen.
+
+**Testen ohne Release:** Actions → Release → Run workflow (Version angeben). Setup und ZIP liegen dann 14 Tage unter „Artifacts“.
+
+**Der Installer** installiert nach `C:\Program Files\Kopilot` (oder ohne Adminrechte nur für den eigenen Benutzer), legt einen Startmenü-Eintrag an und auf Wunsch den Autostart (derselbe Eintrag wie „Mit Windows starten“ im Tray-Menü). Bei Updates bleibt `appsettings.Local.json` unangetastet; mitgelieferte Profile, `atc-templates.json` und `appsettings.json` werden erneuert, eigene Änderungen daran vorher nach `backup\<Datum>\` gesichert. Die Deinstallation entfernt Programm, Startmenü-Eintrag und Autostart und fragt, ob auch Einstellungen und `%LOCALAPPDATA%\Kopilot` weg sollen.
+
+Der Produktname für Installer, ZIP und Release steht zentral als `<Product>` in `Directory.Build.props`.
+
 ## Erster Test im Browser
 
 1. MSFS 2024 starten und einen Flug laden.
@@ -657,6 +675,7 @@ src/Kopilot/
 src/SimConnectStub/       Platzhalter-API für CI-Builds ohne MSFS-SDK
 tests/Kopilot.Tests/      Tests (OAuth, Zugriffsschutz, Monitoring-Regeln, ECAM, SimBrief, Profile, Verkehr, ATC, Sprachschleife) – laufen ohne MSFS
 docs/cloudflared.md       Anleitung Cloudflare Tunnel
+installer/                Windows-Installer (Inno Setup) und Hilfsskripte für den Release-Workflow
 ```
 
 Jede Variable hat eine eigene SimConnect-Data-Definition. Ist ein Name in MSFS unbekannt, fehlt nur dieser eine Wert, alles andere läuft weiter.

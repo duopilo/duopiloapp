@@ -1,0 +1,282 @@
+# Release: Kopilot für Windows bauen (self-contained, win-x64), Installer (Inno Setup) und ZIP erzeugen und beides
+# an ein automatisch erstelltes GitHub Release mit Changelog hängen.
+#
+# Läuft
+#  - bei einem Tag „v…“ (v0.9.1, v1.0.0-beta.1): baut und veröffentlicht. Die Version im Programm kommt aus dem Tag.
+#    Tags mit Zusatz („-beta.1“, „-rc.1“) werden als Pre-release veröffentlicht.
+#  - von Hand: Actions → Release → Run workflow (Version angeben) – nur bauen, Ergebnis unter „Artifacts“.
+#  - bei Pull Requests, die diesen Workflow oder installer/ ändern – nur bauen, zum Testen.
+#
+# Auslösen:
+#   git switch main && git pull
+#   git tag v0.9.1
+#   git push origin v0.9.1
+#
+# SimConnect: Auf GitHub-Runnern gibt es das MSFS-2024-SDK nicht. Der Workflow nimmt die DLLs aus lib/ im Repo oder
+# aus den Secrets SIMCONNECT_ZIP_1…6 (einmal anlegen mit: pwsh installer/simconnect-secret.ps1). Ohne echtes
+# SimConnect bricht ein Release ab – ein Build gegen den Stub könnte sich nicht mit MSFS verbinden. Testbuilds laufen
+# dann mit Warnung gegen den Stub.
+#
+# Der Produktname steht zentral als <Product> in Directory.Build.props, die Programmdatei als <AssemblyName> im Projekt.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - ".github/workflows/release.yml"
+      - "installer/**"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version für den Testbuild (nur Artifacts, kein Release), z. B. 0.9.1-test"
+        type: string
+        default: "0.0.0-test"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+
+jobs:
+  bauen:
+    name: Windows x64
+    runs-on: windows-latest
+    timeout-minutes: 45
+    outputs:
+      name: ${{ steps.version.outputs.name }}
+      exe: ${{ steps.version.outputs.exe }}
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+      paket: ${{ steps.version.outputs.paket }}
+    steps:
+      - name: Repo holen
+        uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Name und Version
+        id: version
+        shell: pwsh
+        env:
+          EREIGNIS: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          EINGABE: ${{ inputs.version }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          $props = (dotnet msbuild src/Kopilot/Kopilot.csproj -getProperty:Product -getProperty:AssemblyName | Out-String | ConvertFrom-Json).Properties
+          if (-not $props.Product -or -not $props.AssemblyName) { Write-Output "::error::Product/AssemblyName ließen sich nicht aus dem Projekt lesen."; exit 1 }
+          if ($env:EREIGNIS -eq 'push') {
+            if ($env:REF_NAME -notmatch '^v') { Write-Output "::error::Tag '$env:REF_NAME' beginnt nicht mit v."; exit 1 }
+            $version = $env:REF_NAME.Substring(1)
+          } elseif ($env:EREIGNIS -eq 'pull_request') {
+            $version = "0.0.0-pr$env:PR"
+          } else {
+            $version = $env:EINGABE.Trim()
+          }
+          if ($version -notmatch '^(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z][0-9A-Za-z.-]*)?$') {
+            Write-Output "::error::Version '$version' passt nicht zu 1.2.3 oder 1.2.3-beta.1 (Tag also v1.2.3)."
+            exit 1
+          }
+          $numerisch = "$($Matches[1]).$($Matches[2]).$($Matches[3])"
+          $name = $props.Product
+          $exe = "$($props.AssemblyName).exe"
+          $prerelease = if ($version.Contains('-')) { 'true' } else { 'false' }
+          @("name=$name", "exe=$exe", "version=$version", "prerelease=$prerelease", "paket=$name-$version") |
+            Out-File -Append -FilePath $env:GITHUB_OUTPUT -Encoding utf8
+          @("APP_NAME=$name", "APP_EXE=$exe", "VERSION=$version", "VERSION_NUM=$numerisch") |
+            Out-File -Append -FilePath $env:GITHUB_ENV -Encoding utf8
+          Write-Output "$name $version ($exe, Assembly-Version $numerisch, Pre-release: $prerelease)"
+
+      - name: SimConnect bereitstellen
+        id: simconnect
+        shell: pwsh
+        env:
+          RELEASE: ${{ github.event_name == 'push' }}
+          SIMCONNECT_ZIP_1: ${{ secrets.SIMCONNECT_ZIP_1 }}
+          SIMCONNECT_ZIP_2: ${{ secrets.SIMCONNECT_ZIP_2 }}
+          SIMCONNECT_ZIP_3: ${{ secrets.SIMCONNECT_ZIP_3 }}
+          SIMCONNECT_ZIP_4: ${{ secrets.SIMCONNECT_ZIP_4 }}
+          SIMCONNECT_ZIP_5: ${{ secrets.SIMCONNECT_ZIP_5 }}
+          SIMCONNECT_ZIP_6: ${{ secrets.SIMCONNECT_ZIP_6 }}
+        run: |
+          $managed = 'lib/Microsoft.FlightSimulator.SimConnect.dll'
+          $native = 'lib/SimConnect.dll'
+          if ((Test-Path $managed) -and (Test-Path $native)) {
+            Write-Output "SimConnect aus lib/ im Repo."
+          } else {
+            $b64 = -join (1..6 | ForEach-Object { [Environment]::GetEnvironmentVariable("SIMCONNECT_ZIP_$_") } | Where-Object { $_ } | ForEach-Object { $_.Trim() })
+            if ($b64) {
+              $zip = Join-Path $env:RUNNER_TEMP 'simconnect.zip'
+              [IO.File]::WriteAllBytes($zip, [Convert]::FromBase64String($b64))
+              Expand-Archive $zip -DestinationPath lib -Force
+              Remove-Item $zip
+              Write-Output "SimConnect aus den Secrets SIMCONNECT_ZIP_*."
+            }
+          }
+          if ((Test-Path $managed) -and (Test-Path $native)) {
+            Get-FileHash $managed, $native | ForEach-Object { Write-Output "  $(Split-Path -Leaf $_.Path)  $($_.Hash)" }
+            "echt=true" | Out-File -Append -FilePath $env:GITHUB_OUTPUT -Encoding utf8
+          } elseif ($env:RELEASE -eq 'true') {
+            Write-Output "::error::Kein SimConnect: weder lib/*.dll noch die Secrets SIMCONNECT_ZIP_*. Einmal 'pwsh installer/simconnect-secret.ps1' auf dem PC mit dem MSFS-2024-SDK ausführen, dann den Lauf wiederholen."
+            exit 1
+          } else {
+            Write-Output "::warning::Kein SimConnect (Secrets SIMCONNECT_ZIP_* fehlen) – Testbuild gegen den Stub, verbindet sich nicht mit MSFS."
+            "echt=false" | Out-File -Append -FilePath $env:GITHUB_OUTPUT -Encoding utf8
+          }
+
+      - name: Veröffentlichen (self-contained, win-x64)
+        shell: pwsh
+        env:
+          ECHT: ${{ steps.simconnect.outputs.echt }}
+        run: |
+          $stub = if ($env:ECHT -eq 'true') { 'false' } else { 'true' }
+          dotnet publish src/Kopilot/Kopilot.csproj -c Release -r win-x64 --self-contained true `
+            "-p:Version=$env:VERSION" "-p:UseSimConnectStub=$stub" -p:ContinuousIntegrationBuild=true `
+            -o "out/$env:APP_NAME"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Version und SimConnect im Programm prüfen
+        shell: pwsh
+        env:
+          ECHT: ${{ steps.simconnect.outputs.echt }}
+        run: |
+          $ordner = "out/$env:APP_NAME"
+          $dll = (Resolve-Path (Join-Path $ordner ([IO.Path]::ChangeExtension($env:APP_EXE, '.dll')))).Path
+          $ist = [Reflection.AssemblyName]::GetAssemblyName($dll).Version.ToString(3)
+          if ($ist -ne $env:VERSION_NUM) { Write-Output "::error::$dll meldet Version $ist statt $env:VERSION_NUM."; exit 1 }
+          Write-Output "Version im Programm: $ist"
+          if ($env:ECHT -eq 'true') {
+            foreach ($datei in 'Microsoft.FlightSimulator.SimConnect.dll', 'SimConnect.dll') {
+              $pfad = Join-Path $ordner $datei
+              if (-not (Test-Path $pfad) -or (Get-FileHash $pfad).Hash -ne (Get-FileHash "lib/$datei").Hash) {
+                Write-Output "::error::$datei im Programm ist nicht die aus dem SDK (Build gegen den Stub?)."
+                exit 1
+              }
+            }
+            Write-Output "SimConnect im Programm: aus dem SDK."
+          }
+
+      - name: Tests
+        run: dotnet test Kopilot.slnx -c Release -p:UseSimConnectStub=true --logger "console;verbosity=minimal"
+
+      - name: ZIP (ohne Installation)
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $quelle = (Resolve-Path "out/$env:APP_NAME").Path
+          $zip = Join-Path (Resolve-Path out).Path "$env:APP_NAME-$env:VERSION-win-x64.zip"
+          [IO.Compression.ZipFile]::CreateFromDirectory($quelle, $zip, [IO.Compression.CompressionLevel]::Optimal, $true)
+          Write-Output "ZIP: $zip, $([math]::Round((Get-Item $zip).Length / 1MB)) MB"
+          "ZIP=$zip" | Out-File -Append -FilePath $env:GITHUB_ENV -Encoding utf8
+
+      - name: Installer (Inno Setup)
+        shell: pwsh
+        run: pwsh installer/installer.ps1 -Quelle "out/$env:APP_NAME" -Version $env:VERSION -Name $env:APP_NAME -Exe $env:APP_EXE -Ziel out
+
+      - name: Prüfsummen
+        shell: pwsh
+        run: |
+          $zeilen = Get-Item $env:SETUP, $env:ZIP | ForEach-Object { "$((Get-FileHash $_.FullName).Hash.ToLowerInvariant())  $($_.Name)" }
+          [IO.File]::WriteAllText((Join-Path (Resolve-Path out).Path 'SHA256SUMS.txt'), ($zeilen -join "`n") + "`n")
+          $zeilen
+
+      - name: Pakete aufheben (14 Tage unter „Artifacts“)
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.version.outputs.paket }}
+          path: |
+            ${{ env.SETUP }}
+            ${{ env.ZIP }}
+            out/SHA256SUMS.txt
+          retention-days: 14
+          compression-level: 0
+          if-no-files-found: error
+
+  veroeffentlichen:
+    name: GitHub Release
+    needs: bauen
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Repo holen (ganze Geschichte für den Changelog)
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Pakete aus dem Build holen
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.bauen.outputs.paket }}
+          path: pakete
+
+      - name: Changelog aus den Commits seit dem letzten Tag
+        env:
+          TAG: ${{ github.ref_name }}
+          NAME: ${{ needs.bauen.outputs.name }}
+          EXE: ${{ needs.bauen.outputs.exe }}
+          VERSION: ${{ needs.bauen.outputs.version }}
+          PRERELEASE: ${{ needs.bauen.outputs.prerelease }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # Vorheriger Tag: für ein normales Release das letzte normale (Betas zählen nicht), für ein Pre-release das letzte überhaupt.
+          if [ "$PRERELEASE" = "true" ]; then
+            vorher=$(git describe --tags --abbrev=0 --match 'v*' "$TAG^" 2>/dev/null || true)
+          else
+            vorher=$(git describe --tags --abbrev=0 --match 'v*' --exclude 'v*-*' "$TAG^" 2>/dev/null || true)
+          fi
+          if [ -n "$vorher" ]; then bereich="$vorher..$TAG"; else bereich="$TAG"; fi
+          liste=$(git log --no-merges --pretty='tformat:- %s (%h)' "$bereich")
+          anzahl=$(printf '%s\n' "$liste" | grep -c '^- ' || true)
+          {
+            if [ -n "$vorher" ]; then echo "## Änderungen seit $vorher"; else echo "## Änderungen"; fi
+            echo
+            if [ "$anzahl" -eq 0 ]; then
+              echo "Keine Commits seit $vorher."
+            else
+              printf '%s\n' "$liste" | sed -n '1,300p'
+              if [ "$anzahl" -gt 300 ]; then echo "- … und $((anzahl - 300)) weitere"; fi
+            fi
+            if [ -n "$vorher" ]; then
+              echo
+              echo "**Alle Änderungen:** $REPO_URL/compare/$vorher...$TAG"
+            fi
+            echo
+            echo "## Installation"
+            echo
+            echo "- **$NAME-$VERSION-Setup.exe**: Installer (Programme-Ordner, Startmenü, auf Wunsch Autostart). Updates einfach darüber installieren, eigene Einstellungen bleiben erhalten."
+            echo "- **$NAME-$VERSION-win-x64.zip**: ohne Installation, entpacken und $EXE starten."
+            echo "- .NET muss nicht installiert sein. Die Dateien sind nicht signiert, Windows SmartScreen kann deshalb warnen (Weitere Informationen → Trotzdem ausführen). Prüfsummen: SHA256SUMS.txt."
+          } > notes.md
+          cat notes.md
+
+      - name: Release anlegen
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          TITEL: ${{ needs.bauen.outputs.name }} ${{ needs.bauen.outputs.version }}
+          PRERELEASE: ${{ needs.bauen.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # Lauf wiederholt: Dateien und Text ersetzen.
+            gh release upload "$TAG" pakete/* --clobber
+            gh release edit "$TAG" --title "$TITEL" --notes-file notes.md
+          else
+            extra=()
+            if [ "$PRERELEASE" = "true" ]; then extra+=(--prerelease); fi
+            gh release create "$TAG" pakete/* --title "$TITEL" --notes-file notes.md --verify-tag "${extra[@]}"
+          fi
+          echo "Release: $(gh release view "$TAG" --json url --jq .url)"
