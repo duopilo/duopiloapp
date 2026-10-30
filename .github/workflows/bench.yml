@@ -2,19 +2,45 @@ name: Bench (temporary)
 on:
   push:
     branches: ["bench/voice-after-beta"]
-    paths: [".github/workflows/bench.yml"]
+    paths: [".github/workflows/bench.yml", "tools/whisperwav/**"]
 permissions:
   contents: write
 jobs:
-  hashes:
-    runs-on: ubuntu-latest
+  live:
+    runs-on: windows-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
-      - name: Supertonic-3-Dateien
+        with:
+          path: bench
+      - uses: actions/checkout@v5
+        with:
+          ref: feat/supertonic-german
+          path: app
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - name: Supertonic live test (Duopilo engine)
+        shell: pwsh
+        env:
+          DUOPILO_SUPERTONIC_LIVE: "1"
+          DUOPILO_SUPERTONIC_OUT: ${{ github.workspace }}\bench\results\live
+          DUOPILO_SUPERTONIC_DATA: ${{ runner.temp }}\st-data
         run: |
-          python3 -m pip install --quiet huggingface_hub
-          python3 -c "from huggingface_hub import snapshot_download; snapshot_download('supertone-oss-archive/supertonic-3', revision='aafc6e32416a594460b32413efc49d7fe4ce6d46', local_dir='st')"
-          mkdir -p results
-          (cd st && find . -type f -not -path './.cache/*' -printf '%s %p\n' | sort -k2 && echo && find . -type f -not -path './.cache/*' -exec sha256sum {} \; | sort -k2 && echo && head -c 600 onnx/tts.json && echo && python3 -c "import json;d=json.load(open('onnx/tts.json'));print(json.dumps({k:d[k] for k in d if k in ('ae','ttl','dp')},indent=1)[:3000])") > results/supertonic-files.txt
+          $sw = [Diagnostics.Stopwatch]::StartNew()
+          dotnet test app/tests/Duopilo.Tests/Duopilo.Tests.csproj -c Release --filter "FullyQualifiedName~SupertonicTests" --logger "console;verbosity=normal" 2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\test.log"
+          $code = $LASTEXITCODE
+          New-Item -ItemType Directory -Force bench/results/live | Out-Null
+          Select-String -Path "$env:RUNNER_TEMP\test.log" -Pattern "Passed|Failed|error|Total tests|Assert" | ForEach-Object { $_.Line } | Out-File bench/results/live/test.txt
+          "elapsed $($sw.Elapsed)" | Out-File -Append bench/results/live/test.txt
+          exit $code
+      - name: Whisper
+        if: always()
+        run: dotnet run -c Release --project bench/tools/whisperwav/WhisperWav.csproj -- "${{ github.workspace }}\bench\results\live" "${{ runner.temp }}\wh"
+      - name: Ergebnis ins Repo
+        if: always()
+        shell: pwsh
+        working-directory: bench
+        run: |
           git config user.name bench; git config user.email bench@users.noreply.github.com
-          git add results; git commit -m "Supertonic-Dateien"; git push origin HEAD:bench/voice-after-beta
+          git add results; git commit -m "Live-Ergebnis Supertonic"; git push origin HEAD:bench/voice-after-beta
