@@ -865,7 +865,7 @@ public sealed class SmalltalkTests
     [Fact]
     public async Task HTTP_Fehler_ohne_Schluessel_in_der_Meldung()
     {
-        using var http = new HttpClient(new Handler(HttpStatusCode.Unauthorized, $$"""{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key {{Key}}"}}"""));
+        using var http = new HttpClient(new Handler(HttpStatusCode.Unauthorized, """{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key """ + Key + "\"}}"));
         var model = new HttpChatModel(http);
         var config = SmalltalkConfig.From(new SmalltalkOptions { Provider = "claude", ApiKey = Key });
 
