@@ -119,6 +119,12 @@ public sealed class TrafficMonitoringOptions
     /// (bei KI-Verkehr und Multiplayer noch nicht im Sim geprüft).
     /// </summary>
     public TrafficAltitudeReference AltitudeReference { get; set; } = TrafficAltitudeReference.Pressure;
+
+    /// <summary>
+    /// Jede Antwort der Verkehrsabfrage (Größe, Objekt, Anzahl) nach logs\traffic-messages.csv schreiben – zum Prüfen der
+    /// Absturz-Hypothesen aus dem Testlog 0.9. Rund 250 KB pro Flugstunde, bei 10 MB wird rotiert.
+    /// </summary>
+    public bool MessageLog { get; set; } = true;
 }
 
 /// <summary>Eigene Bezugshöhe für die Höhendifferenz zum Verkehr.</summary>

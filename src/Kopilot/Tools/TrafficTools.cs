@@ -28,7 +28,8 @@ public static class TrafficTools
         "'simvar' = the sim's GROUND VELOCITY, which is far too low for MSFS live traffic (roughly a factor of 3) – don't state it as fact. " +
         "Calling get_traffic again after about 10–20 s gives position-based values. The nearest target has 'closest': true, " +
         "and 'callout' is a short traffic call for it, e.g. 'Traffic, 2 o'clock, 5 miles, 1000 feet above, descending'. " +
-        "If 'status' is 'no_traffic', no other aircraft are within the radius (or traffic is disabled in the sim).")]
+        "If 'status' is 'no_traffic', no other aircraft are within the radius (or traffic is disabled in the sim). " +
+        "'messageCheck' is a diagnostic of the raw SimConnect replies (crash analysis); mention it only when asked.")]
     public static async Task<string> GetTraffic(
         SimConnectClient sim,
         TrafficService traffic,
@@ -95,9 +96,22 @@ public static class TrafficTools
                 }
                 : null,
             message = Join(message, radiusNote),
+            messageCheck = MessageCheck(traffic.Diagnostics, traffic.MessageLogPath),
             activeAlerts = AlertView.Active(alerts),
         });
     }
+
+    /// <summary>
+    /// Prüfung der SimConnect-Antworten (Absturzanalyse Testlog 0.9): Größe der leeren Antworten und kurze Datenblöcke.
+    /// </summary>
+    public static object MessageCheck(TrafficMessageStatsSnapshot d, string? logPath) => new
+    {
+        messages = d.Messages,
+        emptyReply = d.EmptyReplyVerdict,
+        shortBlock = d.ShortBlockVerdict,
+        sizeMismatches = d.SizeMismatches,
+        log = logPath,
+    };
 
     /// <summary>Status und Hinweis zum Ergebnis.</summary>
     public static (string Status, string? Message) Describe(TrafficScanResult result, int targetCount, bool airborneOnly)

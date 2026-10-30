@@ -21,8 +21,8 @@ public sealed record OwnAircraft(double Latitude, double Longitude, double Altit
 }
 
 /// <summary>Ein Verkehrsziel relativ zum eigenen Flugzeug.</summary>
-/// <param name="Ident">Callsign, sonst ATC-ID.</param>
-/// <param name="Callsign">Airline + Flugnummer (KI-Airliner), sonst null.</param>
+/// <param name="Ident">Wie <see cref="Callsign"/>.</param>
+/// <param name="Callsign">Airline + Flugnummer, wenn beide gesetzt sind (Airliner), sonst die ATC ID (Registrierung, z. B. N605SD).</param>
 /// <param name="Type">ATC MODEL in lesbarer Form, z. B. "A320".</param>
 /// <param name="DistanceNm">Horizontale Entfernung (Großkreis).</param>
 /// <param name="RelativeBearingDeg">Peilung relativ zum eigenen Steuerkurs, 0–360.</param>
@@ -172,12 +172,11 @@ public static class TrafficPictureBuilder
         }
 
         var trend = TrafficMath.VerticalTrend(vs, s.OnGround);
-        var airline = TrafficMath.CleanAtcText(s.AtcAirline);
-        var callsign = airline is not null || s.AtcFlightNumber is not null ? $"{airline} {s.AtcFlightNumber}".Trim() : null;
+        var callsign = TrafficMath.Callsign(s.AtcAirline, s.AtcFlightNumber, s.AtcId);
         return new TrafficTarget(
             s.ObjectId,
             s.Category,
-            callsign ?? s.AtcId,
+            callsign,
             callsign,
             s.AtcId,
             TrafficMath.CleanAtcText(s.AtcModel),

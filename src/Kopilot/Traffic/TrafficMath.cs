@@ -105,8 +105,26 @@ public static partial class TrafficMath
     }
 
     /// <summary>
+    /// Rufzeichen eines Ziels: Airline + Flugnummer nur, wenn beide gesetzt sind ("Lufthansa 123"), sonst die ATC ID
+    /// (Registrierung). Live-Traffic-GA liefert als ATC FLIGHT NUMBER oft eine interne Nummer ohne Airline ("1432126") –
+    /// die ist kein Rufzeichen (Testlog 0.9, 01:22Z: C172 N605SD).
+    /// </summary>
+    public static string? Callsign(string? atcAirline, string? atcFlightNumber, string? atcId)
+    {
+        var airline = CleanAtcText(atcAirline);
+        var number = string.IsNullOrWhiteSpace(atcFlightNumber) ? null : atcFlightNumber.Trim();
+        if (airline is not null && number is not null)
+        {
+            return $"{airline} {number}";
+        }
+
+        return string.IsNullOrWhiteSpace(atcId) ? null : atcId.Trim();
+    }
+
+    /// <summary>
     /// Text-SimVars wie ATC MODEL kommen bei manchen Flugzeugen als Lokalisierungsschlüssel
-    /// ("TT:ATCCOM.AC_MODEL_A320.0.text", "ATCCOM.AC_MODEL B738.0.text"). Liefert den lesbaren Teil oder null.
+    /// ("TT:ATCCOM.AC_MODEL_A320.0.text", "ATCCOM.AC_MODEL B738.0.text", bei Live-Traffic "ATCCOM.AC MODEL C441.0.tts"
+    /// oder "ATCCOM.ATC NAME CITATION.0.tts"). Liefert den lesbaren Teil oder null.
     /// </summary>
     public static string? CleanAtcText(string? raw)
     {
@@ -130,6 +148,6 @@ public static partial class TrafficMath
         return text.Length > 0 ? text : null;
     }
 
-    [GeneratedRegex(@"^(?:TT:)?ATCCOM\.(?:AC_MODEL|ATC_NAME|AC_TYPE|AIRLINE)?[ _]?(?<value>.+?)(?:\.\d+)?\.text$", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"^(?:TT:)?ATCCOM\.(?:(?:AC|ATC)[ _](?:MODEL|NAME|TYPE)|AIRLINE)?[ _]?(?<value>.+?)(?:\.\d+)?\.(?:text|tts)$", RegexOptions.IgnoreCase)]
     private static partial Regex AtcKeyRegex();
 }
