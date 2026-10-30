@@ -631,6 +631,7 @@
   "voice.model.whisperNotFound": "Whisper model not found: {path}",
   "voice.download.incomplete": "Download of {file} incomplete ({size:0.0} MB).",
   "voice.download.stalled": "Download stalled – no data for a minute.",
+  "voice.download.checksum": "Download of {file} rejected: SHA-256 {actual} doesn't match the expected {expected} – file deleted.",
   "voice.firstOfficer.introduction": "Hi, I'm {name}, I'll be your first officer today.",
   "voice.smalltalk.noVoice": "No voice for {language} – small talk in English.",
   "voice.smalltalk.voiceLoading": "Voice for {language} is downloading – small talk in English until then.",
@@ -1252,5 +1253,6 @@
   "log.speech.piperDownloading": "Piper missing – downloading {Url} to {Folder} …",
   "log.speech.piperVoiceDownloading": "Piper voice {Voice} missing – downloading to {Folder} …",
   "log.speech.piperReady": "Piper voice {Voice} ready.",
-  "log.speech.piperFailed": "Couldn't load Piper voice {Voice}: {Message}"
+  "log.speech.piperFailed": "Couldn't load Piper voice {Voice}: {Message}",
+  "log.speech.piperChecksum": "Piper download rejected: {File} has SHA-256 {Actual}, expected {Expected} ({Url}) – deleted, not extracted, piper.exe is not run. Small talk stays English."
 }

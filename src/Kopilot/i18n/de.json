@@ -631,6 +631,7 @@
   "voice.model.whisperNotFound": "Whisper-Modell nicht gefunden: {path}",
   "voice.download.incomplete": "Download von {file} unvollständig ({size:0.0} MB).",
   "voice.download.stalled": "Download hängt seit einer Minute.",
+  "voice.download.checksum": "Download von {file} abgelehnt: SHA-256 {actual} passt nicht zur erwarteten {expected} – Datei gelöscht.",
   "voice.firstOfficer.introduction": "Hallo, ich bin {name}, ich fliege heute als dein First Officer mit.",
   "voice.smalltalk.noVoice": "Keine Stimme für {language} – Smalltalk auf Englisch.",
   "voice.smalltalk.voiceLoading": "Stimme für {language} wird geladen – bis dahin Smalltalk auf Englisch.",

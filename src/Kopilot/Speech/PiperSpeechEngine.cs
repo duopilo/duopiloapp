@@ -23,6 +23,12 @@ public sealed class PiperSpeechEngine : ITtsEngine
     /// <summary>Letzte Windows-Version von Piper (rhasspy/piper, Release 2023.11.14-2).</summary>
     public const string ReleaseUrl = "https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_windows_amd64.zip";
 
+    /// <summary>
+    /// SHA-256 von piper_windows_amd64.zip (22.477.236 Bytes, enthält piper/piper.exe). piper.exe wird ausgeführt – ein Zip mit
+    /// anderer Prüfsumme wird gelöscht und nie entpackt.
+    /// </summary>
+    public const string ReleaseSha256 = "f3c58906402b24f3a96d92145f58acba6d86c9b5db896d207f78dc80811efcea";
+
     /// <summary>Stimmen von rhasspy/piper-voices (Hugging Face). Lizenz je Stimme in ihrer MODEL_CARD.</summary>
     public const string VoiceBaseUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/";
 
@@ -52,13 +58,19 @@ public sealed class PiperSpeechEngine : ITtsEngine
     private readonly string _models;
     private readonly string? _configuredExe;
     private readonly ILogger<PiperSpeechEngine> _log;
+    private readonly HttpMessageHandler? _downloadHandler;
     private readonly SemaphoreSlim _synthLock = new(1, 1);
     private readonly ConcurrentDictionary<string, Lazy<Task>> _preparing = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, (DateTimeOffset At, string Error)> _failed = new(StringComparer.OrdinalIgnoreCase);
     private volatile string? _error;
 
-    public PiperSpeechEngine(IOptions<KopilotOptions> options, ILogger<PiperSpeechEngine> log)
+    // Prüfsumme des Zips falsch: bis zum Neustart nicht erneut laden (kein Download alle paar Minuten)
+    private volatile bool _checksumRejected;
+
+    /// <param name="downloadHandler">Eigener HTTP-Handler für die Downloads (Tests). null = normales Netz.</param>
+    public PiperSpeechEngine(IOptions<KopilotOptions> options, ILogger<PiperSpeechEngine> log, HttpMessageHandler? downloadHandler = null)
     {
+        _downloadHandler = downloadHandler;
         var o = options.Value;
         var data = o.ResolveDataDirectory();
         _root = Path.Combine(data, "piper");
@@ -105,6 +117,11 @@ public sealed class PiperSpeechEngine : ITtsEngine
         if (_preparing.TryGetValue(voice.Id, out var running) && running.IsValueCreated && !running.Value.IsCompleted)
         {
             return TtsState.Downloading;
+        }
+
+        if (_checksumRejected)
+        {
+            return TtsState.Failed;
         }
 
         return _failed.TryGetValue(voice.Id, out var failed) && DateTimeOffset.UtcNow - failed.At < RetryAfter ? TtsState.Failed : TtsState.Idle;
@@ -306,7 +323,8 @@ public sealed class PiperSpeechEngine : ITtsEngine
 
                 _log.LogInformation(Loc.Log("log.speech.piperDownloading"), ReleaseUrl, _root);
                 var zip = Path.Combine(_root, "piper_windows_amd64.zip");
-                await ModelDownloader.EnsureAsync(zip, ReleaseUrl, MinZipBytes, null, ct);
+                // Erst die Prüfsumme, dann entpacken – ein fremdes piper.exe wird nie ausgeführt
+                await ModelDownloader.EnsureAsync(zip, ReleaseUrl, MinZipBytes, null, ct, ReleaseSha256, _downloadHandler);
                 ZipFile.ExtractToDirectory(zip, _root, overwriteFiles: true);
                 TryDelete(zip);
                 if (ExePath is null)
@@ -318,8 +336,8 @@ public sealed class PiperSpeechEngine : ITtsEngine
             if (!File.Exists(ModelPath(voice)) || !File.Exists(ConfigPath(voice)))
             {
                 _log.LogInformation(Loc.Log("log.speech.piperVoiceDownloading"), voice.Id, _models);
-                await ModelDownloader.EnsureAsync(ConfigPath(voice), VoiceUrl(voice.Id, ".onnx.json"), MinConfigBytes, null, ct);
-                await ModelDownloader.EnsureAsync(ModelPath(voice), VoiceUrl(voice.Id, ".onnx"), MinModelBytes, null, ct);
+                await ModelDownloader.EnsureAsync(ConfigPath(voice), VoiceUrl(voice.Id, ".onnx.json"), MinConfigBytes, null, ct, handler: _downloadHandler);
+                await ModelDownloader.EnsureAsync(ModelPath(voice), VoiceUrl(voice.Id, ".onnx"), MinModelBytes, null, ct, handler: _downloadHandler);
             }
 
             _failed.TryRemove(voice.Id, out _);
@@ -329,6 +347,14 @@ public sealed class PiperSpeechEngine : ITtsEngine
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             throw;
+        }
+        catch (ModelChecksumException ex)
+        {
+            // Gelöscht, nicht entpackt; Smalltalk bleibt Englisch (wie ohne Stimme)
+            _checksumRejected = true;
+            _error = ex.Message;
+            _failed[voice.Id] = (DateTimeOffset.UtcNow, ex.Message);
+            _log.LogError(Loc.Log("log.speech.piperChecksum"), ex.File, ex.Actual, ex.Expected, ReleaseUrl);
         }
         catch (Exception ex)
         {

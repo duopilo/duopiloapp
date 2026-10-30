@@ -1,4 +1,6 @@
+using System.IO.Compression;
 using System.Net;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Kopilot.Atc;
@@ -645,6 +647,109 @@ public sealed class SmalltalkTests
         Assert.InRange(clip.Samples[1], 0.49f, 0.51f);
         Assert.InRange(clip.Samples[2], -0.51f, -0.49f);
         Assert.Throws<InvalidDataException>(() => PiperSpeechEngine.ReadWav(Encoding.ASCII.GetBytes("not a wave file")));
+    }
+
+    // ------------------------------------------------------------------ Prüfsumme der Downloads (piper.exe wird ausgeführt)
+
+    private sealed class BytesHandler(byte[] body) : HttpMessageHandler
+    {
+        public int Requests { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Requests++;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(body) });
+        }
+    }
+
+    private static string TempDirectory()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "kopilot-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        return dir;
+    }
+
+    [Fact]
+    public async Task Download_mit_passender_Pruefsumme_wird_uebernommen()
+    {
+        var body = Encoding.UTF8.GetBytes("kopilot model data");
+        var path = Path.Combine(TempDirectory(), "model.bin");
+
+        // Großbuchstaben: Vergleich ohne Rücksicht auf die Schreibweise
+        await ModelDownloader.EnsureAsync(path, "https://example.invalid/model.bin", 1, null, CancellationToken.None, Convert.ToHexString(SHA256.HashData(body)), new BytesHandler(body));
+
+        Assert.Equal(body, File.ReadAllBytes(path));
+        Assert.False(File.Exists(path + ".download"));
+    }
+
+    [Fact]
+    public async Task Download_mit_falscher_Pruefsumme_wird_geloescht()
+    {
+        var body = Encoding.UTF8.GetBytes("not the piper you are looking for");
+        var path = Path.Combine(TempDirectory(), "piper_windows_amd64.zip");
+
+        var ex = await Assert.ThrowsAsync<ModelChecksumException>(() =>
+            ModelDownloader.EnsureAsync(path, PiperSpeechEngine.ReleaseUrl, 1, null, CancellationToken.None, PiperSpeechEngine.ReleaseSha256, new BytesHandler(body)));
+
+        Assert.False(File.Exists(path));
+        Assert.False(File.Exists(path + ".download"));
+        Assert.Equal(PiperSpeechEngine.ReleaseSha256, ex.Expected);
+        Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(body)), ex.Actual);
+        Assert.Contains("SHA-256", ex.Message);
+    }
+
+    [Fact]
+    public async Task Vorhandene_Datei_mit_falscher_Pruefsumme_wird_neu_geladen()
+    {
+        var body = Encoding.UTF8.GetBytes("genuine model");
+        var hash = Convert.ToHexStringLower(SHA256.HashData(body));
+        var path = Path.Combine(TempDirectory(), "model.bin");
+        File.WriteAllText(path, "tampered model");
+        var handler = new BytesHandler(body);
+
+        await ModelDownloader.EnsureAsync(path, "https://example.invalid/model.bin", 1, null, CancellationToken.None, hash, handler);
+        await ModelDownloader.EnsureAsync(path, "https://example.invalid/model.bin", 1, null, CancellationToken.None, hash, handler);
+
+        Assert.Equal(body, File.ReadAllBytes(path));
+        Assert.Equal(1, handler.Requests);
+    }
+
+    [Fact]
+    public async Task Piper_Zip_mit_falscher_Pruefsumme_wird_nie_entpackt_und_Smalltalk_bleibt_Englisch()
+    {
+        // Ein echtes Zip mit piper/piper.exe – nur eben nicht das erwartete (≥ 5 MB, damit die Größenprüfung durchgeht)
+        using var buffer = new MemoryStream();
+        using (var archive = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            var payload = new byte[6 * 1024 * 1024];
+            new Random(1).NextBytes(payload);
+            using var entry = archive.CreateEntry("piper/piper.exe", CompressionLevel.NoCompression).Open();
+            entry.Write(payload);
+        }
+
+        var data = TempDirectory();
+        var handler = new BytesHandler(buffer.ToArray());
+        var engine = new PiperSpeechEngine(
+            Options.Create(new KopilotOptions { DataDirectory = data }),
+            NullLogger<PiperSpeechEngine>.Instance,
+            handler);
+        var voice = PiperSpeechEngine.Catalog.First(v => v.Gender == VoiceGender.Male);
+
+        await engine.PrepareAsync(voice, CancellationToken.None);
+
+        Assert.Equal(TtsState.Failed, engine.StateOf(voice));
+        Assert.Null(engine.ExePath);
+        Assert.False(File.Exists(Path.Combine(data, "piper", "piper", "piper.exe")));
+        Assert.False(File.Exists(Path.Combine(data, "piper", "piper_windows_amd64.zip")));
+        Assert.Contains("SHA-256", engine.Error);
+
+        var choice = SmalltalkVoices.Choose("de", VoiceGender.Male, "Sam", [engine]);
+        Assert.Equal("en", choice.Language);
+        Assert.True(choice.FellBack);
+
+        // Bis zum Neustart kein neuer Versuch
+        await engine.PrepareAsync(voice, CancellationToken.None);
+        Assert.Equal(1, handler.Requests);
     }
 
     // ------------------------------------------------------------------ Dienst: Grenzen, Fehler, Schlüssel
