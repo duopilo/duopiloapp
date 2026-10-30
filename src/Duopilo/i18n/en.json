@@ -643,6 +643,7 @@
   "voice.smalltalk.noVoice": "No voice for {language} – small talk in English.",
   "voice.smalltalk.voiceLoading": "Voice for {language} is downloading – small talk in English until then.",
   "voice.smalltalk.voiceFailed": "Voice for {language} not available ({error}) – small talk in English.",
+  "voice.smalltalk.betterVoiceLoading": "Better voice for {language} is downloading – the simpler one speaks until then.",
   "smalltalk.config.keyMissing": "API key missing.",
   "smalltalk.config.urlMissing": "Address of the Ollama computer missing (e.g. http://192.168.1.20:11434).",
   "smalltalk.config.urlInvalid": "Invalid address: {url}",
@@ -705,6 +706,11 @@
   "speech.piper.badWav": "Piper didn't produce a readable WAV file.",
   "speech.piper.unknownVoice": "Unknown Piper voice \"{voice}\".",
   "speech.piper.exeNotFound": "piper.exe not found ({path}).",
+  "speech.supertonic.notReady": "Supertonic voice {voice} isn't loaded yet.",
+  "speech.supertonic.unknownVoice": "Unknown Supertonic voice \"{voice}\".",
+  "speech.supertonic.language": "Supertonic doesn't speak language \"{language}\".",
+  "speech.supertonic.badStyle": "Supertonic voice file is unreadable.",
+  "speech.supertonic.badModel": "Supertonic model file {file} is unreadable.",
   "profile.requires.trkFpaMode": "FCU is in TRK/FPA – switch to HDG/VS first.",
   "profile.requires.baroNotQnh": "Altimeter is on STD (or QFE) – set efis.baroMode QNH first.",
   "profile.requires.dcBatBusUnpowered": "No power on the DC BAT BUS – switch the batteries on first.",
@@ -1292,5 +1298,10 @@
   "log.speech.piperVoiceDownloading": "Piper voice {Voice} missing – downloading to {Folder} …",
   "log.speech.piperReady": "Piper voice {Voice} ready.",
   "log.speech.piperFailed": "Couldn't load Piper voice {Voice}: {Message}",
-  "log.speech.piperChecksum": "Piper download rejected: {File} has SHA-256 {Actual}, expected {Expected} ({Url}) – deleted, not extracted, piper.exe is not run. Small talk stays English."
+  "log.speech.piperChecksum": "Piper download rejected: {File} has SHA-256 {Actual}, expected {Expected} ({Url}) – deleted, not extracted, piper.exe is not run. Small talk stays English.",
+  "log.speech.supertonicDownloading": "Supertonic voice {Voice} missing – downloading {Megabytes} MB to {Folder} (model license OpenRAIL-M: {License}) …",
+  "log.speech.supertonicReady": "Supertonic voice {Voice} ready.",
+  "log.speech.supertonicLoaded": "Supertonic model loaded ({Threads} CPU threads).",
+  "log.speech.supertonicFailed": "Couldn't load Supertonic voice {Voice}: {Message} – small talk uses Piper or English.",
+  "log.speech.supertonicChecksum": "Supertonic download rejected: {File} has SHA-256 {Actual}, expected {Expected} – deleted. Small talk uses Piper or English until restart."
 }

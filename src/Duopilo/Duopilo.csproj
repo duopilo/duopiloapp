@@ -55,6 +55,8 @@
     <!-- Sprachdateien (i18n\<code>.json): Dashboard, Tool-Meldungen und Logs. Englisch ist Standard und Fallback. -->
     <EmbeddedResource Include="i18n\*.json" LogicalName="Duopilo.i18n.%(Filename)%(Extension)" />
     <None Update="Dashboard\fonts\OFL.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Link="licenses\B612-OFL.txt" />
+    <!-- Supertonic-Inferenz (Speech\SupertonicModel.cs) folgt dem MIT-lizenzierten Beispiel von Supertone; die Gewichte (OpenRAIL-M) lädt Duopilo bei Bedarf -->
+    <None Update="Speech\Supertonic-MIT.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Link="licenses\Supertonic-MIT.txt" />
   </ItemGroup>
 
   <!--

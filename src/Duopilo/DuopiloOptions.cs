@@ -387,6 +387,15 @@ public sealed class SmalltalkOptions
     /// </summary>
     public int UnaddressedMaxWords { get; set; } = 12;
 
+    /// <summary>
+    /// Deutscher Smalltalk mit Supertonic 3 (Modell OpenRAIL-M, ~400 MB, lädt bei Bedarf). false = nur Piper. Piper bleibt in jedem
+    /// Fall der Rückfall, wenn Supertonic nicht geladen werden kann.
+    /// </summary>
+    public bool Supertonic { get; set; } = true;
+
+    /// <summary>CPU-Threads für Supertonic – wenig, damit MSFS nicht ausgebremst wird.</summary>
+    public int SupertonicThreads { get; set; } = 2;
+
     /// <summary>Eigene piper.exe. Leer = Duopilo lädt Piper bei Bedarf nach %LOCALAPPDATA%\Duopilo\piper.</summary>
     public string PiperPath { get; set; } = "";
 
