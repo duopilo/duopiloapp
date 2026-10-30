@@ -77,8 +77,8 @@ public static class HttpHost
         app.MapGet("/atc/controller", (Kopilot.Atc.AtcService atc, AlertBus alerts) => JsonText(AtcControllerTools.GetAtcController(atc, alerts))).LocalOnly();
         app.MapGet("/plan", async (SimBriefService simBrief, AlertBus alerts, bool? refresh, CancellationToken ct) =>
             JsonText(await FlightPlanTools.GetFlightPlan(simBrief, alerts, refresh ?? false, ct))).LocalOnly();
-        app.MapGet("/progress", async (SimConnectClient sim, SimBriefService simBrief, AlertBus alerts, CancellationToken ct) =>
-            JsonText(await FlightPlanTools.GetProgress(sim, simBrief, alerts, ct))).LocalOnly();
+        app.MapGet("/progress", async (SimConnectClient sim, SimBriefService simBrief, AlertBus alerts, MonitoringService monitoring, CancellationToken ct) =>
+            JsonText(await FlightPlanTools.GetProgress(sim, simBrief, alerts, monitoring, ct))).LocalOnly();
         app.MapGet("/read", async (SimConnectClient sim, string name, string? unit, CancellationToken ct) =>
             JsonText(await KopilotTools.ReadSimVar(sim, name, unit ?? "number", ct))).LocalOnly();
         app.MapGet("/voice", (Kopilot.Voice.IVoiceStatusSource voice) => JsonText(Json.Serialize(KopilotTools.VoiceView(voice.Status)))).LocalOnly();
