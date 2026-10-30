@@ -215,9 +215,11 @@ public static partial class SmalltalkPrompt
         }
 
         var text = ThinkBlock().Replace(raw, " ");
+        text = Emphasis().Replace(text, "");
         text = Markdown().Replace(text, " ");
         text = ListMarker().Replace(text, " ");
         text = Spaces().Replace(text, " ").Trim();
+        text = SpaceBeforePunctuation().Replace(text, "$1");
         var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (maxWords <= 0 || words.Length <= maxWords)
         {
@@ -237,8 +239,14 @@ public static partial class SmalltalkPrompt
     [GeneratedRegex(@"<think>.*?</think>|<think>.*$", RegexOptions.Singleline | RegexOptions.IgnoreCase)]
     private static partial Regex ThinkBlock();
 
-    [GeneratedRegex(@"[*_`#>|]+")]
+    [GeneratedRegex(@"[*_`]+")]
+    private static partial Regex Emphasis();
+
+    [GeneratedRegex(@"[#>|]+")]
     private static partial Regex Markdown();
+
+    [GeneratedRegex(@"\s+([.,!?;:])")]
+    private static partial Regex SpaceBeforePunctuation();
 
     [GeneratedRegex(@"(?m)^\s*(?:[-•]|\d+[.)])\s+")]
     private static partial Regex ListMarker();
