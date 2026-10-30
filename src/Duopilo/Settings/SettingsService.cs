@@ -595,8 +595,8 @@ public sealed class SettingsService
                 return SettingsResult.Fail(Loc.T("settings.smalltalk.voiceInvalid", voice));
             }
 
-            var current = loop?.Store.Load().Settings.Voices.Kopilot ?? "";
-            if (!string.Equals(current, voice, StringComparison.Ordinal))
+            var currentVoice = loop?.Store.Load().Settings.Voices.Kopilot ?? "";
+            if (!string.Equals(currentVoice, voice, StringComparison.Ordinal))
             {
                 if (loop is null)
                 {

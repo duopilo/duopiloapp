@@ -76,6 +76,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
     private long _chatSeq;
     private int _ticks;
     private WhisperRecognizer? _recognizer;
+    private string? _whisperName;
 
     // Sim läuft nicht (nicht verbunden, kein Flug, pausiert): Mikrofon wird nicht ausgewertet. Gesetzt im Sekundentakt.
     private volatile bool _simGated;
@@ -358,6 +359,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         {
             (vad, recognizer) = await LoadModelsAsync(settings, ct);
             _recognizer = recognizer;
+            _whisperName = recognizer.Name;
             hotkey = RegisterHotkey(settings.Hotkeys.Mute);
             UpdatePersona();
             PrepareSmalltalkVoice();
@@ -1295,8 +1297,10 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         }
 
         // Name in den Wortschatz-Hinweis von Whisper, damit er richtig geschrieben wird ("Erik" statt "Eric")
-        if (_recognizer is { } recognizer && recognizer.Name != persona?.Name)
+        // (einmal je Name versuchen – schlägt das Neubauen fehl, bleibt der bisherige Hinweis)
+        if (_recognizer is { } recognizer && recognizer.Name != persona?.Name && _whisperName != persona?.Name)
         {
+            _whisperName = persona?.Name;
             try
             {
                 recognizer.SetName(persona?.Name);
