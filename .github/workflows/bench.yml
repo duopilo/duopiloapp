@@ -20,23 +20,20 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '10.0.x'
-      - name: Supertonic live test (Duopilo engine)
+      - name: Supertonic live test (Duopilo engine), 1 and 2 threads
         shell: pwsh
         env:
           DUOPILO_SUPERTONIC_LIVE: "1"
           DUOPILO_SUPERTONIC_OUT: ${{ github.workspace }}\bench\results\live
           DUOPILO_SUPERTONIC_DATA: ${{ runner.temp }}\st-data
         run: |
-          $sw = [Diagnostics.Stopwatch]::StartNew()
-          dotnet test app/tests/Duopilo.Tests/Duopilo.Tests.csproj -c Release --filter "FullyQualifiedName~SupertonicTests" --logger "console;verbosity=normal" 2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\test.log"
-          $code = $LASTEXITCODE
-          New-Item -ItemType Directory -Force bench/results/live | Out-Null
-          Select-String -Path "$env:RUNNER_TEMP\test.log" -Pattern "Passed|Failed|error|Total tests|Assert" | ForEach-Object { $_.Line } | Out-File bench/results/live/test.txt
-          "elapsed $($sw.Elapsed)" | Out-File -Append bench/results/live/test.txt
-          exit $code
-      - name: Whisper
-        if: always()
-        run: dotnet run -c Release --project bench/tools/whisperwav/WhisperWav.csproj -- "${{ github.workspace }}\bench\results\live" "${{ runner.temp }}\wh"
+          dotnet build app/tests/Duopilo.Tests/Duopilo.Tests.csproj -c Release -v q
+          foreach ($t in 1, 2, 1, 2) {
+            $env:DUOPILO_SUPERTONIC_THREADS = "$t"
+            dotnet test app/tests/Duopilo.Tests/Duopilo.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~SupertonicTests.Live" 2>&1 | Select-String "Passed|Failed|Total"
+            Get-Content "bench/results/live/supertonic-live-$t.md" | Add-Content bench/results/live/threads.md
+            "" | Add-Content bench/results/live/threads.md
+          }
       - name: Ergebnis ins Repo
         if: always()
         shell: pwsh
