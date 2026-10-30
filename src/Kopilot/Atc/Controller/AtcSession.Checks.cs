@@ -27,6 +27,7 @@ public sealed partial class AtcSession
     {
         "control", "radar", "center", "centre", "oceanic", "information", "radio", "approach", "departure", "delivery", "ground", "tower",
         "clearance", "director", "apron", "arrival", "arrivals", "departures", "area", "flight", "service", "services", "terminal", "ramp",
+        "turm", "rollkontrolle", "vorfeld", "anflug", "abflug", "kontrolle",
     };
 
     /// <summary>Wörter am Anfang eines Funkspruchs, die kein Stationsname sind (Gruß, Quittung, Anfang einer Meldung).</summary>
@@ -332,23 +333,40 @@ public sealed partial class AtcSession
         }
 
         var addressed = lead.Where(w => w.Length >= 3 && !UnitWords.Contains(w) && !LeadingFillers.Contains(w)).ToHashSet(StringComparer.Ordinal);
-        if (!beforeCallsign || addressed.Count == 0 || addressed.Overlaps(current))
+        if (addressed.Count == 0 || addressed.Overlaps(current))
         {
             return null;
         }
 
-        if (OtherStationNames().Any(name => DistinctWords(name).Overlaps(addressed)))
+        // Bekannter Name ohne Stationsart ("Gander, Condor 2205, …") – nur als Anruf mit Rufzeichen dahinter
+        if (beforeCallsign && OtherStationNames().Any(name => DistinctWords(name).Overlaps(addressed)))
         {
             return addressed;
         }
 
-        // Unbekannter Name mit Streckenstelle dahinter ("Edmonton Center") – nicht "ILS approach" oder "final approach"
-        var unit = lead.FindIndex(EnrouteUnitWords.Contains);
-        return unit > 0 && lead.Take(unit).All(w => addressed.Contains(w)) ? addressed : null;
+        // Name mit Stationsart vorn ("Edmonton Center, …", "Frankfurt Tower, …") – bekannt oder nicht. Mit Rufzeichen dahinter
+        // reicht das; ohne Rufzeichen nur, wenn der Funkspruch damit beginnt (Name aus höchstens zwei Wörtern). Nicht
+        // "ILS approach", "final approach" oder "contact Frankfurt Tower" (Wörter davor, die kein Name sind).
+        var unit = lead.FindIndex(StationUnitWords.Contains);
+        return unit > 0 && (beforeCallsign || unit <= 2)
+            && lead.Take(unit).All(w => addressed.Contains(w) && !ProcedureWords.Contains(w))
+            ? addressed
+            : null;
     }
 
-    /// <summary>Stationsarten im Streckenflug, nach denen ein unbekannter Name als Station gilt.</summary>
-    private static readonly HashSet<string> EnrouteUnitWords = new(StringComparer.Ordinal) { "control", "radar", "center", "centre", "oceanic", "radio" };
+    /// <summary>Stationsarten, nach denen ein Name als Station gilt (Strecke und Flughafen, englisch und deutsch).</summary>
+    private static readonly HashSet<string> StationUnitWords = new(StringComparer.Ordinal)
+    {
+        "control", "radar", "center", "centre", "oceanic", "radio", "tower", "ground", "delivery", "clearance", "apron", "ramp",
+        "director", "approach", "departure", "arrival", "information", "turm", "rollkontrolle", "vorfeld", "anflug", "abflug", "kontrolle",
+    };
+
+    /// <summary>Wörter vor "approach"/"departure"/"arrival", die ein Verfahren meinen, keine Station.</summary>
+    private static readonly HashSet<string> ProcedureWords = new(StringComparer.Ordinal)
+    {
+        "final", "ils", "rnav", "rnp", "visual", "missed", "loc", "localizer", "vor", "ndb", "gls", "circling", "sid", "star",
+        "standard", "instrument", "initial", "intermediate", "expect", "expecting", "runway",
+    };
 
     /// <summary>Kennwörter der aktuellen Station: ihr Name, bei Flughafenstationen auch der Flughafen, bei FIRs der Name aus den Vorlagen.</summary>
     private HashSet<string> CurrentStationWords()
@@ -443,7 +461,7 @@ public sealed partial class AtcSession
             return words;
         }
 
-        foreach (var word in name.ToLowerInvariant().Split([' ', '-', '/', ',', '.'], StringSplitOptions.RemoveEmptyEntries))
+        foreach (var word in HeardText.FoldDiacritics(name.ToLowerInvariant()).Split([' ', '-', '/', ',', '.'], StringSplitOptions.RemoveEmptyEntries))
         {
             if (word.Length >= 3 && word.All(char.IsAsciiLetter) && !UnitWords.Contains(word))
             {
