@@ -260,8 +260,8 @@ Kopilot bringt ein eigenes ATC mit: eine Zustandsmaschine mit festen Textvorlage
 | Ground | Push and start, Rollfreigabe zum Rollhalt (Readback Rollhalt/Bahn) | am Rollhalt stehen geblieben (8 s), oder du rufst „ready“ |
 | Tower | Line up and wait, Startfreigabe mit Wind (automatisch, sobald du auf der Bahn stehst, spätestens nach 60 s) | ab 1500 ft AGL: „contact Departure“ |
 | Departure | „identified, climb FL150“, optional „proceed direct“ zum ersten Fix nach der SID | 2000 ft unter der freigegebenen Höhe → Center der FIR |
-| Center | Steigflug auf Reiseflughöhe, am Top of Descent Sinkflug auf FL110 | an jeder FIR-Grenze ans nächste Center |
-| Oceanic | Freigabe ca. 30 Minuten vor dem Eintrittspunkt, danach Positionsmeldungen an jedem Oceanic-Fix („roger“) | am Austritt ans nächste Center |
+| Center | Steigflug auf Reiseflughöhe, am Top of Descent Sinkflug auf FL110 | an jeder FIR-Grenze ans nächste Center, innerhalb der FIR an jeder Sektorgrenze („contact Montreal Center one three three decimal zero two five“) |
+| Oceanic | Freigabe ca. 30 Minuten vor dem Eintrittspunkt, danach Positionsmeldungen an jedem Oceanic-Fix („roger“) | am Austrittspunkt an die Domestic-Stelle, z. B. nach HOIST an Gander Center (kurze Anmeldung, keine Positionsmeldungen mehr) |
 | Approach | Sinkflug, STAR, erwarteter Anflug und Bahn, QNH; ab 20 nm Anflugfreigabe | ab 12 nm: „contact Tower“ |
 | Tower | Landefreigabe mit Wind (spätestens 4 nm vor der Schwelle) | nach der Landung unter 40 kt: „vacate via next exit, contact Ground“ |
 | Ground | Rollen zum Gate | Ende, wenn das Flugzeug mit Parkbremse steht |
@@ -271,9 +271,11 @@ Auf Kurzstrecken ohne Oceanic-Fixes (Koordinaten wie `55N020W` oder eine FIR, di
 **Readback:** Bei Freigaben prüft Kopilot die Werte aus der Vorlage (`readback`), z. B. SID, Höhe und Squawk bei der Streckenfreigabe. Kopilot versteht Ziffern („2205“, „FL110“) wie gesprochene Zahlen („two two zero five“, „five thousand feet“, „one two one decimal eight“) und das NATO-Alphabet. Ist ein Wert falsch oder fehlt, kommt „negative“ mit dem richtigen Wert, z. B. „Lufthansa four alpha bravo, negative, squawk two two zero five“ – danach musst du nur diesen Wert noch einmal zurücklesen. Quittungen ohne Freigabe („contact Ground one two one decimal eight“) beantwortet ATC nicht. „Say again“ wiederholt den letzten Funkspruch. Einen „radio check“ (oder „how do you read“) beantwortet die Station mit „read you five“ (`common.radioCheck`), ohne dass sich am Ablauf oder an einem offenen Readback etwas ändert.
 
 **Daten:**
-- Rufzeichen, Ziel, SID/STAR, Bahnen, Reiseflughöhe, FIRs und Oceanic-Teil aus dem SimBrief-OFP (SimBrief muss eingerichtet sein). Das Rufzeichen kommt aus der Flugnummer mit ICAO-Airline-Kennung (`CFG2205` → „Condor two two zero five“ über `telephony`) – das Feld `callsign` kann den IATA-Code tragen (`DE2205`) und zählt nur, wenn es mit derselben ICAO-Kennung beginnt (z. B. `DLH4AB` zur Flugnummer `DLH400`). Steht die Airline nicht in `telephony`, wird die ICAO-Kennung buchstabiert. Ohne FIR-Angaben im OFP teilt Kopilot den Nordatlantik bei 30°W in Shanwick und Gander.
+- Rufzeichen, Ziel, SID/STAR, Bahnen, Reiseflughöhe, FIRs und Oceanic-Teil aus dem SimBrief-OFP (SimBrief muss eingerichtet sein). Das Rufzeichen kommt aus der Flugnummer mit ICAO-Airline-Kennung (`CFG2205` → „Condor two two zero five“) – das Feld `callsign` kann den IATA-Code tragen (`DE2205`) und zählt nur, wenn es mit derselben ICAO-Kennung beginnt (z. B. `DLH4AB` zur Flugnummer `DLH400`). Das gesprochene Rufzeichen kommt aus der Airline-Datenbank von OpenFlights (gut 5.000 Airlines), Ausnahmen und Korrekturen aus `telephony`. Kennt keine der beiden die Airline, wird die ICAO-Kennung buchstabiert.
+- **FIR-Grenzen** aus VAT-Spy (VATSIM, `data/vatspy`). Welche FIRs die Route durchfliegt, sagt das OFP; wo die Grenze liegt, VAT-Spy: Kopilot schneidet die Route mit beiden FIR-Grenzen. Überlappen sich die VAT-Spy-Grenzen (z. B. reicht CZQX bis hinter Wabush), zählt der Eintritt in die neue FIR, wenn der ganze Abschnitt noch in der alten liegt – so liegt die Übergabe Gander → Montreal bei ca. 53,5 N / 64,8 W wie beim MSFS-ATC statt bei HOIST. Liegt zwischen zwei Fixes eine dritte FIR (mindestens 30 nm), kommt sie dazwischen. Ohne FIR-Angaben im OFP ordnet Kopilot die Fixe nach VAT-Spy zu (Nordatlantik: 30°W Shanwick/Gander). Ohne VAT-Spy-Daten liegt die Grenze wie früher in der Mitte zwischen den Fixes.
+- **Sektoren** aus den VATSIM-Sektordaten (VATGlasses, `data/sectors`): je FIR die Sektoren mit Höhenband, Frequenz und Rufname. Kopilot nimmt entlang der Route (geplante Höhe aus dem OFP) den passenden Sektor und übergibt auch innerhalb einer FIR. Sektoren, die die Route kürzer als `sectorMinNm` (20 nm) berührt, bekommen keine eigene Übergabe – kein Hin und Her an Grenzen entlang der Route. Stellen ohne eigene FIR wie Maastricht (EDYY) oder Rhein (EDUU) übernehmen den oberen Luftraum, eine UIR aus dem OFP wie EDVV (Hannover) wird so zu Maastricht oder Bremen Radar. Die Frequenzen sind die von VATSIM und können vom MSFS-ATC abweichen; wo es keine Sektordaten gibt (u. a. Minneapolis, Denver, Los Angeles), gilt die Frequenz aus `firs`.
 - Höhe, Position, Speed, Wind, QNH und Zeit aus SimConnect. QNH am Ziel aus dem METAR des OFP, in der Nähe des Flughafens aus dem Sim. Nordamerika: „altimeter“ in inHg.
-- Frequenzen aus der Facilities-API von MSFS (Clearance, Ground, Tower, Departure, Approach). Fehlen sie, nimmt Kopilot die Frequenz aus der Vorlage oder einen Platzhalter. `get_atc_controller` zeigt die Quelle (`frequencySource`).
+- Flughafen-Frequenzen aus der Facilities-API von MSFS (Clearance, Ground, Tower, Departure, Approach), Center-Frequenzen aus den Sektordaten. Fehlen sie, nimmt Kopilot die Frequenz aus der Vorlage oder einen Platzhalter. `get_atc_controller` zeigt die Quelle (`frequencySource`: `facility`, `sectors`, `templates`, `placeholder`), die Stationen der Route mit Sektor, Frequenz und Streckenposition (`flight.firs`) und die Herkunft der Daten (`airspace`).
 - Squawk: pro Flug fest, ohne Sondercodes.
 - Rollroute (`{taxiRoute}`), Rollhalt, Gate und Pushback-Richtung kommen über die Schnittstelle `ITaxiRouteProvider`. Die Routenberechnung kommt in einem eigenen Schritt; bis dahin nehmen die Vorlagen eine Variante ohne diese Angaben („taxi to holding point runway two five center“). Gate oder Rollhalt kannst du mit `atc_set_value` von Hand setzen („wir stehen an A26“).
 
@@ -281,7 +283,7 @@ Auf Kurzstrecken ohne Oceanic-Fixes (Koordinaten wie `55N020W` oder eine FIR, di
 
 **Sitzung sichern:** Kopilot sichert die laufende ATC-Sitzung laufend in `%LOCALAPPDATA%\Kopilot\atc-session.json` (Station, Phase, freigegebene Höhe, Oceanic-Freigabe, Werte von Hand wie das Gate, Stimmen, Funkverlauf). Nach einem Neustart oder Absturz geht es im selben Flug (gleicher SimBrief-Plan) weiter, sobald MSFS verbunden ist – ohne neuen Erstanruf. Ein beim Absturz noch offenes Readback gilt als erledigt; eine angeforderte, aber nicht zurückgelesene Oceanic-Freigabe fordert der Pilot neu an. `atc_control stop` oder `restart` löscht die Sicherung, ein neuer SimBrief-Plan beginnt eine neue Sitzung. Einstellungen: `Kopilot:Atc:SessionFile` (leer = aus), `Kopilot:Atc:SessionMaxAgeHours` (Standard 24). Die stdio-Instanz von Claude Desktop sichert in eine eigene Datei (`atc-session-stdio.json`). `get_atc_controller` zeigt unter `persistence`, wann zuletzt gesichert und ob fortgesetzt wurde.
 
-**Vorlagen bearbeiten:** Alle Texte stehen in `atc-templates.json` neben der `Kopilot.exe`. Eigene Änderungen am besten in einer Kopie unter `%LOCALAPPDATA%\Kopilot\atc-templates.json` – die hat Vorrang und überschreibt `update.cmd` nicht. Danach `atc_control` mit `reload` (oder Kopilot neu starten).
+**Vorlagen bearbeiten:** Alle Texte stehen in `atc-templates.json` neben der `Kopilot.exe`. Eigene Änderungen gehören in eine Datei `%LOCALAPPDATA%\Kopilot\atc-templates.json` – `update.cmd` überschreibt sie nicht. Kopilot legt sie über die mitgelieferte Datei: Objekte werden je Schlüssel gemischt (deine Einträge gewinnen), Listen wie `variants` ersetzt deine Datei ganz. Sie braucht also nur die Abweichungen, z. B. `{ "telephony": { "XYZ": "Testair" } }`; ein Eintrag mit `null` entfernt einen mitgelieferten. Eine ältere vollständige Kopie funktioniert weiter: Kopilot hebt sie beim Laden auf das aktuelle Format (`version` 2) – ein alter Eintrag `CZQX` als Gander Oceanic wandert samt Frequenz und fester Stimme nach `CZQO`, die Datei selbst bleibt unverändert (Hinweis im Log und unter `templateNotes`). Danach `atc_control` mit `reload` (oder Kopilot neu starten).
 
 ```jsonc
 "delivery.clearance": {
@@ -296,11 +298,14 @@ Auf Kurzstrecken ohne Oceanic-Fixes (Koordinaten wie `55N020W` oder eine FIR, di
 - Mehrere Varianten: Die erste, deren Variablen alle bekannt sind, gewinnt.
 - `"from": "pilot"` sind die erwarteten Pilotensprüche – Hinweise für dich und Claude, keine Pflicht.
 - `corrections`: was nach „negative“ je Readback-Punkt gesagt wird.
-- `telephony`: ICAO-Kennung → Rufzeichen („DLH“ → „Lufthansa“).
-- `airports`: Rufname, Höhe der ersten Steigflugfreigabe, abweichende Stationsnamen (`"stations": { "departure": "Langen Radar" }`) und feste Frequenzen (`"frequencies": { "tower": "119.900" }`, Vorrang vor der Facilities-API).
-- `firs`: Name und Frequenz der Kontrollstelle je FIR, `"oceanic": true` für Oceanic-Gebiete. FIRs ohne eigenen Eintrag nehmen `OCEANIC` bzw. `CENTER` (generische Station „Center“; ohne eigene `frequency` gilt der Platzhalter aus `stationTypes`).
+- `telephony`: nur noch Ausnahmen – ICAO-Kennung → Rufzeichen, wenn OpenFlights es nicht oder falsch kennt („EJU“ → „Alpine“, „THY“ → „Turkish“). Hat Vorrang vor OpenFlights.
+- `airports`: Rufname, Höhe der ersten Steigflugfreigabe, abweichende Stationsnamen (`"stations": { "approach": "SoCal Approach" }` für KLAX, so auch NorCal und New York) und feste Frequenzen (`"frequencies": { "tower": "119.900" }`, Vorrang vor der Facilities-API).
+- `firs`: Name der Kontrollstelle je FIR (hat Vorrang vor dem Rufnamen aus den Sektordaten), `frequency` für FIRs bzw. Stellen ohne Sektordaten, `"oceanic": true` für Oceanic-Gebiete. `oceanicFir` für eine FIR mit Domestic- und Oceanic-Teil: Gander ist `CZQX` (Gander Center) mit `"oceanicFir": "CZQO"` (Gander Oceanic) – die Oceanic-Fixe, die das OFP unter CZQX führt, gehören zu CZQO. `members`: Stellen, deren Sektoren in der FIR mitzählen (EDVV: Maastricht, Bremen, Langen). FIRs ohne eigenen Eintrag heißen wie in VAT-Spy plus Stationsart nach `firSuffixes` („Winnipeg Center“, „Praha Radar“); kennt auch VAT-Spy sie nicht, gilt `OCEANIC` bzw. `CENTER` (generische Station; ohne eigene `frequency` der Platzhalter aus `stationTypes`).
+- `firSuffixes`: ICAO-Präfix → Stationsart für FIRs ohne eigenen Eintrag (`"K": "Center"`, `"ED": "Radar"`, `"": "Control"`), der längste passende Präfix gewinnt.
 - `stationTypes`: Namen der Stationsarten und Platzhalter-Frequenzen.
-- `rules`: Schwellwerte der Zustandsmaschine (Höhen, Entfernungen, Zeiten).
+- `rules`: Schwellwerte der Zustandsmaschine (Höhen, Entfernungen, Zeiten), `sectorMinNm` für die Sektor-Hysterese.
+
+**Luftraum- und Airline-Daten** liegen in `data` neben der `Kopilot.exe` (Quellen, Stand und Lizenzen in `data/README.md`): VAT-Spy im Originalformat (CC BY-SA 4.0), Sektoren als `atc-sectors.json` aus `tools/import_sectors.py` (VATGlasses, CC BY-NC-SA 4.0 – nur nicht-kommerziell) und OpenFlights `airlines.dat` (ODbL). Einen neueren Stand legst du nach `%LOCALAPPDATA%\Kopilot\data\…` (gleiche Ordner), er hat Vorrang und übersteht Updates; danach `atc_control reload`. Die Daten lädt Kopilot einmal im Hintergrund (etwa eine Sekunde).
 
 Variablen: `{callsign}` `{station}` `{dest}` `{sid}` `{star}` `{approach}` `{runway}` `{initialAlt}` `{squawk}` `{freq}` `{taxiRoute}` `{holdingPoint}` `{gate}` `{level}` `{speedKt}` `{entryFix}` `{heading}` `{wind}` `{qnh}` `{fix}` `{eta}` `{nextFix}`, dazu `{direction}` (Pushback), `{altitude}` (aktuelle Höhe), `{nextCenter}` (nächste Stelle bei Übergaben), `{route}` (Oceanic-Route), `{time}` (UTC), `{corrections}` und `{levelVerb}` (climb/descend/maintain). Kopilot prüft die Datei beim Laden: fehlende Funksprüche, unbekannte Variablen, Readback-Punkte ohne Korrektur und jede Erwähnung von Mach werden gemeldet (`get_atc_controller` → `templateErrors`, Log).
 
@@ -665,14 +670,17 @@ src/Kopilot/
   Ecam/                   ECAM-Codes → Klartext (FBW-Tabelle, zur Laufzeit geladen)
   FlightPlan/             SimBrief-OFP, Routen- und Fortschrittsrechnung
   Atc/                    Ingame-ATC, Bahnnummer/-bezeichner, Phraseologie
-  Atc/Controller/         Kopilot-ATC: Zustandsmaschine, Vorlagen, Sprechweise, Readback-Prüfung, Stationen und Stimmen
+  Atc/Controller/         Kopilot-ATC: Zustandsmaschine, Vorlagen (mit Migration), Sprechweise, Readback-Prüfung, Stationen und Stimmen
+  Atc/Airspace/           FIR-Grenzen (VAT-Spy), Sektoren, Airline-Rufzeichen (OpenFlights), Punkt-in-Polygon
   atc-templates.json      Textvorlagen des Kopilot-ATC
+  data/                   Luftraum- und Airline-Daten mit Lizenzen (data/README.md)
   Monitoring/             Regeln (MonitorEngine), Alert-Bus, Hintergrunddienst
   Sim/TrafficConnection.cs Eigene SimConnect-Verbindung für Verkehr (native SimConnect.dll, Größenprüfung je Nachricht)
   Traffic/                Verkehrsabfrage, Peilung/Uhrzeit/Callout, Hintergrundabfrage für TRAFFIC_PROXIMITY
   Tools/                  MCP-Tools
   profiles/               Flugzeugprofile (JSON)
 src/SimConnectStub/       Platzhalter-API für CI-Builds ohne MSFS-SDK
+tools/import_sectors.py   Erzeugt data/sectors/atc-sectors.json aus den VATGlasses-Sektordaten
 tests/Kopilot.Tests/      Tests (OAuth, Zugriffsschutz, Monitoring-Regeln, ECAM, SimBrief, Profile, Verkehr, ATC, Sprachschleife) – laufen ohne MSFS
 docs/cloudflared.md       Anleitung Cloudflare Tunnel
 installer/                Windows-Installer (Inno Setup) und Hilfsskripte für den Release-Workflow
@@ -692,6 +700,7 @@ Jede Variable hat eine eigene SimConnect-Data-Definition. Ist ein Name in MSFS u
 - [x] v0.8: Kokoro als zweite Stimme (neuronal, ohne Windows-Sprachpaket), ECAM-Titel ausgeschrieben, Tray-Schalter
 - [x] Verkehr: `get_traffic` (KI und Multiplayer) und Verkehrswarnung `TRAFFIC_PROXIMITY` – im Sim noch zu prüfen
 - [x] ATC-Modul: Zustandsmaschine mit Textvorlagen (Delivery bis Ground, Oceanic), Readback-Prüfung, Stimme je Station
+- [x] ATC: FIR-Grenzen aus VAT-Spy, Sektoren mit Frequenzen (VATSIM), Gander Domestic, Rufzeichen aus OpenFlights, Vorlagen-Migration
 - [ ] ATC: Rollroutenberechnung aus dem Taxiway-Graphen der Facilities-API (`ITaxiRouteProvider`), Gate aus der Parkposition
 - [x] v0.9: Lokale Sprachschleife (Silero VAD, Whisper, feste Befehlsmuster, Readback und Bestätigung per Sprache), Prioritäts-Warteschlange, Taxi-Speed-Warnung, Funk an das ATC-Modul
 - [x] v0.9.1: Sprachschleife im Dashboard ein- und ausschalten, Mikrofonauswahl, Status in `kopilot_status`, ausführliches Log; ATC-Sitzung übersteht Neustarts; Absturz-Journal und Neustart nach Absturz
