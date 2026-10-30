@@ -307,7 +307,8 @@ public sealed partial class AtcTests
     {
         var value = AtcSpeech.Position(55, -20);
         Assert.Equal("55N020W", value.Written);
-        Assert.Equal("five five north two zero west", value.Spoken);
+        Assert.Equal("fifty five north twenty west", value.Spoken);
+        Assert.Equal("fifty five thirty north twenty west", AtcSpeech.Position(55.5, -20).Spoken);
         Assert.True(AtcSpeech.IsLatLonIdent("55N020W"));
         Assert.True(AtcSpeech.IsLatLonIdent("5520N"));
         Assert.False(AtcSpeech.IsLatLonIdent("RESNO"));
@@ -426,6 +427,7 @@ public sealed partial class AtcTests
     [InlineData("speed two eight zero knots", "speedKt", true)]
     [InlineData("speed two seven zero knots", "speedKt", false)]
     [InlineData("position five five north two zero west", "fix", true)]
+    [InlineData("position fifty five north twenty west", "fix", true)]
     [InlineData("position 55N020W", "fix", true)]
     [InlineData("position five five north three zero west", "fix", false)]
     public void Readback_Oceanic(string readback, string item, bool correct)
@@ -672,10 +674,12 @@ public sealed partial class AtcTests
         Assert.Equal("DLH4AB, contact Bremen Radar 132.6", toBremen.Text);
         Assert.Equal("DLH4AB, identified, maintain FL350", Assert.Single(flight.Say("Bremen Radar, Lufthansa four alpha bravo, maintaining flight level three five zero")).Text);
 
-        // Top of Descent
+        // Top of Descent: mit STAR "descend via", unter der Übergangshöhe mit QNH
         var descend = Assert.Single(flight.FlyTo(0.64, 35000));
-        Assert.Equal("DLH4AB, descend FL110", descend.Text);
-        Assert.Empty(flight.Say("descend flight level one one zero, Lufthansa four alpha bravo"));
+        Assert.Equal("DLH4AB, descend via KETAP2B arrival, Q1013", descend.Text);
+        Assert.Equal("Lufthansa four alpha bravo, descend via Ketap two bravo arrival, Q N H one zero one three", descend.Spoken);
+        Assert.Equal(5000, session.ClearedAltitudeFt);
+        Assert.Empty(flight.Say("descend via KETAP two bravo arrival, QNH one zero one three, Lufthansa four alpha bravo"));
 
         // Approach ab 40 nm vor dem Ziel
         var toApproach = Assert.Single(flight.FlyTo(0.85, 12000, gs: 300, ias: 250, vs: -1500));
@@ -871,7 +875,7 @@ public sealed partial class AtcTests
             "Shanwick, Lufthansa four zero zero, request oceanic clearance, estimating RESNO at one two three zero, requesting flight level three seven zero, speed two eight zero knots",
             Input(At(resno - 200).Lat, At(resno - 200).Lon)));
         Assert.Equal("DLH400, cleared to KJFK via RESNO, 55N020W 55N030W 54N040W 52N050W LOMSI, maintain FL370, speed 280 knots", clearance.Text);
-        Assert.Contains("five five north two zero west", clearance.Spoken, StringComparison.Ordinal);
+        Assert.Contains("fifty five north twenty west", clearance.Spoken, StringComparison.Ordinal);
         Assert.Contains("speed two eight zero knots", clearance.Spoken, StringComparison.Ordinal);
         Assert.Equal("Shanwick Oceanic", clearance.StationName);
         Assert.Equal(OceanicClearanceState.ReadbackPending, session.Oceanic);

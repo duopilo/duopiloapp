@@ -48,7 +48,7 @@ public sealed class SpeechEngineTests
     [Theory]
     [InlineData("Gear speed", "Gear speed")]
     [InlineData("Runway two three left assigned", "Runway two three left assigned")]
-    [InlineData("Master warning, ENG 1 FIRE", "Master warning, engine 1 fire")]
+    [InlineData("Master warning, ENG 1 FIRE", "Master warning, engine one fire")]
     [InlineData("Master caution, HYD G RSVR LO PR", "Master caution, hydraulic green reservoir low pressure")]
     [InlineData("Master caution, A/THR OFF", "Master caution, auto thrust off")]
     [InlineData("Master warning, APU FIRE", "Master warning, A P U fire")]
@@ -57,7 +57,7 @@ public sealed class SpeechEngineTests
     [InlineData("  ", "")]
     public void Callouts_werden_fuer_die_Sprachsynthese_aufbereitet(string callout, string expected)
     {
-        Assert.Equal(expected, CalloutText.ForSpeech(callout));
+        Assert.Equal(expected, Pronunciation.ForSpeech(callout, SpeechContext.Empty));
     }
 
     [Theory]

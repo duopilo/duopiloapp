@@ -116,7 +116,7 @@ public sealed class FuelCheckTests
         Assert.Equal(Rules.FuelCheck, e.Rule);
         Assert.Equal(AlertSeverity.Info, e.Severity);
         Assert.Equal(AlertKind.Event, e.Kind);
-        Assert.Equal("HENDY, fuel 17.0, 2.2 below plan", e.Callout);
+        Assert.Equal("Hendy, fuel 17.0, 2.2 below plan", e.Callout);
         Assert.Contains("Fuel Check HENDY", e.Message);
         Assert.Contains("−2,200 kg", e.Message);
 
@@ -129,7 +129,7 @@ public sealed class FuelCheckTests
         // Derselbe Wegpunkt nur einmal, der nächste wieder
         Assert.Empty(Fuel(engine, At(ofp, 200, 2.3, -2200), At(ofp, 260, 2.6, -2200)));
         var next = Assert.Single(Fuel(engine, At(ofp, 320, 3.05, -2150)));
-        Assert.StartsWith("TOBAK, fuel ", next.Callout);
+        Assert.StartsWith("Tobak, fuel ", next.Callout);
     }
 
     [Fact]
@@ -188,7 +188,7 @@ public sealed class FuelCheckTests
 
         var e = Assert.Single(Fuel(engine, At(ofp, 80, 2.05, -700)));
         Assert.Equal(Rules.FuelWarning, e.Rule);
-        Assert.Equal("HENDY, fuel 18.5, 0.7 below plan, deviation increased by 0.5", e.Callout);
+        Assert.Equal("Hendy, fuel 18.5, 0.7 below plan, deviation increased by 0.5", e.Callout);
         Assert.Equal(FuelCheckKind.Waypoint, engine.FuelChecks.Last(1)[0].Kind);
     }
 
@@ -223,7 +223,7 @@ public sealed class FuelCheckTests
 
         var e = Assert.Single(Fuel(engine, At(ofp, 80, 2.05, -20)));
         Assert.Equal(Rules.FuelCheck, e.Rule);
-        Assert.Equal("HENDY, fuel 19.2, on plan", e.Callout);
+        Assert.Equal("Hendy, fuel 19.2, on plan", e.Callout);
     }
 
     [Fact]
@@ -335,11 +335,13 @@ public sealed class FuelCheckTests
     }
 
     [Theory]
-    [InlineData("HENDY", null, null, 0.0, 0.0, "HENDY")]
+    [InlineData("HENDY", null, null, 0.0, 0.0, "Hendy")]
     [InlineData("YWK", "WABUSH", "vor", 52.9, -66.9, "Wabush")]
     [InlineData("QX", null, "ndb", 50.0, 8.0, "quebec x-ray")]
-    [InlineData("5350N", "53N050W", "wpt", 53.0, -50.0, "53 north 50 west")]
-    [InlineData("H5330", null, "wpt", 53.5, -30.0, null)]
+    [InlineData("EDDL", "DUSSELDORF", "apt", 51.28, 6.76, "echo delta delta lima")]
+    [InlineData("5350N", "53N050W", "wpt", 53.0, -50.0, "fifty three north fifty west")]
+    [InlineData("H5330", null, "wpt", 53.5, -30.0, "fifty three thirty north thirty west")]
+    [InlineData(" ", null, "wpt", 0.0, 0.0, null)]
     public void Ort_fuer_die_Ansage(string ident, string? name, string? type, double lat, double lon, string? expected) =>
         Assert.Equal(expected, FuelCheckText.Place(new FuelCheckFix(ident, name, type, "CRZ", lat, lon)));
 

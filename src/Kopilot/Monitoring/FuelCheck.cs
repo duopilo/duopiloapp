@@ -1,8 +1,8 @@
 using System.Globalization;
 using System.Text.Json.Serialization;
-using Kopilot.Atc;
 using Kopilot.FlightPlan;
 using Kopilot.Localization;
+using Kopilot.Speech;
 
 namespace Kopilot.Monitoring;
 
@@ -205,44 +205,12 @@ public static class FuelCheckText
         actualKg >= 1000 ? Math.Max(0.1, Math.Round(Math.Abs(kg) / 1000, 1)).ToString("0.0", Inv) : Amount(kg);
 
     /// <summary>
-    /// Wie der Wegpunkt angesagt wird: Namen mit vier und mehr Buchstaben direkt ("HENDY"), Funkfeuer mit Namen
-    /// ("Wabush" statt YWK), sonst im NATO-Alphabet. Koordinatenpunkte als "53 north 50 west". Null = ohne Ort ansagen.
+    /// Wie der Wegpunkt angesagt wird – mit der gemeinsamen Aussprache (<see cref="Pronunciation.Waypoint"/>): fünf
+    /// Buchstaben als Wort ("Hendy"), Funkfeuer mit Namen ("Wabush" statt YWK), sonst im NATO-Alphabet, Koordinatenpunkte
+    /// als "fifty three north fifty west". Null = ohne Ort ansagen.
     /// </summary>
-    public static string? Place(FuelCheckFix? fix)
-    {
-        if (fix is null || string.IsNullOrWhiteSpace(fix.Ident))
-        {
-            return null;
-        }
-
-        var ident = fix.Ident.Trim().ToUpperInvariant();
-        if (ident.All(char.IsAsciiLetter))
-        {
-            if (ident.Length >= 4)
-            {
-                return ident;
-            }
-
-            var name = fix.Name?.Trim();
-            if (name is { Length: >= 3 and <= 24 } && !name.Equals(ident, StringComparison.OrdinalIgnoreCase)
-                && name.All(c => char.IsAsciiLetter(c) || c is ' ' or '-'))
-            {
-                return Inv.TextInfo.ToTitleCase(name.ToLowerInvariant());
-            }
-
-            return AtcSpeech.Spell(ident);
-        }
-
-        // Koordinatenpunkt (z. B. 5350N): nur volle Grade lassen sich sauber ansagen
-        var lat = Math.Round(fix.Lat);
-        var lon = Math.Round(fix.Lon);
-        if (Math.Abs(fix.Lat - lat) < 0.02 && Math.Abs(fix.Lon - lon) < 0.02)
-        {
-            return $"{Math.Abs(lat).ToString("0", Inv)} {(lat >= 0 ? "north" : "south")} {Math.Abs(lon).ToString("0", Inv)} {(lon >= 0 ? "east" : "west")}";
-        }
-
-        return null;
-    }
+    public static string? Place(FuelCheckFix? fix) =>
+        fix is null || string.IsNullOrWhiteSpace(fix.Ident) ? null : Pronunciation.Waypoint(fix.Ident, fix.Name, fix.Lat, fix.Lon);
 
     /// <summary>"HENDY, fuel 34.1, 2.2 below plan" plus Zusätze ("deviation increased by 0.6").</summary>
     public static string Callout(string? place, double actualKg, double diffKg, IEnumerable<string>? extras = null)

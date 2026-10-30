@@ -474,6 +474,9 @@ public static class AtcMessageIds
     public const string CenterContactDescending = "center.contactDescending";
     public const string CenterClimb = "center.climb";
     public const string CenterDescend = "center.descend";
+    public const string CenterDescendQnh = "center.descendQnh";
+    public const string CenterDescendVia = "center.descendVia";
+    public const string CenterDescendViaQnh = "center.descendViaQnh";
     public const string CenterIdentified = "center.identified";
     public const string CenterHandoff = "center.handoff";
     public const string CenterHandoffApproach = "center.handoffApproach";
@@ -516,7 +519,8 @@ public static class AtcMessageIds
         GroundPushRequest, GroundPushApproved, GroundTaxiRequest, GroundTaxi, GroundHandoffTower,
         TowerReadyRequest, TowerLineUp, TowerTakeoff, TowerHandoffDeparture,
         DepartureContact, DepartureIdentified, DepartureDirect, DepartureHandoff,
-        CenterContactClimbing, CenterContactLevel, CenterContactDescending, CenterClimb, CenterDescend, CenterIdentified, CenterHandoff, CenterHandoffApproach,
+        CenterContactClimbing, CenterContactLevel, CenterContactDescending, CenterClimb, CenterDescend, CenterDescendQnh, CenterDescendVia, CenterDescendViaQnh,
+        CenterIdentified, CenterHandoff, CenterHandoffApproach,
         CenterLevelRequest, CenterLevelChange, CenterLevelChangeQnh, CenterLevelWhenReady, CenterLevelUnable,
         OceanicRequest, OceanicClearance, OceanicReadbackCorrect, OceanicPosition, OceanicRoger, OceanicHandoff,
         ApproachContact, ApproachDescend, ApproachCleared, ApproachHandoff,

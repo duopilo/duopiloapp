@@ -413,7 +413,7 @@ public sealed partial class MonitorEngine
     {
         "FULL" => "full",
         "1+F" => "one",
-        _ when int.TryParse(flaps, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) => Phraseology.DigitByDigit(n),
+        _ when int.TryParse(flaps, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) => Kopilot.Speech.Pronunciation.Digits(n),
         _ => flaps.ToLowerInvariant(),
     };
 

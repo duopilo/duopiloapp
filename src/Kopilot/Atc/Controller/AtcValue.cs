@@ -1,6 +1,6 @@
 using System.Globalization;
-using System.Text;
 using System.Text.RegularExpressions;
+using Kopilot.Speech;
 
 namespace Kopilot.Atc;
 
@@ -48,26 +48,13 @@ public sealed record AtcValue(AtcValueKind Kind, string Written, string Spoken)
 }
 
 /// <summary>
-/// ICAO-Sprechweise für den Funk: Zahlen Ziffer für Ziffer ("two two zero five"), Buchstaben im NATO-Alphabet,
-/// Geschwindigkeiten immer in Knoten. Liefert fertige <see cref="AtcValue"/>s für die Vorlagen.
+/// Werte für die ATC-Vorlagen: Anzeigetext, Sprechform und Vergleichswert für die Readback-Prüfung. Die Sprechform kommt
+/// immer aus der gemeinsamen Aussprache (<see cref="Pronunciation"/>) – dieselbe wie für Callouts, Fuel Check und die
+/// Sprachschleife: Zahlen Ziffer für Ziffer ("two two zero five"), Buchstaben im NATO-Alphabet, Geschwindigkeiten in Knoten.
 /// </summary>
 public static partial class AtcSpeech
 {
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
-
-    private static readonly string[] DigitWords = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "niner"];
-
-    private static readonly string[] NatoWords =
-    [
-        "alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india", "juliett", "kilo", "lima", "mike",
-        "november", "oscar", "papa", "quebec", "romeo", "sierra", "tango", "uniform", "victor", "whiskey", "x-ray", "yankee", "zulu",
-    ];
-
-    // Abkürzungen im festen Vorlagentext, die Buchstabe für Buchstabe gesprochen werden
-    private static readonly HashSet<string> SpelledAcronyms = new(StringComparer.Ordinal)
-    {
-        "IFR", "VFR", "QNH", "ILS", "ATC", "RNP", "VOR", "NDB", "DME", "ETA", "FIR", "SID", "GPS", "LOC",
-    };
 
     // Sprechweise der Anflugarten
     private static readonly Dictionary<string, string> ApproachWords = new(StringComparer.OrdinalIgnoreCase)
@@ -84,51 +71,21 @@ public static partial class AtcSpeech
         ["GLS"] = "G L S",
     };
 
-    public static string Digit(char c) => DigitWords[c - '0'];
+    public static string Digit(char c) => Pronunciation.Digit(c);
 
-    public static string Letter(char c) => NatoWords[char.ToUpperInvariant(c) - 'A'];
+    public static string Letter(char c) => Pronunciation.Letter(c);
 
     /// <summary>Ziffern und Buchstaben einzeln: "4AB" → "four alpha bravo". Andere Zeichen fallen weg.</summary>
-    public static string Spell(string text)
-    {
-        var parts = new List<string>(text.Length);
-        foreach (var c in text)
-        {
-            if (c is >= '0' and <= '9')
-            {
-                parts.Add(Digit(c));
-            }
-            else if (char.IsAsciiLetter(c))
-            {
-                parts.Add(Letter(c));
-            }
-        }
-
-        return string.Join(' ', parts);
-    }
+    public static string Spell(string text) => Pronunciation.Spell(text);
 
     /// <summary>Zahl Ziffer für Ziffer, z. B. 250 → "two five zero", 5 → "zero five" bei <paramref name="minDigits"/> = 2.</summary>
-    public static string Digits(long value, int minDigits = 1) =>
-        Spell(Math.Abs(value).ToString(new string('0', Math.Max(1, minDigits)), Inv));
+    public static string Digits(long value, int minDigits = 1) => Pronunciation.Digits(value, minDigits);
 
     /// <summary>Kennung als Code zum Vergleichen: nur Buchstaben und Ziffern, groß.</summary>
-    public static string Compact(string text)
-    {
-        var sb = new StringBuilder(text.Length);
-        foreach (var c in text)
-        {
-            if (char.IsAsciiLetterOrDigit(c))
-            {
-                sb.Append(char.ToUpperInvariant(c));
-            }
-        }
+    public static string Compact(string text) => Pronunciation.Compact(text);
 
-        return sb.ToString();
-    }
-
-    /// <summary>Fester Vorlagentext: bekannte Abkürzungen ("IFR", "QNH") buchstabieren, alles andere bleibt.</summary>
-    public static string Literal(string text) =>
-        AcronymRegex().Replace(text, m => SpelledAcronyms.Contains(m.Value) ? string.Join(' ', m.Value.ToCharArray()) : m.Value);
+    /// <summary>Fester Vorlagentext für die Sprachausgabe (Abkürzungen wie "IFR" buchstabiert, Zahlen ausgesprochen), Leerzeichen am Rand bleiben.</summary>
+    public static string Literal(string text) => Pronunciation.Fragment(text);
 
     // ------------------------------------------------------------------ Werte
 
@@ -142,37 +99,18 @@ public static partial class AtcSpeech
         if (rounded > transitionAltitudeFt)
         {
             var level = rounded / 100;
-            return new AtcValue(AtcValueKind.Altitude, "FL" + level.ToString("000", Inv), "flight level " + Digits(level, 2))
+            return new AtcValue(AtcValueKind.Altitude, "FL" + level.ToString("000", Inv), Pronunciation.FlightLevel(level))
             {
                 Number = rounded,
                 FlightLevel = true,
             };
         }
 
-        return new AtcValue(AtcValueKind.Altitude, rounded.ToString(Inv) + " ft", FeetWords(rounded) + " feet") { Number = rounded };
-    }
-
-    /// <summary>Fuß ohne Einheit: 5000 → "five thousand", 12500 → "one two thousand five hundred".</summary>
-    public static string FeetWords(int feet)
-    {
-        var thousands = feet / 1000;
-        var hundreds = feet % 1000 / 100;
-        var parts = new List<string>(2);
-        if (thousands > 0)
-        {
-            parts.Add(Digits(thousands) + " thousand");
-        }
-
-        if (hundreds > 0)
-        {
-            parts.Add(Digit((char)('0' + hundreds)) + " hundred");
-        }
-
-        return parts.Count == 0 ? "zero" : string.Join(' ', parts);
+        return new AtcValue(AtcValueKind.Altitude, rounded.ToString(Inv) + " ft", Pronunciation.Feet(rounded)) { Number = rounded };
     }
 
     public static AtcValue Squawk(string code) =>
-        new(AtcValueKind.Squawk, code, Spell(code)) { Code = code, Number = int.Parse(code, Inv) };
+        new(AtcValueKind.Squawk, code, Pronunciation.Squawk(code)) { Code = code, Number = int.Parse(code, Inv) };
 
     /// <summary>Frequenz: 121.8 → "one two one decimal eight", 118.275 → "one one eight decimal two seven five".</summary>
     public static AtcValue Frequency(double mhz)
@@ -185,7 +123,7 @@ public static partial class AtcSpeech
             fraction = "0";
         }
 
-        return new AtcValue(AtcValueKind.Frequency, $"{whole.ToString(Inv)}.{fraction}", $"{Digits(whole)} decimal {Spell(fraction)}")
+        return new AtcValue(AtcValueKind.Frequency, $"{whole.ToString(Inv)}.{fraction}", Pronunciation.Frequency(mhz))
         {
             Number = khz / 1000.0,
         };
@@ -206,7 +144,7 @@ public static partial class AtcSpeech
             h += 360;
         }
 
-        return new AtcValue(AtcValueKind.Heading, h.ToString("000", Inv), Digits(h, 3)) { Number = h };
+        return new AtcValue(AtcValueKind.Heading, h.ToString("000", Inv), Pronunciation.Heading(h)) { Number = h };
     }
 
     /// <summary>Wind "two seven zero degrees, one two knots"; unter 3 kt "calm". Richtung auf 10° gerundet.</summary>
@@ -281,7 +219,7 @@ public static partial class AtcSpeech
     public static AtcValue Runway(int number, string? designator)
     {
         var code = number.ToString("00", Inv) + designator;
-        return new AtcValue(AtcValueKind.Runway, code, Phraseology.Runway(number, designator)) { Code = code, Number = number };
+        return new AtcValue(AtcValueKind.Runway, code, Pronunciation.Runway(number, designator)) { Code = code, Number = number };
     }
 
     public static AtcValue? Runway(string? ident) =>
@@ -302,24 +240,27 @@ public static partial class AtcSpeech
     public static AtcValue Ident(string ident)
     {
         var code = Compact(ident);
-        string spoken;
-        if (ProcedureRegex().Match(code) is { Success: true } m)
-        {
-            spoken = TitleCase(m.Groups[1].Value) + " " + Digit(m.Groups[2].Value[0]) + (m.Groups[3].Success ? " " + Letter(m.Groups[3].Value[0]) : "");
-        }
-        else if (code.All(char.IsAsciiLetter))
-        {
-            spoken = code.Length <= 3 ? Spell(code) : TitleCase(code);
-        }
-        else
-        {
-            spoken = Spell(code);
-        }
-
-        return new AtcValue(AtcValueKind.Ident, code, spoken) { Code = code };
+        return new AtcValue(AtcValueKind.Ident, code, Pronunciation.Ident(code)) { Code = code };
     }
 
-    /// <summary>Koordinate für Oceanic-Meldungen: 55°N 20°W → "55N020W", gesprochen "five five north two zero west".</summary>
+    /// <summary>
+    /// Fix des OFP-Navlogs: gesprochen wie in <see cref="Pronunciation.Waypoint"/> – Funkfeuer mit Namen ("YWK" → "Wabush"),
+    /// fünf Buchstaben als Wort, sonst im NATO-Alphabet. Im Readback gilt auch der Name ("direct Wabush").
+    /// </summary>
+    public static AtcValue Fix(string ident, string? name, double? lat = null, double? lon = null)
+    {
+        var code = Compact(ident);
+        var spoken = Pronunciation.Waypoint(code, name, lat, lon);
+        var alternatives = !string.IsNullOrWhiteSpace(name) && Compact(name) is { Length: >= 3 } compactName && compactName != code
+            ? new[] { compactName }
+            : [];
+        return new AtcValue(AtcValueKind.Ident, code, spoken) { Code = code, Alternatives = alternatives };
+    }
+
+    /// <summary>
+    /// Koordinate für Oceanic-Meldungen: 55°N 20°W → "55N020W", gesprochen "fifty five north twenty west". Im Readback gilt
+    /// auch "55 north 20 west" bzw. Ziffer für Ziffer.
+    /// </summary>
     public static AtcValue Position(double lat, double lon)
     {
         var (latDeg, latMin) = DegMin(lat);
@@ -328,15 +269,13 @@ public static partial class AtcSpeech
         var ew = lon >= 0 ? "E" : "W";
         var latText = latDeg.ToString("00", Inv) + (latMin > 0 ? latMin.ToString("00", Inv) : "");
         var lonText = lonDeg.ToString("000", Inv) + (lonMin > 0 ? lonMin.ToString("00", Inv) : "");
-        var spokenLat = Digits(latDeg) + (latMin > 0 ? " " + Digits(latMin, 2) : "");
-        var spokenLon = Digits(lonDeg) + (lonMin > 0 ? " " + Digits(lonMin, 2) : "");
         var written = latText + ns + lonText + ew;
         var shortLon = lonDeg.ToString(Inv) + (lonMin > 0 ? lonMin.ToString("00", Inv) : "");
         var words = $"{latText}{(ns == "N" ? "NORTH" : "SOUTH")}{shortLon}{(ew == "E" ? "EAST" : "WEST")}";
         return new AtcValue(
             AtcValueKind.Position,
             written,
-            $"{spokenLat} {(ns == "N" ? "north" : "south")} {spokenLon} {(ew == "E" ? "east" : "west")}")
+            Pronunciation.Coordinate(lat, lon))
         {
             Code = written,
             Alternatives = [latText + ns + shortLon + ew, words, $"{latText}{(ns == "N" ? "NORTH" : "SOUTH")}{lonText}{(ew == "E" ? "EAST" : "WEST")}"],
@@ -357,8 +296,7 @@ public static partial class AtcSpeech
     public static bool IsLatLonIdent(string? ident) =>
         ident is not null && LatLonRegex().IsMatch(ident.Trim().ToUpperInvariant());
 
-    public static string TitleCase(string word) =>
-        word.Length == 0 ? word : char.ToUpperInvariant(word[0]) + word[1..].ToLowerInvariant();
+    public static string TitleCase(string word) => Pronunciation.TitleCase(word);
 
     private static (int Deg, int Min) DegMin(double value)
     {
@@ -366,12 +304,6 @@ public static partial class AtcSpeech
         var totalMinutes = (int)Math.Round(abs * 60, MidpointRounding.AwayFromZero);
         return (totalMinutes / 60, totalMinutes % 60);
     }
-
-    [GeneratedRegex(@"\b[A-Z]{2,4}\b")]
-    private static partial Regex AcronymRegex();
-
-    [GeneratedRegex(@"^([A-Z]{2,6})(\d)([A-Z])?$")]
-    private static partial Regex ProcedureRegex();
 
     [GeneratedRegex(@"^(?=(?:.*\d){4})(?=.*[NS])[0-9NSEW/]{5,14}$")]
     private static partial Regex LatLonRegex();

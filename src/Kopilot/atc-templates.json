@@ -255,6 +255,18 @@
       "variants": [ "{callsign}, descend {level}" ],
       "readback": [ "level" ]
     },
+    "center.descendQnh": {
+      "variants": [ "{callsign}, descend {level}, {qnh}", "{callsign}, descend {level}" ],
+      "readback": [ "level", "qnh" ]
+    },
+    "center.descendVia": {
+      "variants": [ "{callsign}, descend via {star} arrival", "{callsign}, descend {level}" ],
+      "readback": [ "star" ]
+    },
+    "center.descendViaQnh": {
+      "variants": [ "{callsign}, descend via {star} arrival, {qnh}", "{callsign}, descend {level}, {qnh}" ],
+      "readback": [ "star", "qnh" ]
+    },
     "center.identified": {
       "variants": [ "{callsign}, identified, maintain {level}", "{callsign}, identified" ]
     },

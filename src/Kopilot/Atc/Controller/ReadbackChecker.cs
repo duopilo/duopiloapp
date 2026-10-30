@@ -341,6 +341,14 @@ public sealed partial class HeardText
 
     private static readonly HashSet<string> DecimalWords = new(StringComparer.Ordinal) { "decimal", "point", "dot" };
 
+    // Natürlich gesprochene Zahlen, wie Kopilot Koordinaten sagt ("fifty five north twenty west")
+    private static readonly Dictionary<string, int> TeensAndTens = new(StringComparer.Ordinal)
+    {
+        ["ten"] = 10, ["eleven"] = 11, ["twelve"] = 12, ["thirteen"] = 13, ["fourteen"] = 14, ["fifteen"] = 15, ["sixteen"] = 16,
+        ["seventeen"] = 17, ["eighteen"] = 18, ["nineteen"] = 19, ["twenty"] = 20, ["thirty"] = 30, ["forty"] = 40, ["fifty"] = 50,
+        ["sixty"] = 60, ["seventy"] = 70, ["eighty"] = 80, ["ninety"] = 90,
+    };
+
     private HeardText(IReadOnlyList<HeardToken> tokens)
     {
         Tokens = tokens;
@@ -427,9 +435,23 @@ public sealed partial class HeardText
     {
         var raw = new List<HeardToken>();
         var lower = text.ToLowerInvariant().Replace("x-ray", "xray", StringComparison.Ordinal);
-        foreach (Match m in TokenRegex().Matches(lower))
+        var matches = TokenRegex().Matches(lower);
+        for (var k = 0; k < matches.Count; k++)
         {
-            var s = m.Value;
+            var s = matches[k].Value;
+            if (TeensAndTens.TryGetValue(s, out var natural))
+            {
+                // "fifty five" → 55: Zehner plus folgende Ziffer
+                if (natural >= 20 && k + 1 < matches.Count && DigitWords.TryGetValue(matches[k + 1].Value, out var unit) && unit != '0')
+                {
+                    natural += unit - '0';
+                    k++;
+                }
+
+                raw.Add(new HeardToken(HeardKind.Number, natural.ToString(CultureInfo.InvariantCulture), natural));
+                continue;
+            }
+
             if (char.IsAsciiDigit(s[0]))
             {
                 var normalized = s.Replace(',', '.');

@@ -247,7 +247,7 @@ public sealed partial class AtcSession
         var fix = Plan.Ofp.Fixes[fixIndex];
         return AtcSpeech.IsLatLonIdent(fix.Ident) && fix.Lat is { } lat && fix.Lon is { } lon
             ? AtcSpeech.Position(lat, lon)
-            : AtcSpeech.Ident(fix.Ident);
+            : AtcSpeech.Fix(fix.Ident, fix.Name, fix.Lat, fix.Lon);
     }
 
     /// <summary>Oceanic-Route nach dem Eintrittspunkt bis zum Austritt: "55N030W 54N040W … LOMSI".</summary>

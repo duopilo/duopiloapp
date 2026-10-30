@@ -11,7 +11,7 @@ public sealed record AssignedRunway(int Number, string? Designator, string? Desi
     public string Ident => Number.ToString("00", CultureInfo.InvariantCulture) + Designator;
 
     /// <summary>Sprechfunk-Form, z. B. "two three left".</summary>
-    public string Spoken => Phraseology.Runway(Number, Designator);
+    public string Spoken => Kopilot.Speech.Pronunciation.Runway(Number, Designator);
 }
 
 public static class RunwayMath
@@ -99,23 +99,3 @@ public static class RunwayMath
 }
 
 /// <summary>Englische Sprechfunk-Phraseologie für Callouts.</summary>
-public static class Phraseology
-{
-    private static readonly string[] Digits = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "niner"];
-
-    /// <summary>Ziffernweise: 23 → "two three", 5 → "zero five" (bei <paramref name="minDigits"/> = 2).</summary>
-    public static string DigitByDigit(int value, int minDigits = 1) =>
-        string.Join(' ', Math.Abs(value).ToString(new string('0', Math.Max(1, minDigits)), CultureInfo.InvariantCulture).Select(c => Digits[c - '0']));
-
-    public static string Runway(int number, string? designator)
-    {
-        var spoken = DigitByDigit(number, 2);
-        return designator switch
-        {
-            "L" => spoken + " left",
-            "R" => spoken + " right",
-            "C" => spoken + " center",
-            _ => spoken,
-        };
-    }
-}

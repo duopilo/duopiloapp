@@ -29,7 +29,7 @@ public sealed record VoiceReply(string Text, string Spoken)
     /// <summary>Readback einer vorbereiteten Aktion: Erst wenn er ganz gesprochen ist, zählt "Confirm" (siehe <see cref="VoiceDialog.Spoken"/>).</summary>
     public string? ReadbackToken { get; init; }
 
-    public static VoiceReply Of(string text) => new(text, VoicePhraseology.ForSpeech(text));
+    public static VoiceReply Of(string text) => new(text, Kopilot.Speech.Pronunciation.ForSpeech(text));
 }
 
 /// <summary>Vorbereitete Aktion, die auf "Confirm" wartet.</summary>
