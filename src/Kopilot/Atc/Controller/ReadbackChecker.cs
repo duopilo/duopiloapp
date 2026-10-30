@@ -32,7 +32,7 @@ public static class ReadbackChecker
     private static readonly string[] SquawkWords = ["squawk", "squawking", "transponder", "code"];
     private static readonly string[] FeetWords = ["feet", "ft", "foot"];
     private static readonly string[] KnotWords = ["knots", "knot", "kts", "kt"];
-    private static readonly string[] AltitudeVerbs = ["climb", "climbing", "descend", "descending", "maintain", "maintaining", "altitude", "cleared"];
+    private static readonly string[] AltitudeVerbs = ["climb", "climbing", "descend", "descending", "descent", "maintain", "maintaining", "altitude", "cleared"];
     private static readonly string[] Fillers = ["to", "and", "altitude", "now", "via"];
 
     public static ReadbackResult Check(string transmission, IReadOnlyList<ReadbackItem> items) =>
@@ -127,9 +127,12 @@ public static class ReadbackChecker
     }
 
     /// <summary>Alle Höhenangaben in Fuß: "FL110"/"flight level one one zero" = 11000, "five thousand feet" = 5000.</summary>
-    public static List<double> Altitudes(HeardText heard)
+    public static List<double> Altitudes(HeardText heard) => AltitudesAt(heard).Select(a => a.Feet).ToList();
+
+    /// <summary>Höhenangaben wie <see cref="Altitudes"/>, mit der Stelle der Zahl im Funkspruch (Index in <see cref="HeardText.Tokens"/>).</summary>
+    public static List<(int Index, double Feet)> AltitudesAt(HeardText heard)
     {
-        var result = new List<double>();
+        var result = new List<(int, double)>();
         var t = heard.Tokens;
         var used = new HashSet<int>();
         for (var i = 0; i < t.Count; i++)
@@ -144,7 +147,7 @@ public static class ReadbackChecker
 
                 if (j < t.Count && t[j].Kind == HeardKind.Number)
                 {
-                    result.Add(t[j].Value * 100);
+                    result.Add((j, t[j].Value * 100));
                     used.Add(j);
                 }
 
@@ -163,13 +166,13 @@ public static class ReadbackChecker
 
             if (i + 1 < t.Count && t[i + 1].IsWord(FeetWords))
             {
-                result.Add(t[i].Value);
+                result.Add((i, t[i].Value));
                 continue;
             }
 
             if (heard.PreviousWord(i, 2, Fillers) is { } previous && previous.IsWord(AltitudeVerbs))
             {
-                result.Add(t[i].Value < 1000 ? t[i].Value * 100 : t[i].Value);
+                result.Add((i, t[i].Value < 1000 ? t[i].Value * 100 : t[i].Value));
             }
         }
 

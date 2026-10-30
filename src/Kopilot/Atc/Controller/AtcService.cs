@@ -2,6 +2,7 @@ using System.Threading.Channels;
 using Kopilot.Atc.Airspace;
 using Kopilot.FlightPlan;
 using Kopilot.Localization;
+using Kopilot.Monitoring;
 using Kopilot.Sim;
 using Microsoft.Extensions.Options;
 
@@ -25,6 +26,12 @@ public sealed record AtcTransmitResult(bool Ok, string? Error, IReadOnlyList<Atc
 /// </summary>
 public sealed class AtcService : BackgroundService
 {
+    /// <summary>Meldung im AlertBus: Transponder weicht vom zugewiesenen Squawk ab (ATC hat "check squawk" gesagt).</summary>
+    public const string SquawkAlertRule = "ATC_SQUAWK";
+
+    /// <summary>Meldung im AlertBus: COM1 steht nicht auf der Frequenz der Station (ATC hat "check frequency" gesagt).</summary>
+    public const string FrequencyAlertRule = "ATC_FREQUENCY";
+
     private readonly KopilotOptions _options;
     private readonly SimConnectClient _sim;
     private readonly SimBriefService _simBrief;
@@ -56,6 +63,7 @@ public sealed class AtcService : BackgroundService
     private DateTimeOffset _savedUtc;
     private bool _autoRestoreDone;
     private DateTimeOffset? _restoredFromUtc;
+    private readonly HashSet<string> _raisedAlerts = new(StringComparer.Ordinal);
 
     public AtcService(IOptions<KopilotOptions> options, SimConnectClient sim, SimBriefService simBrief, IServiceProvider services, ILogger<AtcService> log)
     {
@@ -181,6 +189,9 @@ public sealed class AtcService : BackgroundService
             _airspaceMessages = airlineMessages;
         }
 
+        // Die Sitzung ist weg – offene Squawk-/Frequenz-Meldungen auch
+        ClearDeviationAlerts();
+
         foreach (var note in notes)
         {
             _log.LogInformation(Loc.Log("log.atc.templateNote"), note);
@@ -245,6 +256,7 @@ public sealed class AtcService : BackgroundService
         }
 
         IReadOnlyList<AtcTransmission> responses;
+        IReadOnlyList<AtcDeviationEvent> deviations;
         lock (_lock)
         {
             if (_session is null)
@@ -253,9 +265,11 @@ public sealed class AtcService : BackgroundService
             }
 
             responses = _session.PilotTransmission(text, BuildInput());
+            deviations = _session.TakeDeviationEvents();
         }
 
         Broadcast(responses);
+        PublishDeviations(deviations);
         SaveSession(force: true);
         return new AtcTransmitResult(true, null, responses);
     }
@@ -274,6 +288,8 @@ public sealed class AtcService : BackgroundService
                     _sessionOfpId = null;
                 }
 
+                ClearDeviationAlerts();
+
                 // Neu heißt neu: nicht aus der Sicherung fortsetzen
                 _store.Delete();
                 return await EnsureSessionAsync(ct) ?? Loc.T("atc.service.sessionRestarted");
@@ -284,6 +300,8 @@ public sealed class AtcService : BackgroundService
                     _sessionOfpId = null;
                     _restoredFromUtc = null;
                 }
+
+                ClearDeviationAlerts();
 
                 _store.Delete();
                 return Loc.T("atc.service.sessionStopped");
@@ -368,6 +386,8 @@ public sealed class AtcService : BackgroundService
         }
 
         IReadOnlyList<AtcTransmission> output = [];
+        IReadOnlyList<AtcDeviationEvent> deviations = [];
+        var ended = false;
         lock (_lock)
         {
             if (_session is null)
@@ -381,20 +401,104 @@ public sealed class AtcService : BackgroundService
                 _log.LogInformation(Loc.Log("log.atc.newPlan"));
                 _session = null;
                 _sessionOfpId = null;
-                return;
+                ended = true;
             }
+            else
+            {
+                try
+                {
+                    output = _session.Tick(BuildInput());
+                }
+                catch (Exception ex)
+                {
+                    _log.LogError(ex, Loc.Log("log.atc.stateMachineError"));
+                }
 
-            try
-            {
-                output = _session.Tick(BuildInput());
-            }
-            catch (Exception ex)
-            {
-                _log.LogError(ex, Loc.Log("log.atc.stateMachineError"));
+                deviations = _session.TakeDeviationEvents();
             }
         }
 
+        if (ended)
+        {
+            ClearDeviationAlerts();
+            return;
+        }
+
         Broadcast(output);
+        PublishDeviations(deviations);
+    }
+
+    /// <summary>
+    /// Abweichungen bei Squawk und COM1 als Meldungen im AlertBus (ohne Callout – ATC hat es schon gesagt). Claude sieht sie
+    /// in activeAlerts und wait_for_alerts und bietet dem Piloten das Zurücksetzen an; Kopilot selbst setzt nie zurück.
+    /// </summary>
+    private void PublishDeviations(IReadOnlyList<AtcDeviationEvent> deviations)
+    {
+        if (deviations.Count == 0)
+        {
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var alerts = new List<AlertEvent>();
+        foreach (var d in deviations)
+        {
+            var rule = d.Kind == AtcDeviationKind.Squawk ? SquawkAlertRule : FrequencyAlertRule;
+            string message;
+            switch (d.Change)
+            {
+                case AtcDeviationChange.Raised:
+                    message = d.Kind == AtcDeviationKind.Squawk
+                        ? Loc.T("atc.deviation.squawk", d.Actual, d.Expected)
+                        : Loc.T("atc.deviation.frequency", d.Actual, d.Station, d.Expected);
+                    lock (_raisedAlerts)
+                    {
+                        _raisedAlerts.Add(rule);
+                    }
+
+                    alerts.Add(new AlertEvent(0, now, rule, AlertSeverity.Caution, AlertKind.Raise, null, message));
+                    break;
+                case AtcDeviationChange.Cleared:
+                    message = d.Kind == AtcDeviationKind.Squawk
+                        ? Loc.T("atc.deviation.squawkCleared", d.Expected)
+                        : Loc.T("atc.deviation.frequencyCleared", d.Expected);
+                    lock (_raisedAlerts)
+                    {
+                        _raisedAlerts.Remove(rule);
+                    }
+
+                    alerts.Add(new AlertEvent(0, now, rule, AlertSeverity.Info, AlertKind.Clear, null, message));
+                    break;
+                default:
+                    message = Loc.T("atc.deviation.squawkAdopted", d.Expected, d.Previous);
+                    alerts.Add(new AlertEvent(0, now, rule, AlertSeverity.Info, AlertKind.Event, null, message));
+                    break;
+            }
+
+            _log.LogInformation(Loc.Log("log.atc.deviation"), rule, d.Change, Loc.ToEnglish(message));
+        }
+
+        _services.GetService<AlertBus>()?.Publish(alerts);
+    }
+
+    /// <summary>Sitzung beendet: noch offene Squawk-/Frequenz-Meldungen aufheben.</summary>
+    private void ClearDeviationAlerts()
+    {
+        List<string> rules;
+        lock (_raisedAlerts)
+        {
+            rules = [.. _raisedAlerts];
+            _raisedAlerts.Clear();
+        }
+
+        if (rules.Count == 0)
+        {
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        _services.GetService<AlertBus>()?.Publish(
+            rules.Select(rule => new AlertEvent(0, now, rule, AlertSeverity.Info, AlertKind.Clear, null, Loc.T("atc.deviation.sessionEnded"))).ToList());
     }
 
     /// <summary>
@@ -557,7 +661,8 @@ public sealed class AtcService : BackgroundService
                 _frequencies.Get,
                 _services.GetService<ITaxiRouteProvider>() ?? new NoTaxiRouteProvider(),
                 CalloutVoice(),
-                InstalledVoices());
+                InstalledVoices(),
+                _options.Atc.SquawkFromSim);
             var session = new AtcSession(templates, plan, context);
             if (snapshot is not null)
             {
@@ -700,6 +805,8 @@ public sealed class AtcService : BackgroundService
         ZuluTimeSec = _sim.Num("zuluTimeSec"),
         ParkingBrake = new AircraftSignals(_sim).ParkingBrake,
         AssignedRunway = _sim.Connection.IsConnected ? AtcReader.AssignedRunway(_sim, _simBrief.Current)?.Ident : null,
+        TransponderCode = Kopilot.Tools.Fmt.Squawk(_sim.Num("xpdrCode")),
+        Com1ActiveMhz = _sim.Num("com1Active"),
     };
 
     private string? SimCallsign()

@@ -16,8 +16,10 @@ public static class AtcControllerTools
     [McpServerTool(Name = "get_atc_controller", ReadOnly = true)]
     [Description(
         "Kopilot ATC (template-based, no LLM): current station with frequency and voice, phase/step, what the pilot is expected to say next " +
-        "(rendered phraseology), pending readback items, squawk, cleared altitude, SID/STAR/runways, oceanic clearance state and the recent " +
-        "radio transcript. Frequencies come from the MSFS facilities API, the template file, or a placeholder (frequencySource).")]
+        "(rendered phraseology), pending readback items, squawk, cleared altitude, step climbs from the OFP, SID/STAR/runways, oceanic clearance " +
+        "state and the recent radio transcript. Frequencies come from the MSFS facilities API, the template file, or a placeholder (frequencySource). " +
+        "'deviations' lists a transponder code or COM1 frequency that doesn't match the assignment (MSFS changes both on its own, even with its ATC muted) " +
+        "after ATC said 'check squawk/frequency, should be …': offer the pilot the reset with the listed prepare_action steps, never reset without the pilot's confirmation.")]
     public static string GetAtcController(AtcService atc, AlertBus alerts) =>
         Json.Serialize(atc.WithSession((session, input) => Status(atc, session, input, alerts)));
 
@@ -27,7 +29,9 @@ public static class AtcControllerTools
         "'Frankfurt Delivery, Lufthansa four alpha bravo, request IFR clearance to Berlin' or a readback " +
         "'cleared to Berlin, MARUN seven golf departure, runway two five center, climb five thousand feet, squawk two two zero five'. " +
         "Readbacks are checked (SID, altitude, squawk, runway, frequency …); a wrong value gets 'negative' with the correct one. " +
-        "'say again' repeats the last transmission. Kopilot speaks the reply itself with the station's voice – do not read it aloud " +
+        "Level requests in cruise ('request climb flight level three four zero', 'request descent', 'request higher') get 'climb and maintain …' " +
+        "with readback; the cleared altitude follows. A call addressed to another station gets 'this is …, say again' (or the old station repeats " +
+        "the handoff). 'say again' repeats the last transmission. Kopilot speaks the reply itself with the station's voice – do not read it aloud " +
         "again unless the pilot asks. Starts the ATC session on the first call; after a Kopilot restart the saved session of the same " +
         "SimBrief flight continues (station, cleared altitude, transcript).")]
     public static async Task<string> AtcTransmit(
@@ -97,6 +101,7 @@ public static class AtcControllerTools
         var plan = session.Plan;
         var pending = session.PendingReadback;
         var oceanicPending = session.PendingOceanicReadback;
+        var deviations = new[] { session.SquawkDeviation, session.FrequencyDeviation }.OfType<AtcDeviation>().ToList();
         return new
         {
             active = true,
@@ -128,8 +133,13 @@ public static class AtcControllerTools
                 departureRunway = plan.DepartureRunway,
                 arrivalRunway = plan.ArrivalRunway,
                 squawk = session.Squawk,
+                squawkSource = session.SquawkSource,
                 clearedAltitude = session.ClearedAltitudeFt,
                 cruiseFt = plan.CruiseFt,
+                stepClimbs = plan.StepClimbs.Select(step => new { fix = step.Fix, altitudeFt = step.AltitudeFt, alongNm = Math.Round(step.AlongNm) }).ToList(),
+                expectedLevel = session.ExpectedLevel is { } later
+                    ? new { altitudeFt = later.AltitudeFt, dueUtc = later.DueUtc }
+                    : null,
                 alongTrackNm = session.AlongTrackNm is { } a ? Math.Round(a, 1) : (double?)null,
                 firs = plan.Firs.Select(f => new
                 {
@@ -150,6 +160,27 @@ public static class AtcControllerTools
                     exitFix = plan.Ofp.Fixes[plan.Oceanic.ExitFix].Ident,
                     reportFixes = plan.Oceanic.ReportFixes.Select(i => plan.Ofp.Fixes[i].Ident).ToList(),
                     pendingReadback = oceanicPending?.Items.Select(i => new { item = i.Name, expected = i.Expected.Written }).ToList(),
+                },
+            aircraft = new
+            {
+                transponder = input.TransponderCode,
+                com1ActiveMhz = input.Com1ActiveMhz is { } com ? Math.Round(com, 3) : (double?)null,
+            },
+            deviations = deviations.Count == 0
+                ? null
+                : new
+                {
+                    hint = Loc.T("tools.atc.deviationHint"),
+                    items = deviations.Select(d => new
+                    {
+                        kind = d.Kind.ToString().ToLowerInvariant(),
+                        expected = d.Expected,
+                        actual = d.Actual,
+                        station = d.Station,
+                        sinceUtc = d.SinceUtc,
+                        atcCalls = d.Calls,
+                        actions = d.Actions.Select(action => new { action = action.Action, value = action.Value }).ToList(),
+                    }).ToList(),
                 },
             voices = session.Voices.ToDictionary(v => v.Key, v => v.Value),
             overrides = session.Overrides.ToDictionary(v => v.Key, v => v.Value),

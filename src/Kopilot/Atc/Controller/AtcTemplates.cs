@@ -226,6 +226,36 @@ public sealed class AtcRules
 
     /// <summary>Sektoren, die die Route kürzer als diese Strecke berührt, bekommen keine eigene Übergabe (gegen Hin und Her).</summary>
     public double SectorMinNm { get; set; } = 20;
+
+    /// <summary>Stufensteigflüge aus dem OFP von sich aus freigeben ("when ready climb and maintain FL340").</summary>
+    public bool OfferStepClimbs { get; set; } = true;
+
+    /// <summary>So weit vor dem Stufenpunkt des OFP kommt die Freigabe.</summary>
+    public double StepClimbLeadNm { get; set; } = 10;
+
+    /// <summary>Anteil der Höhenanfragen, die "unable due traffic, expect … in … minutes" bekommen (0 = nie).</summary>
+    public int LevelRequestUnablePercent { get; set; }
+
+    /// <summary>Nach einer Ablehnung kommt die Freigabe nach so vielen Minuten von selbst.</summary>
+    public int LevelRequestDelayMinutes { get; set; } = 10;
+
+    /// <summary>Eingestellten Transpondercode mit dem zugewiesenen vergleichen ("check squawk, should be …").</summary>
+    public bool CheckSquawk { get; set; } = true;
+
+    /// <summary>Aktive COM1-Frequenz mit der Frequenz der Station vergleichen ("check frequency, should be …").</summary>
+    public bool CheckFrequency { get; set; } = true;
+
+    /// <summary>So lange muss eine Abweichung bestehen, bevor ATC sie anspricht (der Pilot dreht vielleicht noch).</summary>
+    public int DeviationSeconds { get; set; } = 15;
+
+    /// <summary>Nach einer Übergabe hat der Pilot so lange Zeit, die neue Frequenz zu rasten.</summary>
+    public int FrequencyGraceSeconds { get; set; } = 60;
+
+    /// <summary>Besteht die Abweichung weiter, wiederholt ATC den Hinweis nach so vielen Sekunden …</summary>
+    public int DeviationRepeatSeconds { get; set; } = 120;
+
+    /// <summary>… höchstens so oft insgesamt.</summary>
+    public int DeviationMaxCalls { get; set; } = 3;
 }
 
 public sealed class AtcMessageTemplate
@@ -447,6 +477,11 @@ public static class AtcMessageIds
     public const string CenterIdentified = "center.identified";
     public const string CenterHandoff = "center.handoff";
     public const string CenterHandoffApproach = "center.handoffApproach";
+    public const string CenterLevelRequest = "center.levelRequest";
+    public const string CenterLevelChange = "center.levelChange";
+    public const string CenterLevelChangeQnh = "center.levelChangeQnh";
+    public const string CenterLevelWhenReady = "center.levelWhenReady";
+    public const string CenterLevelUnable = "center.levelUnable";
 
     public const string OceanicRequest = "oceanic.request";
     public const string OceanicClearance = "oceanic.clearance";
@@ -471,6 +506,9 @@ public static class AtcMessageIds
     public const string CommonRoger = "common.roger";
     public const string CommonSayAgain = "common.sayAgain";
     public const string CommonRadioCheck = "common.radioCheck";
+    public const string CommonCheckSquawk = "common.checkSquawk";
+    public const string CommonCheckFrequency = "common.checkFrequency";
+    public const string CommonWrongStation = "common.wrongStation";
 
     public static readonly IReadOnlyList<string> All =
     [
@@ -479,11 +517,12 @@ public static class AtcMessageIds
         TowerReadyRequest, TowerLineUp, TowerTakeoff, TowerHandoffDeparture,
         DepartureContact, DepartureIdentified, DepartureDirect, DepartureHandoff,
         CenterContactClimbing, CenterContactLevel, CenterContactDescending, CenterClimb, CenterDescend, CenterIdentified, CenterHandoff, CenterHandoffApproach,
+        CenterLevelRequest, CenterLevelChange, CenterLevelChangeQnh, CenterLevelWhenReady, CenterLevelUnable,
         OceanicRequest, OceanicClearance, OceanicReadbackCorrect, OceanicPosition, OceanicRoger, OceanicHandoff,
         ApproachContact, ApproachDescend, ApproachCleared, ApproachHandoff,
         TowerLandingContact, TowerLanding, TowerVacate,
         GroundArrivalContact, GroundTaxiToGate,
-        CommonNegative, CommonRoger, CommonSayAgain, CommonRadioCheck,
+        CommonNegative, CommonRoger, CommonSayAgain, CommonRadioCheck, CommonCheckSquawk, CommonCheckFrequency, CommonWrongStation,
     ];
 }
 
@@ -496,6 +535,8 @@ public static class AtcVariables
         "holdingPoint", "gate", "level", "speedKt", "entryFix", "heading", "wind", "qnh", "fix", "eta", "nextFix",
         // zusätzlich in den Vorlagen verwendet
         "direction", "altitude", "nextCenter", "route", "time", "corrections", "levelVerb",
+        // Höhenanfrage: angefragte Höhe und Wartezeit bei "unable … expect … in … minutes"
+        "requested", "minutes",
     };
 
     /// <summary>Variablen, die als Readback-Punkt geprüft werden können.</summary>
