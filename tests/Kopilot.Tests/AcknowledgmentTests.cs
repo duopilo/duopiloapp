@@ -147,9 +147,10 @@ public sealed class AcknowledgmentTests
         Assert.Empty(tracker.Tick(At(5), paused: true));
         Assert.Empty(tracker.Tick(At(300), paused: true));
 
-        // 295 s Pause: fällig erst bei 10 + 295 s
+        // Pause von 5 s bis zum ersten Tick danach (304 s): 5 s waren vorher vergangen, 5 s fehlen noch → fällig bei 309 s
         Assert.Empty(tracker.Tick(At(304), paused: false));
-        Assert.Single(tracker.Tick(At(305), paused: false));
+        Assert.Empty(tracker.Tick(At(308), paused: false));
+        Assert.Single(tracker.Tick(At(309), paused: false));
     }
 
     [Fact]
