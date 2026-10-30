@@ -51,6 +51,20 @@ Gesamt: 146,7 s Audio in 49,7 s (Ø 1,66 s je Satz). Zum Vergleich Piper thorste
 Satz). Supertonic braucht also etwa 1,5-mal so viel CPU, bleibt aber deutlich schneller als Echtzeit. Die ONNX Runtime nutzte
 auf dem Runner praktisch einen Kern (CPU-Zeit ≈ Wandzeit); Duopilo stellt 2 Threads ein (`Smalltalk:SupertonicThreads`).
 
+### Duopilo-Engine (PR #37) auf dem Runner
+
+Gleiche Maschine (AMD EPYC 9V74, 1 Kern / 2 logische Prozessoren), Sprechtempo 1,1 wie im Dashboard:
+
+| | kurzer Satz (~2,3 s Audio) | langer Satz (~6,3 s Audio) |
+|---|---:|---:|
+| Duopilo-Engine, 1 Thread, im laufenden Betrieb | 1,4 s | 3,1 s |
+| Duopilo-Engine, erster Satz (Modell laden) | 6,5 s | – |
+| C#-Beispiel von Supertone (ORT 1.20.1) | – | 3,2 s (7,7 s Audio, Tempo 1,05) |
+
+Die Duopilo-Engine ist so schnell wie das Beispiel (Rechenzeit hängt vor allem an der Textlänge). 1 und 2 Threads sind auf
+diesem Runner gleich schnell (nur ein echter Kern); auf einem PC mit mehreren Kernen sollten 2 Threads (Standard,
+`Smalltalk:SupertonicThreads`) die Zeit verkürzen. Die Zeiten schwanken zwischen Runnern deutlich (gleicher Satz 2,4–3,2 s).
+
 ## Auswahl
 
 Nach Hörprobe: **M1, M2** (männlich) und **F1** (weiblich) klingen gut; die übrigen nicht übernommen. Herstellerbeschreibung:
@@ -69,4 +83,5 @@ M1 lebhaft, klar; M2 tief, ruhig; F1 ruhig, etwas tiefer.
 ## Rohdaten
 
 Branch `bench/voice-after-beta`: `results/supertonic/supertonic.md` (Whisper je Stimme, Zeiten je Satz, Hörproben als WAV),
-`results/check.md` (Zungenbrecher Piper und kikiri), `results/supertonic-files.txt` (Größen und SHA-256 der Revision).
+`results/check.md` (Zungenbrecher Piper und kikiri), `results/supertonic-files.txt` (Größen und SHA-256 der Revision),
+`results/live/` (Duopilo-Engine: Hörproben, Whisper, Threads 1/2) und `results/same/` (Beispiel und Duopilo auf derselben Maschine).
