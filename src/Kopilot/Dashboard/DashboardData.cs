@@ -253,9 +253,9 @@ public sealed class DashboardData(
         }
 
         object? progress = null;
+        var points = ofp.RoutePoints();
         if (sim.Connection.IsConnected && sim.Num("lat") is { } lat && sim.Num("lon") is { } lon)
         {
-            var points = ofp.RoutePoints();
             if (simBrief.Locate(ofp, points, lat, lon) is { } route)
             {
                 var gs = sim.Num("gs");
@@ -311,6 +311,51 @@ public sealed class DashboardData(
             initialAltitudeFt = ofp.InitialAltitudeFt,
             costIndex = ofp.CostIndex,
             progress,
+            fuelChecks = FuelTrend(ofp, points),
+        };
+    }
+
+    /// <summary>Verlauf der Fuel Checks für den Trend unter der Route (x = Strecke ab Start, wie die Routenleiste).</summary>
+    private object? FuelTrend(Ofp ofp, IReadOnlyList<RoutePoint> points)
+    {
+        var log = monitoring.FuelChecks;
+        if (log.PlanId != FuelPlanSample.PlanIdOf(ofp))
+        {
+            return null;
+        }
+
+        var entries = log.Last(200);
+        if (entries.Count == 0)
+        {
+            return null;
+        }
+
+        var totalNm = 0.0;
+        for (var i = 0; i + 1 < points.Count; i++)
+        {
+            totalNm += RouteMath.DistanceNm(points[i].Lat, points[i].Lon, points[i + 1].Lat, points[i + 1].Lon);
+        }
+
+        return new
+        {
+            totalNm = Math.Round(totalNm),
+            intervalMinutes = monitoring.FuelCheckSettings.IntervalMinutes,
+            items = entries.Select(e => new
+            {
+                id = e.Id,
+                kind = e.Kind,
+                time = e.ZuluSec is { } z ? Fmt.ClockTime(z) + "Z" : e.TimeUtc.ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture) + "Z",
+                nm = Fmt.Round(e.DistanceFlownNm, 0),
+                fix = e.Ident,
+                actual = Fmt.Int(e.ActualKg),
+                diff = Fmt.Int(e.DiffKg),
+                change = Fmt.Int(e.ChangeKg),
+                landing = Fmt.Int(e.PredictedLandingKg),
+                minimum = Fmt.Int(e.MinimumLandingKg),
+                from = Fmt.Int(e.FromKg),
+                warnings = e.Warnings,
+                callout = e.Callout,
+            }),
         };
     }
 

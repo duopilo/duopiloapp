@@ -77,11 +77,14 @@ public static class FlightPlanTools
         "aircraft profile provides it, e.g. after DIR TO – 'source': 'fms'), distance and time to destination, " +
         "distance to top of descent, cross-track deviation from the planned route, planned altitude at the next fix, and fuel on board versus plan " +
         "with predicted landing fuel (kg). Times are UTC. 'etaSource': 'simbrief' = ETE/ETA from the planned navlog times (planned winds, climb and descent), " +
-        "shifted by the deviation from plan at the last fix passed; 'groundspeed' = remaining distance at current ground speed (navlog without times).")]
+        "shifted by the deviation from plan at the last fix passed; 'groundspeed' = remaining distance at current ground speed (navlog without times). " +
+        "'fuelCheck': Kopilot's automatic cruise fuel checks (at every OFP waypoint and at least every 'intervalMinutes'): the last check and the recent " +
+        "trend (diffKg = actual minus plan, changeKg = change since the previous check, negative = worse), plus refuelling it detected.")]
     public static async Task<string> GetProgress(
         SimConnectClient sim,
         SimBriefService simBrief,
         AlertBus alerts,
+        MonitoringService monitoring,
         CancellationToken cancellationToken = default)
     {
         if (!sim.Connection.IsConnected)
@@ -163,12 +166,53 @@ public static class FlightPlanTools
                 predictedLandingKg = Fmt.Int(fp.PredictedLandingFuelKg),
                 minimumAtDestinationKg = Fmt.Int(ofp.Fixes.Count > 0 ? ofp.Fixes[^1].FuelMinOnboardKg : null),
             },
+            fuelCheck = FuelCheckView(monitoring, FuelPlanSample.PlanIdOf(ofp)),
             note = fp.FmsWaypointNotInPlan
                 ? "Das FMS fliegt einen Punkt an, der nicht im SimBrief-Plan steht – nächster Fix und Distanzen kommen aus dem Plan."
                 : fp.InTerminalArea ? "Im SID/STAR- oder Flughafenbereich weicht die Flugbahn oft vom Plan ab (Vektoren)." : null,
             activeAlerts = AlertView.Active(alerts),
         });
     }
+
+    /// <summary>Fuel Check für get_progress: letzter Check, Verlauf (kompakt) und Grenzen. Null, wenn der Verlauf zu einem anderen Plan gehört.</summary>
+    internal static object? FuelCheckView(MonitoringService monitoring, string planId, int last = 12)
+    {
+        var log = monitoring.FuelChecks;
+        if (log.PlanId != planId)
+        {
+            return null;
+        }
+
+        var settings = monitoring.FuelCheckSettings;
+        return new
+        {
+            last = log.LastCheck is { } c ? FuelCheckItem(c) : null,
+            history = log.Last(last).Select(FuelCheckItem),
+            settings = new
+            {
+                intervalMinutes = settings.IntervalMinutes,
+                deviationIncreaseKg = settings.DeviationIncreaseKg,
+                landingBufferKg = settings.LandingBufferKg,
+                minSpacingMinutes = settings.MinSpacingMinutes,
+            },
+        };
+    }
+
+    private static object FuelCheckItem(FuelCheckEntry e) => new
+    {
+        kind = e.Kind,
+        timeUtc = e.ZuluSec is { } z ? Fmt.ClockTime(z) + "Z" : e.TimeUtc.ToString("HH:mm", CultureInfo.InvariantCulture) + "Z",
+        fix = e.Ident,
+        actualKg = Fmt.Int(e.ActualKg),
+        plannedKg = Fmt.Int(e.PlannedKg),
+        diffKg = Fmt.Int(e.DiffKg),
+        changeKg = Fmt.Int(e.ChangeKg),
+        predictedLandingKg = Fmt.Int(e.PredictedLandingKg),
+        minimumLandingKg = Fmt.Int(e.MinimumLandingKg),
+        fromKg = Fmt.Int(e.FromKg),
+        warnings = e.Warnings.Count > 0 ? e.Warnings : null,
+        callout = e.Callout,
+    };
 
     private static object? Marker(RouteMarker? marker, double? eteSec, double? zulu) =>
         marker is null ? null : new { distanceNm = Math.Round(marker.DistanceNm), ete = Fmt.Duration(eteSec), etaUtc = Eta(zulu, eteSec) };

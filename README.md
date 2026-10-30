@@ -17,7 +17,7 @@ Kopilot verbindet **Microsoft Flight Simulator 2024** über SimConnect mit **Cla
 | `get_monitoring_status` | Flugphase, aktive/abgeschaltete Regeln, Ruhezeit |
 | `get_fma_log` | Verlauf der FMA-Wechsel mit Uhrzeit, IAS und Radiohöhe – z. B. ob nach dem Autoland ROLL OUT aktiv war |
 | `get_flight_plan` | SimBrief-OFP: Route, Bahnen, Reiseflughöhe, Cost Index, Fuel, Gewichte, Zeiten, Navlog |
-| `get_progress` | Fortschritt gegen den Plan: nächster Fix (beim A32NX der aktive FMS-Wegpunkt, z. B. nach DIR TO), Distanz/ETA, TOD, Querablage, Fuel gegen Plan. ETA aus den Navlog-Zeiten (geplante Winde), korrigiert um die Abweichung am letzten überflogenen Fix; ohne Navlog-Zeiten aus der Groundspeed (`etaSource`) |
+| `get_progress` | Fortschritt gegen den Plan: nächster Fix (beim A32NX der aktive FMS-Wegpunkt, z. B. nach DIR TO), Distanz/ETA, TOD, Querablage, Fuel gegen Plan, Verlauf der automatischen Fuel Checks (`fuelCheck`). ETA aus den Navlog-Zeiten (geplante Winde), korrigiert um die Abweichung am letzten überflogenen Fix; ohne Navlog-Zeiten aus der Groundspeed (`etaSource`) |
 | `get_atc` | Ingame-ATC: Callsign, Freigaben, zugewiesene Bahn (inkl. L/C/R aus SimBrief) |
 | `get_traffic` | Verkehr im Umkreis (KI und Multiplayer): Callsign, Typ, Abstand, Uhrzeit-Peilung, Höhendifferenz, Trend, GS, Callout fürs nächste Ziel |
 | `get_navigation` | GPS-Flugplanvariablen des Sims (bei Airliner-FMS meist leer – dann `get_progress`) |
@@ -77,6 +77,8 @@ Dazu kommen die Callouts, die ein Pilot Monitoring macht:
 | `PM_FLAPS` | Speed checked, flaps two / Flaps zero | Klappenhebel steht 1,5 s in neuer Stellung; beim Ausfahren mit Speed-Check gegen VFE |
 | `PM_GEAR` | Gear down / Gear up | Fahrwerkshebel in der Luft |
 | `TAXI_SPEED` | Taxi speed | am Boden länger als 2 s über 25 kt Groundspeed (nicht im Start- und Landerollen), höchstens alle 30 s – einstellbar in `voice-settings.json` |
+| `FUEL_CHECK` | HENDY, fuel 34.1, 2.2 below plan | Reiseflug: Überflug eines OFP-Wegpunkts, auf langen Strecken ohne Wegpunkt alle 30 min (siehe [Fuel Check](#fuel-check)) |
+| `FUEL_WARNING` | HENDY, fuel 31.2, 2.8 below plan, deviation increased by 0.6 | Abweichung seit dem letzten Check um mehr als 300 kg schlechter, oder Landemenge unter Minimum + Puffer |
 
 Radiohöhen (2500, 1000, 500 …), „Hundred above“, „Minimum“ und „Retard“ sagt der A32NX selbst an. Kopilot kann sie zusätzlich sprechen – für Flugzeuge ohne eigene Ansagen: Dashboard → Ansagen → Stimme, oder `Kopilot:Monitoring:AircraftAutoCallouts`.
 
@@ -85,6 +87,30 @@ Nach dem Laden eines Flugs, einem Flugzeugwechsel oder einem Air-Start schweigt 
 ```jsonc
 "Kopilot": { "Monitoring": { "DisabledRules": [ "SPEED_DEVIATION" ] } }
 ```
+
+### Fuel Check
+
+Mit SimBrief-Plan vergleicht Kopilot im Reiseflug den Treibstoff an Bord mit dem Plan – wie die Crew beim Fuel Check:
+
+- **An jedem OFP-Wegpunkt** (Abschnitt mit SimBrief-Phase CRZ, ohne TOC/TOD) sagt Kopilot an: „HENDY, fuel 34.1, 2.2 below plan“ (Tonnen, eine Nachkommastelle; unter 50 kg Abweichung „on plan“). Funkfeuer mit dreistelliger Kennung heißen wie im Funk („Wabush“ statt YWK), Koordinatenpunkte „53 north 50 west“.
+- **Intervall:** Kommt im Reiseflug 30 min (Sim-Zeit, Pausen zählen nicht) kein Wegpunkt, gibt es einen Check ohne Ort: „Fuel 34.1, 2.2 below plan“.
+- **Warnung (`FUEL_WARNING`, Caution)** – laufend geprüft, nicht nur an Wegpunkten:
+  - die Abweichung ist seit dem letzten Check um mehr als `DeviationIncreaseKg` schlechter geworden (Leckverdacht): „…, deviation increased by 0.6“;
+  - die prognostizierte Landemenge (geplante Landemenge + heutige Abweichung) fällt unter Minimum + Puffer bzw. unter das Minimum: „…, landing fuel 6.8, minimum 6.5“ / „…, landing fuel 6.2, below minimum“. Minimum ist `fuel_min_onboard` am Ziel laut Navlog (sonst Ausweich- plus Endreserve). Der Puffer ist höchstens die Hälfte dessen, was der Plan über dem Minimum landet – sonst würde ein knapp geplanter Flug schon beim ersten Check warnen. Dieselbe Warnung kommt erst wieder, wenn die Landemenge zwischendurch 100 kg über der Grenze war.
+- **Nachtanken** über Toolbar oder EFB (Treibstoff steigt) und Sprünge nach unten, die schneller sind als jeder Verbrauch, sind keine Lecks: Kopilot meldet sie stumm („Nachtanken erkannt: 3.530 → 11.090 kg“) und beginnt den Vergleich neu.
+
+Im Dashboard steht unter der Route der Trend der Abweichung gegen Plan (x = Strecke wie die Routenleiste, Warnungen amber, Tanken als cyan Linie) mit den letzten Checks als Tabelle; `get_progress` liefert ihn als `fuelCheck`. Einstellbar in `appsettings.Local.json`:
+
+```jsonc
+"Kopilot": { "Monitoring": { "FuelCheck": {
+  "IntervalMinutes": 30,       // 0 = kein Intervall-Check
+  "DeviationIncreaseKg": 300,  // 0 = keine Warnung bei wachsender Abweichung
+  "LandingBufferKg": 500,
+  "MinSpacingMinutes": 0       // z. B. 10 = über Europa nicht an jedem Wegpunkt ansagen
+} } }
+```
+
+Nur die Ansagen abschalten, Warnungen behalten: `FUEL_CHECK` in `DisabledRules` (der Verlauf im Dashboard läuft weiter).
 
 **Push:** Claude.ai und der Sprachmodus können keine Nachrichten vom Server empfangen. Deshalb spricht Kopilot die Callouts selbst (siehe unten). Claude sieht die Meldungen zusätzlich über `activeAlerts` in jeder Antwort oder über `wait_for_alerts`.
 

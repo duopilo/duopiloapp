@@ -34,6 +34,13 @@ public sealed class MonitoringService : BackgroundService
             TrafficCooldownSec = Math.Max(0, _options.Traffic.ProximityCooldownSec),
             TaxiSpeedKt = _options.TaxiSpeedKt,
             TaxiSpeedCooldownSec = _options.TaxiSpeedCooldownSec,
+            Fuel = new FuelCheckSettings
+            {
+                IntervalMinutes = Math.Max(0, _options.FuelCheck.IntervalMinutes),
+                DeviationIncreaseKg = Math.Max(0, _options.FuelCheck.DeviationIncreaseKg),
+                LandingBufferKg = Math.Max(0, _options.FuelCheck.LandingBufferKg),
+                MinSpacingMinutes = Math.Max(0, _options.FuelCheck.MinSpacingMinutes),
+            },
         });
     }
 
@@ -51,6 +58,11 @@ public sealed class MonitoringService : BackgroundService
     }
 
     public DateTimeOffset SuppressedUntilUtc => _engine.SuppressedUntilUtc;
+
+    /// <summary>Verlauf der Fuel Checks (Dashboard-Trend, get_progress).</summary>
+    public FuelCheckLog FuelChecks => _engine.FuelChecks;
+
+    public FuelCheckSettings FuelCheckSettings => _engine.FuelCheckSettings;
 
     /// <summary>Taxi-Speed-Warnung einstellen (aus voice-settings.json).</summary>
     public void ConfigureTaxiSpeed(bool enabled, double thresholdKt, double cooldownSec) =>

@@ -1,5 +1,6 @@
 using Kopilot.Aircraft;
 using Kopilot.Atc;
+using Kopilot.FlightPlan;
 using Kopilot.Traffic;
 
 namespace Kopilot.Monitoring;
@@ -113,6 +114,15 @@ public sealed record FlightSnapshot
 
     /// <summary>Verkehrslage der letzten Hintergrundabfrage (null = keine, z. B. am Boden oder Regel aus).</summary>
     public TrafficPicture? Traffic { get; init; }
+
+    /// <summary>Treibstoff an Bord (kg).</summary>
+    public double? FuelTotalKg { get; init; }
+
+    /// <summary>Sim-Uhrzeit (ZULU TIME) in Sekunden seit Mitternacht – Takt des Intervall-Fuel-Checks in Sim-Zeit.</summary>
+    public double? ZuluTimeSec { get; init; }
+
+    /// <summary>Treibstoff gegen den SimBrief-Plan an der Position (alle 2 s neu gerechnet, null ohne Plan oder Route).</summary>
+    public FuelPlanSample? FuelPlan { get; init; }
 
     public bool Airborne => OnGround == false;
 

@@ -14,6 +14,7 @@ public sealed class SnapshotFactory(SimConnectClient sim, EcamCatalog ecam, SimB
 
     private DateTimeOffset _todComputedUtc;
     private double? _todDistance;
+    private FuelPlanSample? _fuelSample;
 
     public FlightSnapshot Build(DateTimeOffset now)
     {
@@ -25,6 +26,7 @@ public sealed class SnapshotFactory(SimConnectClient sim, EcamCatalog ecam, SimB
         var status = sim.Status;
         var signals = new AircraftSignals(sim);
         var ecamState = EcamReader.Read(signals, ecam);
+        UpdatePlan();
 
         return new FlightSnapshot
         {
@@ -63,7 +65,7 @@ public sealed class SnapshotFactory(SimConnectClient sim, EcamCatalog ecam, SimB
             DecisionHeightFt = signals.DecisionHeightFt,
             MinimumDescentAltitudeFt = signals.MinimumDescentAltitudeFt,
             TdReached = signals.TdReached,
-            PlanTodDistanceNm = PlanTodDistance(),
+            PlanTodDistanceNm = _todDistance,
             Fma = Fma(signals),
             MasterWarning = signals.MasterWarning,
             MasterCaution = signals.MasterCaution,
@@ -73,6 +75,9 @@ public sealed class SnapshotFactory(SimConnectClient sim, EcamCatalog ecam, SimB
             Limits = signals.Profile?.Limits ?? DefaultLimits,
             AssignedRunway = AtcReader.AssignedRunway(sim, simBrief.Current),
             Traffic = traffic.MonitoringPicture,
+            FuelTotalKg = sim.Num("fuelTotalKg"),
+            ZuluTimeSec = sim.Num("zuluTimeSec"),
+            FuelPlan = _fuelSample,
         };
     }
 
@@ -111,29 +116,30 @@ public sealed class SnapshotFactory(SimConnectClient sim, EcamCatalog ecam, SimB
     }
 
     /// <summary>
-    /// TOD laut SimBrief nur alle paar Sekunden neu rechnen – die Route ändert sich nicht im 200-ms-Takt.
+    /// Plan-Werte (TOD, Treibstoff gegen Plan) nur alle paar Sekunden neu rechnen – die Route ändert sich nicht im 200-ms-Takt.
     /// Dabei auch den Überflug der Fixes mitschreiben (ETA nach Plan in get_progress und im Dashboard).
     /// </summary>
-    private double? PlanTodDistance()
+    private void UpdatePlan()
     {
         var now = DateTimeOffset.UtcNow;
         if (now - _todComputedUtc < TimeSpan.FromSeconds(2))
         {
-            return _todDistance;
+            return;
         }
 
         _todComputedUtc = now;
         _todDistance = null;
+        _fuelSample = null;
         if (simBrief.Current is { } ofp && sim.Num("lat") is { } lat && sim.Num("lon") is { } lon)
         {
             var points = ofp.RoutePoints();
             if (simBrief.Locate(ofp, points, lat, lon) is { } route)
             {
                 simBrief.ObservePassage(ofp, points, route, sim.Num("zuluTimeSec"), sim.Num("gs"));
-                _todDistance = ProgressCalculator.Compute(ofp, points, route, null).TopOfDescent?.DistanceNm;
+                var progress = ProgressCalculator.Compute(ofp, points, route, sim.Num("fuelTotalKg"));
+                _todDistance = progress.TopOfDescent?.DistanceNm;
+                _fuelSample = FuelPlanSample.From(ofp, points, route, progress, now);
             }
         }
-
-        return _todDistance;
     }
 }

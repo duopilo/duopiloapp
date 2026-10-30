@@ -44,6 +44,9 @@ public sealed class MonitorSettings
 
     /// <summary>Taxi-Speed-Warnung an/aus (zusätzlich zu <see cref="DisabledRules"/>).</summary>
     public bool TaxiSpeedEnabled { get; set; } = true;
+
+    /// <summary>Fuel Check im Reiseflug (FUEL_CHECK, FUEL_WARNING).</summary>
+    public FuelCheckSettings Fuel { get; init; } = new();
 }
 
 /// <summary>
@@ -168,6 +171,7 @@ public sealed partial class MonitorEngine
             }
 
             _apOffSince = null;
+            NoteFuelGap();
             Phase = "paused";
             _prev = s;
             return events;
@@ -186,6 +190,7 @@ public sealed partial class MonitorEngine
 
         if (s.DataAgeSec is not { } age || age > _settings.MaxDataAgeSec)
         {
+            NoteFuelGap();
             Phase = "stale";
             return events;
         }
@@ -211,6 +216,7 @@ public sealed partial class MonitorEngine
         CheckPmCallouts(s, now, suppressed, events);
         CheckTaxiSpeed(s, now, suppressed, events);
         CheckAircraftAutoCallouts(s, now, suppressed, events);
+        CheckFuel(s, now, suppressed, events);
 
         _prev = s;
         return events;
@@ -849,6 +855,7 @@ public sealed partial class MonitorEngine
         _landingCheck2000Done = false;
         _landingCheck1000Done = false;
         ResetCallouts();
+        ResetFuel();
     }
 
     private static void Later(ref DateTimeOffset target, DateTimeOffset candidate)
