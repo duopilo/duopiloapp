@@ -5,6 +5,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Deterministic>true</Deterministic>
     <Authors>Shin_Jin_Jin</Authors>
+    <!--
+      Produktname – zentral für Installer, ZIP und GitHub Release (installer/installer.ps1, .github/workflows/release.yml).
+      Programmdatei (AssemblyName), Datenordner %LOCALAPPDATA%\Kopilot und Autostart-Eintrag stehen noch im Code.
+    -->
     <Product>Kopilot</Product>
   </PropertyGroup>
 </Project>
