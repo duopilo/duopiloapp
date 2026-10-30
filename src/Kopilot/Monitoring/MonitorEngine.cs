@@ -113,6 +113,8 @@ public sealed partial class MonitorEngine
             new(Rules.SpeedLimitFl100, AlertSeverity.Caution, 5, 3, 60, CheckSpeedLimit),
             new(Rules.SpeedDeviation, AlertSeverity.Caution, 4, 2, 30, CheckSpeedDeviation),
             new(Rules.TrafficProximity, AlertSeverity.Caution, 1, 6, _settings.TrafficCooldownSec, CheckTrafficProximity),
+            new(Rules.LocDeviation, AlertSeverity.Caution, 1, 2, 10, CheckLocDeviation),
+            new(Rules.GsDeviation, AlertSeverity.Caution, 1, 2, 10, CheckGsDeviation),
         ];
     }
 
@@ -224,6 +226,7 @@ public sealed partial class MonitorEngine
         CheckTaxiSpeed(s, now, suppressed, events);
         CheckAircraftAutoCallouts(s, now, suppressed, events);
         CheckFuel(s, now, suppressed, events);
+        CheckAutoflight(s, now, suppressed, events);
 
         _prev = s;
         return events;
@@ -871,6 +874,7 @@ public sealed partial class MonitorEngine
         _landingCheck1000Done = false;
         ResetCallouts();
         ResetFuel();
+        ResetAutoflight();
     }
 
     private static void Later(ref DateTimeOffset target, DateTimeOffset candidate)

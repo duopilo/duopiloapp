@@ -360,7 +360,9 @@ public static class KopilotTools
     [Description(
         "The active Kopilot aircraft profile for the loaded aircraft: semantic bindings (e.g. ap1, athrStatus, fmaVertical) with their variable, " +
         "current raw value, text meaning and whether the variable was verified in the sim, plus extra profile variables, ECAM configuration and speed limits. " +
-        "Use this to check which values come from aircraft-specific L: variables.")]
+        "Use this to check which values come from aircraft-specific L: variables. 'callouts' shows for the autoflight and approach callouts " +
+        "(TCAS_RA, ATHR_OFF, FMA_CHANGE, LOC_DEVIATION, GS_DEVIATION, APPR_NOT_ACTIVE) whether their bindings are 'verified', 'unverified' or 'missing' " +
+        "(missing = the callout stays silent for this aircraft).")]
     public static string GetAircraftProfile(SimConnectClient sim, ProfileStore profiles, AlertBus alerts)
     {
         if (!sim.Connection.IsConnected)
@@ -427,6 +429,13 @@ public static class KopilotTools
             notes = profile.Notes,
             bindings,
             missingBindings = BindingKeys.All.Where(k => !profile.Bindings.ContainsKey(k)),
+            callouts = CalloutCoverage.For(profile).Select(c => new
+            {
+                rule = c.Rule,
+                status = c.Status,
+                missing = c.Missing.Count > 0 ? c.Missing : null,
+                unverified = c.Unverified.Count > 0 ? c.Unverified : null,
+            }),
             values,
             ecam = profile.Ecam is { } e ? new { e.Format, e.LeftLines, e.RightLines, e.Lines } : null,
             limits = profile.Limits,

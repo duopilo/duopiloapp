@@ -92,7 +92,17 @@
     "flaps": {
       "name": "L:A32NX_FLAPS_CONF_INDEX", "type": "enum", "verified": false,
       "values": { "0": "0", "1": "1", "2": "1+F", "3": "2", "4": "3", "5": "FULL" }
-    }
+    },
+    // Anflug-Callouts (v0.9.2): Namen laut FBW-Doku (a320-simvars.md), im Sim noch nicht geprüft.
+    // LOC/GS-Abweichung in Grad, "scale" rechnet in Dots um wie das FBW-PFD (LOC 0,8°/Dot, G/S 0,4°/Dot).
+    "fmgcPhase": {
+      "name": "L:A32NX_FMGC_FLIGHT_PHASE", "type": "enum", "verified": false, "description": "FMGC flight phase ('Approach phase not activated')",
+      "values": { "0": "PREFLIGHT", "1": "TAKEOFF", "2": "CLIMB", "3": "CRUISE", "4": "DESCENT", "5": "APPROACH", "6": "GO AROUND", "7": "DONE" }
+    },
+    "locDeviation": { "name": "L:A32NX_RADIO_RECEIVER_LOC_DEVIATION", "type": "number", "scale": 1.25, "verified": false, "description": "Localizer deviation (degrees → dots)" },
+    "locValid": { "name": "L:A32NX_RADIO_RECEIVER_LOC_IS_VALID", "type": "bool", "verified": false, "description": "Localizer signal valid" },
+    "gsDeviation": { "name": "L:A32NX_RADIO_RECEIVER_GS_DEVIATION", "type": "number", "scale": 2.5, "verified": false, "description": "Glideslope deviation (degrees → dots)" },
+    "gsValid": { "name": "L:A32NX_RADIO_RECEIVER_GS_IS_VALID", "type": "bool", "verified": false, "description": "Glideslope signal valid" }
   },
   "ecam": {
     "format": "fbw-a32nx",

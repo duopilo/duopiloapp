@@ -43,6 +43,9 @@ public sealed record SpeechRequest(string Text, SpeechPriority Priority)
     /// bestätigt werden kann. Nicht aufgerufen, wenn sie verfällt, verworfen oder endgültig unterbrochen wird. Läuft auf dem Sprach-Thread.
     /// </summary>
     public Action<DateTimeOffset>? OnSpoken { get; init; }
+
+    /// <summary>Statt Sprache den Warnton spielen (<see cref="ToneGenerator"/>); <see cref="Text"/> steht dann nur in Log und Status.</summary>
+    public bool Tone { get; init; }
 }
 
 /// <summary>Eine Ansage in der Warteschlange.</summary>
@@ -82,6 +85,9 @@ public sealed record SpeechItem
 
     /// <summary>Siehe <see cref="SpeechRequest.OnSpoken"/>.</summary>
     public Action<DateTimeOffset>? OnSpoken { get; init; }
+
+    /// <summary>Siehe <see cref="SpeechRequest.Tone"/>.</summary>
+    public bool Tone { get; init; }
 
     public bool IsAlert => Priority >= SpeechPriority.Callout;
 }

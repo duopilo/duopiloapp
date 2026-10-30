@@ -28,6 +28,15 @@ public enum IntentKind
     /// <summary>"Ja", "OK", "Roger" – bestätigt nichts (dafür braucht es "Confirm", "Correct" oder "Affirm").</summary>
     Acknowledge,
 
+    /// <summary>"Check", "Copy" – der Pilot hat eine wichtige Meldung gehört (Bestätigungspflicht). Führt nie etwas aus.</summary>
+    Check,
+
+    /// <summary>Checkliste starten, z. B. "Before start checklist". <see cref="VoiceIntent.Value"/> = Kennung der Checkliste.</summary>
+    Checklist,
+
+    /// <summary>Während einer Checkliste: "Skip" (Punkt überspringen) oder "Stop checklist". <see cref="VoiceIntent.Value"/> = "skip" oder "stop".</summary>
+    ChecklistControl,
+
     Unknown,
 }
 
@@ -45,6 +54,33 @@ public enum QueryKind
     Apu,
     Baro,
     Heading,
+
+    /// <summary>Treibstoff gegen den SimBrief-Plan und prognostizierte Landemenge.</summary>
+    FuelPlan,
+
+    /// <summary>Nächster Wegpunkt mit Distanz und ETA.</summary>
+    NextWaypoint,
+
+    /// <summary>ETA am Ziel.</summary>
+    Eta,
+
+    TopOfDescent,
+
+    /// <summary>Nächster Verkehr – wie der Callout von get_traffic.</summary>
+    Traffic,
+
+    Wind,
+
+    /// <summary>Außentemperatur (SAT).</summary>
+    Temperature,
+
+    /// <summary>Wind und Temperatur zusammen.</summary>
+    Weather,
+
+    Squawk,
+
+    /// <summary>Aktive ATC-Station und Frequenz.</summary>
+    Station,
 }
 
 /// <summary>Erkannter Befehl. <see cref="ActionId"/>/<see cref="Value"/> entsprechen den Aktionen im Flugzeugprofil.</summary>
@@ -56,6 +92,8 @@ public sealed record VoiceIntent(IntentKind Kind, string? ActionId = null, strin
     {
         IntentKind.Action => Value is null ? ActionId! : $"{ActionId} = {Value}",
         IntentKind.Query => $"query {Query}",
+        IntentKind.Checklist => $"checklist {Value}",
+        IntentKind.ChecklistControl => $"checklist {Value}",
         _ => Kind.ToString().ToLowerInvariant(),
     };
 }
@@ -78,6 +116,12 @@ public static partial class VoiceIntents
     private static readonly HashSet<string> AckWords = new(StringComparer.Ordinal)
     {
         "yes", "ja", "jawohl", "richtig", "ok", "okay", "roger", "wilco", "verstanden",
+    };
+
+    // Quittung einer wichtigen Meldung ("check", "copy"; "correcting" bei Abweichungen wie "Sink rate")
+    private static readonly HashSet<string> CheckWords = new(StringComparer.Ordinal)
+    {
+        "check", "checked", "copy", "copied", "correcting",
     };
 
     private static readonly HashSet<string> NoWords = new(StringComparer.Ordinal)
@@ -173,6 +217,12 @@ public static partial class VoiceIntents
             }
         }
 
+        // "Check" / "Copy": eine wichtige Meldung gehört (Bestätigungspflicht) – der ganze Satz besteht daraus
+        if (words.Any(CheckWords.Contains) && words.All(w => CheckWords.Contains(w) || AckWords.Contains(w) || ConfirmFiller.Contains(w)))
+        {
+            return new VoiceIntent(IntentKind.Check);
+        }
+
         var text = string.Join(' ', words.Where(w => !Politeness.Contains(w)));
         if (text.Length == 0)
         {
@@ -182,6 +232,11 @@ public static partial class VoiceIntents
         if (SayAgainPattern().IsMatch(text))
         {
             return new VoiceIntent(IntentKind.SayAgain);
+        }
+
+        if (Checklist(text) is { } checklist)
+        {
+            return checklist;
         }
 
         if (Query(text) is { } query)
@@ -238,6 +293,27 @@ public static partial class VoiceIntents
         .Select(q => (new Regex($@"^(?:(?:{q.Pattern}) (?:check|checks|control|prüfen|pruefen|kontrolle|status)|(?:check|prüfe|pruefe|kontrolle) (?:{q.Pattern}))$", RegexOptions.CultureInvariant | RegexOptions.Compiled), q.Kind))
         .ToArray();
 
+    // Abfragen, die nicht dem Muster "<Begriff> check" folgen (ganzer Satz, optional mit "check"/"say" davor oder "check" dahinter)
+    private static readonly (string Pattern, QueryKind Kind)[] PhraseItems =
+    [
+        (@"(?:fuel|sprit|treibstoff|kraftstoff) (?:versus |vs |against |gegen |zum |vom |und |and )?plan|landing fuel|fuel (?:at|for) landing|fuel prediction|"
+         + @"predicted landing fuel|landemenge|(?:sprit|treibstoff|kraftstoff) (?:bei|zur|für|fuer) landung|(?:sprit|treibstoff) ?prognose", QueryKind.FuelPlan),
+        (@"(?:next|nächster|naechster|nächste|naechste) (?:waypoint|wegpunkt|fix|point|punkt)(?: eta| distance| distanz)?", QueryKind.NextWaypoint),
+        (@"eta|eta destination|eta ziel|arrival time|ankunftszeit|ankunft|wann landen wir|when do we land|time of arrival", QueryKind.Eta),
+        (@"top of descent|tod|sinkflugbeginn|beginn (?:des )?sinkflugs|beginn sinkflug|descent point", QueryKind.TopOfDescent),
+        (@"(?:any )?traffic|verkehr", QueryKind.Traffic),
+        (@"winds?|wind (?:direction|richtung)", QueryKind.Wind),
+        (@"temperature|temp|temperatur|sat|oat|outside air temperature|(?:außen|aussen) ?temperatur", QueryKind.Temperature),
+        (@"wind (?:and|und) (?:temperature|temperatur)|wetter|weather", QueryKind.Weather),
+        (@"squawk|squawk code|transponder|transponder code|(?:transponder ?)?code", QueryKind.Squawk),
+        (@"station|frequency|frequenz|active (?:station|frequency)|aktive (?:station|frequenz)|current (?:station|frequency)|"
+         + @"aktuelle (?:station|frequenz)|which (?:station|frequency)|welche (?:station|frequenz)|who are we talking to|mit wem sprechen wir", QueryKind.Station),
+    ];
+
+    private static readonly (Regex Pattern, QueryKind Kind)[] PhraseRules = PhraseItems
+        .Select(q => (new Regex($@"^(?:(?:check|say|prüfe|pruefe|kontrolle) )?(?:{q.Pattern})(?: (?:check|checks|status|report|prüfen|pruefen|kontrolle|please))?$", RegexOptions.CultureInvariant | RegexOptions.Compiled), q.Kind))
+        .ToArray();
+
     private static QueryKind? Query(string text)
     {
         foreach (var (pattern, kind) in QueryRules)
@@ -246,6 +322,56 @@ public static partial class VoiceIntents
             {
                 return kind;
             }
+        }
+
+        foreach (var (pattern, kind) in PhraseRules)
+        {
+            if (pattern.IsMatch(text))
+            {
+                return kind;
+            }
+        }
+
+        return null;
+    }
+
+    // ------------------------------------------------------------------ Checklisten
+
+    /// <summary>Gesprochene Namen der Checklisten (englisch wie im Cockpit, deutsch als Umschreibung) → Kennung.</summary>
+    private static readonly (string Pattern, string Id)[] ChecklistNames =
+    [
+        (@"before start|vor (?:dem )?anlassen", "beforeStart"),
+        (@"after start|nach (?:dem )?anlassen", "afterStart"),
+        (@"before takeoff|vor (?:dem )?start|vor (?:dem )?abflug", "beforeTakeoff"),
+        (@"approach|anflug", "approach"),
+        (@"landing|landung", "landing"),
+        (@"after landing|nach (?:der )?landung", "afterLanding"),
+        (@"parking|parken|abstellen", "parking"),
+    ];
+
+    private static readonly (Regex Pattern, string Id)[] ChecklistRules = ChecklistNames
+        .Select(c => (new Regex($@"^(?:(?:start|run|read|begin|starte|lies) )?(?:(?:{c.Pattern}) checklist|checklist (?:{c.Pattern}))(?: please)?$", RegexOptions.CultureInvariant | RegexOptions.Compiled), c.Id))
+        .ToArray();
+
+    /// <summary>Checkliste starten oder steuern ("skip", "stop checklist"), sonst null.</summary>
+    private static VoiceIntent? Checklist(string text)
+    {
+        foreach (var (pattern, id) in ChecklistRules)
+        {
+            if (pattern.IsMatch(text))
+            {
+                return new VoiceIntent(IntentKind.Checklist, Value: id);
+            }
+        }
+
+        if (ChecklistStopPattern().IsMatch(text))
+        {
+            return new VoiceIntent(IntentKind.ChecklistControl, Value: "stop");
+        }
+
+        if (ChecklistSkipPattern().IsMatch(text))
+        {
+            return new VoiceIntent(IntentKind.ChecklistControl, Value: "skip");
         }
 
         return null;
@@ -314,8 +440,8 @@ public static partial class VoiceIntents
         Add(@"(?:takeoff lights?|startlicht) (?<v>on|an|ein|off|aus)", "lights.nose", m => Map(m, takeoff));
         var nose = new Dictionary<string, string>(StringComparer.Ordinal) { ["taxi"] = "taxi", ["takeoff"] = "to", ["to"] = "to", ["off"] = "off", ["aus"] = "off" };
         Add(@"nose lights? (?<v>taxi|takeoff|to|off|aus)", "lights.nose", m => Map(m, nose));
-        Add($@"(?:runway )?turnoff lights (?<v>{OnOffWords})", "lights.runwayTurnoff", m => Map(m, OnOff));
-        Add($@"wing lights? (?<v>{OnOffWords})", "lights.wing", m => Map(m, OnOff));
+        Add($@"(?:(?:runway )?turnoff lights|abrolllichter|abrolllicht|abrollscheinwerfer) (?<v>{OnOffWords})", "lights.runwayTurnoff", m => Map(m, OnOff));
+        Add($@"(?:wing lights?|flügelbeleuchtung|fluegelbeleuchtung|tragflächenbeleuchtung|tragflaechenbeleuchtung) (?<v>{OnOffWords})", "lights.wing", m => Map(m, OnOff));
 
         // ---------------- Schilder
         var seatbelts = new Dictionary<string, string>(OnOff, StringComparer.Ordinal) { ["auto"] = "auto" };
@@ -329,7 +455,7 @@ public static partial class VoiceIntents
         // ---------------- Baro / QNH
         Add(@"(?:qnh|baro|altimeter|höhenmesser)(?: to| auf)? (?<v>\d{3,4})", "efis.baro", m => int.TryParse(m.Groups["v"].Value, out var hpa) && hpa is >= 900 and <= 1100 ? m.Groups["v"].Value : "");
         Fixed(@"(?:(?:baro|qnh|altimeter|höhenmesser) )?(?:standard|std)(?: set)?", "efis.baroMode", "STD");
-        Fixed(@"(?:baro qnh|qnh mode)", "efis.baroMode", "QNH");
+        Fixed(@"(?:baro qnh|qnh mode|qnh modus|höhenmesser qnh|hoehenmesser qnh)", "efis.baroMode", "QNH");
 
         // ---------------- FCU
         Add(@"(?:altitude|alt|höhe|hoehe)(?: to| auf)? (?<v>\d{4,5})", "fcu.altitude", m => int.TryParse(m.Groups["v"].Value, out var ft) && ft >= 1000 ? m.Groups["v"].Value : "");
@@ -337,13 +463,13 @@ public static partial class VoiceIntents
         Add(@"(?:speed|geschwindigkeit|fahrt|spd)(?: to| auf)? (?<v>\d{3})", "fcu.speed", m => m.Groups["v"].Value);
         Fixed(@"(?:speed managed|managed speed|speed push|geschwindigkeit managed)", "fcu.speedManaged");
         Add(@"(?:heading|hdg|kurs|steuerkurs)(?: to| auf)? (?<v>\d{1,3})", "fcu.heading", m => m.Groups["v"].Value.PadLeft(3, '0'));
-        Fixed(@"(?:heading managed|managed heading|managed nav|nav managed|heading push)", "fcu.headingManaged");
+        Fixed(@"(?:heading managed|managed heading|managed nav|nav managed|heading push|kurs managed|steuerkurs managed)", "fcu.headingManaged");
         Add(@"(?:vs|steigrate|sinkrate)(?: to| auf)? (?<v>-?\d{2,4})", "fcu.vs", m => m.Groups["v"].Value);
-        Fixed(@"(?:altitude pull|pull altitude|open climb|open descent)", "fcu.altitudePull");
-        Fixed(@"(?:altitude push|push altitude|managed climb|managed descent)", "fcu.altitudePush");
+        Fixed(@"(?:altitude pull|pull altitude|open climb|open descent|höhe ziehen|hoehe ziehen)", "fcu.altitudePull");
+        Fixed(@"(?:altitude push|push altitude|managed climb|managed descent|höhe drücken|hoehe druecken|höhe drucken)", "fcu.altitudePush");
         Add($@"(?:autopilot|ap)(?: 1)? (?<v>{OnOffWords})", "fcu.ap1", m => Map(m, OnOff));
         Add($@"(?:autopilot|ap) 2 (?<v>{OnOffWords})", "fcu.ap2", m => Map(m, OnOff));
-        Add($@"autothrust (?<v>{OnOffWords})", "fcu.athr", m => Map(m, OnOff));
+        Add($@"(?:autothrust|schubautomatik) (?<v>{OnOffWords})", "fcu.athr", m => Map(m, OnOff));
         var arm = new Dictionary<string, string>(OnOff, StringComparer.Ordinal) { ["arm"] = "on", ["armed"] = "on" };
         Add($@"(?:loc|localizer|localiser|lock) (?<v>{OnOffWords}|arm|armed)", "fcu.loc", m => Map(m, arm));
         Add($@"(?:approach|appr|anflug) (?<v>{OnOffWords}|arm|armed)", "fcu.appr", m => Map(m, arm));
@@ -366,6 +492,53 @@ public static partial class VoiceIntents
         Add(@"tcas(?: to| auf)? (?<v>tara|ta|standby|stby)(?: only)?", "tcas.mode", m => Map(m, tcas));
         Fixed(@"(?<!tcas )tara", "tcas.mode", "tara");
         Fixed(@"(?<!tcas )ta only", "tcas.mode", "ta");
+        var traffic = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["thrt"] = "thrt", ["threat"] = "thrt", ["bedrohung"] = "thrt", ["all"] = "all", ["alle"] = "all", ["abv"] = "abv", ["above"] = "abv", ["oben"] = "abv",
+            ["darüber"] = "abv", ["darueber"] = "abv", ["blw"] = "blw", ["below"] = "blw", ["unten"] = "blw", ["darunter"] = "blw",
+        };
+        Add(@"(?:tcas )?(?:traffic|verkehr)(?: to| auf| mode| anzeige| display)? (?<v>thrt|threat|bedrohung|all|alle|abv|above|oben|darüber|darueber|blw|below|unten|darunter)", "tcas.traffic", m => Map(m, traffic));
+        Add($@"(?:altitude reporting|alt reporting|alt rptg|alt report|höhenübermittlung|hoehenuebermittlung|höhenmeldung|hoehenmeldung)(?: to| auf)? (?<v>{OnOffWords})", "xpdr.altReporting", m => Map(m, OnOff));
+
+        // ---------------- Funk (COM 1)
+        Add(@"(?:(?:com|kom|radio|funk)(?: 1)? )?(?:standby|stby)(?: frequency| frequenz)?(?: to| auf)? (?<v>1[1-3]\d(?:\.\d{1,3})?)", "com1.standby", m => m.Groups["v"].Value);
+        Fixed(@"(?:(?:com|kom)(?: 1)? (?:swap|transfer|tauschen|wechseln|umschalten)|(?:swap|transfer) (?:com|kom)(?: 1)?|swap (?:frequencies|frequency)|frequenzen? tauschen)", "com1.swap");
+
+        // ---------------- Elektrik
+        Add($@"(?:batteries|battery|batterien|batterie|bat)(?: 1 and 2| 1 2| both| beide)? (?<v>{OnOffWords})", "elec.battery", m => Map(m, OnOff));
+        Add($@"(?:external power|ext power|ext pwr|externe stromversorgung|externer strom|bodenstrom|ground power|gpu)(?: power)? (?<v>{OnOffWords})", "elec.extPwr", m => Map(m, OnOff));
+
+        // ---------------- Licht und Schilder (Nav/Logo, No smoking)
+        Add($@"(?:nav and logo lights?|nav logo lights?|nav lights?|navigation lights?|positionslichter|positionslicht|navigationslichter|navigationslicht)(?: and logo)? (?<v>{OnOffWords})", "lights.nav", m => Map(m, OnOff));
+        Add($@"(?<!(?:and|und|nav) )(?:logo lights?|logolichter|logolicht|logo beleuchtung)(?<!nav logo lights?) (?<v>{OnOffWords})", "lights.logo", m => Map(m, OnOff));
+        var noSmoking = new Dictionary<string, string>(OnOff, StringComparer.Ordinal) { ["auto"] = "auto" };
+        Add($@"(?:no smoking|nichtraucherzeichen|nichtraucher|rauchverbotszeichen|rauchverbot)(?: signs?| zeichen)? (?<v>{OnOffWords}|auto)", "signs.noSmoking", m => Map(m, noSmoking));
+
+        // ---------------- Anti-Ice je Triebwerk, Sonden- und Scheibenheizung
+        Add($@"(?:(?:engine|eng|triebwerk|triebwerks) 1 (?:antiice|enteisung)|(?:antiice|enteisung) (?:engine|eng|triebwerk) 1) (?<v>{OnOffWords})", "antiice.eng1", m => Map(m, OnOff));
+        Add($@"(?:(?:engine|eng|triebwerk|triebwerks) 2 (?:antiice|enteisung)|(?:antiice|enteisung) (?:engine|eng|triebwerk) 2) (?<v>{OnOffWords})", "antiice.eng2", m => Map(m, OnOff));
+        Add($@"(?:triebwerksenteisung|triebwerk enteisung|engines antiice) (?<v>{OnOffWords})", "antiice.engines", m => Map(m, OnOff));
+        Add($@"(?:flügelenteisung|fluegelenteisung|flügel enteisung|wing enteisung) (?<v>{OnOffWords})", "antiice.wing", m => Map(m, OnOff));
+
+        // Sondenheizung kennt nur ON und AUTO – "aus" heißt der Taster AUTO
+        var probe = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["on"] = "on", ["an"] = "on", ["ein"] = "on", ["auto"] = "auto", ["off"] = "auto", ["aus"] = "auto",
+        };
+        Add(@"(?:probe and window heat|probe window heat|probe heat|probes|window heat|sondenheizung|sonden heizung|scheibenheizung)(?: and window heat)? (?<v>on|an|ein|auto|off|aus)", "antiice.probeHeat", m => Map(m, probe));
+
+        // ---------------- EFIS: ND-Modus und -Reichweite
+        var ndMode = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["ls"] = "ls", ["vor"] = "vor", ["nav"] = "nav", ["arc"] = "arc", ["bogen"] = "arc", ["plan"] = "plan",
+        };
+        Add(@"nd(?: mode| modus)?(?: to| auf)? (?:rose )?(?<v>ls|vor|nav|arc|bogen|plan)", "efis.ndMode", m => Map(m, ndMode));
+        Add(@"(?:(?:nd )?(?:range|reichweite)|nd)(?: to| auf)? (?<v>10|20|40|80|160|320)", "efis.ndRange", m => m.Groups["v"].Value);
+
+        // ---------------- FCU: Höhen-Schrittweite, Expedite
+        Add(@"(?:(?:altitude|alt|höhe|hoehe|fcu) (?:increment|inkrement|schritt|schrittweite|step)|höhenschritt|hoehenschritt|increment)(?: to| auf)? (?<v>100|1000)", "fcu.altIncrement", m => m.Groups["v"].Value);
+        Add($@"(?:expedite|exped)(?: mode)? (?<v>{OnOffWords})", "fcu.exped", m => Map(m, OnOff));
+        Fixed(@"(?:expedite|exped) (?:climb|descent|descend)", "fcu.exped", "on");
 
         return [.. rules];
     }
@@ -378,4 +551,10 @@ public static partial class VoiceIntents
 
     [GeneratedRegex(@"^(?:say again|bitte say again)$")]
     private static partial Regex SayAgainPattern();
+
+    [GeneratedRegex(@"^(?:(?:stop|cancel|abort|end|beenden|abbrechen|stopp) checklist|checklist (?:stop|cancel|abort|end|beenden|abbrechen|stopp))$")]
+    private static partial Regex ChecklistStopPattern();
+
+    [GeneratedRegex(@"^(?:skip|skip (?:item|it|that)|next item|überspringen|ueberspringen|punkt überspringen|punkt ueberspringen|nächster punkt|naechster punkt)$")]
+    private static partial Regex ChecklistSkipPattern();
 }

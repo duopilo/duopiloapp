@@ -29,6 +29,9 @@ public sealed record VoiceSettings
 
     public CalloutSettings Callouts { get; init; } = new();
 
+    /// <summary>Bestätigungspflicht: wichtige Meldungen erwarten "check"/"copy".</summary>
+    public AcknowledgeSettings Acknowledge { get; init; } = new();
+
     public VoiceSettings Normalized() => this with
     {
         Microphone = (Microphone ?? new()).Normalized(),
@@ -38,6 +41,7 @@ public sealed record VoiceSettings
         Commands = (Commands ?? new()).Normalized(),
         Atc = (Atc ?? new()).Normalized(),
         Callouts = (Callouts ?? new()).Normalized(),
+        Acknowledge = (Acknowledge ?? new()).Normalized(),
     };
 
     internal static double Clamp(double value, double min, double max, double fallback) =>
@@ -172,6 +176,15 @@ public sealed record CommandSettings
     /// <summary>Unbekannte Sätze bis zu dieser Länge bekommen "Say again"; längere (Gespräch im Raum) werden still verworfen.</summary>
     public int SayAgainMaxWords { get; init; } = 8;
 
+    /// <summary>
+    /// Modus "ausführen + Callout": sicher erkannte Befehle sofort ausführen und nach der Prüfung ansagen ("Speed 250 set").
+    /// Readback mit "Confirm" nur bei unsicherer Erkennung und bei Aktionen, die eine Rückfrage brauchen. Standard: an.
+    /// </summary>
+    public bool ExecuteWithCallout { get; init; } = true;
+
+    /// <summary>Konfidenz der Erkennung (0–1, Mittel der Whisper-Token-Wahrscheinlichkeiten), darunter Readback mit "Confirm".</summary>
+    public double MinConfidence { get; init; } = 0.6;
+
     public CommandSettings Normalized() => this with
     {
         WakeWords = VoiceSettings.CleanList(WakeWords).Select(w => VoiceText.Normalize(w)).Where(w => w.Length > 0).Distinct().ToList() is { Count: > 0 } wake
@@ -179,6 +192,37 @@ public sealed record CommandSettings
             : ["kopilot"],
         ConfirmTimeoutSec = Math.Clamp(ConfirmTimeoutSec, 10, 300),
         SayAgainMaxWords = Math.Clamp(SayAgainMaxWords, 0, 50),
+        MinConfidence = VoiceSettings.Clamp(MinConfidence, 0, 1, 0.6),
+    };
+}
+
+/// <summary>
+/// Bestätigungspflicht: Wichtige Meldungen erwarten "check" oder "copy" des Piloten. Ohne Antwort nach
+/// <see cref="RepeatAfterSec"/> einmal wiederholen, danach Warnton und Eintrag im Dashboard – nie endlos wiederholen.
+/// </summary>
+public sealed record AcknowledgeSettings
+{
+    /// <summary>Standard: Fuel-Warnung, Sicherheits-Cautions und -Warnungen, Squawk-/Frequenzabweichung, TCAS RA.</summary>
+    public static readonly IReadOnlyList<string> DefaultRules =
+    [
+        "FUEL_WARNING", "ATC_SQUAWK", "ATC_FREQUENCY", "TCAS_RA",
+        "MASTER_WARNING", "MASTER_CAUTION", "STALL", "OVERSPEED", "GEAR_SPEED", "FLAP_SPEED", "SINK_RATE", "BANK_ANGLE",
+        "GEAR_DOWN_HIGH", "SPEED_LIMIT_FL100", "SPEED_DEVIATION", "TRAFFIC_PROXIMITY", "LANDING_CHECK",
+        "ATHR_OFF", "APPR_NOT_ACTIVE", "LOC_DEVIATION", "GS_DEVIATION",
+    ];
+
+    public bool Enabled { get; init; } = true;
+
+    /// <summary>Wartezeit bis zur Wiederholung und noch einmal bis zur Eskalation (s).</summary>
+    public double RepeatAfterSec { get; init; } = 10;
+
+    /// <summary>Regeln, die eine Quittung brauchen (Meldungen ab Caution). Leer = <see cref="DefaultRules"/>.</summary>
+    public List<string> Rules { get; init; } = [.. DefaultRules];
+
+    public AcknowledgeSettings Normalized() => this with
+    {
+        RepeatAfterSec = VoiceSettings.Clamp(RepeatAfterSec, 5, 60, 10),
+        Rules = VoiceSettings.CleanList(Rules).Select(r => r.ToUpperInvariant()).ToList() is { Count: > 0 } rules ? rules : [.. DefaultRules],
     };
 }
 

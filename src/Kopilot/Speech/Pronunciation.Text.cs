@@ -85,6 +85,7 @@ public static partial class Pronunciation
         "APU", "ADR", "IR", "ILS", "GPS", "GPWS", "EGPWS", "FMGC", "FMS", "FCU", "MCDU", "ATC", "VHF", "HF", "CVR", "FWC",
         "SDAC", "BSCU", "DMC", "RA", "IAS", "ND", "PFD", "LGCIU", "BMC", "CIDS", "FADEC", "EIU", "FCDC", "SFCC", "WAI", "EAI",
         "QNH", "LS", "FD", "TA", "VS", "IFR", "VFR", "RNP", "VOR", "NDB", "DME", "ETA", "FIR", "SID", "LOC",
+        "SRS", "FPA",
     };
 
     // Farben der Hydrauliksysteme nach "HYD"
@@ -99,6 +100,8 @@ public static partial class Pronunciation
     private static readonly HashSet<string> DigitwiseAfter = new(StringComparer.OrdinalIgnoreCase)
     {
         "speed", "heading", "squawk", "squawking", "qnh", "baro", "transponder", "code", "course", "runway", "hdg", "spd", "altimeter",
+        // Uhrzeit nach "ETA" ("ETA 1400" → "one four zero zero") und Windrichtung ("Wind 300 at 15" → "three zero zero")
+        "eta", "wind",
     };
 
     // Davor wird eine Zahl natürlich gesprochen ("850 kilos" → "eight hundred fifty kilos")

@@ -81,6 +81,21 @@ public sealed record VoiceStatus
     public DateTimeOffset? LastHeardUtc { get; init; }
 
     public string? PendingReadback { get; init; }
+
+    /// <summary>Modus "ausführen + Callout" an.</summary>
+    public bool? ExecuteWithCallout { get; init; }
+
+    /// <summary>Konfidenz der letzten Erkennung (0–1).</summary>
+    public double? LastConfidence { get; init; }
+
+    /// <summary>Laufende Checkliste und aktuelle Challenge, z. B. "Before start: Beacon".</summary>
+    public string? Checklist { get; init; }
+
+    /// <summary>Meldungen, die auf "check"/"copy" warten (Callout-Texte).</summary>
+    public IReadOnlyList<string>? AwaitingAcknowledgment { get; init; }
+
+    /// <summary>Unbeantwortete Meldungen nach der Wiederholung (Warnton und Eintrag im Dashboard).</summary>
+    public IReadOnlyList<string>? MissedAcknowledgment { get; init; }
 }
 
 /// <summary>Liefert den Zustand der Sprachschleife. In der stdio-Instanz (Claude Desktop) gibt es keine: <see cref="NoVoiceLoop"/>.</summary>

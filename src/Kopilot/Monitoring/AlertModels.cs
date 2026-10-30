@@ -35,7 +35,14 @@ public sealed record AlertEvent(
     AlertSeverity Severity,
     AlertKind Kind,
     string? Callout,
-    string Message);
+    string Message)
+{
+    /// <summary>
+    /// Kurze englische Erinnerung, falls die Meldung quittiert werden muss und keine eigene Ansage hat – z. B. "Check squawk 2340",
+    /// wenn ATC die Abweichung schon angesprochen hat (Bestätigungspflicht der Sprachschleife). null = <see cref="Callout"/>.
+    /// </summary>
+    public string? Reminder { get; init; }
+}
 
 /// <summary>Alle Regel-IDs.</summary>
 public static class Rules
@@ -81,6 +88,14 @@ public static class Rules
     public const string FuelCheck = "FUEL_CHECK";
     public const string FuelWarning = "FUEL_WARNING";
 
+    // Autoflug und Anflug (v0.9.2): TCAS RA, A/THR aus, FMA-Wechsel, LOC/GS-Abweichung, Approach-Phase nicht aktiviert
+    public const string TcasRa = "TCAS_RA";
+    public const string AutothrustOff = "ATHR_OFF";
+    public const string FmaChange = "FMA_CHANGE";
+    public const string LocDeviation = "LOC_DEVIATION";
+    public const string GsDeviation = "GS_DEVIATION";
+    public const string ApproachPhase = "APPR_NOT_ACTIVE";
+
     // Ansagen, die viele Airliner selbst machen (FWC) – nur mit Monitoring:AircraftAutoCallouts
     public const string AutoRadioAltitude = "AUTO_RA";
     public const string AutoMinimum = "AUTO_MINIMUM";
@@ -96,6 +111,7 @@ public static class Rules
         Pm100Knots, PmV1, PmRotate, PmPositiveClimb, PmSpoilers, PmReverse, PmDecel, Pm70Knots, PmTenThousand, PmTransition, PmFlaps, PmGear,
         TaxiSpeed,
         FuelCheck, FuelWarning,
+        TcasRa, AutothrustOff, FmaChange, LocDeviation, GsDeviation, ApproachPhase,
         AutoRadioAltitude, AutoMinimum, AutoRetard,
     ];
 }

@@ -35,7 +35,13 @@ public sealed class VoiceDispatcher(VoiceDialog dialog, IAtcLink atc, VoiceRoute
     /// <param name="text">Abschrift.</param>
     /// <param name="startUtc">Wann der Pilot zu sprechen begann (null = jetzt).</param>
     /// <param name="ct">Abbruch.</param>
-    public async Task<VoiceOutcome> HandleAsync(string text, DateTimeOffset? startUtc, CancellationToken ct)
+    public Task<VoiceOutcome> HandleAsync(string text, DateTimeOffset? startUtc, CancellationToken ct) => HandleAsync(text, startUtc, null, ct);
+
+    /// <param name="text">Abschrift.</param>
+    /// <param name="startUtc">Wann der Pilot zu sprechen begann (null = jetzt).</param>
+    /// <param name="confidence">Konfidenz der Erkennung (0–1, null = unbekannt) – darunter Readback statt sofort ausführen.</param>
+    /// <param name="ct">Abbruch.</param>
+    public async Task<VoiceOutcome> HandleAsync(string text, DateTimeOffset? startUtc, double? confidence, CancellationToken ct)
     {
         var normalized = VoiceText.Normalize(text);
         var info = atc.Enabled ? atc.RoutingInfo() : AtcRoutingInfo.Empty;
@@ -66,7 +72,7 @@ public sealed class VoiceDispatcher(VoiceDialog dialog, IAtcLink atc, VoiceRoute
             }
         }
 
-        var reply = await dialog.HandleAsync(intent, normalized, addressed, startUtc, ct);
+        var reply = await dialog.HandleAsync(intent, normalized, addressed, startUtc, confidence, ct);
         return new VoiceOutcome(normalized, route, intent, reply, null);
     }
 

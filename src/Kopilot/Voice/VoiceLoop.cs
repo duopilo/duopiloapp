@@ -1,9 +1,11 @@
 using System.Threading.Channels;
+using Kopilot.FlightPlan;
 using Kopilot.Input;
 using Kopilot.Localization;
 using Kopilot.Monitoring;
 using Kopilot.Sim;
 using Kopilot.Speech;
+using Kopilot.Traffic;
 using Microsoft.Extensions.Options;
 
 namespace Kopilot.Voice;
@@ -29,6 +31,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
     private readonly SimConnectClient _sim;
     private readonly IAtcLink _atc;
     private readonly InputService _input;
+    private readonly AlertBus _bus;
     private readonly ILogger<VoiceLoop> _log;
     private readonly VoiceSettingsStore _store;
     private readonly VoiceDialog _dialog;
@@ -62,6 +65,9 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         SimConnectClient sim,
         InputService input,
         IAtcLink atc,
+        AlertBus bus,
+        SimBriefService simBrief,
+        TrafficService traffic,
         ILogger<VoiceLoop> log)
     {
         _options = options.Value;
@@ -70,9 +76,10 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         _sim = sim;
         _atc = atc;
         _input = input;
+        _bus = bus;
         _log = log;
         _store = new VoiceSettingsStore(_options.ResolveDataDirectory());
-        _dialog = new VoiceDialog(new InputActionGateway(input), new SimVoiceFlightState(sim, monitoring));
+        _dialog = new VoiceDialog(new InputActionGateway(input), new SimVoiceFlightState(sim, monitoring, simBrief, traffic, atc));
         _status = new VoiceStatus { SettingsFile = _store.FilePath, AtcModule = atc.Enabled };
     }
 
@@ -89,11 +96,18 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
                 s = _status;
             }
 
+            // Checkliste und Quittungen gehören dem Erkennungs-Thread – hier nur Momentaufnahmen lesen
+            var checklist = _dialog.Checklists.Active is { } active ? $"{active.Title}: {_dialog.Checklists.Current?.Challenge}" : null;
+            var acks = _dialog.Acknowledgments;
             return _diag.Apply(
                 s with
                 {
                     PendingReadback = _dialog.Pending?.Readback,
                     State = s.State is "listening" or "muted" ? (_dialog.Muted ? "muted" : "listening") : s.State,
+                    ExecuteWithCallout = _dialog.ExecuteWithCallout,
+                    Checklist = checklist,
+                    AwaitingAcknowledgment = acks?.PendingTexts,
+                    MissedAcknowledgment = acks?.EscalatedTexts,
                 },
                 DateTimeOffset.UtcNow);
         }
@@ -250,6 +264,15 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         _dialog.ConfirmTimeout = TimeSpan.FromSeconds(settings.Commands.ConfirmTimeoutSec);
         _dialog.SayAgainMaxWords = settings.Commands.SayAgainMaxWords;
         _dialog.RequireWakeWord = settings.Commands.RequireWakeWord;
+        _dialog.ExecuteWithCallout = settings.Commands.ExecuteWithCallout;
+        _dialog.MinConfidence = settings.Commands.MinConfidence;
+        _dialog.Acknowledgments = settings.Acknowledge.Enabled ? new AcknowledgmentTracker(settings.Acknowledge) : null;
+        _log.LogInformation(
+            Loc.Log("log.voice.loop.modes"),
+            settings.Commands.ExecuteWithCallout ? Loc.En("voice.word.on") : Loc.En("voice.word.off"),
+            settings.Commands.MinConfidence,
+            settings.Acknowledge.Enabled ? Loc.En("voice.word.on") : Loc.En("voice.word.off"),
+            settings.Acknowledge.RepeatAfterSec);
         _dispatcher = new VoiceDispatcher(_dialog, _atc, new VoiceRouter(settings.Commands.WakeWords), settings.Commands.WakeWords)
         {
             ExtraCallsigns = ExtraCallsigns,
@@ -284,6 +307,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
                 TimerLoopAsync(loops.Token),
                 CaptureLoopAsync(settings.Microphone.Device, loops.Token),
                 WatchdogLoopAsync(loops.Token),
+                AlertLoopAsync(loops.Token),
             ];
 
             // Endet ein Teil (Fehler) oder kommt der Neustart, hören alle auf
@@ -777,7 +801,10 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
                 {
                     case VoiceEvent.Tick _:
                         Volatile.Write(ref _tickQueued, 0);
-                        _dialog.Expire();
+                        OnTick();
+                        break;
+                    case VoiceEvent.Alert alert:
+                        OnAlert(alert.Event);
                         break;
                     case VoiceEvent.ToggleMute _:
                         var reply = _dialog.SetMuted(!_dialog.Muted);
@@ -845,7 +872,8 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         }
 
         var startUtc = u.EndUtc - TimeSpan.FromSeconds(seconds);
-        var outcome = await _dispatcher!.HandleAsync(text, startUtc, ct);
+        var outcome = await _dispatcher!.HandleAsync(text, startUtc, transcript.Confidence, ct);
+        Apply(_dialog.TakeAcknowledgmentActions());
         var route = outcome.Route;
         var lastRoute = route.Target == VoiceTarget.Atc ? $"ATC {route.Station ?? route.Callsign} ({route.Reason})" : "Kopilot";
         var lastInput = outcome.Atc is { } atc
@@ -857,6 +885,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
             : _dialog.LastResult is { } rLog ? rLog.Reason is null ? rLog.Status : $"{rLog.Status}: {Loc.ToEnglish(rLog.Reason)}" : null;
         SetStatus(s => s with
         {
+            LastConfidence = transcript.Confidence is { } c ? Math.Round(c, 2) : null,
             LastTranscript = text,
             LastRoute = lastRoute,
             LastIntent = outcome.Intent?.ToString(),
@@ -882,6 +911,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
                 transcript.Language ?? "?",
                 seconds,
                 transcript.ElapsedMs,
+                transcript.Confidence is { } confidence ? confidence.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) : "?",
                 text,
                 outcome.Intent,
                 outcome.Reply is null ? "" : $" → \"{outcome.Reply.Text}\"",
@@ -909,6 +939,102 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         {
             _dialog.NotSpoken(reply);
             _log.LogInformation(Loc.Log("log.voice.reply.notSpoken"), reply.Text);
+        }
+    }
+
+    // ------------------------------------------------------------------ Bestätigungspflicht und Checklisten
+
+    /// <summary>Meldungen des Monitorings und des ATC-Moduls mitlesen (Bestätigungspflicht).</summary>
+    private async Task AlertLoopAsync(CancellationToken ct)
+    {
+        var since = _bus.LastId;
+        while (!ct.IsCancellationRequested)
+        {
+            var events = await _bus.WaitAsync(since, TimeSpan.FromSeconds(25), ct);
+            foreach (var e in events)
+            {
+                since = Math.Max(since, e.Id);
+                _events.Writer.TryWrite(new VoiceEvent.Alert(e));
+            }
+        }
+    }
+
+    private void OnAlert(AlertEvent e)
+    {
+        if (_dialog.Acknowledgments is not { } acks || _dialog.Muted)
+        {
+            return;
+        }
+
+        if (acks.Requires(e))
+        {
+            _log.LogInformation(Loc.Log("log.voice.ack.expected"), e.Rule, e.Reminder ?? e.Callout, acks.RepeatAfter.TotalSeconds);
+        }
+
+        Apply(acks.Observe(e));
+    }
+
+    /// <summary>Sekundentakt: Readbacks verfallen lassen, Challenge wiederholen, Quittungen nachhalten.</summary>
+    private void OnTick()
+    {
+        if (_dialog.Tick() is { } repeat)
+        {
+            _log.LogInformation(Loc.Log("log.voice.checklist.repeat"), repeat.Text);
+            Speak(repeat);
+        }
+
+        if (_dialog.Acknowledgments is not { } acks)
+        {
+            return;
+        }
+
+        if (_dialog.Muted)
+        {
+            // Stumm: der Pilot kann nicht antworten – keine Wiederholungen
+            acks.Clear();
+            return;
+        }
+
+        var paused = _monitoring.LastSnapshot?.Paused == true;
+        Apply(acks.Tick(DateTimeOffset.UtcNow, paused));
+    }
+
+    /// <summary>Wiederholen (einmal), eskalieren (Warnton und Eintrag im Dashboard) oder den Eintrag wieder aufheben.</summary>
+    private void Apply(IReadOnlyList<AcknowledgmentAction> actions)
+    {
+        foreach (var action in actions)
+        {
+            var item = action.Item;
+            switch (action)
+            {
+                case AcknowledgmentAction.Repeat:
+                    _log.LogInformation(Loc.Log("log.voice.ack.repeat"), item.Rule, item.Callout);
+                    _output.Say(new SpeechRequest(item.Callout, item.Severity == AlertSeverity.Warning ? SpeechPriority.Warning : SpeechPriority.Callout)
+                    {
+                        Spoken = Pronunciation.ForSpeech(item.Callout),
+                        Volume = _settings.Voices.KopilotVolume,
+                        Source = "kopilot:ack",
+                    });
+                    break;
+                case AcknowledgmentAction.Escalate:
+                    _log.LogWarning(Loc.Log("log.voice.ack.escalated"), item.Rule, item.Callout);
+                    _output.Say(new SpeechRequest(Loc.En("voice.ack.toneText"), SpeechPriority.Warning)
+                    {
+                        Tone = true,
+                        Volume = _settings.Voices.KopilotVolume,
+                        Source = "kopilot:ack",
+                    });
+                    _bus.Publish([new AlertEvent(0, DateTimeOffset.UtcNow, AcknowledgmentTracker.EscalationRule, AlertSeverity.Warning, AlertKind.Raise, null, Loc.T("voice.ack.missing", item.Callout))]);
+                    break;
+                case AcknowledgmentAction.Resolved:
+                    _log.LogInformation(Loc.Log("log.voice.ack.resolved"), item.Rule, item.Callout);
+                    if (_dialog.Acknowledgments is not { Escalated.Count: > 0 })
+                    {
+                        _bus.Publish([new AlertEvent(0, DateTimeOffset.UtcNow, AcknowledgmentTracker.EscalationRule, AlertSeverity.Info, AlertKind.Clear, null, Loc.T("voice.ack.resolved", item.Callout))]);
+                    }
+
+                    break;
+            }
         }
     }
 
@@ -984,6 +1110,8 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
     private abstract record VoiceEvent
     {
         public sealed record Utterance(float[] Samples, DateTimeOffset EndUtc) : VoiceEvent;
+
+        public sealed record Alert(AlertEvent Event) : VoiceEvent;
 
         public sealed record ToggleMute : VoiceEvent;
 

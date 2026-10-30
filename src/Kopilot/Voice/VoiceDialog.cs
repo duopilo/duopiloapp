@@ -11,6 +11,12 @@ public interface IVoiceActionGateway
     Task<InputResult> ConfirmAsync(string token, string pilotWords, CancellationToken ct);
 
     InputResult Cancel(string token, string reason);
+
+    /// <summary>
+    /// "Ausführen + Callout": sofort ausführen, wenn die Aktion keine Rückfrage braucht – sonst wie <see cref="PrepareAsync"/>
+    /// (Readback, wartet auf "confirm"). Standard: immer wie <see cref="PrepareAsync"/>.
+    /// </summary>
+    Task<InputResult> ExecuteAsync(string actionId, string? value, CancellationToken ct) => PrepareAsync(actionId, value, ct);
 }
 
 /// <summary>Das echte Eingabe-Modul.</summary>
@@ -21,6 +27,8 @@ public sealed class InputActionGateway(InputService input) : IVoiceActionGateway
     public Task<InputResult> ConfirmAsync(string token, string pilotWords, CancellationToken ct) => input.ConfirmAsync(token, pilotWords, ct);
 
     public InputResult Cancel(string token, string reason) => input.Cancel(token, reason);
+
+    public Task<InputResult> ExecuteAsync(string actionId, string? value, CancellationToken ct) => input.ExecuteNowAsync(actionId, value, ct);
 }
 
 /// <summary>Antwort von Kopilot: Anzeigetext und Text für die Sprachsynthese.</summary>
@@ -28,6 +36,9 @@ public sealed record VoiceReply(string Text, string Spoken)
 {
     /// <summary>Readback einer vorbereiteten Aktion: Erst wenn er ganz gesprochen ist, zählt "Confirm" (siehe <see cref="VoiceDialog.Spoken"/>).</summary>
     public string? ReadbackToken { get; init; }
+
+    /// <summary>Challenge oder Abweichung einer Checkliste: Erst wenn sie ganz gesprochen ist, läuft die Wartezeit für die Wiederholung.</summary>
+    public bool Checklist { get; init; }
 
     public static VoiceReply Of(string text) => new(text, Kopilot.Speech.Pronunciation.ForSpeech(text));
 }
@@ -37,13 +48,21 @@ public sealed record VoiceReply(string Text, string Spoken)
 public sealed record PendingVoiceAction(string Token, string ActionId, string? Value, string Readback, DateTimeOffset ExpiresUtc, DateTimeOffset? HeardUtc = null);
 
 /// <summary>
-/// Gesprächsablauf mit Kopilot (ohne Sprachmodell): Befehl → prepare_action → Readback → "Confirm"/"Correct"/"Affirm" →
-/// confirm_action; "Negative"/"Cancel" → cancel_action; nach dem Timeout verfällt die Aktion still.
-/// Bestätigt wird nur, was der Pilot gehört hat: "Confirm" zählt erst, wenn der Readback ganz gesprochen ist
-/// (<see cref="VoiceDialog.Spoken"/>), und nur, wenn der Pilot danach zu sprechen begonnen hat.
-/// Kritische Aktionen (z. B. Transponder STBY im Flug) fragen nach dem ersten "Confirm" mit Warnhinweis nach; erst ein zweites
-/// "Confirm" nach der gehörten Rückfrage führt aus.
-/// Abfragen werden mit dem reinen Callout beantwortet, Unbekanntes mit "Say again".
+/// Gesprächsablauf mit Kopilot (ohne Sprachmodell).
+/// <para>
+/// Modus "ausführen + Callout" (Standard, <see cref="ExecuteWithCallout"/>): Der Befehl des Piloten ist die Anweisung – Kopilot
+/// führt ihn sofort aus und sagt ihn nach der Prüfung an ("Speed 250 set", "Flaps 2"). Readback mit "Confirm" nur, wenn die
+/// Erkennung unsicher war (Konfidenz unter <see cref="MinConfidence"/>) oder die Aktion laut Plausibilitätssperren eine
+/// Rückfrage braucht. Gesperrte Aktionen bleiben gesperrt ("Unable").
+/// </para>
+/// <para>
+/// Zweistufiger Ablauf (Modus aus, unsicher erkannt oder Rückfrage nötig): Befehl → Readback → "Confirm"/"Correct"/"Affirm" →
+/// ausführen; "Negative"/"Cancel" bricht ab; nach dem Timeout verfällt die Aktion still. "Confirm" zählt erst, wenn der Readback
+/// ganz gesprochen ist (<see cref="Spoken"/>), und nur, wenn der Pilot danach zu sprechen begonnen hat. Kritische Aktionen fragen
+/// nach dem ersten "Confirm" mit Warnhinweis nach; erst ein zweites "Confirm" nach der gehörten Rückfrage führt aus.
+/// </para>
+/// Abfragen werden mit dem reinen Callout beantwortet, Unbekanntes mit "Say again". "Check"/"Copy" quittieren wichtige Meldungen
+/// (<see cref="Acknowledgments"/>). Läuft eine Checkliste, ist jeder Satz ohne Anrede die Antwort auf die Challenge.
 /// Nicht threadsicher – die Sprachschleife ruft alles nacheinander auf.
 /// </summary>
 public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSource state, TimeProvider? time = null)
@@ -57,6 +76,7 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
     public const string Resumed = "Voice control active";
 
     private readonly TimeProvider _time = time ?? TimeProvider.System;
+    private readonly List<AcknowledgmentAction> _ackActions = [];
     private volatile bool _muted;
 
     /// <summary>So lange wartet ein Readback auf die Bestätigung.</summary>
@@ -67,6 +87,18 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
 
     /// <summary>Befehle nur mit Anrede ("Kopilot, …").</summary>
     public bool RequireWakeWord { get; set; }
+
+    /// <summary>Modus "ausführen + Callout": sicher erkannte Befehle ohne Rückfrage sofort ausführen und danach ansagen.</summary>
+    public bool ExecuteWithCallout { get; set; } = true;
+
+    /// <summary>Darunter gilt die Erkennung als unsicher (Konfidenz 0–1) – dann Readback mit "Confirm".</summary>
+    public double MinConfidence { get; set; } = 0.6;
+
+    /// <summary>Wichtige Meldungen, die "check"/"copy" erwarten (null = keine Bestätigungspflicht).</summary>
+    public AcknowledgmentTracker? Acknowledgments { get; set; }
+
+    /// <summary>Challenge-Response-Checklisten.</summary>
+    public ChecklistRunner Checklists { get; } = new(time);
 
     /// <summary>Spracheingabe stumm ("Kopilot Pause" oder Tastenkürzel). Dann zählt nur noch "Kopilot weiter".</summary>
     public bool Muted => _muted;
@@ -88,6 +120,9 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
     /// <summary>Letztes Ergebnis des Eingabe-Moduls (Status, Grund) – für Log und Status.</summary>
     public InputResult? LastResult { get; private set; }
 
+    /// <summary>Letzter Befehl wurde sofort ausgeführt (ausführen + Callout) – für Log und Status.</summary>
+    public bool LastExecutedDirectly { get; private set; }
+
     /// <summary>Stumm schalten oder wieder an (Tastenkürzel). Antwort zum Sprechen.</summary>
     public VoiceReply SetMuted(bool muted)
     {
@@ -105,16 +140,35 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
     /// <param name="normalized">Der Satz in normalisierter Form (für "Confirm" und die Wortzahl).</param>
     /// <param name="addressed">Mit Anrede ("Kopilot, …").</param>
     public Task<VoiceReply?> HandleAsync(VoiceIntent intent, string normalized, bool addressed, CancellationToken ct) =>
-        HandleAsync(intent, normalized, addressed, null, ct);
+        HandleAsync(intent, normalized, addressed, null, null, ct);
 
     /// <inheritdoc cref="HandleAsync(VoiceIntent, string, bool, CancellationToken)"/>
     /// <param name="startUtc">Wann der Pilot den Satz zu sprechen begonnen hat (null = jetzt). Ein "Confirm", das vor dem Ende des Readbacks begann, zählt nicht.</param>
-    public async Task<VoiceReply?> HandleAsync(VoiceIntent intent, string normalized, bool addressed, DateTimeOffset? startUtc, CancellationToken ct)
+    public Task<VoiceReply?> HandleAsync(VoiceIntent intent, string normalized, bool addressed, DateTimeOffset? startUtc, CancellationToken ct) =>
+        HandleAsync(intent, normalized, addressed, startUtc, null, ct);
+
+    /// <inheritdoc cref="HandleAsync(VoiceIntent, string, bool, CancellationToken)"/>
+    /// <param name="startUtc">Wann der Pilot den Satz zu sprechen begonnen hat (null = jetzt).</param>
+    /// <param name="confidence">Konfidenz der Erkennung (0–1, null = unbekannt, gilt als sicher).</param>
+    public async Task<VoiceReply?> HandleAsync(VoiceIntent intent, string normalized, bool addressed, DateTimeOffset? startUtc, double? confidence, CancellationToken ct)
     {
         Expire();
+        var start = startUtc ?? _time.GetUtcNow();
         if (Muted)
         {
             return intent.Kind == IntentKind.Resume ? SetMuted(false) : null;
+        }
+
+        // "Check"/"Copy" quittieren wichtige Meldungen – auch mitten in einer Checkliste
+        if (intent.Kind == IntentKind.Check && Acknowledgments is { } acks)
+        {
+            _ackActions.AddRange(acks.Acknowledge(start));
+        }
+
+        // Laufende Checkliste: jeder Satz ohne Anrede ist die Antwort auf die Challenge
+        if (Checklists.Active is not null && HandleChecklist(intent, normalized, addressed) is { } handled)
+        {
+            return handled.Reply;
         }
 
         switch (intent.Kind)
@@ -123,13 +177,14 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
                 return SetMuted(true);
 
             case IntentKind.Resume:
+            case IntentKind.Check:
                 return null;
 
             case IntentKind.SayAgain:
                 return LastReply;
 
             case IntentKind.Confirm:
-                return await ConfirmAsync(normalized, startUtc ?? _time.GetUtcNow(), ct);
+                return await ConfirmAsync(normalized, start, ct);
 
             case IntentKind.Acknowledge:
                 // "Ja", "OK", "Roger" bestätigen nichts – nach einem Readback nachfragen, sonst still
@@ -140,13 +195,21 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
 
             case IntentKind.Query when RequireWakeWord && !addressed:
             case IntentKind.Action when RequireWakeWord && !addressed:
+            case IntentKind.Checklist when RequireWakeWord && !addressed:
                 return null;
 
             case IntentKind.Query:
-                return Remember(VoiceReply.Of(VoiceQueries.Answer(intent.Query!.Value, state.Read())));
+                return Remember(await AnswerAsync(intent.Query!.Value, ct));
 
             case IntentKind.Action:
-                return await PrepareAsync(intent, ct);
+                return await CommandAsync(intent, confidence, ct);
+
+            case IntentKind.Checklist:
+                return StartChecklist(intent.Value);
+
+            case IntentKind.ChecklistControl:
+                // Ohne laufende Checkliste gibt es nichts zu überspringen
+                return null;
 
             default:
                 if (RequireWakeWord && !addressed)
@@ -159,9 +222,37 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
         }
     }
 
+    /// <summary>Was die letzten "check"/"copy" ausgelöst haben (eskalierte Meldungen aufheben) – holt die Sprachschleife ab.</summary>
+    public IReadOnlyList<AcknowledgmentAction> TakeAcknowledgmentActions()
+    {
+        if (_ackActions.Count == 0)
+        {
+            return [];
+        }
+
+        var actions = _ackActions.ToList();
+        _ackActions.Clear();
+        return actions;
+    }
+
+    /// <summary>
+    /// Regelmäßig aufrufen (Sekundentakt): verfallene Readbacks verwerfen, unbeantwortete Challenge einmal wiederholen.
+    /// Rückgabe: was Kopilot sagt (null = nichts).
+    /// </summary>
+    public VoiceReply? Tick()
+    {
+        Expire();
+        if (Muted || Checklists.Tick() is not { } repeat)
+        {
+            return null;
+        }
+
+        return Remember(repeat with { Checklist = true });
+    }
+
     /// <summary>
     /// Eine Antwort ist ganz gesprochen (Rückmeldung der Sprachausgabe). Ist es der Readback der offenen Aktion, zählt ab jetzt
-    /// "Confirm" – das Zeitfenster beginnt neu.
+    /// "Confirm" – das Zeitfenster beginnt neu. Bei einer Challenge beginnt die Wartezeit bis zur Wiederholung.
     /// </summary>
     public void Spoken(VoiceReply reply, DateTimeOffset endUtc)
     {
@@ -169,6 +260,11 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
         if (reply.ReadbackToken is { } token && Pending is { } p && p.Token == token)
         {
             Pending = p with { HeardUtc = endUtc, ExpiresUtc = endUtc + ConfirmTimeout };
+        }
+
+        if (reply.Checklist)
+        {
+            Checklists.Spoken(endUtc);
         }
     }
 
@@ -203,21 +299,74 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
         }
     }
 
-    private async Task<VoiceReply?> PrepareAsync(VoiceIntent intent, CancellationToken ct)
+    // ------------------------------------------------------------------ Abfragen
+
+    private async Task<VoiceReply> AnswerAsync(QueryKind query, CancellationToken ct)
+    {
+        if (query != QueryKind.Traffic)
+        {
+            return VoiceQueries.Reply(query, state.Read());
+        }
+
+        try
+        {
+            return VoiceQueries.Traffic(await state.TrafficAsync(ct));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            // Verkehrsabfrage gescheitert (SimConnect antwortet nicht) – kein Grund, die Sprachschleife anzuhalten
+            return VoiceReply.Of(Unable);
+        }
+    }
+
+    // ------------------------------------------------------------------ Befehle
+
+    private async Task<VoiceReply?> CommandAsync(VoiceIntent intent, double? confidence, CancellationToken ct)
     {
         // Eine neue Aktion ersetzt die offene – auch im Eingabe-Modul, falls die neue abgelehnt wird
         CancelPending(Loc.T("voice.cancel.newCommand"));
 
-        var result = await gateway.PrepareAsync(intent.ActionId!, intent.Value, ct);
+        var direct = ExecuteWithCallout && (confidence is not { } c || c >= MinConfidence);
+        var result = direct
+            ? await gateway.ExecuteAsync(intent.ActionId!, intent.Value, ct)
+            : await gateway.PrepareAsync(intent.ActionId!, intent.Value, ct);
         LastResult = result;
+        LastExecutedDirectly = direct && result.Status == InputResult.Executed;
+
         if (result.Status == InputResult.AwaitingConfirmation && result.Token is { } token)
         {
+            // Readback: unsicher erkannt, Modus aus oder die Aktion braucht eine Rückfrage
             var readback = string.IsNullOrWhiteSpace(result.Readback) ? intent.ToString() : result.Readback;
             Pending = new PendingVoiceAction(token, result.Action ?? intent.ActionId!, result.Value, readback, _time.GetUtcNow() + ConfirmTimeout);
             return Remember(VoiceReply.Of(readback) with { ReadbackToken = token });
         }
 
+        if (result.Status == InputResult.Executed)
+        {
+            return Callout(result);
+        }
+
         return Remember(VoiceReply.Of(result.Status == InputResult.Disabled ? InputDisabled : Unable));
+    }
+
+    /// <summary>
+    /// Nach dem sofortigen Ausführen: Callout nach der Prüfung ("Speed 250 set"). Fahrwerk und Klappen sagt das Nachlesen an,
+    /// sobald die Stellung erreicht ist ("Gear down, three green"); hat das Flugzeug den Wert nicht übernommen: "Not confirmed".
+    /// </summary>
+    private VoiceReply? Callout(InputResult result)
+    {
+        if (result.Confirmed == false)
+        {
+            return Remember(VoiceReply.Of(NotConfirmed));
+        }
+
+        if (result.FollowUp is not null)
+        {
+            return null;
+        }
+
+        var text = result.Callout ?? result.Readback;
+        return string.IsNullOrWhiteSpace(text) ? null : Remember(VoiceReply.Of(text));
     }
 
     private async Task<VoiceReply?> ConfirmAsync(string normalized, DateTimeOffset startUtc, CancellationToken ct)
@@ -237,6 +386,7 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
         Pending = null;
         var result = await gateway.ConfirmAsync(pending.Token, normalized, ct);
         LastResult = result;
+        LastExecutedDirectly = false;
         if (result.Status == InputResult.AwaitingCautionConfirmation && result.Token is { } token)
         {
             // Kritische Aktion: Rückfrage mit Warnhinweis vorlesen, erst ein weiteres "Confirm" danach führt aus
@@ -256,12 +406,58 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
         };
     }
 
+    // ------------------------------------------------------------------ Checklisten
+
+    private VoiceReply? StartChecklist(string? id)
+    {
+        if (AirbusChecklists.Find(id) is not { } checklist)
+        {
+            return Remember(VoiceReply.Of(SayAgain));
+        }
+
+        CancelPending(Loc.T("voice.cancel.checklist"));
+        return Remember(Checklists.Start(checklist) with { Checklist = true });
+    }
+
+    /// <summary>
+    /// Satz während einer Checkliste. Rückgabe null = nicht für die Checkliste (normal weiter): Steuerung (Pause), Bestätigung
+    /// eines Readbacks und Befehle oder Abfragen mit Anrede ("Kopilot, gear up").
+    /// </summary>
+    private ChecklistOutcome? HandleChecklist(VoiceIntent intent, string normalized, bool addressed)
+    {
+        switch (intent.Kind)
+        {
+            case IntentKind.Pause or IntentKind.Resume:
+                return null;
+            case IntentKind.Confirm or IntentKind.Negative when Pending is not null:
+                return null;
+            case IntentKind.Action or IntentKind.Query when addressed:
+                return null;
+            case IntentKind.Checklist:
+                return new ChecklistOutcome(StartChecklist(intent.Value));
+            case IntentKind.ChecklistControl when intent.Value == "stop":
+                return new ChecklistOutcome(Keep(Checklists.Stop()));
+            case IntentKind.ChecklistControl:
+                return new ChecklistOutcome(Keep(Checklists.Skip() is { } skipped ? skipped with { Checklist = Checklists.Active is not null } : null));
+            case IntentKind.SayAgain:
+                return new ChecklistOutcome(Keep(Checklists.Repeat() is { } again ? again with { Checklist = true } : null));
+        }
+
+        // Antwort auf die Challenge – Befehle ohne Anrede werden dabei nie ausgeführt ("seat belts on" ist hier eine Antwort)
+        var reply = Checklists.Respond(normalized, state.Read());
+        return new ChecklistOutcome(Keep(reply is null ? null : reply with { Checklist = Checklists.Active is not null }));
+    }
+
+    private sealed record ChecklistOutcome(VoiceReply? Reply);
+
     private VoiceReply Remember(VoiceReply reply)
     {
         LastReply = reply;
         LastReplyUtc = _time.GetUtcNow();
         return reply;
     }
+
+    private VoiceReply? Keep(VoiceReply? reply) => reply is null ? null : Remember(reply);
 
     private static DateTimeOffset? Latest(DateTimeOffset? a, DateTimeOffset? b) =>
         a is null ? b : b is null ? a : a > b ? a : b;

@@ -97,6 +97,21 @@ public sealed record FlightSnapshot
     /// <summary>FMA-Anzeige für das FMA-Log.</summary>
     public FmaState? Fma { get; init; }
 
+    /// <summary>FMGC-Flugphase ("CRUISE", "DESCENT", "APPROACH" …), null ohne Profil-Binding.</summary>
+    public string? FmgcPhase { get; init; }
+
+    /// <summary>Managed Speed aktiv (Punkt im FCU), null ohne Profil-Binding.</summary>
+    public bool? SpeedManaged { get; init; }
+
+    /// <summary>LOC-Abweichung in Punkten (dots), null ohne Binding oder gültiges Signal.</summary>
+    public double? LocDeviationDots { get; init; }
+
+    /// <summary>Glideslope-Abweichung in Punkten (dots), null ohne Binding oder gültiges Signal.</summary>
+    public double? GsDeviationDots { get; init; }
+
+    /// <summary>Direkte Entfernung zum Zielflughafen des SimBrief-Plans (nm, Bezugspunkt des Flughafens), null ohne Plan.</summary>
+    public double? DestinationDistanceNm { get; init; }
+
     public bool? MasterWarning { get; init; }
 
     public bool? MasterCaution { get; init; }
