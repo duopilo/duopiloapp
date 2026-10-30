@@ -209,6 +209,7 @@ public static partial class BugReport
             var source = a.FrequencySource switch
             {
                 "facility" => "aus MSFS",
+                "sectors" => "aus VATSIM-Sektordaten",
                 "templates" => "aus atc-templates.json",
                 "placeholder" => "Platzhalter",
                 _ => a.FrequencySource,
