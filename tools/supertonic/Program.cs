@@ -53,6 +53,16 @@ foreach (var path in voices)
     Helper.WriteWavFile(Path.Combine(outDir, $"Supertonic3_{name}.wav"), all, rate);
 }
 
+if (Environment.GetEnvironmentVariable("SKIP_WHISPER") == "1")
+{
+    var quick = new StringBuilder($"Beispiel-Port (ORT 1.20.1), Threads Standard\n\n| Stimme | Satz | Audio s | Wand s | CPU s |\n|---|---|---:|---:|---:|\n");
+    foreach (var t in timing.Where(t => t.Voice is "M1" or "M2" or "F1"))
+        quick.AppendLine($"| {t.Voice} | {t.Text[..Math.Min(24, t.Text.Length)]}… | {t.Audio:0.00} | {t.Wall:0.00} | {t.Cpu:0.00} |");
+    File.WriteAllText(Path.Combine(outDir, "example.md"), quick.ToString());
+    Console.WriteLine(quick);
+    return;
+}
+
 RuntimeOptions.RuntimeLibraryOrder = [RuntimeLibrary.Cpu, RuntimeLibrary.CpuNoAvx];
 using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(20) };
 var heard = new Dictionary<(string, string, string), string>();
