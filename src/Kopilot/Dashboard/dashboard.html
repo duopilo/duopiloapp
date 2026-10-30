@@ -219,6 +219,32 @@ select.btn { padding: 4px 6px; max-width: 190px; }
 .stat .sub { font: 13px/1.4 var(--mono); color: var(--du-dim); }
 .route .empty { color: var(--du-dim); }
 
+/* Fuel Check: Trend der Abweichung gegen Plan (x = Strecke wie die Routenleiste) */
+.fuel-trend { margin-top: 16px; border-top: 1px solid #1d242b; padding-top: 12px; }
+.ft-head { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; }
+.ft-head .lbl { font-size: 12px; color: var(--du-dim); }
+.ft-last { margin-left: auto; font: 13px var(--mono); color: var(--du-dim); }
+.ft-last b { color: var(--white); font-weight: 400; }
+.ft-plot { position: relative; height: 150px; margin: 6px 0 10px; outline-offset: 4px; touch-action: pan-y; }
+.ft-plot svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.ft-plot text { font: 12px var(--mono); fill: var(--du-dim); }
+.ft-plot text.val { fill: var(--white); }
+.ft-tip {
+  position: absolute; top: 0; z-index: 2; pointer-events: none; min-width: 220px; max-width: 340px;
+  padding: 8px 10px; border-radius: 6px; background: #12171c; border: 1px solid #3a434c;
+  font: 13px/1.45 var(--mono); color: var(--du-dim); box-shadow: 0 4px 14px rgba(0, 0, 0, .5);
+}
+.ft-tip .v { font: 700 16px/1.3 var(--mono); color: var(--white); }
+.ft-tip .warn { color: var(--white); }
+.ft-tip .warn::before, .ft-table .warn::before { content: "▲ "; color: var(--amber); }
+.ft-table { width: 100%; border-collapse: collapse; font: 13px/1.5 var(--mono); }
+.ft-table th { text-align: left; font: 12px var(--sans); color: var(--du-dim); font-weight: 400; padding: 0 8px 4px 0; }
+.ft-table td { padding: 3px 8px 3px 0; border-top: 1px solid #12171c; white-space: nowrap; }
+.ft-table td.dim { color: var(--du-dim); }
+.ft-table td:nth-child(2) { white-space: normal; }
+.ft-table .warn { margin-left: 8px; }
+.ft-table tr.refuel td { color: var(--cyan); }
+
 /* Triebwerke, Konfiguration, ATC */
 .eng { grid-area: eng; }
 .cfg { grid-area: cfg; }
@@ -276,6 +302,7 @@ select.btn { padding: 4px 6px; max-width: 190px; }
   .setup-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 720px) {
+  .ft-table th:nth-child(5), .ft-table td:nth-child(5), .ft-table th:nth-child(6), .ft-table td:nth-child(6) { display: none; }
   :root { --gap: 10px; }
   main { grid-template-columns: minmax(0, 1fr); grid-template-areas: "fma" "call" "pfd" "ecam" "route" "eng" "cfg" "atc"; }
   .fma-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -407,6 +434,17 @@ select.btn { padding: 4px 6px; max-width: 190px; }
   <section class="du route" aria-label="Route">
     <h2>Route <span class="right"><span class="dim" id="routeInfo"></span><button class="btn" id="planReload" type="button">Plan laden</button></span></h2>
     <div id="routeBody"></div>
+    <div class="fuel-trend" id="fuelTrend" hidden>
+      <div class="ft-head"><span class="lbl">Fuel Check – Abweichung gegen Plan</span><span class="ft-last" id="ftLast"></span></div>
+      <div class="ft-plot" id="ftPlot" tabindex="0" role="group" aria-label="Fuel Check: Abweichung gegen Plan entlang der Route. Pfeiltasten wählen einen Check.">
+        <svg id="ftSvg" aria-hidden="true"></svg>
+        <div class="ft-tip" id="ftTip" role="status" hidden></div>
+      </div>
+      <table class="ft-table" id="ftTable">
+        <thead><tr><th>Zeit</th><th>Ort</th><th>An Bord</th><th>Gegen Plan</th><th>Seit Check</th><th>Landung</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
   </section>
 
   <section class="du eng" aria-label="Triebwerke">
@@ -930,6 +968,190 @@ function renderRoute(d) {
 }
 $("planReload").addEventListener("click", () => action("/api/simbrief/refresh", "SimBrief-Plan geladen."));
 
+/* ------------------------------------------------------------------ Fuel Check (Trend) */
+const ft = { data: null, key: "", width: 0, sel: null, pts: [] };
+const kgDe = (v) => (n(v) === null ? DASH : (v < 0 ? "−" : "") + Math.abs(Math.round(v / 10) * 10).toLocaleString("de-DE") + " kg");
+const kgSigned = (v) => (n(v) === null ? DASH : (v > 0 ? "+" : "") + kgDe(v));
+const FT_KIND = { Waypoint: "Wegpunkt", Interval: "Intervall", Deviation: "Warnung", Landing: "Warnung", Refuel: "Tanken", Defuel: "Treibstoff geändert" };
+const FT_WARN = { deviation: "Abweichung gewachsen", landing_buffer: "Landung unter Minimum + Puffer", landing_minimum: "Landung unter Minimum" };
+const isCheck = (e) => e.kind !== "Refuel" && e.kind !== "Defuel" && n(e.diff) !== null;
+
+function renderFuelTrend(p) {
+  const box = $("fuelTrend");
+  const f = p && p.loaded ? p.fuelChecks : null;
+  if (!f || !f.items.length) { box.hidden = true; ft.data = null; ft.key = ""; return; }
+  box.hidden = false;
+  const last = f.items[f.items.length - 1];
+  const key = f.items.length + ":" + last.id + ":" + f.totalNm;
+  if (key === ft.key && $("ftPlot").clientWidth === ft.width) return;
+  ft.key = key;
+  ft.data = f;
+  drawFuelTrend();
+  renderFuelTable(f);
+  const lastCheck = [...f.items].reverse().find(isCheck);
+  $("ftLast").innerHTML = lastCheck
+    ? `Letzter Check <b>${esc(lastCheck.fix || FT_KIND[lastCheck.kind])}</b> ${esc(lastCheck.time)}  <b>${esc(kgSigned(lastCheck.diff))}</b>${n(f.intervalMinutes) && f.intervalMinutes > 0 ? `  Intervall ${esc(f.intervalMinutes)} min` : ""}`
+    : "";
+}
+
+function drawFuelTrend() {
+  const f = ft.data;
+  const plot = $("ftPlot");
+  const svg = $("ftSvg");
+  const W = plot.clientWidth, H = plot.clientHeight;
+  ft.width = W;
+  if (!f || W < 50) return;
+  const L = 64, R = 12, T = 10, B = 24;
+  const checks = f.items.filter(isCheck);
+  const diffs = checks.map((e) => e.diff);
+  let lo = Math.min(0, ...diffs), hi = Math.max(0, ...diffs);
+  if (hi - lo < 500) { const mid = (hi + lo) / 2; lo = Math.min(lo, mid - 250); hi = Math.max(hi, mid + 250); }
+  const step = [100, 200, 250, 500, 1000, 2000, 2500, 5000, 10000, 20000].find((s) => (hi - lo) / s <= 4) || 50000;
+  lo = Math.floor(lo / step) * step; hi = Math.ceil(hi / step) * step;
+  const total = Math.max(1, f.totalNm || Math.max(...f.items.map((e) => e.nm || 0)));
+  const x = (nm) => L + (Math.min(total, Math.max(0, nm || 0)) / total) * (W - L - R);
+  const y = (kg) => T + ((hi - kg) / (hi - lo)) * (H - T - B);
+
+  let g = "";
+  for (let v = lo; v <= hi + 1e-6; v += step) {
+    const yy = y(v).toFixed(1);
+    g += `<line x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}" stroke="${v === 0 ? "#4a5560" : "#1d242b"}" stroke-width="1"/>`;
+    g += `<text x="${L - 8}" y="${yy}" text-anchor="end" dominant-baseline="middle">${v === 0 ? "Plan" : esc(kgSigned(v).replace(" kg", ""))}</text>`;
+  }
+  g += `<text x="${L}" y="${H - 4}">0 nm</text><text x="${W - R}" y="${H - 4}" text-anchor="end">${esc(Math.round(total))} nm</text>`;
+
+  // Tanken/Änderung: senkrechte Haarlinie, der Vergleich beginnt dort neu (Linie wird unterbrochen)
+  for (const e of f.items.filter((i) => !isCheck(i) && n(i.nm) !== null)) {
+    const xx = x(e.nm).toFixed(1);
+    g += `<line x1="${xx}" x2="${xx}" y1="${T}" y2="${H - B}" stroke="#31c6ee" stroke-width="1"/>`;
+    const right = x(e.nm) > W - 120;
+    g += `<text x="${(x(e.nm) + (right ? -6 : 6)).toFixed(1)}" y="${T + 10}" text-anchor="${right ? "end" : "start"}">${e.kind === "Refuel" ? "Tanken" : "Änderung"}</text>`;
+  }
+
+  // Linie je Abschnitt zwischen zwei Tankvorgängen
+  let seg = [];
+  const segs = [seg];
+  for (const e of f.items) {
+    if (!isCheck(e)) { seg = []; segs.push(seg); continue; }
+    if (n(e.nm) !== null) seg.push(e);
+  }
+  for (const s of segs.filter((s) => s.length > 1)) {
+    g += `<polyline fill="none" stroke="#e9eef1" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="${s.map((e) => x(e.nm).toFixed(1) + "," + y(e.diff).toFixed(1)).join(" ")}"/>`;
+  }
+
+  ft.pts = checks.filter((e) => n(e.nm) !== null).map((e) => ({ e, x: x(e.nm), y: y(e.diff) }));
+  for (const p of ft.pts) {
+    const warn = p.e.warnings && p.e.warnings.length;
+    g += `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="4" fill="${warn ? "#ffa620" : "#e9eef1"}" stroke="#000" stroke-width="2"/>`;
+  }
+
+  // Direkte Beschriftung nur am letzten Check
+  const end = ft.pts[ft.pts.length - 1];
+  if (end) {
+    const label = (end.e.fix && W > 500 ? end.e.fix + " " : "") + kgSigned(end.e.diff);
+    const width = label.length * 7.5;
+    const left = end.x > W - width - 20;
+    const x0 = left ? end.x - width - 10 : end.x;
+    const x1 = left ? end.x : end.x + width + 10;
+    // Über die höchsten Punkte unter der Beschriftung setzen, damit sie die Linie nicht kreuzt
+    const top = Math.min(...ft.pts.filter((p) => p.x >= x0 - 4 && p.x <= x1 + 4).map((p) => p.y));
+    g += `<text class="val" x="${(end.x + (left ? -10 : 10)).toFixed(1)}" y="${Math.max(T + 10, top - 10).toFixed(1)}" text-anchor="${left ? "end" : "start"}">${esc(label)}</text>`;
+  }
+
+  g += `<line id="ftCross" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="#93a1ad" stroke-width="1" visibility="hidden"/>`;
+  g += `<circle id="ftHot" r="6" fill="none" stroke="#e9eef1" stroke-width="2" visibility="hidden"/>`;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.innerHTML = g;
+  if (ft.sel !== null) showFuelTip(Math.min(ft.sel, ft.pts.length - 1));
+}
+
+function showFuelTip(i) {
+  const p = ft.pts[i];
+  const tip = $("ftTip");
+  if (!p) { hideFuelTip(); return; }
+  ft.sel = i;
+  const cross = $("ftCross"), hot = $("ftHot");
+  cross.setAttribute("x1", p.x); cross.setAttribute("x2", p.x); cross.setAttribute("visibility", "visible");
+  hot.setAttribute("cx", p.x); hot.setAttribute("cy", p.y); hot.setAttribute("visibility", "visible");
+  const e = p.e;
+  tip.replaceChildren();
+  const line = (text, cls) => { const d = document.createElement("div"); d.textContent = text; if (cls) d.className = cls; tip.appendChild(d); };
+  line(kgSigned(e.diff) + " gegen Plan", "v");
+  line([e.fix || FT_KIND[e.kind], e.time].filter(Boolean).join(" · "));
+  line("An Bord " + kgDe(e.actual));
+  if (n(e.change) !== null) line("Seit letztem Check " + kgSigned(e.change));
+  if (n(e.landing) !== null) line("Landung ca. " + kgDe(e.landing) + (n(e.minimum) !== null ? " (Min " + kgDe(e.minimum) + ")" : ""));
+  for (const w of e.warnings || []) line(FT_WARN[w] || w, "warn");
+  tip.hidden = false;
+  const W = $("ftPlot").clientWidth;
+  const tw = tip.offsetWidth;
+  tip.style.left = Math.max(0, Math.min(W - tw, p.x + (p.x > W / 2 ? -tw - 14 : 14))) + "px";
+}
+
+function hideFuelTip() {
+  ft.sel = null;
+  $("ftTip").hidden = true;
+  for (const id of ["ftCross", "ftHot"]) { const el = $(id); if (el) el.setAttribute("visibility", "hidden"); }
+}
+
+function nearestFuelPoint(clientX) {
+  const r = $("ftPlot").getBoundingClientRect();
+  const px = clientX - r.left;
+  let best = -1, bestD = Infinity;
+  ft.pts.forEach((p, i) => { const d = Math.abs(p.x - px); if (d < bestD) { bestD = d; best = i; } });
+  return best;
+}
+
+$("ftPlot").addEventListener("pointermove", (ev) => { const i = nearestFuelPoint(ev.clientX); if (i >= 0) showFuelTip(i); });
+$("ftPlot").addEventListener("pointerleave", () => { if (document.activeElement !== $("ftPlot")) hideFuelTip(); });
+$("ftPlot").addEventListener("focus", () => { if (ft.pts.length) showFuelTip(ft.sel ?? ft.pts.length - 1); });
+$("ftPlot").addEventListener("blur", hideFuelTip);
+$("ftPlot").addEventListener("keydown", (ev) => {
+  if (!ft.pts.length) return;
+  const i = ft.sel ?? ft.pts.length - 1;
+  if (ev.key === "ArrowLeft") { showFuelTip(Math.max(0, i - 1)); ev.preventDefault(); }
+  else if (ev.key === "ArrowRight") { showFuelTip(Math.min(ft.pts.length - 1, i + 1)); ev.preventDefault(); }
+  else if (ev.key === "Home") { showFuelTip(0); ev.preventDefault(); }
+  else if (ev.key === "End") { showFuelTip(ft.pts.length - 1); ev.preventDefault(); }
+  else if (ev.key === "Escape") { hideFuelTip(); }
+});
+if (window.ResizeObserver) new ResizeObserver(() => { if (ft.data && $("ftPlot").clientWidth !== ft.width) drawFuelTrend(); }).observe($("ftPlot"));
+
+/* Tabelle: die letzten Einträge, neueste zuerst – jeder Wert ist auch ohne Hover lesbar */
+function renderFuelTable(f) {
+  const body = $("ftTable").tBodies[0];
+  body.replaceChildren();
+  for (const e of f.items.slice(-6).reverse()) {
+    const tr = document.createElement("tr");
+    const cell = (text, cls) => { const td = document.createElement("td"); td.textContent = text; if (cls) td.className = cls; tr.appendChild(td); };
+    if (!isCheck(e)) {
+      tr.className = "refuel";
+      cell(e.time);
+      cell(FT_KIND[e.kind]);
+      cell(kgDe(e.actual));
+      cell(n(e.from) !== null ? kgSigned(e.actual - e.from) : DASH);
+      cell("Vergleich neu");
+      cell("");
+    } else {
+      cell(e.time, "dim");
+      const where = document.createElement("td");
+      where.textContent = e.fix || FT_KIND[e.kind];
+      if (e.warnings && e.warnings.length) {
+        const w = document.createElement("span");
+        w.className = "warn";
+        w.textContent = e.warnings.map((x) => FT_WARN[x] || x).join(", ");
+        where.appendChild(w);
+      }
+      tr.appendChild(where);
+      cell(kgDe(e.actual));
+      cell(kgSigned(e.diff));
+      cell(kgSigned(e.change), "dim");
+      cell(n(e.landing) !== null ? kgDe(e.landing) : DASH, "dim");
+    }
+    body.appendChild(tr);
+  }
+}
+
 /* ------------------------------------------------------------------ Triebwerke */
 function renderEngines(s) {
   if (!s) { setHtml("engs", ""); setHtml("totals", ""); $("ffSource").textContent = ""; return; }
@@ -1102,6 +1324,7 @@ function render(d) {
   renderInput(d);
   renderEcam(d.sim);
   renderRoute(d);
+  renderFuelTrend(d.plan);
   renderEngines(d.sim);
   renderConfig(d.sim);
   renderAtc(d.sim);

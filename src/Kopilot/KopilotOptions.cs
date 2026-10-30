@@ -103,6 +103,28 @@ public sealed class MonitoringOptions
 
     /// <summary>Regel TRAFFIC_PROXIMITY (abschalten über <see cref="DisabledRules"/>).</summary>
     public TrafficMonitoringOptions Traffic { get; set; } = new();
+
+    /// <summary>Fuel Check im Reiseflug: Regeln FUEL_CHECK und FUEL_WARNING (abschalten über <see cref="DisabledRules"/>).</summary>
+    public FuelCheckOptions FuelCheck { get; set; } = new();
+}
+
+/// <summary>
+/// Fuel Check: an jedem OFP-Wegpunkt im Reiseflug Ist gegen Plan ansagen, auf langen Strecken ohne Wegpunkt im Intervall.
+/// Warnung bei wachsender Abweichung (Leckverdacht) oder wenn die prognostizierte Landemenge unter Minimum + Puffer fällt.
+/// </summary>
+public sealed class FuelCheckOptions
+{
+    /// <summary>Intervall-Check nach so vielen Minuten (Sim-Zeit) im Reiseflug ohne Check. 0 = aus.</summary>
+    public double IntervalMinutes { get; set; } = 30;
+
+    /// <summary>Warnung, wenn die Abweichung gegen den Plan seit dem letzten Check um mehr als so viele kg schlechter wird. 0 = aus.</summary>
+    public double DeviationIncreaseKg { get; set; } = 300;
+
+    /// <summary>Puffer über der Mindest-Landemenge (höchstens die Hälfte des geplanten Überschusses über dem Minimum).</summary>
+    public double LandingBufferKg { get; set; } = 500;
+
+    /// <summary>Wegpunkt-Checks frühestens so viele Minuten nach dem letzten Check. 0 = an jedem Wegpunkt.</summary>
+    public double MinSpacingMinutes { get; set; }
 }
 
 /// <summary>Verkehrswarnung des Monitorings: Ziel näher als <see cref="ProximityRangeNm"/> und innerhalb ±<see cref="ProximityAltitudeFt"/>.</summary>

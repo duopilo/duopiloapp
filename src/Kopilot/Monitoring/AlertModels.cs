@@ -77,6 +77,10 @@ public static class Rules
     // Am Boden: zu schnell gerollt (v0.9, Sprachschleife)
     public const string TaxiSpeed = "TAXI_SPEED";
 
+    // Fuel Check im Reiseflug: Ansage an Wegpunkten/im Intervall, Warnung bei wachsender Abweichung oder knapper Landemenge
+    public const string FuelCheck = "FUEL_CHECK";
+    public const string FuelWarning = "FUEL_WARNING";
+
     // Ansagen, die viele Airliner selbst machen (FWC) – nur mit Monitoring:AircraftAutoCallouts
     public const string AutoRadioAltitude = "AUTO_RA";
     public const string AutoMinimum = "AUTO_MINIMUM";
@@ -91,6 +95,7 @@ public static class Rules
         TrafficProximity,
         Pm100Knots, PmV1, PmRotate, PmPositiveClimb, PmSpoilers, PmReverse, PmDecel, Pm70Knots, PmTenThousand, PmTransition, PmFlaps, PmGear,
         TaxiSpeed,
+        FuelCheck, FuelWarning,
         AutoRadioAltitude, AutoMinimum, AutoRetard,
     ];
 }
