@@ -2,29 +2,25 @@ name: Bench (temporary)
 on:
   push:
     branches: ["bench/voice-after-beta"]
-    paths: ["tools/bench/**", ".github/workflows/bench.yml"]
+    paths: ["tools/check/**", ".github/workflows/bench.yml"]
 permissions:
   contents: write
 jobs:
-  bench:
+  check:
     runs-on: windows-latest
-    timeout-minutes: 90
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '10.0.x'
-      - name: CPU
-        shell: pwsh
-        run: Get-CimInstance Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors | Format-List | Out-File cpu.txt; Get-Content cpu.txt
-      - name: Bench
-        run: dotnet run -c Release --project tools/bench/Bench.csproj -- "${{ runner.temp }}\bench"
+      - name: Check
+        run: dotnet run -c Release --project tools/check/Check.csproj -- "${{ runner.temp }}\check"
       - name: Ergebnis ins Repo
         if: always()
         shell: pwsh
         run: |
           git config user.name "bench"; git config user.email "bench@users.noreply.github.com"
           New-Item -ItemType Directory -Force results | Out-Null
-          if (Test-Path results.md) { Move-Item -Force results.md results/results.md }
-          Move-Item -Force cpu.txt results/cpu.txt
-          git add results; git commit -m "Bench-Ergebnis"; git push origin HEAD:bench/voice-after-beta
+          if (Test-Path check.md) { Move-Item -Force check.md results/check.md }
+          git add results; git commit -m "Check-Ergebnis"; git push origin HEAD:bench/voice-after-beta
