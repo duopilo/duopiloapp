@@ -197,7 +197,7 @@ public sealed partial class AtcStations
 
         var code = segment.Fir.Trim().ToUpperInvariant();
         var type = segment.Oceanic ? AtcStationType.Oceanic : AtcStationType.Center;
-        var key = $"FIR/{code}/{sector}";
+        var key = SectorKey(code, sector);
         if (_cache.TryGetValue(key, out var cached))
         {
             return cached;
@@ -207,6 +207,9 @@ public sealed partial class AtcStations
         _cache[key] = station;
         return station;
     }
+
+    /// <summary>Schlüssel der Station einer Kontrollposition: "FIR/CZUL/MC".</summary>
+    public static string SectorKey(string fir, string sector) => $"FIR/{fir.Trim().ToUpperInvariant()}/{sector}";
 
     /// <summary>Rufname der Station eines Routenabschnitts, ohne eine Stimme zu vergeben (für die Sprachschleife).</summary>
     public string SegmentName(AtcFirSegment segment) =>

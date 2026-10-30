@@ -217,6 +217,48 @@ public sealed class AirspaceTests
         Assert.Equal(AtcPhase.Center, session.Phase);
     }
 
+    /// <summary>
+    /// Neustart von Kopilot im Reiseflug innerhalb eines Sektors: Die Sitzung kommt mit der Station dieser Kontrollposition
+    /// zurück – Rufname, Frequenz aus den Sektordaten und Stimme wie vor dem Neustart, nicht die allgemeine FIR-Station.
+    /// </summary>
+    [Fact]
+    public void Neustart_im_Reiseflug_innerhalb_eines_Sektors()
+    {
+        var templates = TestData.Templates();
+        var plan = Plan(templates: templates);
+        var montreal = plan.Firs.Where(f => f.Fir == "CZUL").ToList();
+        Assert.True(montreal.Count >= 2, string.Join(", ", montreal));
+        var sector = montreal[1];
+
+        var session = Session(plan, templates);
+        var now = T0;
+        session.Start(Cruise(plan, montreal[0].StartNm + 5, now));
+        Assert.Single(session.Tick(Cruise(plan, sector.StartNm + 1, now.AddSeconds(1))));
+        var before = session.Station;
+        Assert.Equal(AtcStations.SectorKey("CZUL", sector.Sector!), before.Key);
+        Assert.Equal("sectors", before.FrequencySource);
+
+        // Wie nach einem Neustart: Sicherung als JSON hin und zurück, neue Vorlagen, neuer Plan, neue Sitzung
+        var input = Cruise(plan, sector.StartNm + 3, now.AddSeconds(30));
+        var snapshot = AtcSessionStore.Deserialize(AtcSessionStore.Serialize(session.Snapshot(input.TimeUtc)))!;
+        var restartTemplates = TestData.Templates();
+        var restartPlan = Plan(templates: restartTemplates);
+        var restored = Session(restartPlan, restartTemplates);
+        restored.Restore(snapshot, input);
+
+        Assert.Equal(AtcPhase.Center, restored.Phase);
+        Assert.Equal(before.Key, restored.Station.Key);
+        Assert.Equal(before.Name, restored.Station.Name);
+        Assert.Equal("sectors", restored.Station.FrequencySource);
+        Assert.Equal(AtcSpeech.Frequency(sector.FrequencyMhz!.Value).Written, restored.Station.Frequency.Written);
+        Assert.Equal(before.Frequency.Written, restored.Station.Frequency.Written);
+        Assert.Equal(before.Voice, restored.Station.Voice);
+
+        // Im selben Sektor weiter: keine Übergabe, die Station bleibt die der Kontrollposition
+        restored.Tick(Cruise(restartPlan, sector.StartNm + 4, now.AddSeconds(31)));
+        Assert.Equal(before.Key, restored.Station.Key);
+    }
+
     [Fact]
     public void UIR_ohne_Grenze_nimmt_die_Sektoren_Maastricht_oder_Bremen()
     {
