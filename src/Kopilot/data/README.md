@@ -1,35 +1,35 @@
-# Luftraum- und Airline-Daten
+# Airspace and airline data
 
-Daten für das Kopilot-ATC. Kopilot liest sie beim Start der ATC-Sitzung. Ein eigener, neuerer Stand in
-`%LOCALAPPDATA%\Kopilot\data\…` (gleiche Ordnerstruktur) hat Vorrang vor den mitgelieferten Dateien und übersteht
-jedes Update. Danach `atc_control reload`.
+Data for the Kopilot ATC. Kopilot reads it when the ATC session starts. Your own, newer copy in
+`%LOCALAPPDATA%\Kopilot\data\…` (same folder structure) takes precedence over the bundled files and survives
+every update. Then run `atc_control reload`.
 
-| Ordner | Inhalt | Quelle | Lizenz |
+| Folder | Contents | Source | License |
 |---|---|---|---|
-| `vatspy/` | FIR-Grenzen (`Boundaries.geojson`) und FIR-Namen (`VATSpy.dat`), unverändertes Originalformat | [VAT-Spy Data Project](https://github.com/vatsimnetwork/vatspy-data-project), Stand `10fbcea` (27.10.2026) | CC BY-SA 4.0 (`vatspy/LICENSE`) |
-| `sectors/` | Streckensektoren mit Höhenband, Frequenz und Rufname (`atc-sectors.json`), erzeugt mit `tools/import_sectors.py` | [VATGlasses Data Project](https://github.com/lennycolton/vatglasses-data) (VATSIM-Sektordaten), Stand `5946a1c` (29.10.2026) | CC BY-NC-SA 4.0 (`sectors/LICENSE`) – nur nicht-kommerziell |
-| `openflights/` | Airlines mit ICAO-Kennung und Telephony-Rufzeichen (`airlines.dat`, Originalformat) | [OpenFlights](https://openflights.org/data.php), Stand `e539814` (23.10.2026) | Open Database License (ODbL) 1.0, Inhalte unter der Database Contents License |
+| `vatspy/` | FIR boundaries (`Boundaries.geojson`) and FIR names (`VATSpy.dat`), unmodified original format | [VAT-Spy Data Project](https://github.com/vatsimnetwork/vatspy-data-project), revision `10fbcea` (2026-10-27) | CC BY-SA 4.0 (`vatspy/LICENSE`) |
+| `sectors/` | En-route sectors with altitude band, frequency and callsign (`atc-sectors.json`), generated with `tools/import_sectors.py` | [VATGlasses Data Project](https://github.com/lennycolton/vatglasses-data) (VATSIM sector data), revision `5946a1c` (2026-10-29) | CC BY-NC-SA 4.0 (`sectors/LICENSE`) – non-commercial only |
+| `openflights/` | Airlines with ICAO code and telephony callsign (`airlines.dat`, original format) | [OpenFlights](https://openflights.org/data.php), revision `e539814` (2026-10-23) | Open Database License (ODbL) 1.0, contents under the Database Contents License |
 
-## Aktualisieren
+## Updating
 
-VAT-Spy und OpenFlights: die Dateien aus dem jeweiligen Repository unverändert hierher (oder nach
-`%LOCALAPPDATA%\Kopilot\data\vatspy` bzw. `…\openflights`) kopieren.
+VAT-Spy and OpenFlights: copy the files from the respective repository unchanged to here (or to
+`%LOCALAPPDATA%\Kopilot\data\vatspy` or `…\openflights`).
 
-Sektoren:
+Sectors:
 
 ```
 git clone --depth 1 https://github.com/lennycolton/vatglasses-data
 python tools/import_sectors.py --vatglasses vatglasses-data
 ```
 
-Das Skript übernimmt nur Streckenpositionen (CTR/FSS) mit VHF-Frequenz, ordnet jeden Sektor einer FIR zu (Gruppe,
-Rufzeichen-Präfix aus `VATSpy.dat` oder Lage) und vereinfacht die Polygone auf etwa 0,1 nm.
+The script only takes en-route positions (CTR/FSS) with a VHF frequency, assigns each sector to a FIR (group,
+callsign prefix from `VATSpy.dat`, or location) and simplifies the polygons to about 0.1 nm.
 
-## Hinweise
+## Notes
 
-- Die Sektoren sind die von VATSIM. Grenzen und Frequenzen können vom MSFS-ATC abweichen (z. B. Montreal: VATSIM
-  132.625/133.025, MSFS 132.25/119.4). Für die USA fehlen viele ARTCCs (u. a. ZMP, ZDV, ZLA) – dort gilt eine Frequenz je
-  FIR aus `atc-templates.json`.
-- VAT-Spy-Grenzen überlappen sich teilweise (VATSIM-Delegationen, z. B. reicht CZQX bis hinter Wabush). Welche FIRs die
-  Route durchfliegt, gibt deshalb das OFP vor; VAT-Spy bestimmt nur, wo die Grenze liegt.
-- Korrekturen gehören in `atc-templates.json` (Namen, Frequenzen, Rufzeichen) – die Daten hier bleiben unverändert.
+- The sectors are VATSIM's. Boundaries and frequencies can differ from the MSFS ATC (e.g. Montreal: VATSIM
+  132.625/133.025, MSFS 132.25/119.4). Many US ARTCCs are missing (including ZMP, ZDV, ZLA) – there, one frequency per
+  FIR from `atc-templates.json` applies.
+- VAT-Spy boundaries partly overlap (VATSIM delegations, e.g. CZQX extends beyond Wabush). So the OFP determines which
+  FIRs the route passes through; VAT-Spy only determines where the boundary lies.
+- Corrections belong in `atc-templates.json` (names, frequencies, callsigns) – the data here stays unmodified.

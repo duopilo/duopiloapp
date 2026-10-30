@@ -27,30 +27,30 @@ $repo = Split-Path -Parent $PSScriptRoot
 # Name und Programmdatei aus dem Projekt – eine Stelle für alles.
 if (-not $Name -or -not $Exe) {
     $json = dotnet msbuild (Join-Path $repo 'src/Kopilot/Kopilot.csproj') -getProperty:Product -getProperty:AssemblyName
-    if ($LASTEXITCODE -ne 0) { Write-Output "::error::Name und Programmdatei ließen sich nicht aus dem Projekt lesen."; exit 1 }
+    if ($LASTEXITCODE -ne 0) { Write-Output "::error::Could not read the product name and program file from the project."; exit 1 }
     $props = ($json | Out-String | ConvertFrom-Json).Properties
     if (-not $Name) { $Name = $props.Product }
     if (-not $Exe) { $Exe = "$($props.AssemblyName).exe" }
 }
 
 if ($Version -notmatch '^(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z][0-9A-Za-z.-]*)?$') {
-    Write-Output "::error::Version '$Version' passt nicht zu 1.2.3 oder 1.2.3-beta.1."
+    Write-Output "::error::Version '$Version' doesn't match 1.2.3 or 1.2.3-beta.1."
     exit 1
 }
 $teile = $Matches[1..3] | ForEach-Object { [int]$_ }
-if ($teile | Where-Object { $_ -gt 65535 }) { Write-Output "::error::Teile der Version dürfen höchstens 65535 sein."; exit 1 }
+if ($teile | Where-Object { $_ -gt 65535 }) { Write-Output "::error::Version parts must not be greater than 65535."; exit 1 }
 $numerisch = "$($teile -join '.').0"
 
 $quelle = (Resolve-Path $Quelle).Path
-if (-not (Test-Path (Join-Path $quelle $Exe))) { Write-Output "::error::In $quelle fehlt $Exe."; exit 1 }
+if (-not (Test-Path (Join-Path $quelle $Exe))) { Write-Output "::error::$Exe is missing in $quelle."; exit 1 }
 $dateien = @(Get-ChildItem $quelle -Recurse -File)
-Write-Output "Quelle: $quelle – $($dateien.Count) Dateien, $([math]::Round(($dateien | Measure-Object Length -Sum).Sum / 1MB)) MB"
+Write-Output "Source: $quelle – $($dateien.Count) files, $([math]::Round(($dateien | Measure-Object Length -Sum).Sum / 1MB)) MB"
 
 # Mitgelieferte Dateien, die man bearbeiten kann. Ihre Prüfsummen kommen als shipped-files.sha256 mit – daran erkennt
 # das nächste Update eigene Änderungen und sichert sie, bevor es die Dateien ersetzt (setup.iss, [Code]).
 $profilDateien = @(Get-ChildItem (Join-Path $quelle 'profiles') -File -Recurse -Filter '*.json' -ErrorAction SilentlyContinue)
-if ($profilDateien.Count -eq 0) { Write-Output "::error::In $quelle\profiles fehlen die Flugzeugprofile."; exit 1 }
-if (-not (Test-Path (Join-Path $quelle 'atc-templates.json'))) { Write-Output "::error::In $quelle fehlt atc-templates.json."; exit 1 }
+if ($profilDateien.Count -eq 0) { Write-Output "::error::The aircraft profiles are missing in $quelle\profiles."; exit 1 }
+if (-not (Test-Path (Join-Path $quelle 'atc-templates.json'))) { Write-Output "::error::atc-templates.json is missing in $quelle."; exit 1 }
 $bearbeitbar = @('appsettings.json', 'atc-templates.json' | ForEach-Object { Join-Path $quelle $_ } | Where-Object { Test-Path $_ } | Get-Item) + $profilDateien
 $zeilen = $bearbeitbar | ForEach-Object {
     $relativ = [IO.Path]::GetRelativePath($quelle, $_.FullName) -replace '/', '\'
@@ -60,7 +60,7 @@ $tmp = Join-Path ([IO.Path]::GetTempPath()) "setup-$([guid]::NewGuid().ToString(
 New-Item -ItemType Directory -Path $tmp | Out-Null
 $manifest = Join-Path $tmp 'shipped-files.sha256'
 [IO.File]::WriteAllLines($manifest, [string[]]$zeilen)
-Write-Output "Bearbeitbare Dateien mit Prüfsumme: $($zeilen.Count)"
+Write-Output "Editable files with checksum: $($zeilen.Count)"
 
 function Find-Iscc {
     $orte = @("${env:ProgramFiles(x86)}", "$env:ProgramFiles", "$env:LOCALAPPDATA\Programs") | Where-Object { $_ }
@@ -75,10 +75,10 @@ function Find-Iscc {
 $iscc = Find-Iscc
 if (-not $iscc -and $env:GITHUB_ACTIONS -eq 'true') {
     choco install innosetup -y --no-progress
-    if ($LASTEXITCODE -ne 0) { Write-Output "::error::Inno Setup ließ sich nicht installieren."; exit 1 }
+    if ($LASTEXITCODE -ne 0) { Write-Output "::error::Could not install Inno Setup."; exit 1 }
     $iscc = Find-Iscc
 }
-if (-not $iscc) { Write-Output "::error::Inno Setup (ISCC.exe) nicht gefunden – winget install JRSoftware.InnoSetup"; exit 1 }
+if (-not $iscc) { Write-Output "::error::Inno Setup (ISCC.exe) not found – winget install JRSoftware.InnoSetup"; exit 1 }
 Write-Output "Inno Setup: $iscc"
 
 New-Item -ItemType Directory -Force -Path $Ziel | Out-Null
@@ -91,14 +91,14 @@ if ($env:GITHUB_SERVER_URL -and $env:GITHUB_REPOSITORY) { $argumente += "/DRepoU
 & $iscc @argumente (Join-Path $PSScriptRoot 'setup.iss')
 $code = $LASTEXITCODE
 Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
-if ($code -ne 0) { Write-Output "::error::Inno Setup ist fehlgeschlagen (siehe oben)."; exit $code }
+if ($code -ne 0) { Write-Output "::error::Inno Setup failed (see above)."; exit $code }
 
 $setup = Join-Path $ziel "$Name-$Version-Setup.exe"
-if (-not (Test-Path $setup)) { Write-Output "::error::$setup fehlt nach dem Bauen."; exit 1 }
+if (-not (Test-Path $setup)) { Write-Output "::error::$setup is missing after the build."; exit 1 }
 $groesse = (Get-Item $setup).Length
-Write-Output "Setup: $setup, Version $numerisch, $([math]::Round($groesse / 1MB)) MB"
+Write-Output "Setup: $setup, version $numerisch, $([math]::Round($groesse / 1MB)) MB"
 if ($groesse -lt 30MB) {
-    Write-Output "::error::Die Setup-Datei ist nur $groesse Byte groß – das Programm fehlt darin."
+    Write-Output "::error::The setup file is only $groesse bytes – the program is missing from it."
     exit 1
 }
 if ($env:GITHUB_ENV) {
