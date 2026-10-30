@@ -282,7 +282,7 @@ public sealed class ConfigVerifier
     {
         var now = _time.GetUtcNow();
         _claims?.Release(job.Item, now);
-        _log.LogInformation(Loc.Log("log.input.verifyResult"), job.Item, job.Target, outcome.Callout ?? Loc.T("input.verify.noCallout"), outcome.Message);
+        _log.LogInformation(Loc.Log("log.input.verifyResult"), job.Item, job.Target, outcome.Callout ?? Loc.En("input.verify.noCallout"), outcome.Message);
         _bus?.Publish([new AlertEvent(0, now, job.Rule, outcome.Ok || !outcome.Readable ? AlertSeverity.Info : AlertSeverity.Caution, AlertKind.Event, outcome.Callout, outcome.Message)]);
     }
 

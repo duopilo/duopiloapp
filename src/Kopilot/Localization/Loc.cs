@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Globalization;
 using System.Text;
@@ -9,17 +10,20 @@ namespace Kopilot.Localization;
 public sealed record LanguageInfo(string Code, string Name);
 
 /// <summary>
-/// Texts for the dashboard, tool messages (message/note fields) and logs, from one JSON file per language
+/// Texts for the dashboard, tool messages (message/note fields), tray and logs, from one JSON file per language
 /// (<c>src/Kopilot/i18n/&lt;code&gt;.json</c>, embedded in Kopilot.dll). English is the default and the fallback for missing keys.
 /// <para>
 /// What stays English regardless of the setting (like a real crew, SOP): callouts, checklists, FMA calls, warnings and radio
 /// (ATC templates) – everything that is spoken or is phraseology. Those texts never go through <see cref="T"/>.
 /// </para>
 /// <para>
+/// Logs are always English, whatever the setting (issues, international contributors): keys starting with "log." exist only in
+/// en.json, <see cref="Log"/> always returns the English template, and translated texts that end up in a log line as an argument
+/// are swapped for their English twin (<see cref="ToEnglish"/>, done by the file logger).
+/// </para>
+/// <para>
 /// Placeholders are named: <c>{radius}</c> or <c>{radius:0.0}</c> (format with the invariant culture). <see cref="T"/> maps its
 /// arguments to the names in the order they first appear in the <b>English</b> text, so a translation may reorder them.
-/// Templates from <see cref="Log"/> go to ILogger, which maps by position – for keys starting with "log." a translation must keep
-/// the placeholders in the English order (checked by the tests).
 /// </para>
 /// <para>
 /// Optional: extra or corrected translations in <c>%LOCALAPPDATA%\Kopilot\i18n\&lt;code&gt;.json</c> (key by key on top of the
@@ -33,14 +37,20 @@ public static class Loc
     /// <summary>Key with the language's own name in every language file.</summary>
     public const string NameKey = "language.name";
 
-    /// <summary>Prefix of templates for ILogger (placeholder order must match English).</summary>
+    /// <summary>Prefix of log texts (ILogger templates, crash reports). English only – translations of these keys are ignored.</summary>
     public const string LogPrefix = "log.";
+
+    /// <summary>Size of one generation of <see cref="ToEnglish"/> twins (two generations are kept).</summary>
+    private const int TwinGeneration = 16384;
 
     private const string ResourcePrefix = "Kopilot.i18n.";
 
     private static readonly AsyncLocal<string?> ScopedLanguage = new();
+    private static readonly object TwinGate = new();
     private static volatile Catalog _catalog = Catalog.Load(null);
     private static volatile string _language = DefaultLanguage;
+    private static volatile ConcurrentDictionary<string, string> _twins = new(StringComparer.Ordinal);
+    private static volatile ConcurrentDictionary<string, string> _oldTwins = new(StringComparer.Ordinal);
 
     /// <summary>Raised after <see cref="SetLanguage"/> changed the language (e.g. the tray menu rebuilds its texts).</summary>
     public static event Action<string>? LanguageChanged;
@@ -123,16 +133,40 @@ public static class Loc
     }
 
     /// <summary>Text in the selected language (fallback English, then the key itself), placeholders filled in.</summary>
-    public static string T(string key, params object?[] args) => Format(key, Lookup(key, Language), args);
+    public static string T(string key, params object?[] args)
+    {
+        var language = Language;
+        var text = Format(key, Lookup(key, language), args);
+        if (language != DefaultLanguage)
+        {
+            RememberTwin(text, Format(key, Lookup(key, DefaultLanguage), args));
+        }
+
+        return text;
+    }
 
     /// <summary>Text in English, whatever the setting.</summary>
     public static string En(string key, params object?[] args) => Format(key, Lookup(key, DefaultLanguage), args);
 
     /// <summary>
-    /// Message template for ILogger in the selected language: <c>_log.LogWarning(Loc.Log("log.sim.connectFailed"), message)</c>.
-    /// Placeholders keep the English order (ILogger maps arguments by position).
+    /// Message template for ILogger, always English: <c>_log.LogWarning(Loc.Log("log.sim.connectFailed"), message)</c>.
     /// </summary>
-    public static string Log(string key) => Lookup(key, Language);
+    public static string Log(string key) => Lookup(key, DefaultLanguage);
+
+    /// <summary>
+    /// The English version of a text that <see cref="T"/> produced in another language (exact match, recent texts only);
+    /// anything else comes back unchanged. Used for log arguments, so a log line stays English even if it quotes an alert message,
+    /// a refusal reason or an error that the user sees translated.
+    /// </summary>
+    public static string? ToEnglish(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return text;
+        }
+
+        return _twins.TryGetValue(text, out var en) || _oldTwins.TryGetValue(text, out en) ? en : text;
+    }
 
     /// <summary>True if the key exists in English.</summary>
     public static bool Has(string key) => _catalog.Get(DefaultLanguage)?.ContainsKey(key) == true;
@@ -162,7 +196,8 @@ public static class Loc
         return result;
     }
 
-    /// <summary>The raw strings of one language file (embedded plus overrides), without fallback. Null if there is no such language.</summary>
+    /// <summary>The raw strings of one language file (embedded plus overrides), without fallback. Null if there is no such language.
+    /// Translations never contain "log." keys (logs are English only).</summary>
     public static IReadOnlyDictionary<string, string>? Raw(string language) => _catalog.Get(Normalize(language) ?? language);
 
     /// <summary>Placeholder names in order of first appearance: "{a} {b:0.0} {a}" → a, b.</summary>
@@ -182,6 +217,29 @@ public static class Loc
 
     /// <summary>Placeholder names in order, with repeats (for comparing log templates).</summary>
     public static IReadOnlyList<string> PlaceholderSequence(string template) => Holes(template).Select(h => h.Name).ToList();
+
+    private static void RememberTwin(string text, string english)
+    {
+        if (text == english)
+        {
+            return;
+        }
+
+        var twins = _twins;
+        twins[text] = english;
+        if (twins.Count > TwinGeneration)
+        {
+            // Two generations: a text from just before the switch is still found
+            lock (TwinGate)
+            {
+                if (ReferenceEquals(twins, _twins))
+                {
+                    _oldTwins = twins;
+                    _twins = new ConcurrentDictionary<string, string>(StringComparer.Ordinal);
+                }
+            }
+        }
+    }
 
     private static string Lookup(string key, string language)
     {
@@ -337,7 +395,7 @@ public static class Loc
                 using var stream = assembly.GetManifestResourceStream(resource);
                 if (stream is not null)
                 {
-                    Merge(languages, code, Read(stream));
+                    Merge(languages, code, Read(stream, code));
                 }
             }
 
@@ -349,7 +407,8 @@ public static class Loc
                     try
                     {
                         using var stream = File.OpenRead(file);
-                        Merge(languages, Path.GetFileNameWithoutExtension(file).ToLowerInvariant(), Read(stream));
+                        var code = Path.GetFileNameWithoutExtension(file).ToLowerInvariant();
+                        Merge(languages, code, Read(stream, code));
                         loaded = overrideDirectory;
                     }
                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
@@ -375,8 +434,10 @@ public static class Loc
             }
         }
 
-        /// <summary>Flat JSON object: "key": "text". Keys starting with "_" are comments for translators.</summary>
-        private static Dictionary<string, string> Read(Stream stream)
+        /// <summary>
+        /// Flat JSON object: "key": "text". Keys starting with "_" are comments for translators. "log." keys only count in English.
+        /// </summary>
+        private static Dictionary<string, string> Read(Stream stream, string code)
         {
             using var doc = JsonDocument.Parse(stream, new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
             var result = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -387,7 +448,8 @@ public static class Loc
 
             foreach (var property in doc.RootElement.EnumerateObject())
             {
-                if (property.Name.StartsWith('_') || property.Value.ValueKind != JsonValueKind.String)
+                if (property.Name.StartsWith('_') || property.Value.ValueKind != JsonValueKind.String
+                    || (code != DefaultLanguage && property.Name.StartsWith(LogPrefix, StringComparison.Ordinal)))
                 {
                     continue;
                 }

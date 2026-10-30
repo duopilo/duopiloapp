@@ -18,7 +18,7 @@ public static class ServiceCollectionExtensions
     {
         services.Configure<KopilotOptions>(configuration.GetSection(KopilotOptions.Section));
 
-        // Sprache für Dashboard, Tool-Meldungen und Logs (Kopilot:Language) – so früh wie möglich, damit schon die Startlogs passen
+        // Sprache für Dashboard, Tool-Meldungen und Tray (Kopilot:Language) – so früh wie möglich; Logs bleiben Englisch
         Kopilot.Localization.Loc.Configure(configuration);
         services.AddSingleton<ProfileStore>();
         services.AddSingleton<SimConnectClient>();

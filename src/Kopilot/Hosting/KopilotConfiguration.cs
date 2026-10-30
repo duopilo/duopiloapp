@@ -52,13 +52,13 @@ public static class KopilotConfiguration
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
         {
-            reason = Loc.T("host.config.httpUrlInvalid", url);
+            reason = Loc.En("log.host.config.httpUrlInvalid", url);
             return false;
         }
 
         if (!Remote.RequestOrigin.IsLoopbackHost(uri.Host))
         {
-            reason = Loc.T("host.config.httpUrlNotLoopback", url);
+            reason = Loc.En("log.host.config.httpUrlNotLoopback", url);
             return false;
         }
 

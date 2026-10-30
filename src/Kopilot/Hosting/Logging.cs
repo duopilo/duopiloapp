@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text;
 using System.Threading.Channels;
+using Kopilot.Localization;
 
 namespace Kopilot.Hosting;
 
@@ -139,13 +140,103 @@ public sealed class FileLoggerProvider : ILoggerProvider
                 return;
             }
 
-            var message = formatter(state, exception);
+            // Logs bleiben Englisch: übersetzte Texte in den Argumenten (Alert-Erklärung, Grund, Fehler) gegen ihre englische Fassung tauschen
+            var message = EnglishLog.Format(state, exception, formatter);
             if (exception is not null)
             {
-                message += $" | {exception.GetType().Name}: {exception.Message}";
+                message += $" | {exception.GetType().Name}: {Loc.ToEnglish(exception.Message)}";
             }
 
             provider.Write(new LogLine(DateTimeOffset.Now, logLevel, category, message));
         }
     }
+}
+
+/// <summary>
+/// Logs are always English (Loc.Log gives English templates). Arguments can still carry text the user sees translated – an alert
+/// message, a refusal reason, an error. If one of them has an English twin (<see cref="Loc.ToEnglish"/>), the line is rendered again
+/// with the English text; otherwise the logger's own formatting is used unchanged.
+/// </summary>
+public static class EnglishLog
+{
+    private const string OriginalFormat = "{OriginalFormat}";
+
+    public static string Format<TState>(TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+    {
+        if (state is not IReadOnlyList<KeyValuePair<string, object?>> values || values.Count < 2)
+        {
+            return formatter(state, exception);
+        }
+
+        string? template = null;
+        var args = new List<object?>(values.Count);
+        var changed = false;
+        foreach (var (key, value) in values)
+        {
+            if (key == OriginalFormat)
+            {
+                template = value as string;
+                continue;
+            }
+
+            if (value is string text && Loc.ToEnglish(text) is { } english && !ReferenceEquals(english, text) && english != text)
+            {
+                args.Add(english);
+                changed = true;
+            }
+            else
+            {
+                args.Add(value);
+            }
+        }
+
+        return changed && template is not null ? Render(template, args) : formatter(state, exception);
+    }
+
+    /// <summary>Message template with positional values, like Microsoft.Extensions.Logging (invariant culture, "(null)", lists joined).</summary>
+    public static string Render(string template, IReadOnlyList<object?> args)
+    {
+        var sb = new StringBuilder(template.Length + 64);
+        var index = 0;
+        var pos = 0;
+        while (pos < template.Length)
+        {
+            var c = template[pos];
+            if ((c == '{' || c == '}') && pos + 1 < template.Length && template[pos + 1] == c)
+            {
+                sb.Append(c);
+                pos += 2;
+                continue;
+            }
+
+            if (c == '{')
+            {
+                var end = template.IndexOf('}', pos + 1);
+                if (end > pos)
+                {
+                    var hole = template[(pos + 1)..end];
+                    var colon = hole.IndexOf(':', StringComparison.Ordinal);
+                    var format = colon >= 0 ? hole[(colon + 1)..] : null;
+                    sb.Append(index < args.Count ? Value(args[index], format) : template[pos..(end + 1)]);
+                    index++;
+                    pos = end + 1;
+                    continue;
+                }
+            }
+
+            sb.Append(c);
+            pos++;
+        }
+
+        return sb.ToString();
+    }
+
+    private static string Value(object? value, string? format) => value switch
+    {
+        null => "(null)",
+        string s => s,
+        IFormattable f => f.ToString(format, CultureInfo.InvariantCulture),
+        System.Collections.IEnumerable list => string.Join(", ", list.Cast<object?>().Select(v => Value(v, null))),
+        _ => value.ToString() ?? "",
+    };
 }

@@ -173,7 +173,7 @@ static string? AddFileLog(ILoggingBuilder logging, IConfiguration configuration,
     }
     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
     {
-        Console.Error.WriteLine(Loc.T("program.logFileUnavailable", mode, ex.Message));
+        Console.Error.WriteLine(Loc.En("log.program.logFileUnavailable", mode, ex.Message));
         return null;
     }
 }

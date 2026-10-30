@@ -485,7 +485,7 @@ The "Brightness" slider only dims the displays – for night flights.
 | **SimBrief** | username or pilot ID, then loads the plan right away | immediately |
 | **Microphone** | recording device of the voice loop, with level | immediately |
 | **Modules** | Monitoring, Input (click twice), ATC, Voice loop | Monitoring/ATC after restart, otherwise immediately |
-| **Language** | dashboard, tool messages, logs, tray menu, problem reports (see [Language](#language)) | immediately |
+| **Language** | dashboard, tool messages, tray menu, problem reports (see [Language](#language)); logs stay English | immediately |
 
 The page writes to the existing files: `appsettings.Local.json` next to `Kopilot.exe` (comments and order are preserved; a backup goes to `%LOCALAPPDATA%\Kopilot\appsettings.Local.backup.json` first), and input and voice loop as before to `input.json` and `voice-settings.json`. Anything that is only read at startup is marked "applies after restart" on the page – the **Restart Kopilot** button restarts the tray instance (the ATC session comes back from its saved state). Password and token are never sent back to the browser; a newly generated token is shown exactly once for copying. If an environment variable (`Kopilot__…`) sets the same value, the page points this out – the variable takes precedence over the file.
 
@@ -497,7 +497,8 @@ Kopilot's own texts are English by default; German is optional. Switch it in the
 "Kopilot": { "Language": "de" }   // default "en"
 ```
 
-- **Follows the setting:** dashboard, tool messages to Claude (`message`/`note` fields), logs, tray menu and reports from **Report a problem**.
+- **Follows the setting:** dashboard, tool messages to Claude (`message`/`note` fields), tray menu and reports from **Report a problem**.
+- **Logs are always English** (`kopilot.log`, crash reports, the log in the dashboard) – so they can be attached to issues and read by every contributor.
 - **Always stays English**, like a real crew (SOP): callouts, checklists, FMA calls, warnings and radio (ATC templates). Claude itself answers in whatever language you talk to it.
 - Values in aircraft profiles and ATC templates are language-neutral (IDs, units); speeds are always in knots.
 - The voice loop understands commands in German and English regardless of this setting (`recognition.language` in `voice-settings.json`).

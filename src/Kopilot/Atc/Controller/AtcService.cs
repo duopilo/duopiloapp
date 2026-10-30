@@ -188,14 +188,14 @@ public sealed class AtcService : BackgroundService
 
         if (errors.Count > 0)
         {
-            _log.LogWarning(Loc.Log("log.atc.templateErrors"), userPath ?? basePath ?? AtcTemplateLoader.FileName, string.Join(" | ", errors));
+            _log.LogWarning(Loc.Log("log.atc.templateErrors"), userPath ?? basePath ?? AtcTemplateLoader.FileName, string.Join(" | ", errors.Select(Loc.ToEnglish)));
         }
         else
         {
             _log.LogInformation(
                 Loc.Log("log.atc.templatesLoaded"),
                 userPath ?? basePath,
-                userPath is not null && basePath is not null ? " " + Loc.T("atc.templates.layeredOver", basePath) : "",
+                userPath is not null && basePath is not null ? " " + Loc.En("atc.templates.layeredOver", basePath) : "",
                 templates?.Messages.Count ?? 0,
                 templates?.Airlines.Count ?? 0);
         }
@@ -575,7 +575,7 @@ public sealed class AtcService : BackgroundService
                     session.ClearedAltitudeFt,
                     session.Squawk,
                     session.Transcript.Count,
-                    note is null ? "" : $" – {note}");
+                    note is null ? "" : $" – {Loc.ToEnglish(note)}");
             }
             else
             {
@@ -588,8 +588,8 @@ public sealed class AtcService : BackgroundService
                     ofp.Destination.Icao,
                     session.Phase,
                     session.Squawk,
-                    plan.Oceanic is null ? "" : ", " + Loc.T("atc.service.withOceanic"),
-                    string.Join(" → ", plan.Firs.Select(f => Loc.T("atc.service.stationFrom", session.StationName(f), f.FrequencyMhz, f.StartNm))));
+                    plan.Oceanic is null ? "" : ", " + Loc.En("atc.service.withOceanic"),
+                    string.Join(" → ", plan.Firs.Select(f => Loc.En("atc.service.stationFrom", session.StationName(f), f.FrequencyMhz, f.StartNm))));
             }
 
             _session = session;

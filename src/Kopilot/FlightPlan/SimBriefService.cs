@@ -64,7 +64,7 @@ public sealed class SimBriefService
         LastError = null;
         _log.LogInformation(
             Loc.Log("log.flightplan.accountChanged"),
-            pilotId.Length > 0 ? Loc.T("flightplan.account.pilotId", pilotId) : username.Length > 0 ? username : Loc.T("flightplan.account.none"));
+            pilotId.Length > 0 ? Loc.En("flightplan.account.pilotId", pilotId) : username.Length > 0 ? username : Loc.En("flightplan.account.none"));
         return true;
     }
 

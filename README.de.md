@@ -485,7 +485,7 @@ Der Regler „Helligkeit“ dimmt nur die Anzeigen – für Nachtflüge.
 | **SimBrief** | Username oder Pilot-ID, lädt danach gleich den Plan | sofort |
 | **Mikrofon** | Aufnahmegerät der Sprachschleife mit Pegel | sofort |
 | **Module** | Monitoring, Eingabe (zweimal klicken), ATC, Sprachschleife | Monitoring/ATC nach Neustart, sonst sofort |
-| **Sprache** | Dashboard, Tool-Meldungen, Logs, Tray-Menü, Meldungen aus „Fehler melden“ (siehe [Sprache](#sprache)) | sofort |
+| **Sprache** | Dashboard, Tool-Meldungen, Tray-Menü, Meldungen aus „Fehler melden“ (siehe [Sprache](#sprache)); Logs bleiben Englisch | sofort |
 
 Geschrieben wird in die vorhandenen Dateien: `appsettings.Local.json` neben der `Kopilot.exe` (Kommentare und Reihenfolge bleiben erhalten, vorher landet eine Sicherung in `%LOCALAPPDATA%\Kopilot\appsettings.Local.backup.json`), Eingabe und Sprachschleife wie bisher in `input.json` bzw. `voice-settings.json`. Was erst beim Start gelesen wird, zeigt die Seite als „gilt nach Neustart“ – der Knopf **Kopilot neu starten** startet die Tray-Instanz neu (die ATC-Sitzung kommt aus der Sicherung zurück). Passwort und Token gehen nie an den Browser zurück; ein neu erzeugter Token wird genau einmal zum Kopieren angezeigt. Setzt eine Umgebungsvariable (`Kopilot__…`) denselben Wert, weist die Seite darauf hin – die Variable hat Vorrang vor der Datei.
 
@@ -497,7 +497,8 @@ Kopilots eigene Texte sind standardmäßig Englisch, Deutsch ist optional. Umste
 "Kopilot": { "Language": "de" }   // Standard "en"
 ```
 
-- **Folgt der Einstellung:** Dashboard, Tool-Meldungen an Claude (Felder `message`/`note`), Logs, Tray-Menü und Meldungen aus **Fehler melden**.
+- **Folgt der Einstellung:** Dashboard, Tool-Meldungen an Claude (Felder `message`/`note`), Tray-Menü und Meldungen aus **Fehler melden**.
+- **Logs sind immer Englisch** (`kopilot.log`, Absturzberichte, das Log im Dashboard) – damit sie sich an Issues hängen lassen und alle Mitwirkenden sie lesen können.
 - **Bleibt immer Englisch**, wie bei einer echten Crew (SOP): Callouts, Checklisten, FMA-Ansagen, Warnungen und Funk (ATC-Vorlagen). Claude selbst antwortet in der Sprache, in der du mit ihm sprichst.
 - Werte in Flugzeugprofilen und ATC-Vorlagen sind sprachneutral (IDs, Einheiten); Geschwindigkeiten immer in Knoten.
 - Die Sprachschleife versteht Befehle unabhängig davon auf Deutsch und Englisch (`recognition.language` in `voice-settings.json`).

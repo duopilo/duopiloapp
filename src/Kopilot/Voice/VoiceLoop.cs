@@ -274,8 +274,8 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
                 recognizer.Runtime ?? "?",
                 settings.Recognition.Language,
                 settings.Microphone.Threshold,
-                _atc.Enabled ? Loc.T("voice.word.on") : Loc.T("voice.word.off"),
-                _input.Enabled ? Loc.T("voice.loop.inputFree") : Loc.T("voice.loop.inputLocked"));
+                _atc.Enabled ? Loc.En("voice.word.on") : Loc.En("voice.word.off"),
+                _input.Enabled ? Loc.En("voice.loop.inputFree") : Loc.En("voice.loop.inputLocked"));
 
             Task[] tasks =
             [
@@ -361,7 +361,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
             Loc.Log("log.voice.loop.settings"),
             _store.FilePath,
             s.Enabled,
-            s.Microphone.Device.Length > 0 ? s.Microphone.Device : Loc.T("voice.mic.windowsDefault"),
+            s.Microphone.Device.Length > 0 ? s.Microphone.Device : Loc.En("voice.mic.windowsDefault"),
             s.Recognition.Model,
             s.Recognition.Device,
             s.Recognition.Threads,
@@ -369,14 +369,14 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
             s.Microphone.Threshold,
             s.Microphone.SilenceMs,
             s.Microphone.MinSpeechMs,
-            s.Commands.RequireWakeWord ? Loc.T("voice.word.yes") : Loc.T("voice.word.no"),
-            string.IsNullOrWhiteSpace(s.Hotkeys.Mute) ? Loc.T("voice.word.none") : s.Hotkeys.Mute);
+            s.Commands.RequireWakeWord ? Loc.En("voice.word.yes") : Loc.En("voice.word.no"),
+            string.IsNullOrWhiteSpace(s.Hotkeys.Mute) ? Loc.En("voice.word.none") : s.Hotkeys.Mute);
 
         _log.LogInformation(
             Loc.Log("log.voice.mic.devices"),
             devices.Count == 0
-                ? Loc.T("voice.mic.noneFound")
-                : string.Join(" | ", devices.Select(d => d.IsDefault ? Loc.T("voice.mic.listItemDefault", d.Number, d.FullName) : $"[{d.Number}] {d.FullName}")));
+                ? Loc.En("voice.mic.noneFound")
+                : string.Join(" | ", devices.Select(d => d.IsDefault ? Loc.En("voice.mic.listItemDefault", d.Number, d.FullName) : $"[{d.Number}] {d.FullName}")));
     }
 
     private async Task<(IVoiceActivityDetector Vad, WhisperRecognizer Recognizer)> LoadModelsAsync(VoiceSettings settings, CancellationToken ct)
@@ -781,7 +781,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
                         break;
                     case VoiceEvent.ToggleMute _:
                         var reply = _dialog.SetMuted(!_dialog.Muted);
-                        _log.LogInformation(Loc.Log("log.voice.mute.hotkey"), _dialog.Muted ? Loc.T("voice.word.muted") : Loc.T("voice.word.on"));
+                        _log.LogInformation(Loc.Log("log.voice.mute.hotkey"), _dialog.Muted ? Loc.En("voice.word.muted") : Loc.En("voice.word.on"));
                         Speak(reply);
                         break;
                     case VoiceEvent.ReplySpoken spoken:
@@ -851,6 +851,10 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         var lastInput = outcome.Atc is { } atc
             ? atc.Ok ? Loc.T("voice.status.atcReplies", atc.Responses.Count(r => r.From == "atc")) : $"ATC: {atc.Error}"
             : _dialog.LastResult is { } r ? r.Reason is null ? r.Status : $"{r.Status}: {r.Reason}" : null;
+        // Dasselbe englisch fürs Log (Logs bleiben immer Englisch)
+        var lastInputLog = outcome.Atc is { } atcLog
+            ? atcLog.Ok ? Loc.En("voice.status.atcReplies", atcLog.Responses.Count(x => x.From == "atc")) : $"ATC: {Loc.ToEnglish(atcLog.Error)}"
+            : _dialog.LastResult is { } rLog ? rLog.Reason is null ? rLog.Status : $"{rLog.Status}: {Loc.ToEnglish(rLog.Reason)}" : null;
         SetStatus(s => s with
         {
             LastTranscript = text,
@@ -869,7 +873,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
                 seconds,
                 transcript.ElapsedMs,
                 text,
-                result.Ok ? Loc.T("voice.atc.repliesFromAtc", result.Responses.Count(x => x.From == "atc")) : Loc.T("voice.atc.error", result.Error));
+                result.Ok ? Loc.En("voice.atc.repliesFromAtc", result.Responses.Count(x => x.From == "atc")) : Loc.En("voice.atc.error", Loc.ToEnglish(result.Error)));
         }
         else
         {
@@ -881,7 +885,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
                 text,
                 outcome.Intent,
                 outcome.Reply is null ? "" : $" → \"{outcome.Reply.Text}\"",
-                lastInput is null ? "" : $" ({lastInput})");
+                lastInputLog is null ? "" : $" ({lastInputLog})");
         }
 
         if (outcome.Reply is not null)

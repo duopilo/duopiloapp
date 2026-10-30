@@ -33,11 +33,11 @@ public static class CrashReporter
         _logDirectory = logDirectory;
         _mode = mode;
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
-            WriteCrash(e.ExceptionObject as Exception, e.IsTerminating ? Loc.T("host.crash.unhandledTerminating") : Loc.T("host.crash.unhandledContinuing"));
+            WriteCrash(e.ExceptionObject as Exception, e.IsTerminating ? Loc.En("log.host.crash.unhandledTerminating") : Loc.En("log.host.crash.unhandledContinuing"));
 
         TaskScheduler.UnobservedTaskException += (_, e) =>
         {
-            WriteCrash(e.Exception, Loc.T("host.crash.unobservedTask"));
+            WriteCrash(e.Exception, Loc.En("log.host.crash.unobservedTask"));
             e.SetObserved();
         };
     }
@@ -100,7 +100,7 @@ public static class CrashReporter
             .Append(DateTimeOffset.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture))
             .Append(" CRT Kopilot ").Append(Version).Append(" (").Append(_mode).Append(", PID ").Append(Environment.ProcessId).Append("): ")
             .AppendLine(title)
-            .AppendLine(exception?.ToString() ?? Loc.T("host.crash.noException"))
+            .AppendLine(exception?.ToString() ?? Loc.En("log.host.crash.noException"))
             .AppendLine()
             .ToString();
 
@@ -131,19 +131,19 @@ public static class CrashReporter
             run.Pid,
             run.StartUtc,
             end,
-            run.State is null ? "" : ", " + Loc.T("host.crash.lastState", run.State, run.StateSinceUtc),
+            run.State is null ? "" : ", " + Loc.En("log.host.crash.lastState", run.State, run.StateSinceUtc),
             CrashLogFile);
 
         var report = new StringBuilder()
             .Append(DateTimeOffset.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture))
             .Append(' ')
-            .Append(Loc.T("host.crash.report.header", run.Pid, run.StartUtc.ToString("u", CultureInfo.InvariantCulture), end.ToString("u", CultureInfo.InvariantCulture)))
-            .AppendLine(run.State is null ? "" : ", " + Loc.T("host.crash.report.state", run.State));
+            .Append(Loc.En("log.host.crash.report.header", run.Pid, run.StartUtc.ToString("u", CultureInfo.InvariantCulture), end.ToString("u", CultureInfo.InvariantCulture)))
+            .AppendLine(run.State is null ? "" : ", " + Loc.En("log.host.crash.report.state", run.State));
 
         var last = run.Entries.TakeLast(15).ToList();
         if (last.Count > 0)
         {
-            report.AppendLine(Loc.T("host.crash.report.entries"));
+            report.AppendLine(Loc.En("log.host.crash.report.entries"));
             foreach (var (time, text) in last)
             {
                 report.Append("  ").Append(time.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture)).Append("Z ").AppendLine(text);
@@ -156,10 +156,10 @@ public static class CrashReporter
 
         // Die Ereignisanzeige kennt die Ausnahme (".NET Runtime", Ereignis 1026) und das abgestürzte Modul ("Application Error", 1000)
         var events = WindowsCrashEvents(run.StartUtc.AddMinutes(-1), DateTimeOffset.UtcNow);
-        var unreadable = Loc.T("host.crash.eventLogUnreadable");
+        var unreadable = Loc.En("log.host.crash.eventLogUnreadable");
         foreach (var e in events)
         {
-            report.AppendLine().AppendLine(Loc.T("host.crash.report.event", e));
+            report.AppendLine().AppendLine(Loc.En("log.host.crash.report.event", e));
             if (e.StartsWith(unreadable, StringComparison.Ordinal))
             {
                 log.LogWarning("{Message}", e);
@@ -175,7 +175,7 @@ public static class CrashReporter
 
         if (events.Count == 0)
         {
-            report.AppendLine(Loc.T("host.crash.report.noEvents"));
+            report.AppendLine(Loc.En("log.host.crash.report.noEvents"));
         }
 
         report.AppendLine();
@@ -222,14 +222,14 @@ public static class CrashReporter
                     message ??= string.Join(" | ", record.Properties.Select(p => p.Value?.ToString()));
                     if (message.Contains("Kopilot", StringComparison.OrdinalIgnoreCase))
                     {
-                        result.Add(Loc.T("host.crash.event", record.TimeCreated?.ToUniversalTime(), record.ProviderName, record.Id, message.Trim()));
+                        result.Add(Loc.En("log.host.crash.event", record.TimeCreated?.ToUniversalTime(), record.ProviderName, record.Id, message.Trim()));
                     }
                 }
             }
         }
         catch (Exception ex) when (ex is EventLogException or UnauthorizedAccessException or InvalidOperationException)
         {
-            result.Add($"{Loc.T("host.crash.eventLogUnreadable")}: {ex.Message}");
+            result.Add($"{Loc.En("log.host.crash.eventLogUnreadable")}: {ex.Message}");
         }
 
         result.Reverse();

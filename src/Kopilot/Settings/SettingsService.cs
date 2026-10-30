@@ -202,7 +202,7 @@ public sealed class SettingsService
     }
 
     /// <summary>
-    /// Sprache für Dashboard, Tool-Meldungen und Logs speichern und sofort übernehmen. Callouts, Checklisten, FMA-Ansagen,
+    /// Sprache für Dashboard, Tool-Meldungen und Tray speichern und sofort übernehmen (Logs bleiben Englisch). Callouts, Checklisten, FMA-Ansagen,
     /// Warnungen und Funk bleiben Englisch.
     /// </summary>
     public SettingsResult SaveLanguage(string? language)
@@ -368,7 +368,7 @@ public sealed class SettingsService
             return new SettingsResult(true, Loc.T("settings.nothingChanged"));
         }
 
-        _log.LogInformation(Loc.Log("log.settings.modulesChanged"), string.Join("; ", messages));
+        _log.LogInformation(Loc.Log("log.settings.modulesChanged"), string.Join("; ", messages.Select(Loc.ToEnglish)));
         return new SettingsResult(true, RestartMessage(string.Join(" · ", messages)));
     }
 

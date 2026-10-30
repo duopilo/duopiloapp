@@ -295,11 +295,11 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
             _windowsHasEnglish = _speech.HasEnglishVoice;
             if (_windowsHasEnglish)
             {
-                _log.LogInformation(Loc.Log("log.speech.ready"), _speech.ActiveVoice ?? Loc.T("speech.word.none"));
+                _log.LogInformation(Loc.Log("log.speech.ready"), _speech.ActiveVoice ?? Loc.En("speech.word.none"));
             }
             else
             {
-                _log.LogInformation(Loc.Log("log.speech.readyNoEnglish"), _speech.ActiveVoice ?? Loc.T("speech.word.none"));
+                _log.LogInformation(Loc.Log("log.speech.readyNoEnglish"), _speech.ActiveVoice ?? Loc.En("speech.word.none"));
             }
         }
         catch (Exception ex)

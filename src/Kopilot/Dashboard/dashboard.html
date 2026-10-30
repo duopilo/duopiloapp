@@ -696,7 +696,7 @@ dialog.report::backdrop { background: rgba(5, 8, 11, .7); }
 
     <section class="card" id="langCard" aria-labelledby="hLanguage">
       <h2 id="hLanguage" data-i18n="dashboard.settings.language.title">Language</h2>
-      <p class="hint" data-i18n="dashboard.settings.language.hint">The dashboard, tool messages and logs follow this setting. Callouts, checklists, FMA calls, warnings and radio stay in English – like a real crew (SOP). Applies immediately.</p>
+      <p class="hint" data-i18n="dashboard.settings.language.hint">The dashboard, tool messages and tray follow this setting. Callouts, checklists, FMA calls, warnings and radio stay in English – like a real crew (SOP) – and so do the logs. Applies immediately.</p>
       <label class="field"><span data-i18n="dashboard.settings.language.label">Display language</span> <select id="langSel"></select></label>
       <p class="state-line" id="langState" hidden></p>
       <p class="msg" id="langMsg" role="status"></p>
@@ -1768,7 +1768,7 @@ $("modInput").addEventListener("click", () => {
   setTimeout(renderSettings, 4100);
 });
 
-/* Language: dashboard, tool messages and logs; callouts, checklists, FMA calls, warnings and radio stay English */
+/* Language: dashboard, tool messages and tray; callouts, checklists, FMA calls, warnings, radio and logs stay English */
 function renderLanguage(l) {
   const sel = $("langSel");
   const lang = l || { current: i18n.language, available: i18n.available };

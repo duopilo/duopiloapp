@@ -526,7 +526,7 @@ public sealed partial class SimConnectClient : BackgroundService
         _activeProfile = profile;
         if (profile is null)
         {
-            _log.LogInformation(Loc.Log("log.sim.aircraftNoProfile"), title ?? Loc.T("sim.aircraft.unknownTitle"), path ?? Loc.T("sim.aircraft.unknownPath"));
+            _log.LogInformation(Loc.Log("log.sim.aircraftNoProfile"), title ?? Loc.En("sim.aircraft.unknownTitle"), path ?? Loc.En("sim.aircraft.unknownPath"));
             return;
         }
 
@@ -569,8 +569,8 @@ public sealed partial class SimConnectClient : BackgroundService
 
         _log.LogInformation(
             Loc.Log("log.sim.aircraftProfile"),
-            title ?? Loc.T("sim.aircraft.unknownTitle"),
-            path ?? Loc.T("sim.aircraft.unknownPath"),
+            title ?? Loc.En("sim.aircraft.unknownTitle"),
+            path ?? Loc.En("sim.aircraft.unknownPath"),
             profile.Name,
             profile.Bindings.Count,
             profile.Variables.Count);

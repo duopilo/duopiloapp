@@ -1,12 +1,15 @@
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Kopilot.Dashboard;
+using Kopilot.Hosting;
 using Kopilot.Localization;
+using Microsoft.Extensions.Logging;
 
 namespace Kopilot.Tests;
 
 /// <summary>
-/// Sprachdateien (src/Kopilot/i18n): Englisch ist vollständig, Übersetzungen passen zu den Platzhaltern, und alle Schlüssel aus
-/// Code und Dashboard gibt es.
+/// Sprachdateien (src/Kopilot/i18n): Englisch ist vollständig, Übersetzungen passen zu den Platzhaltern, alle Schlüssel aus
+/// Code und Dashboard gibt es, und Logs bleiben unabhängig von der Einstellung Englisch.
 /// </summary>
 public class LocalizationTests
 {
@@ -41,7 +44,8 @@ public class LocalizationTests
     [Fact]
     public void GermanIsComplete()
     {
-        var missing = English.Keys.Where(k => !Loc.Raw("de")!.ContainsKey(k)).ToList();
+        // log.-Texte gibt es nur auf Englisch
+        var missing = English.Keys.Where(k => !k.StartsWith(Loc.LogPrefix, StringComparison.Ordinal) && !Loc.Raw("de")!.ContainsKey(k)).ToList();
         Assert.True(missing.Count == 0, "Ohne deutsche Übersetzung: " + string.Join(", ", missing));
     }
 
@@ -58,15 +62,7 @@ public class LocalizationTests
                     continue;
                 }
 
-                if (key.StartsWith(Loc.LogPrefix, StringComparison.Ordinal))
-                {
-                    // ILogger ordnet die Argumente nach Position zu
-                    if (!Loc.PlaceholderSequence(english).SequenceEqual(Loc.PlaceholderSequence(text)))
-                    {
-                        problems.Add($"{language.Code} {key}: Reihenfolge {string.Join(",", Loc.PlaceholderSequence(text))} statt {string.Join(",", Loc.PlaceholderSequence(english))}");
-                    }
-                }
-                else if (!Loc.Placeholders(english).Order(StringComparer.Ordinal).SequenceEqual(Loc.Placeholders(text).Order(StringComparer.Ordinal)))
+                if (!Loc.Placeholders(english).Order(StringComparer.Ordinal).SequenceEqual(Loc.Placeholders(text).Order(StringComparer.Ordinal)))
                 {
                     problems.Add($"{language.Code} {key}: {{{string.Join("},{", Loc.Placeholders(text))}}} statt {{{string.Join("},{", Loc.Placeholders(english))}}}");
                 }
@@ -74,6 +70,82 @@ public class LocalizationTests
         }
 
         Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
+    }
+
+    /// <summary>Logs bleiben Englisch: Übersetzungsdateien enthalten keine log.-Schlüssel (sie würden ignoriert).</summary>
+    [Fact]
+    public void TranslationFilesHaveNoLogKeys()
+    {
+        foreach (var resource in typeof(Loc).Assembly.GetManifestResourceNames().Where(r => r.StartsWith("Kopilot.i18n.", StringComparison.Ordinal) && !r.EndsWith(".en.json", StringComparison.Ordinal)))
+        {
+            using var stream = typeof(Loc).Assembly.GetManifestResourceStream(resource)!;
+            using var doc = JsonDocument.Parse(stream);
+            var logKeys = doc.RootElement.EnumerateObject().Select(p => p.Name).Where(k => k.StartsWith(Loc.LogPrefix, StringComparison.Ordinal)).ToList();
+            Assert.True(logKeys.Count == 0, $"{resource}: log.-Schlüssel gehören nur in en.json: {string.Join(", ", logKeys)}");
+        }
+    }
+
+    [Fact]
+    public void LogTemplatesAreAlwaysEnglish()
+    {
+        using (Loc.Use("de"))
+        {
+            Assert.Equal(English["log.settings.languageChanged"], Loc.Log("log.settings.languageChanged"));
+        }
+    }
+
+    [Fact]
+    public void TranslatedTextsHaveAnEnglishTwin()
+    {
+        using (Loc.Use("de"))
+        {
+            var german = Loc.T("tools.traffic.none", "42");
+            Assert.Equal("Kein Verkehr im Umkreis von 42 NM.", german);
+            Assert.Equal("No traffic within 42 NM.", Loc.ToEnglish(german));
+        }
+
+        Assert.Equal("ICAO EDDL", Loc.ToEnglish("ICAO EDDL"));
+        Assert.Null(Loc.ToEnglish(null));
+    }
+
+    /// <summary>Auch wenn ein Argument ein übersetzter Text ist (Alert-Erklärung, Grund, Fehler), steht in der Logdatei Englisch.</summary>
+    [Fact]
+    public void FileLogIsEnglishWhateverTheLanguage()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "kopilot-logtest-" + Guid.NewGuid().ToString("N"));
+        var buffer = new LogBuffer();
+        try
+        {
+            using (var provider = new FileLoggerProvider(directory, "test.log", buffer))
+            using (Loc.Use("de"))
+            {
+                var logger = provider.CreateLogger("Kopilot.Tests.Log");
+                var message = Loc.T("tools.traffic.none", "17");
+                logger.LogWarning(Loc.Log("log.atc.airspaceMessage"), message);
+                logger.LogError(new InvalidOperationException(Loc.T("tools.traffic.none", "18")), Loc.Log("log.atc.airspaceMessage"), "x");
+            }
+
+            var lines = buffer.Tail(2);
+            Assert.Equal("Airspace data: No traffic within 17 NM.", lines[0].Message);
+            Assert.Contains("InvalidOperationException: No traffic within 18 NM.", lines[1].Message);
+            Assert.DoesNotContain("Kein Verkehr", string.Join("\n", lines.Select(l => l.Message)));
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+            catch (IOException)
+            {
+            }
+        }
+    }
+
+    [Fact]
+    public void LogRenderingMatchesTheLogger()
+    {
+        Assert.Equal("a 1.5 (null) x, y {Literal}", EnglishLog.Render("a {N:0.0} {Missing} {List} {{Literal}}", [1.5, null, new[] { "x", "y" }]));
     }
 
     [Fact]
@@ -187,9 +259,9 @@ public class LocalizationTests
                     continue;
                 }
 
-                if (key.StartsWith(Loc.LogPrefix, StringComparison.Ordinal))
+                if (call.Method == "Loc.T" && key.StartsWith(Loc.LogPrefix, StringComparison.Ordinal))
                 {
-                    problems.Add($"{name}: {call.Method}(\"{key}\") – \"{Loc.LogPrefix}\"-Schlüssel nur mit Loc.Log");
+                    problems.Add($"{name}: Loc.T(\"{key}\") – \"{Loc.LogPrefix}\"-Texte sind nur Englisch, also Loc.Log oder Loc.En");
                 }
 
                 var expected = Loc.Placeholders(english).Count;
@@ -250,7 +322,8 @@ internal static class CSharpCalls
     {
         foreach (var method in methods)
         {
-            var pattern = new Regex(@"(?<![\w.])" + Regex.Escape(method) + @"\s*\(");
+            // Davor kein Wortzeichen (ein Punkt ist erlaubt: _log.LogWarning)
+            var pattern = new Regex(@"(?<!\w)" + Regex.Escape(method) + @"\s*\(");
             foreach (Match m in pattern.Matches(code))
             {
                 if (IsInCommentOrString(code, m.Index))
