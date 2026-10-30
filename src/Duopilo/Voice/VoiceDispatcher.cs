@@ -60,6 +60,14 @@ public sealed class VoiceDispatcher(VoiceDialog dialog, IAtcLink atc, VoiceRoute
     public async Task<VoiceOutcome> HandleAsync(string text, DateTimeOffset? startUtc, double? confidence, CancellationToken ct)
     {
         var normalized = Address(VoiceText.Normalize(text), PersonaName(), wakeWords);
+
+        // Notruf (Mayday, Pan Pan, cancel): immer an ATC, mit beliebiger, falscher oder ohne Stationsanrede – vor Stationsprüfung,
+        // Say again, Smalltalk und Checklisten. Nur stumm ("Kopilot Pause", z. B. Funk über VATSIM) nicht.
+        if (!dialog.Muted && AtcEmergencyText.Detect(text) != AtcEmergencyCall.None)
+        {
+            return await ToAtcAsync(text, normalized, new VoiceRoute(VoiceTarget.Atc, Reason: Loc.T("voice.route.emergency")), ct);
+        }
+
         var info = atc.Enabled ? atc.RoutingInfo() : AtcRoutingInfo.Empty;
         var callsigns = info.Callsigns.Concat(ExtraCallsigns()).ToList();
         var route = router.Route(normalized, callsigns, info.Stations.Concat(ExtraStations));
@@ -101,6 +109,7 @@ public sealed class VoiceDispatcher(VoiceDialog dialog, IAtcLink atc, VoiceRoute
     /// <summary>
     /// Anrede vereinheitlichen: Name des First Officers am Satzanfang ("Sam, gear up") oder mit Gruß davor ("Hey Sam", "Okay Kopilot")
     /// wird zur ersten Anrede ("kopilot gear up") – Router, Befehle und Checklisten kennen nur diese. Sonst unverändert.
+    /// Der Name wird tolerant verglichen ("Hey, Eric?" bei Erik, <see cref="FirstOfficerNames.IsAddress"/>).
     /// </summary>
     public static string Address(string normalized, string? personaName, IReadOnlyCollection<string> wakeWords)
     {
@@ -112,7 +121,7 @@ public sealed class VoiceDispatcher(VoiceDialog dialog, IAtcLink atc, VoiceRoute
 
         var wake = wakeWords.FirstOrDefault() ?? "kopilot";
         var i = words.Length > 1 && Greetings.Contains(words[0]) ? 1 : 0;
-        var isName = !string.IsNullOrEmpty(personaName) && words[i] == personaName;
+        var isName = !string.IsNullOrEmpty(personaName) && !wakeWords.Contains(words[i]) && FirstOfficerNames.IsAddress(words[i], personaName);
         if (!isName && !(i == 1 && wakeWords.Contains(words[1])))
         {
             return normalized;

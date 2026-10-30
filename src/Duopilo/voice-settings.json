@@ -49,8 +49,9 @@
   },
 
   "voices": {
-    // Feste Kokoro-Stimme des Kopiloten (Callouts und Antworten), z. B. "bm_george". Leer = Stimme des First Officers
+    // Feste Kokoro-Stimme des Kopiloten (Callouts und Antworten), z. B. "af_heart". Leer = Stimme des First Officers
     // (pro Flug, passend zu seinem Namen), ist er aus: Stimme aus dem Dashboard. Eine feste Stimme bestimmt das Geschlecht des Namens.
+    // Einfacher: im Dashboard unter Einstellungen → First Officer und Smalltalk → Stimme (mit Probehören, gilt sofort).
     "kopilot": "",
     // Lautstärke (Faktor auf die Lautstärke im Dashboard). Die Stimmen der ATC-Stationen vergibt das ATC-Modul (atc-templates.json).
     "kopilotVolume": 1.0,
@@ -113,7 +114,7 @@
     "active": [ "*" ],
     // Nie gesprochene Regeln, z. B. [ "SPEED_DEVIATION" ].
     "muted": [ ],
-    // Sim pausiert → nichts sprechen.
+    // Sim pausiert → nichts sprechen und nichts auswerten (wie bei getrennter Verbindung und ohne geladenen Flug, die immer gelten).
     "silentWhenPaused": true,
     // Warnung "Taxi speed", wenn am Boden zu schnell gerollt wird (Groundspeed).
     "taxiSpeed": {

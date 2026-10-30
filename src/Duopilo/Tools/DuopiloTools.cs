@@ -478,8 +478,10 @@ public static class DuopiloTools
     internal static object VoiceView(Duopilo.Voice.VoiceStatus v) => new
     {
         available = v.Available,
-        active = v.State is "listening" or "muted",
+        active = v.State is "listening" or "muted" or "inactive",
         state = v.State,
+        simState = v.SimState,
+        inactiveReason = v.InactiveReason,
         enabled = v.Enabled,
         note = v.Note,
         error = v.Error,

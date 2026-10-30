@@ -14,6 +14,9 @@ public static class SettingsEndpoints
 {
     public sealed record SimBriefBody(string? Username, string? PilotId);
 
+    /// <summary>Body von POST /api/settings/firstofficer/preview: Kokoro-Stimme, "" oder "auto" = die des aktuellen First Officers.</summary>
+    public sealed record VoicePreview(string? Voice);
+
     /// <param name="PublicUrl">null = unverändert, "" = aus.</param>
     /// <param name="ConsentPassword">null oder "" = unverändert.</param>
     public sealed record ClaudeBody(string? PublicUrl, string? ConsentPassword, bool RemoveConsentPassword = false);
@@ -76,6 +79,18 @@ public static class SettingsEndpoints
 
             var test = await settings.TestSmalltalkAsync(ct);
             return Results.Content(Json.Serialize(new { test, settings = settings.View() }), "application/json");
+        }).LocalOnly();
+
+        // Stimme des First Officers probehören (an der Warteschlange vorbei, wie der Test-Knopf der Sprachausgabe)
+        app.MapPost("/api/settings/firstofficer/preview", async (HttpContext context, SettingsService settings, VoicePreview body, CancellationToken ct) =>
+        {
+            if (!IsDashboardAction(context))
+            {
+                return Results.BadRequest();
+            }
+
+            var preview = await settings.PreviewFirstOfficerVoiceAsync(body.Voice, ct);
+            return Results.Content(Json.Serialize(preview), "application/json");
         }).LocalOnly();
 
         // Neustart der Tray-Instanz (nach Änderungen, die erst beim Start gelesen werden)

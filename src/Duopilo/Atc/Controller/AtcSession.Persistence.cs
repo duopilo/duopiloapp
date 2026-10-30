@@ -93,6 +93,15 @@ public sealed record AtcSessionSnapshot
 
     /// <summary>Abgelehnte Höhenanfrage, die ATC später freigibt.</summary>
     public AtcExpectedLevel? ExpectedLevel { get; init; }
+
+    /// <summary>
+    /// Bisherige Haltezeit der Sim-Uhr in Sekunden (Pausen, Menü, keine Verbindung) – die Zeiten oben sind Sim-Zeit. Fehlt in
+    /// Sicherungen bis 0.10.0-beta.1.
+    /// </summary>
+    public double? SimClockStoppedSec { get; init; }
+
+    /// <summary>Laufender Notfall (Mayday, Pan Pan), null = keiner.</summary>
+    public AtcEmergency? Emergency { get; init; }
 }
 
 public sealed partial class AtcSession
@@ -134,6 +143,7 @@ public sealed partial class AtcSession
         StepClimbIndex = _stepClimbIndex,
         LevelRequests = _levelRequests,
         ExpectedLevel = _expectedLevel,
+        Emergency = Emergency,
     };
 
     /// <summary>
@@ -158,6 +168,7 @@ public sealed partial class AtcSession
             _descentIssued,
             _approachCleared,
             _landingCleared,
+            Emergency is { } emergency ? $"{emergency.Kind}:{emergency.DetailsAsked}:{emergency.Target}" : "",
             string.Join(',', _overrides.OrderBy(o => o.Key, StringComparer.OrdinalIgnoreCase).Select(o => $"{o.Key}={o.Value}")));
 
     /// <summary>
@@ -223,6 +234,7 @@ public sealed partial class AtcSession
         _movedSinceLineUp = s.MovedSinceLineUp;
         _taxiClearedAt = s.TaxiClearedAtUtc;
         _lineUpAt = s.LineUpAtUtc;
+        RestoreEmergency(s.Emergency);
 
         PendingReadback = null;
         _oceanicReadback = null;

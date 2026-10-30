@@ -711,6 +711,10 @@ dialog.report::backdrop { background: rgba(5, 8, 11, .7); }
             </select>
           </label>
         </div>
+        <div class="row">
+          <label class="field"><span data-i18n="dashboard.settings.smalltalk.voice">Voice</span> <select id="foVoice"></select></label>
+          <button class="btn" id="foPreview" type="button" data-i18n="dashboard.settings.smalltalk.preview">Listen</button>
+        </div>
         <label class="check"><input type="checkbox" id="foEnabled"> <span data-i18n="dashboard.settings.smalltalk.foEnabled">First officer with name and voice per flight</span></label>
         <label class="check"><input type="checkbox" id="foIntroduce"> <span data-i18n="dashboard.settings.smalltalk.introduce">Introduce themselves at the briefing (at the gate, or say "Briefing")</span></label>
         <h3 data-i18n="dashboard.settings.smalltalk.llmTitle">Small talk (language model)</h3>
@@ -726,6 +730,15 @@ dialog.report::backdrop { background: rgba(5, 8, 11, .7); }
           <label class="field"><span data-i18n="dashboard.settings.smalltalk.model">Model</span> <input id="chatModel" maxlength="100" spellcheck="false"></label>
         </div>
         <label class="field" id="chatUrlRow"><span data-i18n="dashboard.settings.smalltalk.url">Address</span> <input id="chatUrl" type="url" inputmode="url" spellcheck="false"></label>
+        <label class="field" id="chatReasoningRow"><span data-i18n="dashboard.settings.smalltalk.reasoning">Reasoning (models that think before answering)</span>
+          <select id="chatReasoning">
+            <option value="auto" data-i18n="dashboard.settings.smalltalk.reasoningAuto">Automatic (gpt-oss: low, others: don't send)</option>
+            <option value="off" data-i18n="dashboard.settings.smalltalk.reasoningOff">Off (don't send)</option>
+            <option value="low" data-i18n="dashboard.settings.smalltalk.reasoningLow">Low</option>
+            <option value="medium" data-i18n="dashboard.settings.smalltalk.reasoningMedium">Medium</option>
+            <option value="high" data-i18n="dashboard.settings.smalltalk.reasoningHigh">High</option>
+          </select>
+        </label>
         <label class="field" id="chatKeyRow"><span data-i18n="dashboard.settings.smalltalk.apiKey">API key (stored only in appsettings.Local.json)</span> <input id="chatKey" type="password" autocomplete="new-password" spellcheck="false"></label>
         <label class="check" id="chatKeyRemoveRow" hidden><input type="checkbox" id="chatKeyRemove"> <span data-i18n="dashboard.settings.smalltalk.removeKey">Remove API key</span></label>
         <div class="fields-2">
@@ -1187,7 +1200,10 @@ $("srvKokoroVoice").addEventListener("change", async (e) => {
 const voiceState = (state) => ({
   off: t("dashboard.voice.state.off"), loading: t("dashboard.voice.state.loading"), listening: t("dashboard.voice.state.listening"),
   muted: t("dashboard.voice.state.muted"), error: t("dashboard.voice.state.error"), unavailable: t("dashboard.common.unavailable"),
+  inactive: t("dashboard.voice.state.inactive"),
 }[state] || state);
+/* Sprachschleife inaktiv, weil der Sim nicht läuft: Grund dahinter ("inaktiv – Pausiert") */
+const voiceStateWithReason = (st) => voiceState(st.state) + (st.state === "inactive" && st.inactiveReason ? " – " + st.inactiveReason : "");
 const voiceLoop = { data: null, timer: null, saving: false };
 function renderVoiceLoop() {
   const d = voiceLoop.data;
@@ -1207,7 +1223,7 @@ function renderVoiceLoop() {
   const level = st.levelDbfs;
   $("vlLevel").style.width = level == null ? "0" : Math.max(0, Math.min(100, (level + 60) / 60 * 100)) + "%";
   setText("vlLevelText", level == null ? DASH : `${Math.round(level)} dBFS`);
-  const info = [t("dashboard.voice.stateLine", { state: voiceState(st.state) })];
+  const info = [t("dashboard.voice.stateLine", { state: voiceStateWithReason(st) })];
   if (st.microphone) info.push(t("dashboard.voice.microphoneLine", { microphone: st.microphone }));
   if (st.downloadProgress != null) info.push(t("dashboard.voice.modelDownloading", { percent: Math.round(st.downloadProgress * 100) }));
   if (st.lastTranscript) info.push(t("dashboard.voice.lastHeard", { transcript: st.lastTranscript, route: st.lastRoute || "?" }) + (st.lastReply ? " → " + st.lastReply : ""));
@@ -1225,7 +1241,7 @@ function renderVoiceLoop() {
   err.hidden = !problem;
   err.textContent = problem || "";
   clearTimeout(voiceLoop.timer);
-  if (!$("speechPanel").hidden) voiceLoop.timer = setTimeout(loadVoiceLoop, st.state === "listening" || st.state === "loading" ? 1000 : 3000);
+  if (!$("speechPanel").hidden) voiceLoop.timer = setTimeout(loadVoiceLoop, st.state === "listening" || st.state === "loading" || st.state === "inactive" ? 1000 : 3000);
 }
 async function loadVoiceLoop() {
   try {
@@ -1779,6 +1795,7 @@ function renderChatFields() {
   const p = $("chatProvider").value;
   const s = settingsUi.data && settingsUi.data.smalltalk;
   $("chatUrlRow").hidden = p !== "openai" && p !== "ollama";
+  $("chatReasoningRow").hidden = p !== "openai";
   $("chatUrl").placeholder = p === "ollama" ? "http://192.168.1.20:11434" : "https://api.openai.com/v1";
   $("chatKeyRow").hidden = p !== "claude" && p !== "openai";
   $("chatModel").placeholder = chatPlaceholders[p] || "";
@@ -1798,11 +1815,13 @@ function renderSmalltalk(s) {
   if (!settingsUi.filled) {
     $("foName").value = s.firstOfficer.name || "";
     $("foGender").value = s.firstOfficer.gender || "auto";
+    renderFoVoices(s.firstOfficer);
     $("foEnabled").checked = !!s.firstOfficer.enabled;
     $("foIntroduce").checked = !!s.firstOfficer.introduce;
     $("chatProvider").value = s.provider || "off";
     $("chatModel").value = s.model || "";
     $("chatUrl").value = s.url || "";
+    $("chatReasoning").value = s.reasoning || "auto";
     $("chatWords").value = s.maxReplyWords;
     $("chatRpm").value = s.requestsPerMinute;
   }
@@ -1812,6 +1831,7 @@ function renderSmalltalk(s) {
   parts.push(fo ? t("dashboard.settings.smalltalk.currentFo", { name: fo.name, voice: fo.voice }) : t("dashboard.settings.smalltalk.noFo"));
   if (s.provider !== "off") {
     parts.push(t("dashboard.settings.smalltalk.active", { provider: s.providerName, model: s.effectiveModel || DASH, host: s.host || DASH }));
+    if (s.reasoningEffort) parts.push(t("dashboard.settings.smalltalk.reasoningActive", { effort: s.reasoningEffort, tokens: s.maxTokens }));
     parts.push(t("dashboard.settings.smalltalk.usage", { used: s.status.requestsLastMinute, limit: s.requestsPerMinute }));
     if (s.status.lastOk === true) parts.push(t("dashboard.settings.smalltalk.lastOk", { ms: s.status.lastMs }));
     else if (s.status.lastOk === false) parts.push(t("dashboard.settings.smalltalk.lastError", { error: s.status.lastError || "?" }));
@@ -1819,6 +1839,27 @@ function renderSmalltalk(s) {
   if (s.note) parts.push(s.note);
   $("chatState").innerHTML = parts.map(esc).join(" · ") + (s.problem ? ` <span class="a">${esc(s.problem)}</span>` : "");
 }
+/* Stimme des First Officers: Automatisch (pro Flug) oder fest – nur die guten Kokoro-Stimmen, eine eigene aus voice-settings.json dazu */
+function renderFoVoices(fo) {
+  const voices = fo.voices || [];
+  const fixed = fo.voice || "";
+  const label = (v) => `${v.id} (${t(v.gender === "female" ? "dashboard.settings.smalltalk.voiceFemale" : "dashboard.settings.smalltalk.voiceMale")})`;
+  setHtml("foVoice",
+    `<option value="">${esc(t("dashboard.settings.smalltalk.voiceAuto"))}</option>` +
+    voices.map((v) => `<option value="${esc(v.id)}">${esc(label(v))}</option>`).join("") +
+    (fixed && !voices.some((v) => v.id === fixed) ? `<option value="${esc(fixed)}">${esc(fixed)}</option>` : ""));
+  $("foVoice").value = fixed;
+}
+$("foPreview").addEventListener("click", async () => {
+  $("foPreview").disabled = true;
+  const voice = $("foVoice").value;
+  showMsg("chatMsg", t("dashboard.settings.smalltalk.previewing", { voice: voice || t("dashboard.settings.smalltalk.voiceAuto") }));
+  try {
+    const r = await postJson("/api/settings/firstofficer/preview", { voice });
+    showMsg("chatMsg", r.ok ? t("dashboard.settings.smalltalk.previewed", { voice: r.voice }) : (r.error || t("dashboard.common.noResponse")), !r.ok);
+  } catch { showMsg("chatMsg", t("dashboard.common.noResponse"), true); }
+  $("foPreview").disabled = false;
+});
 $("chatProvider").addEventListener("change", renderChatFields);
 $("chatForm").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -1827,6 +1868,7 @@ $("chatForm").addEventListener("submit", async (e) => {
     provider: $("chatProvider").value,
     model: $("chatModel").value.trim(),
     url: $("chatUrl").value.trim(),
+    reasoning: $("chatReasoning").value,
     apiKey: $("chatKey").value,
     removeApiKey: $("chatKeyRemove").checked,
     maxReplyWords: num("chatWords"),
@@ -1834,6 +1876,7 @@ $("chatForm").addEventListener("submit", async (e) => {
     firstOfficerEnabled: $("foEnabled").checked,
     firstOfficerName: $("foName").value.trim(),
     firstOfficerGender: $("foGender").value,
+    firstOfficerVoice: $("foVoice").value,
     introduce: $("foIntroduce").checked,
   };
   const j = await saveSettings("/api/settings/smalltalk", body, "chatMsg");
@@ -1997,7 +2040,7 @@ function renderMic(d) {
   const level = st.levelDbfs;
   $("micLevel").style.width = level == null ? "0" : Math.max(0, Math.min(100, (level + 60) / 60 * 100)) + "%";
   $("micLevelText").textContent = level == null ? (d.settings.enabled ? DASH : t("dashboard.settings.mic.onlyWhenOn")) : `${Math.round(level)} dBFS`;
-  const info = [t("dashboard.settings.mic.voiceLoop", { state: voiceState(st.state) || DASH })];
+  const info = [t("dashboard.settings.mic.voiceLoop", { state: voiceStateWithReason(st) || DASH })];
   if (st.microphone) info.push(t("dashboard.settings.mic.recordingFrom", { microphone: st.microphone }));
   if (st.lastTranscript) info.push(t("dashboard.settings.mic.lastHeard", { transcript: st.lastTranscript }));
   $("micState").textContent = info.join(" · ");

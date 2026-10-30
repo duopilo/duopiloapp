@@ -32,6 +32,14 @@ public interface IVoiceOutput
 
     /// <summary>Geschlecht der Windows-Stimme, wenn sie statt Kokoro spricht (null = Kokoro oder unbekannt).</summary>
     VoiceGender? EngineVoiceGender => null;
+
+    /// <summary>
+    /// Sprachschleife inaktiv, weil der Sim nicht läuft (Grund fürs Log; null = wieder aktiv): eine laufende Ansage bricht ab,
+    /// wartende Callouts und Antworten verfallen, Neues wird nicht angenommen. Schon eingereihte ATC-Funksprüche warten.
+    /// </summary>
+    void Suspend(string? reason)
+    {
+    }
 }
 
 /// <summary>Was die Sprachschleife an der Sprachausgabe einstellt.</summary>

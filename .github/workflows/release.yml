@@ -60,9 +60,9 @@ jobs:
       paket: ${{ steps.version.outputs.paket }}
     steps:
       - name: Repo holen
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "10.0.x"
 
@@ -213,7 +213,7 @@ jobs:
       contents: write
     steps:
       - name: Repo holen (ganze Geschichte für den Changelog)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 

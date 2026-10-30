@@ -16,7 +16,7 @@
   "voices": {
     "pool": [
       "bf_emma", "bm_lewis", "am_michael", "bf_isabella", "bm_daniel", "af_heart", "am_adam", "bf_alice",
-      "bm_fable", "af_bella", "am_eric", "bf_lily", "am_liam", "af_nicole", "am_onyx", "af_sarah", "af_jessica", "bm_george"
+      "bm_fable", "af_bella", "am_eric", "bf_lily", "am_liam", "am_onyx", "af_sarah", "af_jessica", "bm_george"
     ],
     "stations": {},
     "avoidCalloutVoice": true
@@ -392,6 +392,43 @@
     },
     "common.wrongStation": {
       "variants": [ "{callsign}, this is {station}, say again" ]
+    },
+
+    "emergency.mayday": {
+      "variants": [ "{callsign}, {station}, roger Mayday, squawk {emergencySquawk}, say intentions" ]
+    },
+    "emergency.panPan": {
+      "variants": [ "{callsign}, {station}, roger Pan Pan, say intentions" ]
+    },
+    "emergency.details": {
+      "variants": [ "{callsign}, say souls on board and fuel endurance" ]
+    },
+    "emergency.roger": {
+      "variants": [ "{callsign}, roger" ]
+    },
+    "emergency.direct": {
+      "variants": [ "{callsign}, cleared direct {emergencyTarget}" ]
+    },
+    "emergency.level": {
+      "variants": [ "{callsign}, {levelVerb} {level}" ]
+    },
+    "emergency.levelDiscretion": {
+      "variants": [ "{callsign}, {levelVerb} at your discretion" ]
+    },
+    "emergency.landing": {
+      "variants": [ "{callsign}, runway {emergencyRunway}, wind {wind}, cleared to land", "{callsign}, runway {emergencyRunway}, cleared to land" ]
+    },
+    "emergency.confirmSquawk": {
+      "variants": [ "{callsign}, confirm squawking {emergencySquawk}, say nature of emergency" ]
+    },
+    "emergency.confirmed": {
+      "variants": [ "{callsign}, roger Mayday, say intentions" ]
+    },
+    "emergency.squawkNormal": {
+      "variants": [ "{callsign}, roger, squawk {squawk}" ]
+    },
+    "emergency.cancelled": {
+      "variants": [ "{callsign}, roger, {emergency} cancelled, squawk {previousSquawk}" ]
     }
   },
 

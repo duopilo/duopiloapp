@@ -43,14 +43,20 @@ public sealed class PiperSpeechEngine : ITtsEngine
     private static readonly TimeSpan RetryAfter = TimeSpan.FromMinutes(10);
 
     /// <summary>
-    /// Stimmen, die Duopilo kennt: je Sprache weiblich und männlich. Neue Sprachen hier eintragen (Kennung wie auf Hugging Face:
-    /// &lt;locale&gt;-&lt;name&gt;-&lt;quality&gt;).
+    /// Stimmen, die Duopilo kennt: je Sprache die beste weibliche und männliche. Neue Sprachen hier eintragen (Kennung wie auf
+    /// Hugging Face: &lt;locale&gt;-&lt;name&gt;-&lt;quality&gt;).
+    /// <para>
+    /// Deutsch (gemessen 30.10.2026: acht Sätze, Whisper small als Gegenprobe, CPU-Zeit je Satz mit Laden des Modells):
+    /// männlich thorsten-medium (1 von 79 Wörtern falsch, ~0,75 s CPU je Satz). thorsten-high hört sich Whisper nicht besser an
+    /// (2/79), braucht aber das Vierfache an CPU und ~3 s, bis der Satz beginnt – neben MSFS nicht vertretbar. karlsson-low (5/79)
+    /// raus. Weiblich gibt es nur „low“ und „x_low“ (dazu mls-medium mit vielen Sprechern ohne Angabe des Geschlechts):
+    /// ramona-low (4/79) statt kerstin-low (9/79, am schlechtesten verständlich); eva_k-x_low (3/79) liegt gleichauf, ist aber
+    /// die kleinste Modellstufe.
+    /// </para>
     /// </summary>
     public static readonly IReadOnlyList<TtsVoice> Catalog =
     [
         new(EngineId, "de_DE-thorsten-medium", "de", VoiceGender.Male),
-        new(EngineId, "de_DE-karlsson-low", "de", VoiceGender.Male),
-        new(EngineId, "de_DE-kerstin-low", "de", VoiceGender.Female),
         new(EngineId, "de_DE-ramona-low", "de", VoiceGender.Female),
     ];
 

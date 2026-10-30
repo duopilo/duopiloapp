@@ -18,7 +18,24 @@ public sealed record ChatTurn(string Role, string Text)
 public sealed record ChatRequest(string System, IReadOnlyList<ChatTurn> Messages, int MaxTokens);
 
 /// <summary>Das Sprachmodell hat nicht geantwortet (HTTP-Fehler, kaputte Antwort). Die Meldung enthält nie den Schlüssel.</summary>
-public sealed class ChatModelException(string message, Exception? inner = null) : Exception(message, inner);
+public sealed class ChatModelException(string message, Exception? inner = null) : Exception(message, inner)
+{
+    /// <summary>
+    /// Leere Antwort, weil das Tokenlimit erreicht war (finish_reason "length", bei Claude stop_reason "max_tokens") – meist ein
+    /// Reasoning-Modell, das alle Tokens zum Denken verbraucht hat.
+    /// </summary>
+    public bool Truncated { get; init; }
+
+    /// <summary>Tokenlimit der Anfrage (bei <see cref="Truncated"/>).</summary>
+    public int? MaxTokens { get; init; }
+}
+
+/// <summary>Text und Grund des Endes ("stop", "length" …) aus der Antwort eines Anbieters.</summary>
+public sealed record ChatCompletion(string Text, string? FinishReason)
+{
+    /// <summary>Am Tokenlimit abgebrochen (OpenAI/Ollama "length", Claude "max_tokens").</summary>
+    public bool HitTokenLimit => FinishReason is "length" or "max_tokens";
+}
 
 /// <summary>Schnittstelle zum Sprachmodell – austauschbar für Tests.</summary>
 public interface IChatModel
@@ -49,14 +66,23 @@ public sealed class HttpChatModel(HttpClient? http = null) : IChatModel
             throw new ChatModelException(Loc.T("smalltalk.http.status", (int)response.StatusCode, ErrorText(body, config.ApiKey)));
         }
 
+        ChatCompletion completion;
         try
         {
-            return Parse(config.Provider, body);
+            completion = ParseCompletion(config.Provider, body);
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException or NullReferenceException or KeyNotFoundException)
         {
             throw new ChatModelException(Loc.T("smalltalk.http.badResponse"), ex);
         }
+
+        // Nichts geschrieben, weil das Tokenlimit erreicht war: eigene, verständliche Meldung statt "leere Antwort"
+        if (string.IsNullOrWhiteSpace(completion.Text) && completion.HitTokenLimit)
+        {
+            throw new ChatModelException(Loc.T("smalltalk.http.truncated", request.MaxTokens)) { Truncated = true, MaxTokens = request.MaxTokens };
+        }
+
+        return completion.Text;
     }
 
     /// <summary>Die HTTP-Anfrage für den Anbieter (öffentlich für Tests).</summary>
@@ -87,6 +113,13 @@ public sealed class HttpChatModel(HttpClient? http = null) : IChatModel
                     ["max_tokens"] = request.MaxTokens,
                     ["messages"] = Messages(request.Messages, request.System),
                 };
+
+                // Nur, wenn eingestellt bzw. bei gpt-oss – andere Server lehnen das unbekannte Feld teils ab
+                if (config.ReasoningEffort is { } effort)
+                {
+                    body["reasoning_effort"] = effort;
+                }
+
                 message = new HttpRequestMessage(HttpMethod.Post, baseUrl + "/chat/completions");
                 if (config.HasApiKey)
                 {
@@ -116,7 +149,13 @@ public sealed class HttpChatModel(HttpClient? http = null) : IChatModel
     }
 
     /// <summary>Text aus der Antwort des Anbieters.</summary>
-    public static string Parse(string provider, string body)
+    public static string Parse(string provider, string body) => ParseCompletion(provider, body).Text;
+
+    /// <summary>
+    /// Text und Grund des Endes aus der Antwort. Reasoning-Modelle (gpt-oss bei Groq) liefern ihre Gedanken in einem eigenen Feld
+    /// ("reasoning") – das bleibt draußen; am Tokenlimit ist "content" dann leer oder fehlt.
+    /// </summary>
+    public static ChatCompletion ParseCompletion(string provider, string body)
     {
         var root = JsonNode.Parse(body) ?? throw new JsonException();
         switch (provider)
@@ -132,14 +171,34 @@ public sealed class HttpChatModel(HttpClient? http = null) : IChatModel
                     }
                 }
 
-                return sb.ToString();
+                return new ChatCompletion(sb.ToString(), root["stop_reason"]?.GetValue<string>());
             }
 
             case SmalltalkProviders.OpenAi:
-                return root["choices"]?[0]?["message"]?["content"]?.GetValue<string>() ?? throw new JsonException();
+            {
+                var choice = root["choices"]?[0] ?? throw new JsonException();
+                var message = choice["message"] ?? throw new JsonException();
+                var finish = choice["finish_reason"]?.GetValue<string>();
+                var content = message["content"];
+                if (content is null && finish is null)
+                {
+                    throw new JsonException();
+                }
+
+                return new ChatCompletion(content?.GetValue<string>() ?? "", finish);
+            }
 
             case SmalltalkProviders.Ollama:
-                return root["message"]?["content"]?.GetValue<string>() ?? throw new JsonException();
+            {
+                var finish = root["done_reason"]?.GetValue<string>();
+                var content = root["message"]?["content"];
+                if (content is null && finish is null)
+                {
+                    throw new JsonException();
+                }
+
+                return new ChatCompletion(content?.GetValue<string>() ?? "", finish);
+            }
 
             default:
                 throw new JsonException();

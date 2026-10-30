@@ -134,6 +134,9 @@ public static class AtcControllerTools
                 arrivalRunway = plan.ArrivalRunway,
                 squawk = session.Squawk,
                 squawkSource = session.SquawkSource,
+                emergency = session.Emergency is { } emergency
+                    ? new { kind = emergency.Name, sinceUtc = emergency.SinceUtc, previousSquawk = emergency.PreviousSquawk, detailsAsked = emergency.DetailsAsked, target = emergency.Target }
+                    : null,
                 clearedAltitude = session.ClearedAltitudeFt,
                 cruiseFt = plan.CruiseFt,
                 stepClimbs = plan.StepClimbs.Select(step => new { fix = step.Fix, altitudeFt = step.AltitudeFt, alongNm = Math.Round(step.AlongNm) }).ToList(),

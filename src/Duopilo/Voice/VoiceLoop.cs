@@ -45,6 +45,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
     private readonly IVoiceFlightStateSource _state;
     private readonly FirstOfficerRoster _roster;
     private readonly VoiceDiagnostics _diag = new();
+    private readonly SimGate _simGate = new();
     private readonly object _statusLock = new();
     private readonly object _runLock = new();
     private readonly SemaphoreSlim _reloadSignal = new(0, 1);
@@ -74,6 +75,11 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
     private CancellationTokenSource? _chatCts;
     private long _chatSeq;
     private int _ticks;
+    private WhisperRecognizer? _recognizer;
+    private string? _whisperName;
+
+    // Sim läuft nicht (nicht verbunden, kein Flug, pausiert): Mikrofon wird nicht ausgewertet. Gesetzt im Sekundentakt.
+    private volatile bool _simGated;
 
     public VoiceLoop(
         IOptions<DuopiloOptions> options,
@@ -131,11 +137,13 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
             var persona = s.Enabled ? _roster.Current : null;
             var config = _smalltalk.Config;
             var choice = config.Enabled ? SmalltalkChoice(persona) : null;
+            var gated = _simGated && s.State is "listening" or "muted";
             return _diag.Apply(
                 s with
                 {
                     PendingReadback = _dialog.Pending?.Readback,
-                    State = s.State is "listening" or "muted" ? (_dialog.Muted ? "muted" : "listening") : s.State,
+                    State = gated ? "inactive" : s.State is "listening" or "muted" ? (_dialog.Muted ? "muted" : "listening") : s.State,
+                    InactiveReason = gated ? s.InactiveReason : null,
                     ExecuteWithCallout = _dialog.ExecuteWithCallout,
                     Checklist = checklist,
                     AwaitingAcknowledgment = acks?.PendingTexts,
@@ -175,6 +183,18 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         {
             // Neustart ist schon angefordert
         }
+    }
+
+    /// <summary>
+    /// Feste Stimme des First Officers (voices.kopilot in voice-settings.json, "" = automatisch pro Flug) speichern und sofort
+    /// übernehmen – ohne Neustart der Schleife. Gleiches Geschlecht: Name und Vorstellung bleiben.
+    /// </summary>
+    public VoiceSettings SetFixedVoice(string voice)
+    {
+        var saved = _store.Update(null, null, voice);
+        _events.Writer.TryWrite(new VoiceEvent.FixedVoice(saved.Voices.Kopilot));
+        _log.LogInformation(Loc.Log("log.voice.firstOfficer.voiceSetting"), saved.Voices.Kopilot.Length > 0 ? saved.Voices.Kopilot : "auto");
+        return saved;
     }
 
     /// <summary>Aufnahmegeräte neu einlesen (Dashboard), ohne die Schleife anzuhalten.</summary>
@@ -266,6 +286,8 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         _settings = settings;
         _diag.Reset();
         DrainQueues();
+        _simGate.Reset();
+        _simGated = false;
         var devices = SafeDeviceList();
         lock (_statusLock)
         {
@@ -336,9 +358,12 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         try
         {
             (vad, recognizer) = await LoadModelsAsync(settings, ct);
+            _recognizer = recognizer;
+            _whisperName = recognizer.Name;
             hotkey = RegisterHotkey(settings.Hotkeys.Mute);
             UpdatePersona();
             PrepareSmalltalkVoice();
+            UpdateSimGate();
 
             var runtime = recognizer.Runtime;
             SetStatus(s => s with { State = "listening", Runtime = runtime, ListeningSinceUtc = DateTimeOffset.UtcNow, Error = null });
@@ -391,10 +416,17 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         {
             CancelChat();
             hotkey?.Dispose();
+            _recognizer = null;
             recognizer?.Dispose();
             vad?.Dispose();
             _output.PilotSpeaking = false;
             _microphoneOpenedUtc = null;
+            if (_simGated)
+            {
+                _simGated = false;
+                _dialog.Thaw();
+                _output.Suspend(null);
+            }
         }
     }
 
@@ -429,6 +461,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         }
 
         _output.ConfigureVoice(VoiceOutputOptions.Default);
+        _output.Suspend(null);
         _monitoring.ConfigureTaxiSpeed(true, _options.Monitoring.TaxiSpeedKt, _options.Monitoring.TaxiSpeedCooldownSec);
         _outputConfigured = false;
         _appliedPersonaVoice = null;
@@ -508,7 +541,8 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         var vad = new SileroVad(vadPath);
         try
         {
-            var recognizer = await Task.Run(() => WhisperRecognizer.Load(whisperPath, r), ct);
+            var name = _roster.Current?.Name;
+            var recognizer = await Task.Run(() => WhisperRecognizer.Load(whisperPath, r, name), ct);
             _log.LogInformation(
                 Loc.Log("log.voice.model.loaded"),
                 (int)(DateTimeOffset.UtcNow - started).TotalMilliseconds,
@@ -735,6 +769,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         var frame = new float[SegmenterOptions.FrameSamples];
         var filled = 0;
         var wasOpen = true;
+        var wasGated = false;
         var vadFailures = 0;
 
         await foreach (var chunk in _audio.Reader.ReadAllAsync(ct))
@@ -762,6 +797,22 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
                 }
 
                 filled = 0;
+
+                // Sim läuft nicht: nicht auswerten – kein VAD, kein Whisper (spart CPU)
+                if (_simGated)
+                {
+                    if (!wasGated)
+                    {
+                        segmenter.Reset();
+                        vad.Reset();
+                        _output.PilotSpeaking = false;
+                        wasGated = true;
+                    }
+
+                    continue;
+                }
+
+                wasGated = false;
                 var open = HalfDuplex.MicOpen(_output.IsSpeaking, _output.LastSpeechEndUtc, DateTimeOffset.UtcNow, tail);
                 if (!open)
                 {
@@ -880,6 +931,16 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
                         UpdatePersona();
                         PrepareSmalltalkVoice();
                         break;
+                    case VoiceEvent.FixedVoice fixedVoice:
+                        _settings = _settings with { Voices = _settings.Voices with { Kopilot = fixedVoice.Voice } };
+                        if (_outputConfigured)
+                        {
+                            ApplyOutputSettings(_settings);
+                        }
+
+                        UpdatePersona();
+                        PrepareSmalltalkVoice();
+                        break;
                 }
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -897,11 +958,12 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
     {
         var seconds = (double)u.Samples.Length / SegmenterOptions.SampleRate;
 
-        // Sim pausiert: nichts verarbeiten, nichts sagen
-        if (_monitoring.LastSnapshot?.Paused == true && _settings.Callouts.SilentWhenPaused)
+        // Sim läuft nicht (nicht verbunden, kein Flug, pausiert): nichts verarbeiten, nichts sagen
+        var simState = SimGate.Read(_sim);
+        if (_simGated || SimGate.Blocks(simState, _settings.Callouts.SilentWhenPaused))
         {
-            _diag.Dropped(Loc.T("voice.drop.simPaused"));
-            _log.LogInformation(Loc.Log("log.voice.drop.simPaused"), seconds);
+            _diag.Dropped(InactiveReason(simState));
+            _log.LogInformation(Loc.Log("log.voice.drop.simInactive"), seconds, SimGate.Code(simState));
             return;
         }
 
@@ -993,6 +1055,13 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
 
     private void Speak(VoiceReply reply)
     {
+        if (_simGated)
+        {
+            // Sim läuft nicht: keine Ansage (auch nicht zum Stummschalten per Tastenkürzel)
+            _dialog.NotSpoken(reply);
+            return;
+        }
+
         var accepted = _output.Say(new SpeechRequest(reply.Text, reply.Smalltalk ? SpeechPriority.Smalltalk : SpeechPriority.Response)
         {
             Spoken = reply.Spoken,
@@ -1030,7 +1099,8 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
 
     private void OnAlert(AlertEvent e)
     {
-        if (_dialog.Acknowledgments is not { } acks || _dialog.Muted)
+        // Sim läuft nicht: keine neue Bestätigungspflicht (Callouts werden dann auch nicht gesprochen)
+        if (_dialog.Acknowledgments is not { } acks || _dialog.Muted || _simGated)
         {
             return;
         }
@@ -1046,6 +1116,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
     /// <summary>Sekundentakt: Readbacks verfallen lassen, Challenge wiederholen, Quittungen nachhalten, First Officer prüfen.</summary>
     private void OnTick()
     {
+        UpdateSimGate();
         if (++_ticks % 5 == 0)
         {
             // Neuer SimBrief-Plan = neuer Flug = neuer First Officer; am Gate stellt er sich vor
@@ -1071,9 +1142,52 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
             return;
         }
 
-        var paused = _monitoring.LastSnapshot?.Paused == true;
-        Apply(acks.Tick(DateTimeOffset.UtcNow, paused));
+        // Sim läuft nicht: Wartezeiten der Quittungen stehen (wie bisher bei Pause)
+        Apply(acks.Tick(DateTimeOffset.UtcNow, _simGated));
     }
+
+    /// <summary>
+    /// Läuft der Sim (verbunden, Flug geladen, nicht pausiert)? Sonst ist die Sprachschleife inaktiv: Mikrofon nicht auswerten,
+    /// kein ATC, kein Smalltalk, keine Vorstellung, keine Callouts und Wiederholungen; eine laufende Ansage bricht ab; offene
+    /// Readbacks, Checklisten und Quittungen frieren ein. Keine Ansage dazu – nur das Dashboard zeigt den Grund.
+    /// </summary>
+    private void UpdateSimGate()
+    {
+        var state = SimGate.Read(_sim);
+        var change = _simGate.Update(state, _settings.Callouts.SilentWhenPaused, DateTimeOffset.UtcNow);
+        var reason = _simGate.Gated ? InactiveReason(state) : null;
+        SetStatus(s => s with { SimState = SimGate.Code(state), InactiveReason = reason });
+        if (change is null)
+        {
+            return;
+        }
+
+        if (change.Gated)
+        {
+            _simGated = true;
+            _dialog.Freeze();
+            CancelChat();
+            SetStatus(s => s with { SmalltalkPending = false });
+            _output.PilotSpeaking = false;
+            _output.Suspend(SimGate.Code(state));
+            _log.LogInformation(Loc.Log("log.voice.loop.simInactive"), SimGate.Code(state));
+        }
+        else
+        {
+            _dialog.Thaw();
+            _output.Suspend(null);
+            _simGated = false;
+            _log.LogInformation(Loc.Log("log.voice.loop.simActive"), (int)(change.InactiveFor ?? TimeSpan.Zero).TotalSeconds);
+        }
+    }
+
+    /// <summary>Grund für das Dashboard (in der eingestellten Sprache).</summary>
+    private static string InactiveReason(SimActivityState state) => state switch
+    {
+        SimActivityState.NotConnected => Loc.T("voice.sim.notConnected"),
+        SimActivityState.NoFlight => Loc.T("voice.sim.noFlight"),
+        _ => Loc.T("voice.sim.paused"),
+    };
 
     /// <summary>Wiederholen (einmal), eskalieren (Warnton und Eintrag im Dashboard) oder den Eintrag wieder aufheben.</summary>
     private void Apply(IReadOnlyList<AcknowledgmentAction> actions)
@@ -1180,6 +1294,22 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         {
             _appliedPersonaVoice = persona?.Voice;
             _output.ConfigureVoice(WithPersona(_outputOptions));
+        }
+
+        // Name in den Wortschatz-Hinweis von Whisper, damit er richtig geschrieben wird ("Erik" statt "Eric")
+        // (einmal je Name versuchen – schlägt das Neubauen fehl, bleibt der bisherige Hinweis)
+        if (_recognizer is { } recognizer && recognizer.Name != persona?.Name && _whisperName != persona?.Name)
+        {
+            _whisperName = persona?.Name;
+            try
+            {
+                recognizer.SetName(persona?.Name);
+                _log.LogInformation(Loc.Log("log.voice.whisper.promptName"), persona?.Name ?? "-");
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(Loc.Log("log.voice.whisper.promptFailed"), ex.Message);
+            }
         }
     }
 
@@ -1302,7 +1432,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         }
 
         SetStatus(s => s with { SmalltalkPending = false });
-        if (_dialog.Muted || _dialog.Checklists.Active is not null || _dialog.Pending is not null)
+        if (_simGated || _dialog.Muted || _dialog.Checklists.Active is not null || _dialog.Pending is not null)
         {
             _log.LogInformation(Loc.Log("log.voice.smalltalk.dropped"), e.Answer.Text);
             return;
@@ -1363,7 +1493,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
     /// </summary>
     private void MaybeIntroduce()
     {
-        if (_roster.Current is not { Introduced: false } || !_smalltalk.FirstOfficer.Introduce || _dialog.Muted
+        if (_roster.Current is not { Introduced: false } || !_smalltalk.FirstOfficer.Introduce || _dialog.Muted || _simGated
             || _dialog.Checklists.Active is not null || _dialog.Pending is not null
             || !_output.Available || _output.IsSpeaking || _output.PilotSpeaking)
         {
@@ -1452,5 +1582,8 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
 
         /// <summary>Einstellungen des First Officers/Smalltalks oder Oberflächensprache geändert.</summary>
         public sealed record SettingsChanged : VoiceEvent;
+
+        /// <summary>Feste Stimme des First Officers im Dashboard geändert ("" = automatisch).</summary>
+        public sealed record FixedVoice(string Voice) : VoiceEvent;
     }
 }

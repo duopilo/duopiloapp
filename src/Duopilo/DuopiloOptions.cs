@@ -398,6 +398,13 @@ public sealed class SmalltalkOptions
 
     /// <summary>Eigene piper.exe. Leer = Duopilo lädt Piper bei Bedarf nach %LOCALAPPDATA%\Duopilo\piper.</summary>
     public string PiperPath { get; set; } = "";
+
+    /// <summary>
+    /// Nur OpenAI-kompatibel: Denkaufwand von Reasoning-Modellen ("reasoning_effort"). "auto" (Standard) = bei Modellen mit
+    /// „gpt-oss“ im Namen "low", sonst nichts senden; "off" = nie senden; "low", "medium", "high" = immer so senden. Mit Reasoning
+    /// bekommt die Antwort Spielraum im Tokenlimit, weil die Denk-Tokens mitzählen.
+    /// </summary>
+    public string Reasoning { get; set; } = "auto";
 }
 
 /// <summary>Der First Officer: pro Flug ein Name aus einer Liste (weiblich/männlich) und eine passende Stimme.</summary>

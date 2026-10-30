@@ -14,7 +14,11 @@ namespace Duopilo.Smalltalk;
 public sealed record SmalltalkQuestion(string Text, string Language, string? Name, SmalltalkContext Context);
 
 /// <summary>Antwort: sprechbarer Text. Bei Fehlern der kurze Ersatz („I can't chat right now“) und der Grund (englisch, ohne Schlüssel).</summary>
-public sealed record SmalltalkAnswer(bool Ok, string Text, string? Reason = null, int? ElapsedMs = null);
+public sealed record SmalltalkAnswer(bool Ok, string Text, string? Reason = null, int? ElapsedMs = null)
+{
+    /// <summary>Verständlicher Hinweis in der eingestellten Sprache (Test-Knopf im Dashboard), z. B. Tokenlimit vom Denken aufgebraucht.</summary>
+    public string? Warning { get; init; }
+}
 
 /// <summary>Stand für Dashboard und Status (nie der Schlüssel).</summary>
 public sealed record SmalltalkStatus(
@@ -200,6 +204,20 @@ public sealed partial class SmalltalkService
         {
             return Fail(question, config, $"no answer within {(_timeoutOverride ?? TimeSpan.FromSeconds(config.TimeoutSec)).TotalSeconds:0.#} s", ms: (int)watch.ElapsedMilliseconds);
         }
+        catch (ChatModelException ex) when (ex.Truncated)
+        {
+            // Leere Antwort am Tokenlimit: eigene Warnung mit dem, was hilft (meist ein Reasoning-Modell)
+            var elapsed = (int)watch.ElapsedMilliseconds;
+            _log.LogWarning(
+                Loc.Log("log.smalltalk.truncated"),
+                SmalltalkProviders.DisplayName(config.Provider),
+                config.EffectiveModel,
+                ex.MaxTokens ?? request.MaxTokens,
+                config.Reasoning,
+                config.ReasoningEffort ?? "-");
+            return Fail(question, config, $"empty answer: token limit of {ex.MaxTokens ?? request.MaxTokens} reached (finish_reason length)", ms: elapsed, log: false)
+                with { Warning = ex.Message };
+        }
         catch (Exception ex)
         {
             return Fail(question, config, Redact(Loc.ToEnglish(ex.Message) ?? ex.Message, config.ApiKey), ms: (int)watch.ElapsedMilliseconds);
@@ -249,7 +267,7 @@ public sealed partial class SmalltalkService
         return KeyLike().Replace(text, "$1$2***");
     }
 
-    private SmalltalkAnswer Fail(SmalltalkQuestion question, SmalltalkConfig config, string reason, bool record = true, int? ms = null, bool recordLocked = false)
+    private SmalltalkAnswer Fail(SmalltalkQuestion question, SmalltalkConfig config, string reason, bool record = true, int? ms = null, bool recordLocked = false, bool log = true)
     {
         reason = Redact(reason, config.ApiKey);
         if (recordLocked)
@@ -264,7 +282,7 @@ public sealed partial class SmalltalkService
             }
         }
 
-        if (record || recordLocked)
+        if (log && (record || recordLocked))
         {
             _log.LogWarning(Loc.Log("log.smalltalk.failed"), SmalltalkProviders.DisplayName(config.Provider), config.EffectiveModel, reason);
         }

@@ -34,7 +34,7 @@ public sealed class DashboardData(
     private object? FirstOfficerView()
     {
         var status = voice?.Status;
-        return status?.FirstOfficer is { } fo && status.State is "listening" or "muted" or "loading"
+        return status?.FirstOfficer is { } fo && status.State is "listening" or "muted" or "loading" or "inactive"
             ? new { name = fo.Name, gender = fo.Gender, voice = fo.Voice, smalltalk = status.Smalltalk, note = status.SmalltalkNote, pending = status.SmalltalkPending }
             : null;
     }
