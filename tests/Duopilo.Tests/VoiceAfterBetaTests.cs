@@ -495,6 +495,17 @@ public sealed class VoiceAfterBetaTests
     }
 
     [Fact]
+    public void Piper_Deutsch_nur_thorsten_medium_und_ramona()
+    {
+        Assert.Equal(
+            ["de_DE-thorsten-medium", "de_DE-ramona-low"],
+            PiperSpeechEngine.Catalog.Where(v => v.Language == "de").Select(v => v.Id));
+        Assert.Equal(VoiceGender.Male, PiperSpeechEngine.Catalog.Single(v => v.Id == "de_DE-thorsten-medium").Gender);
+        Assert.Equal(VoiceGender.Female, PiperSpeechEngine.Catalog.Single(v => v.Id == "de_DE-ramona-low").Gender);
+        Assert.DoesNotContain(PiperSpeechEngine.Catalog, v => v.Id.Contains("karlsson", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Probehoeren_mit_dem_Namen()
     {
         Assert.Equal("Hi, I'm Erik, I'll be your first officer today. Flaps one, speed checked.", FirstOfficerCasting.PreviewText("Erik"));
