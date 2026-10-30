@@ -179,7 +179,8 @@ public static class ReadbackChecker
         return result;
     }
 
-    private static List<(int Number, string? Designator)> Runways(HeardText heard)
+    /// <summary>Genannte Bahnen ("runway two three left", "25R").</summary>
+    internal static List<(int Number, string? Designator)> Runways(HeardText heard)
     {
         var result = new List<(int, string?)>();
         var t = heard.Tokens;

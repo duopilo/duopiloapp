@@ -410,6 +410,15 @@ public sealed class ChecklistRunner(TimeProvider? time = null)
         return VoiceReply.Of(prompt);
     }
 
+    /// <summary>Die Wartezeit bis zur Wiederholung um eine eingefrorene Zeit verschieben (Sim lief nicht).</summary>
+    public void Shift(TimeSpan frozen)
+    {
+        if (Active is not null && frozen > TimeSpan.Zero)
+        {
+            _askedUtc += frozen;
+        }
+    }
+
     /// <summary>Die Challenge ist ganz gesprochen – die Wartezeit bis zur Wiederholung beginnt jetzt.</summary>
     public void Spoken(DateTimeOffset endUtc)
     {

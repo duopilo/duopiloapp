@@ -513,6 +513,19 @@ public static class AtcMessageIds
     public const string CommonCheckFrequency = "common.checkFrequency";
     public const string CommonWrongStation = "common.wrongStation";
 
+    public const string EmergencyMayday = "emergency.mayday";
+    public const string EmergencyPanPan = "emergency.panPan";
+    public const string EmergencyDetails = "emergency.details";
+    public const string EmergencyRoger = "emergency.roger";
+    public const string EmergencyDirect = "emergency.direct";
+    public const string EmergencyLevel = "emergency.level";
+    public const string EmergencyLevelDiscretion = "emergency.levelDiscretion";
+    public const string EmergencyLanding = "emergency.landing";
+    public const string EmergencyConfirmSquawk = "emergency.confirmSquawk";
+    public const string EmergencyConfirmed = "emergency.confirmed";
+    public const string EmergencySquawkNormal = "emergency.squawkNormal";
+    public const string EmergencyCancelled = "emergency.cancelled";
+
     public static readonly IReadOnlyList<string> All =
     [
         DeliveryRequest, DeliveryClearance, DeliveryReadbackCorrect,
@@ -527,6 +540,8 @@ public static class AtcMessageIds
         TowerLandingContact, TowerLanding, TowerVacate,
         GroundArrivalContact, GroundTaxiToGate,
         CommonNegative, CommonRoger, CommonSayAgain, CommonRadioCheck, CommonCheckSquawk, CommonCheckFrequency, CommonWrongStation,
+        EmergencyMayday, EmergencyPanPan, EmergencyDetails, EmergencyRoger, EmergencyDirect, EmergencyLevel, EmergencyLevelDiscretion,
+        EmergencyLanding, EmergencyConfirmSquawk, EmergencyConfirmed, EmergencySquawkNormal, EmergencyCancelled,
     ];
 }
 
@@ -541,6 +556,8 @@ public static class AtcVariables
         "direction", "altitude", "nextCenter", "route", "time", "corrections", "levelVerb",
         // Höhenanfrage: angefragte Höhe und Wartezeit bei "unable … expect … in … minutes"
         "requested", "minutes",
+        // Notfall: 7700, Art ("Mayday"/"Pan Pan"), Squawk vor dem Notfall, Ziel und Bahn der Notfreigaben
+        "emergencySquawk", "emergency", "previousSquawk", "emergencyTarget", "emergencyRunway",
     };
 
     /// <summary>Variablen, die als Readback-Punkt geprüft werden können.</summary>

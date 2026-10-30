@@ -10,9 +10,9 @@ jobs:
     # Baut und testet gegen den SimConnect-Stub (das MSFS-SDK gibt es auf GitHub-Runnern nicht).
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
 
@@ -64,7 +64,7 @@ jobs:
 
       - name: Testergebnisse hochladen
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: testergebnisse
           path: '**/TestResults/*.trx'

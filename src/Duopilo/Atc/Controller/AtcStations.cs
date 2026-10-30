@@ -327,6 +327,12 @@ public sealed partial class AtcVoiceAssigner
 {
     private const string Fallback = "bm_george";
 
+    /// <summary>
+    /// Stimmen, die nie funken – auch nicht aus einer eigenen Kopie der Vorlagen: af_nicole ist eine Flüster-/ASMR-Stimme,
+    /// ungeeignet für Funk und Cockpit.
+    /// </summary>
+    public static readonly IReadOnlySet<string> Excluded = new HashSet<string>(StringComparer.Ordinal) { "af_nicole" };
+
     private readonly AtcVoiceConfig _config;
     private readonly string? _avoid;
     private readonly Func<string?>? _avoidLive;
@@ -422,7 +428,7 @@ public sealed partial class AtcVoiceAssigner
     }
 
     private bool Usable(string voice) =>
-        VoiceName().IsMatch(voice) && (_installed is null || _installed.Contains(voice));
+        VoiceName().IsMatch(voice) && !Excluded.Contains(voice) && (_installed is null || _installed.Contains(voice));
 
     /// <summary>FNV-1a – string.GetHashCode ist pro Prozess zufällig, die Stimmen sollen nach einem Neustart gleich bleiben.</summary>
     public static int StableHash(string text)

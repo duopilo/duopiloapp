@@ -625,11 +625,12 @@ public sealed class SmalltalkTests
         Assert.Equal("0.80", PiperSpeechEngine.LengthScale(1.25));
         Assert.Equal("1.00", PiperSpeechEngine.LengthScale(double.NaN));
         Assert.Equal("Hallo Welt, wie geht's?", PiperSpeechEngine.OneLine("Hallo\r\nWelt,\twie   geht's?"));
-        Assert.Equal(("piper", "de_DE-kerstin-low"), TtsVoice.ParseKey("piper:de_DE-kerstin-low"));
+        Assert.Equal(("piper", "de_DE-ramona-low"), TtsVoice.ParseKey("piper:de_DE-ramona-low"));
         Assert.Null(TtsVoice.ParseKey("bf_emma"));
 
         var registry = new TtsEngineRegistry([new FakeEngine(TtsState.Ready)]);
-        Assert.Equal("de_DE-kerstin-low", registry.Find("piper:de_DE-kerstin-low")!.Value.Voice.Id);
+        Assert.Equal("de_DE-ramona-low", registry.Find("piper:de_DE-ramona-low")!.Value.Voice.Id);
+        Assert.Null(registry.Find("piper:de_DE-kerstin-low"));
         Assert.Null(registry.Find("piper:fr_FR-unknown-low"));
         Assert.Null(registry.Find("bm_george"));
     }

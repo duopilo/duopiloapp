@@ -94,6 +94,7 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
     private readonly TimeProvider _time = time ?? TimeProvider.System;
     private readonly List<AcknowledgmentAction> _ackActions = [];
     private volatile bool _muted;
+    private DateTimeOffset? _frozenSince;
 
     /// <summary>So lange wartet ein Readback auf die Bestätigung.</summary>
     public TimeSpan ConfirmTimeout { get; set; } = TimeSpan.FromSeconds(60);
@@ -293,6 +294,12 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
     /// </summary>
     public VoiceReply? Tick()
     {
+        if (Frozen)
+        {
+            // Sim läuft nicht: offene Readbacks und Checklisten warten, statt zu verfallen
+            return null;
+        }
+
         Expire();
         if (Muted || Checklists.Tick() is not { } repeat)
         {
@@ -300,6 +307,38 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
         }
 
         return Remember(repeat with { Checklist = true });
+    }
+
+    /// <summary>Eingefroren (Sim nicht verbunden, kein Flug, pausiert): Zeitfenster stehen, nichts verfällt, nichts wird wiederholt.</summary>
+    public bool Frozen => _frozenSince is not null;
+
+    /// <summary>Einfrieren – die Zeit bis zu <see cref="Thaw"/> zählt für Readbacks und Checklisten nicht.</summary>
+    public void Freeze()
+    {
+        _frozenSince ??= _time.GetUtcNow();
+    }
+
+    /// <summary>Weiter: Zeitfenster des offenen Readbacks und der Checkliste um die eingefrorene Zeit verschieben.</summary>
+    public void Thaw()
+    {
+        if (_frozenSince is not { } since)
+        {
+            return;
+        }
+
+        _frozenSince = null;
+        var frozen = _time.GetUtcNow() - since;
+        if (frozen <= TimeSpan.Zero)
+        {
+            return;
+        }
+
+        if (Pending is { } p)
+        {
+            Pending = p with { ExpiresUtc = p.ExpiresUtc + frozen };
+        }
+
+        Checklists.Shift(frozen);
     }
 
     /// <summary>
@@ -345,7 +384,7 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
     /// <summary>Timeout prüfen (regelmäßig aufrufen). Eine abgelaufene Aktion wird still verworfen.</summary>
     public void Expire()
     {
-        if (Pending is { } p && _time.GetUtcNow() > p.ExpiresUtc)
+        if (!Frozen && Pending is { } p && _time.GetUtcNow() > p.ExpiresUtc)
         {
             CancelPending(Loc.T("voice.cancel.noConfirmation"));
         }

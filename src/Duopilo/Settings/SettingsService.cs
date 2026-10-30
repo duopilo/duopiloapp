@@ -6,6 +6,7 @@ using Duopilo.Localization;
 using Duopilo.Monitoring;
 using Duopilo.Remote;
 using Duopilo.Smalltalk;
+using Duopilo.Speech;
 using Duopilo.Voice;
 using Microsoft.Extensions.Options;
 
@@ -100,6 +101,7 @@ public sealed class SettingsService
         public const string SmalltalkApiKey = "Smalltalk:ApiKey";
         public const string SmalltalkMaxReplyWords = "Smalltalk:MaxReplyWords";
         public const string SmalltalkRequestsPerMinute = "Smalltalk:RequestsPerMinute";
+        public const string SmalltalkReasoning = "Smalltalk:Reasoning";
         public const string FirstOfficerEnabled = "FirstOfficer:Enabled";
         public const string FirstOfficerName = "FirstOfficer:Name";
         public const string FirstOfficerGender = "FirstOfficer:Gender";
@@ -457,6 +459,7 @@ public sealed class SettingsService
             RequestsPerMinute = current.RequestsPerMinute,
             TimeoutSec = current.TimeoutSec,
             UnaddressedMaxWords = current.UnaddressedMaxWords,
+            Reasoning = current.Reasoning,
         };
 
         if (change.Provider is not null)
@@ -534,6 +537,18 @@ public sealed class SettingsService
             values.Add(new SettingValue(KeyPath(Keys.SmalltalkRequestsPerMinute), rpm.ToString(System.Globalization.CultureInfo.InvariantCulture)));
         }
 
+        if (change.Reasoning is not null)
+        {
+            if (!SmalltalkReasoning.IsValid(change.Reasoning))
+            {
+                return SettingsResult.Fail(Loc.T("settings.smalltalk.reasoningInvalid", string.Join(", ", SmalltalkReasoning.All)));
+            }
+
+            var reasoning = SmalltalkReasoning.Normalize(change.Reasoning);
+            options.Reasoning = reasoning;
+            values.Add(SettingValue.Of(KeyPath(Keys.SmalltalkReasoning), reasoning));
+        }
+
         var fo = service.FirstOfficer;
         var firstOfficer = new FirstOfficerOptions { Enabled = fo.Enabled, Name = fo.Name, Gender = fo.Gender, Introduce = fo.Introduce };
         if (change.FirstOfficerEnabled is { } enabled)
@@ -568,9 +583,50 @@ public sealed class SettingsService
             values.Add(SettingValue.Of(KeyPath(Keys.FirstOfficerIntroduce), introduce));
         }
 
-        if (values.Count == 0)
+        // Stimme des First Officers: voices.kopilot in voice-settings.json ("" = automatisch), gilt sofort
+        string? fixedVoice = null;
+        var loop = _services.GetService<VoiceLoop>();
+        if (change.FirstOfficerVoice is not null)
+        {
+            var voice = change.FirstOfficerVoice.Trim();
+            voice = voice.Equals("auto", StringComparison.OrdinalIgnoreCase) ? "" : voice;
+            if (voice.Length > 0 && !KokoroSpeechEngine.IsEnglishVoice(voice))
+            {
+                return SettingsResult.Fail(Loc.T("settings.smalltalk.voiceInvalid", voice));
+            }
+
+            var currentVoice = loop?.Store.Load().Settings.Voices.Kopilot ?? "";
+            if (!string.Equals(currentVoice, voice, StringComparison.Ordinal))
+            {
+                if (loop is null)
+                {
+                    return SettingsResult.Fail(Loc.T("settings.voice.trayOnly"));
+                }
+
+                fixedVoice = voice;
+            }
+        }
+
+        if (values.Count == 0 && fixedVoice is null)
         {
             return new SettingsResult(true, Loc.T("settings.nothingChanged"));
+        }
+
+        if (fixedVoice is not null)
+        {
+            try
+            {
+                loop!.SetFixedVoice(fixedVoice);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+            {
+                return SettingsResult.Fail(Loc.T("settings.file.notWritten", VoiceSettingsStore.FileName, ex.Message));
+            }
+
+            if (values.Count == 0)
+            {
+                return new SettingsResult(true, Loc.T("settings.smalltalk.voiceSaved", fixedVoice.Length > 0 ? fixedVoice : Loc.T("settings.smalltalk.voiceAutomatic")));
+            }
         }
 
         if (!Write(values, out var error))
@@ -604,7 +660,29 @@ public sealed class SettingsService
         service.ResetHistory();
         return answer.Ok
             ? new { ok = true, text = answer.Text, ms = answer.ElapsedMs, error = (string?)null }
-            : new { ok = false, text = answer.Text, ms = answer.ElapsedMs, error = answer.Reason };
+            : new { ok = false, text = answer.Text, ms = answer.ElapsedMs, error = answer.Warning ?? answer.Reason };
+    }
+
+    /// <summary>
+    /// Stimme des First Officers probehören (Knopf „Probehören“): die gewählte, bei „Automatisch“ die des aktuellen First Officers.
+    /// </summary>
+    public async Task<object> PreviewFirstOfficerVoiceAsync(string? voice, CancellationToken ct)
+    {
+        if (_services.GetService<Speech.CalloutSpeaker>() is not { } speaker)
+        {
+            return new { ok = false, error = Loc.T("dashdata.speech.trayOnly"), voice = (string?)null };
+        }
+
+        var status = _services.GetService<VoiceLoop>()?.Status.FirstOfficer;
+        var wanted = (voice ?? "").Trim();
+        if (wanted.Length == 0 || wanted.Equals("auto", StringComparison.OrdinalIgnoreCase))
+        {
+            wanted = status?.Voice ?? FirstOfficerCasting.FemaleVoices[0];
+        }
+
+        var name = status?.Name ?? (_services.GetService<SmalltalkService>()?.FirstOfficer.Name is { Length: > 0 } fixedName ? fixedName : null);
+        var error = await speaker.PreviewVoiceAsync(wanted, FirstOfficerCasting.PreviewText(name), ct);
+        return new { ok = error is null, error, voice = wanted };
     }
 
     /// <summary>Smalltalk und First Officer für die Einstellungsseite – der Schlüssel nur als „gesetzt / nicht gesetzt“.</summary>
@@ -634,6 +712,10 @@ public sealed class SettingsService
             maxReplyWords = c.MaxReplyWords,
             requestsPerMinute = c.RequestsPerMinute,
             timeoutSec = c.TimeoutSec,
+            reasoning = c.Reasoning,
+            reasoningOptions = SmalltalkReasoning.All,
+            reasoningEffort = c.ReasoningEffort,
+            maxTokens = c.MaxTokens,
             problem = c.Enabled ? c.Problem() : null,
             status = new
             {
@@ -651,11 +733,26 @@ public sealed class SettingsService
                 name = fo.Name,
                 gender = fo.Gender,
                 introduce = fo.Introduce,
+                voice = FixedVoice(),
+                voices = FirstOfficerCasting.Voices.Select(v => new { id = v, gender = FirstOfficerCasting.GenderOfVoice(v) == Speech.VoiceGender.Female ? "female" : "male" }),
                 current = voice?.FirstOfficer is { } p
                     ? new { name = p.Name, gender = p.Gender, voice = p.Voice, smalltalkVoice = p.SmalltalkVoice, introduced = p.Introduced }
                     : null,
             },
         };
+    }
+
+    /// <summary>Feste Stimme des First Officers aus voice-settings.json ("" = automatisch).</summary>
+    private string FixedVoice()
+    {
+        try
+        {
+            return _services.GetService<VoiceLoop>()?.Store.Load().Settings.Voices.Kopilot ?? "";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return "";
+        }
     }
 
     private static string ModuleState(string label, bool on) => on ? Loc.T("settings.modules.on", label) : Loc.T("settings.modules.off", label);
@@ -732,4 +829,6 @@ public sealed record SmalltalkChange(
     bool? FirstOfficerEnabled = null,
     string? FirstOfficerName = null,
     string? FirstOfficerGender = null,
-    bool? Introduce = null);
+    bool? Introduce = null,
+    string? Reasoning = null,
+    string? FirstOfficerVoice = null);
