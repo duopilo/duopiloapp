@@ -4,8 +4,21 @@ using Kopilot.Sim;
 namespace Kopilot.Traffic;
 
 /// <summary>Bezugspunkt für die Verkehrsrechnung: das eigene Flugzeug.</summary>
-/// <param name="AltitudeFt">Wahre Höhe über MSL (PLANE ALTITUDE), wie bei den Zielen.</param>
-public sealed record OwnAircraft(double Latitude, double Longitude, double AltitudeFt, double HeadingTrueDeg, bool OnGround);
+/// <param name="AltitudeFt">Wahre Höhe über MSL (PLANE ALTITUDE). Nur für die Erkennung des eigenen Objekts in der Abfrage.</param>
+/// <param name="PressureAltitudeFt">
+/// Eigene Druckhöhe (PRESSURE ALTITUDE, Bezug 1013,25 hPa). Ist sie gesetzt, zählt sie für die Höhendifferenz:
+/// MSFS-Live-Traffic liefert als PLANE ALTITUDE seine barometrische Höhe aus ADS-B (Flugfläche), nicht die wahre Höhe.
+/// </param>
+public sealed record OwnAircraft(double Latitude, double Longitude, double AltitudeFt, double HeadingTrueDeg, bool OnGround, double? PressureAltitudeFt = null)
+{
+    public bool UsesPressureAltitude => PressureAltitudeFt is { } pa && double.IsFinite(pa);
+
+    /// <summary>Bezugshöhe für die Höhendifferenz: Druckhöhe, ohne sie die wahre Höhe.</summary>
+    public double ReferenceAltitudeFt => UsesPressureAltitude ? PressureAltitudeFt!.Value : AltitudeFt;
+
+    /// <summary>"pressure" oder "true" – welche eigene Höhe gegen die Ziele gerechnet wird.</summary>
+    public string AltitudeReference => UsesPressureAltitude ? "pressure" : "true";
+}
 
 /// <summary>Ein Verkehrsziel relativ zum eigenen Flugzeug.</summary>
 /// <param name="Ident">Callsign, sonst ATC-ID.</param>
@@ -14,8 +27,13 @@ public sealed record OwnAircraft(double Latitude, double Longitude, double Altit
 /// <param name="DistanceNm">Horizontale Entfernung (Großkreis).</param>
 /// <param name="RelativeBearingDeg">Peilung relativ zum eigenen Steuerkurs, 0–360.</param>
 /// <param name="Clock">Uhrzeit-Angabe 1–12.</param>
-/// <param name="AltitudeDiffFt">Höhe des Ziels minus eigene Höhe (positiv = darüber).</param>
+/// <param name="AltitudeFt">Höhe des Ziels, wie SimConnect sie liefert (PLANE ALTITUDE).</param>
+/// <param name="AltitudeDiffFt">Höhe des Ziels minus eigene Bezugshöhe (<see cref="OwnAircraft.ReferenceAltitudeFt"/>), positiv = darüber.</param>
 /// <param name="VerticalSpeedDerived">V/S aus der Höhenänderung zwischen zwei Abfragen statt aus der SimVar.</param>
+/// <param name="GroundSpeedKt">Groundspeed: aus der Positionsänderung, sonst die SimVar (siehe <see cref="GroundSpeedSource"/>).</param>
+/// <param name="GroundSpeedSource">"position" (aus der Positionsänderung) oder "simvar" (GROUND VELOCITY, bei Live-Traffic unzuverlässig).</param>
+/// <param name="GroundSpeedSimVarKt">Rohwert von GROUND VELOCITY – zum Vergleich.</param>
+/// <param name="GroundSpeedBaselineSec">Zeitabstand der Positionen, aus denen die Groundspeed gerechnet wurde; null bei "simvar".</param>
 public sealed record TrafficTarget(
     uint ObjectId,
     string Category,
@@ -33,12 +51,19 @@ public sealed record TrafficTarget(
     bool VerticalSpeedDerived,
     string VerticalTrend,
     double GroundSpeedKt,
+    string GroundSpeedSource,
+    double GroundSpeedSimVarKt,
+    double? GroundSpeedBaselineSec,
     double HeadingTrueDeg,
     double? HeadingMagDeg,
     bool OnGround,
     string Callout)
 {
     public string ClockText => TrafficMath.ClockText(Clock);
+
+    public const string GroundSpeedFromPosition = "position";
+
+    public const string GroundSpeedFromSimVar = "simvar";
 }
 
 /// <summary>Verkehrslage: eigenes Flugzeug und alle Ziele im Radius, nach Entfernung sortiert.</summary>
@@ -60,17 +85,25 @@ public static class TrafficPictureBuilder
     /// <param name="fallbackOwn">Eigene Werte aus den abonnierten SimVars, falls das eigene Flugzeug nicht in der Abfrage steckt.</param>
     /// <param name="radiusNm">Nur Ziele bis zu dieser Entfernung.</param>
     /// <param name="derivedVerticalSpeedFpm">V/S je Objekt-ID aus der Höhenänderung (für Ziele, deren SimVar 0 liefert).</param>
+    /// <param name="derivedGroundSpeed">Groundspeed je Objekt-ID aus der Positionsänderung (<see cref="GroundSpeedTracker"/>).</param>
+    /// <param name="ownPressureAltitudeFt">
+    /// Eigene Druckhöhe. Gesetzt = Höhendifferenz gegen die Druckhöhe; null = gegen die wahre Höhe
+    /// (bzw. die Druckhöhe aus <paramref name="fallbackOwn"/>, falls dort eine steht).
+    /// </param>
     public static TrafficPicture Build(
         DateTimeOffset timeUtc,
         IReadOnlyList<AircraftSample> samples,
         OwnAircraft? fallbackOwn,
         double radiusNm,
-        IReadOnlyDictionary<uint, double>? derivedVerticalSpeedFpm = null)
+        IReadOnlyDictionary<uint, double>? derivedVerticalSpeedFpm = null,
+        IReadOnlyDictionary<uint, DerivedGroundSpeed>? derivedGroundSpeed = null,
+        double? ownPressureAltitudeFt = null)
     {
         var user = samples.FirstOrDefault(s => s.IsUser && IsValidPosition(s));
+        var pressureAltitude = ownPressureAltitudeFt ?? fallbackOwn?.PressureAltitudeFt;
         var own = user is not null
-            ? new OwnAircraft(user.Latitude, user.Longitude, user.AltitudeFt, user.HeadingTrueDeg, user.OnGround)
-            : fallbackOwn;
+            ? new OwnAircraft(user.Latitude, user.Longitude, user.AltitudeFt, user.HeadingTrueDeg, user.OnGround, pressureAltitude)
+            : fallbackOwn is not null ? fallbackOwn with { PressureAltitudeFt = pressureAltitude } : null;
         if (own is null)
         {
             return TrafficPicture.Empty(timeUtc);
@@ -99,19 +132,35 @@ public static class TrafficPictureBuilder
                 continue;
             }
 
-            targets.Add(ToTarget(own, s, distance, derivedVerticalSpeedFpm));
+            targets.Add(ToTarget(own, s, distance, derivedVerticalSpeedFpm, derivedGroundSpeed));
         }
 
         targets.Sort((a, b) => a.DistanceNm.CompareTo(b.DistanceNm));
         return new TrafficPicture(timeUtc, own, targets, others);
     }
 
-    public static TrafficTarget ToTarget(OwnAircraft own, AircraftSample s, double distanceNm, IReadOnlyDictionary<uint, double>? derivedVerticalSpeedFpm = null)
+    public static TrafficTarget ToTarget(
+        OwnAircraft own,
+        AircraftSample s,
+        double distanceNm,
+        IReadOnlyDictionary<uint, double>? derivedVerticalSpeedFpm = null,
+        IReadOnlyDictionary<uint, DerivedGroundSpeed>? derivedGroundSpeed = null)
     {
         var bearing = RouteMath.BearingDeg(own.Latitude, own.Longitude, s.Latitude, s.Longitude);
         var relative = TrafficMath.RelativeBearingDeg(bearing, own.HeadingTrueDeg);
         var clock = TrafficMath.ClockPosition(relative);
-        var altitudeDiff = s.AltitudeFt - own.AltitudeFt;
+        var altitudeDiff = TrafficMath.AltitudeDifference(s.AltitudeFt, own);
+
+        // GROUND VELOCITY ist bei MSFS-Live-Traffic um etwa Faktor 3,3 zu klein – die Positionsänderung hat Vorrang
+        var groundSpeed = s.GroundSpeedKt;
+        var groundSpeedSource = TrafficTarget.GroundSpeedFromSimVar;
+        double? baseline = null;
+        if (derivedGroundSpeed?.TryGetValue(s.ObjectId, out var g) == true)
+        {
+            groundSpeed = g.Knots;
+            groundSpeedSource = TrafficTarget.GroundSpeedFromPosition;
+            baseline = g.BaselineSec;
+        }
 
         // Manche Ziele (v. a. Multiplayer) liefern V/S = 0 – dann zählt die Höhenänderung zwischen zwei Abfragen
         double? vs = double.IsFinite(s.VerticalSpeedFpm) ? s.VerticalSpeedFpm : null;
@@ -141,7 +190,10 @@ public static class TrafficPictureBuilder
             vs,
             derived,
             trend,
+            groundSpeed,
+            groundSpeedSource,
             s.GroundSpeedKt,
+            baseline,
             TrafficMath.Normalize(s.HeadingTrueDeg),
             double.IsFinite(s.HeadingMagDeg) ? TrafficMath.Normalize(s.HeadingMagDeg) : null,
             s.OnGround,
