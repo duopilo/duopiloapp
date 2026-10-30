@@ -30,12 +30,15 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton(sp => new AlertBus(sp.GetRequiredService<IOptions<KopilotOptions>>().Value.Monitoring.HistorySize));
         services.AddSingleton<SnapshotFactory>();
+        services.AddSingleton<ConfigCalloutClaims>();
         services.AddSingleton(new FmaLog());
         services.AddSingleton<MonitoringService>();
         services.AddHostedService(sp => sp.GetRequiredService<MonitoringService>());
 
         // Eingabe-Modul (standardmäßig gesperrt)
         services.AddSingleton<IInputBackend, SimInputBackend>();
+        services.AddSingleton<IInputContext, InputContext>();
+        services.AddSingleton<ConfigVerifier>();
         services.AddSingleton<InputService>();
 
         // ATC-Modul (Zustandsmaschine mit Vorlagen). Die Rollroute ist eine Schnittstelle – bis zur Routenberechnung ohne Route.

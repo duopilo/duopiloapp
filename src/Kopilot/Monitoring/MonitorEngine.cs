@@ -47,6 +47,12 @@ public sealed class MonitorSettings
 
     /// <summary>Fuel Check im Reiseflug (FUEL_CHECK, FUEL_WARNING).</summary>
     public FuelCheckSettings Fuel { get; init; } = new();
+
+    /// <summary>
+    /// Fahrwerk/Klappen, die das Eingabe-Modul gerade selbst nachliest und ansagt ("Gear down, three green") – dann kein
+    /// zusätzlicher Callout beim Hebelwechsel. Null = immer ansagen.
+    /// </summary>
+    public ConfigCalloutClaims? Claims { get; init; }
 }
 
 /// <summary>

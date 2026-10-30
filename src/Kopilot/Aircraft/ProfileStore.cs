@@ -16,6 +16,7 @@ public sealed class ProfileStore
     private readonly ILogger<ProfileStore> _log;
     private volatile IReadOnlyList<AircraftProfile> _profiles = [];
     private volatile IReadOnlyList<string> _errors = [];
+    private volatile IReadOnlyList<string> _warnings = [];
 
     public ProfileStore(IOptions<KopilotOptions> options, ILogger<ProfileStore> log)
     {
@@ -31,6 +32,9 @@ public sealed class ProfileStore
 
     public IReadOnlyList<string> Errors => _errors;
 
+    /// <summary>Fehlende Grenzwerte und Quellen: Die Aktionen bleiben, gehen aber nur mit Rückfrage.</summary>
+    public IReadOnlyList<string> Warnings => _warnings;
+
     /// <summary>Bestes Profil für Titel und aircraft.cfg-Pfad (Pfad-Treffer schlagen Titel-Treffer).</summary>
     public AircraftProfile? Match(string? title, string? path) =>
         _profiles
@@ -41,10 +45,13 @@ public sealed class ProfileStore
             .FirstOrDefault();
 
     /// <summary>
-    /// Entfernt ungültige oder gesperrte Aktionen und meldet sie: leere Einträge, doppelte IDs, nicht erlaubte Events/Variablen,
-    /// fehlende Pflicht-Sperren, unbekannte Sperren und Klappenstellungen ohne VFE.
+    /// Entfernt ungültige oder gesperrte Aktionen und meldet sie: leere Einträge, doppelte IDs, gesperrte Bereiche (Triebwerk,
+    /// Treibstoff, Feuer, Hydraulik, IDG), nicht erlaubte Events/Variablen, sicherheitsrelevante Schritte unter fremder ID,
+    /// fehlende Pflicht-Sperren, unbekannte Sperren und Klappen ohne Auswahl der Stellung.
+    /// Fehlende Grenzwerte (VLO/VLE, VFE je Stellung, Höchsthöhe Fahrwerk, Speedbrake-Klappen, MSA-Quelle) entfernen nichts –
+    /// die Aktion geht dann nur mit Rückfrage; das steht in <paramref name="warnings"/>.
     /// </summary>
-    public static void ValidateActions(AircraftProfile profile, List<string> errors)
+    public static void ValidateActions(AircraftProfile profile, List<string> errors, List<string>? warnings = null)
     {
         var file = profile.SourceFile ?? profile.Name;
         profile.Actions ??= [];
@@ -61,9 +68,7 @@ public sealed class ProfileStore
             var unknownInterlock = action.Interlocks.FirstOrDefault(i => i is null || !Kopilot.Input.Interlocks.All.Contains(i, StringComparer.OrdinalIgnoreCase));
             var hasUnknownInterlock = action.Interlocks.Any(i => i is null || !Kopilot.Input.Interlocks.All.Contains(i, StringComparer.OrdinalIgnoreCase));
             var needsVfe = action.Interlocks.Contains(Kopilot.Input.Interlocks.FlapsSpeed, StringComparer.OrdinalIgnoreCase);
-            var missingVfe = needsVfe
-                && (action.Parameter is not { IsChoice: true, Options: { } options }
-                    || options.Keys.Any(o => o != "0" && profile.Limits.VfeFor(null, o) is null));
+            var flapsWithoutChoice = needsVfe && action.Parameter is not { IsChoice: true, Options.Count: > 0 };
 
             string? problem = null;
             if (string.IsNullOrWhiteSpace(action.Id) || action.Steps.Count == 0)
@@ -82,9 +87,9 @@ public sealed class ProfileStore
             {
                 problem = $"Aktion {action.Id}: unbekannte Sperre \"{unknownInterlock}\"";
             }
-            else if (missingVfe)
+            else if (flapsWithoutChoice)
             {
-                problem = $"Aktion {action.Id}: VFE fehlt in limits.vfeKt";
+                problem = $"Aktion {action.Id}: flapsSpeed braucht eine Auswahl der Klappenstellung";
             }
 
             if (problem is null)
@@ -95,12 +100,64 @@ public sealed class ProfileStore
             errors.Add($"{file}: {problem} – entfernt");
             return true;
         });
+
+        if (warnings is not null)
+        {
+            warnings.AddRange(MissingLimits(profile).Select(w => $"{file}: {w}"));
+        }
+    }
+
+    /// <summary>Grenzwerte und Quellen, die für die vorhandenen Aktionen fehlen (dann nur mit Rückfrage).</summary>
+    public static IEnumerable<string> MissingLimits(AircraftProfile profile)
+    {
+        var limits = profile.Limits ?? new AircraftLimits();
+        bool Has(string id) => profile.Actions.Any(a => a.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+
+        if (Has("gear.down"))
+        {
+            if (limits.VloKt is null && limits.VleKt is null)
+            {
+                yield return "limits.vloKt/vleKt fehlt – gear.down nur mit Rückfrage";
+            }
+
+            if (limits.MaxGearAltitudeFt is null)
+            {
+                yield return "limits.maxGearAltitudeFt fehlt – gear.down in der Luft nur mit Rückfrage";
+            }
+        }
+
+        foreach (var flaps in profile.Actions.Where(a => a.Interlocks.Contains(Kopilot.Input.Interlocks.FlapsSpeed, StringComparer.OrdinalIgnoreCase)))
+        {
+            var missing = flaps.Parameter?.Options?.Keys.Where(o => o != "0" && limits.VfeFor(null, o) is null).ToList() ?? [];
+            if (missing.Count > 0)
+            {
+                yield return $"limits.vfeKt fehlt für {flaps.Id} {string.Join(", ", missing)} – nur mit Rückfrage";
+            }
+        }
+
+        if (Has("speedbrake") && limits.SpeedbrakeInhibitFlaps is null)
+        {
+            yield return "limits.speedbrakeInhibitFlaps fehlt – Speedbrake mit ausgefahrenen Klappen nur mit Rückfrage";
+        }
+
+        if (Has("fcu.altitude"))
+        {
+            if (limits.MsaSource is null)
+            {
+                yield return "limits.msaSource fehlt – FCU-Höhe nur mit Rückfrage";
+            }
+            else if (!AircraftLimits.MsaSources.Contains(limits.MsaSource.Trim(), StringComparer.OrdinalIgnoreCase))
+            {
+                yield return $"limits.msaSource \"{limits.MsaSource}\" unbekannt (möglich: {string.Join(", ", AircraftLimits.MsaSources)}) – FCU-Höhe nur mit Rückfrage";
+            }
+        }
     }
 
     public void Reload()
     {
         var profiles = new List<AircraftProfile>();
         var errors = new List<string>();
+        var warnings = new List<string>();
 
         if (Directory.Exists(DirectoryPath))
         {
@@ -123,7 +180,7 @@ public sealed class ProfileStore
                     profile.Bindings = new Dictionary<string, ProfileBinding>(
                         profile.Bindings.Where(b => !string.IsNullOrWhiteSpace(b.Value.Name)),
                         StringComparer.OrdinalIgnoreCase);
-                    ValidateActions(profile, errors);
+                    ValidateActions(profile, errors, warnings);
                     profiles.Add(profile);
                 }
                 catch (Exception ex)
@@ -140,11 +197,17 @@ public sealed class ProfileStore
 
         _profiles = profiles;
         _errors = errors;
+        _warnings = warnings;
 
         _log.LogInformation("{Count} Flugzeugprofil(e) geladen aus {Dir}", profiles.Count, DirectoryPath);
         foreach (var error in errors)
         {
             _log.LogWarning("Profilfehler: {Error}", error);
+        }
+
+        foreach (var warning in warnings)
+        {
+            _log.LogWarning("Profil: Grenzwert fehlt – {Warning}", warning);
         }
     }
 }

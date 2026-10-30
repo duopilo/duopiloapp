@@ -40,6 +40,8 @@ public sealed record PendingVoiceAction(string Token, string ActionId, string? V
 /// confirm_action; "Negative"/"Cancel" → cancel_action; nach dem Timeout verfällt die Aktion still.
 /// Bestätigt wird nur, was der Pilot gehört hat: "Confirm" zählt erst, wenn der Readback ganz gesprochen ist
 /// (<see cref="VoiceDialog.Spoken"/>), und nur, wenn der Pilot danach zu sprechen begonnen hat.
+/// Kritische Aktionen (z. B. Transponder STBY im Flug) fragen nach dem ersten "Confirm" mit Warnhinweis nach; erst ein zweites
+/// "Confirm" nach der gehörten Rückfrage führt aus.
 /// Abfragen werden mit dem reinen Callout beantwortet, Unbekanntes mit "Say again".
 /// Nicht threadsicher – die Sprachschleife ruft alles nacheinander auf.
 /// </summary>
@@ -234,6 +236,14 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
         Pending = null;
         var result = await gateway.ConfirmAsync(pending.Token, normalized, ct);
         LastResult = result;
+        if (result.Status == InputResult.AwaitingCautionConfirmation && result.Token is { } token)
+        {
+            // Kritische Aktion: Rückfrage mit Warnhinweis vorlesen, erst ein weiteres "Confirm" danach führt aus
+            var caution = result.Caution ?? result.Readback ?? pending.Readback;
+            Pending = new PendingVoiceAction(token, result.Action ?? pending.ActionId, result.Value, caution, _time.GetUtcNow() + ConfirmTimeout);
+            return Remember(VoiceReply.Of(caution) with { ReadbackToken = token });
+        }
+
         return result.Status switch
         {
             // Ausgeführt: nichts sagen (die Bewegung im Cockpit ist die Antwort), nur wenn das Flugzeug den Wert nicht übernommen hat

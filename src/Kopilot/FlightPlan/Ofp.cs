@@ -117,6 +117,12 @@ public sealed record OfpFix
 
     public double? FuelPlanOnboardKg { get; init; }
 
+    /// <summary>
+    /// MORA am Fix (ft) aus dem Navlog-Feld "mora" – Grundlage der MSA-Prüfung der FCU-Höhe. Kleine Werte (unter 500) gelten als
+    /// Hunderter-Fuß ("059" = 5900 ft), falls SimBrief das Feld so liefert.
+    /// </summary>
+    public int? MoraFt { get; init; }
+
     public double? FuelMinOnboardKg { get; init; }
 }
 
@@ -227,6 +233,7 @@ public static class OfpParser
                 TimeTotalSec = Int(f, "time_total"),
                 FuelPlanOnboardKg = Mass(f, "fuel_plan_onboard"),
                 FuelMinOnboardKg = Mass(f, "fuel_min_onboard"),
+                MoraFt = Mora(Int(f, "mora")),
             });
         }
 
@@ -286,6 +293,14 @@ public static class OfpParser
             Fixes = fixes,
         };
     }
+
+    /// <summary>MORA in ft; Werte unter 500 als Hunderter-Fuß. 0 oder negativ = keine Angabe.</summary>
+    public static int? Mora(int? raw) => raw switch
+    {
+        null or <= 0 => null,
+        < 500 => raw * 100,
+        _ => raw,
+    };
 
     private static OfpAirport Airport(JsonElement? e) => new(
         Str(e, "icao_code"),

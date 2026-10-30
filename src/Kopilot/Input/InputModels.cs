@@ -186,6 +186,49 @@ public sealed record ActionPlan(
     IReadOnlyList<ResolvedCondition> Requires)
 {
     public string Summary => ValueText is null ? Action.Id : $"{Action.Id} = {ValueText}";
+
+    /// <summary>Zahlenwert der Aktion (bei Auswahl der Wert der Option), null ohne Parameter.</summary>
+    public double? Value { get; init; }
+
+    /// <summary>Gewählte Option (Schlüssel aus dem Profil), null bei Zahlen oder ohne Parameter.</summary>
+    public string? Option { get; init; }
+
+    /// <summary>
+    /// Warnhinweise, die eine zusätzliche Rückfrage verlangen (Gegenbestätigung nach dem Readback). Gilt in jedem Ablauf –
+    /// auch ein künftiger Modus "ausführen + Callout" darf solche Aktionen nicht ohne diese Rückfrage ausführen.
+    /// </summary>
+    public IReadOnlyList<SafetyCaution> Cautions { get; init; } = [];
+
+    /// <summary>Braucht die Aktion die zusätzliche Rückfrage mit Warnhinweis?</summary>
+    public bool NeedsCrossConfirmation => Cautions.Count > 0;
+
+    /// <summary>Die Rückfrage zum Vorlesen, z. B. "Caution, transponder standby in flight. Confirm transponder standby?"</summary>
+    public string CautionPrompt => SafetyCaution.Prompt(Cautions, Readback);
+}
+
+/// <summary>
+/// Warnhinweis einer Sperre, die nicht ablehnt, sondern eine Gegenbestätigung verlangt.
+/// </summary>
+/// <param name="Code">Kurzname, z. B. "XPDR_STBY_IN_FLIGHT" oder "LIMIT_MISSING_VLO".</param>
+/// <param name="Spoken">Englischer Warnhinweis zum Vorlesen (ohne "Caution"), z. B. "transponder standby in flight".</param>
+/// <param name="Reason">Erklärung auf Deutsch mit den Werten.</param>
+/// <param name="MissingLimit">true = ein Grenzwert oder eine Quelle fehlt im Profil (wird im Log vermerkt).</param>
+public sealed record SafetyCaution(string Code, string Spoken, string Reason, bool MissingLimit = false)
+{
+    public static string Prompt(IReadOnlyList<SafetyCaution> cautions, string readback)
+    {
+        if (cautions.Count == 0)
+        {
+            return readback;
+        }
+
+        var spoken = string.Join("; ", cautions.Select(c => c.Spoken).Distinct(StringComparer.OrdinalIgnoreCase));
+        return $"Caution, {spoken}. Confirm {Lower(readback)}?";
+    }
+
+    /// <summary>Erster Buchstabe klein, außer bei Abkürzungen ("APU", "TCAS").</summary>
+    private static string Lower(string text) =>
+        text.Length > 1 && char.IsUpper(text[0]) && !char.IsUpper(text[1]) ? char.ToLowerInvariant(text[0]) + text[1..] : text;
 }
 
 public sealed record PlanResult(ActionPlan? Plan, string? Refusal)
@@ -196,7 +239,19 @@ public sealed record PlanResult(ActionPlan? Plan, string? Refusal)
 }
 
 /// <summary>Eine vorbereitete Aktion, die auf die Bestätigung des Piloten wartet.</summary>
-public sealed record PendingAction(string Token, ActionPlan Plan, DateTimeOffset CreatedUtc, DateTimeOffset ExpiresUtc);
+public sealed record PendingAction(string Token, ActionPlan Plan, DateTimeOffset CreatedUtc, DateTimeOffset ExpiresUtc)
+{
+    /// <summary>
+    /// true = der Readback ist bestätigt, jetzt wartet die Rückfrage mit Warnhinweis auf die zweite Bestätigung.
+    /// <see cref="ConfirmedCautions"/> sind die Codes, die der Pilot mit dieser Rückfrage gehört hat.
+    /// </summary>
+    public bool CautionStage { get; init; }
+
+    public IReadOnlyList<string> ConfirmedCautions { get; init; } = [];
+
+    /// <summary>Was jetzt vorgelesen wird: der Readback oder die Rückfrage mit Warnhinweis.</summary>
+    public string Prompt => CautionStage ? Plan.CautionPrompt : Plan.Readback;
+}
 
 /// <summary>Eintrag im Eingabe-Protokoll.</summary>
 public sealed record InputLogEntry(

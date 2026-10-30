@@ -43,12 +43,19 @@ public static class ActionPlanner
             (value, valueText, option) = (parsed.Value, parsed.Text, parsed.Option);
         }
 
-        // ---------------- Sperren
+        // ---------------- Sperren (fehlt ein Grenzwert: nur mit Rückfrage)
+        var cautions = new List<SafetyCaution>();
         foreach (var name in action.Interlocks)
         {
-            if (Interlocks.Check(name, snapshot, limits, option ?? valueText) is { } reason)
+            var outcome = Interlocks.Evaluate(name, snapshot, limits, option ?? valueText);
+            if (outcome.Refusal is { } reason)
             {
                 return PlanResult.Refuse(reason);
+            }
+
+            if (outcome.Caution is { } caution)
+            {
+                cautions.Add(caution);
             }
         }
 
@@ -159,7 +166,12 @@ public static class ActionPlanner
             ? (spoken is null ? action.Label : $"{action.Label} {spoken}")
             : action.Readback.Replace("{value}", spoken ?? "", StringComparison.OrdinalIgnoreCase);
 
-        return PlanResult.Ok(new ActionPlan(action, valueText, readback.Trim(), steps, check, requires));
+        return PlanResult.Ok(new ActionPlan(action, valueText, readback.Trim(), steps, check, requires)
+        {
+            Value = action.Parameter is null ? null : value,
+            Option = option,
+            Cautions = cautions,
+        });
     }
 
     /// <summary>
@@ -185,6 +197,36 @@ public static class ActionPlanner
         }
 
         return names.Count > 0 ? string.Join("/", names) : null;
+    }
+
+    /// <summary>
+    /// Bedingung "das Flugzeug steht schon auf dieser Auswahl" – aus der Prüfung der Aktion, sonst aus dem ersten gesetzten Wert.
+    /// Für Sperren, die einen anderen Schalter lesen (z. B. Pack 2 beim Abschalten von Pack 1). Null, wenn nicht bestimmbar.
+    /// </summary>
+    public static ResolvedCondition? StateFor(ProfileAction action, string option)
+    {
+        if (action.Parameter is not { IsChoice: true, Options: { } options })
+        {
+            return null;
+        }
+
+        var key = options.Keys.FirstOrDefault(k => k.Equals(option, StringComparison.OrdinalIgnoreCase));
+        if (key is null)
+        {
+            return null;
+        }
+
+        var value = options[key];
+        if (action.Check is { } chk && !string.IsNullOrWhiteSpace(chk.Variable) && Resolve(chk.Expect, value, key, fallback: value) is { } expect)
+        {
+            return new ResolvedCondition(chk.Variable.Trim(), Unit(chk.Unit), expect, chk.Tolerance, Modulo: chk.Modulo);
+        }
+
+        var set = action.Steps.FirstOrDefault(s => s is not null && !string.IsNullOrWhiteSpace(s.Set)
+                                                  && (s.Only is not { Count: > 0 } only || only.Contains(key, StringComparer.OrdinalIgnoreCase)));
+        return set is not null && Resolve(set.Value, value, key, fallback: 0) is { } raw
+            ? new ResolvedCondition(set.Set!.Trim(), Unit(set.Unit), raw * set.Scale, 0.01)
+            : null;
     }
 
     /// <summary>Kurzbeschreibung des erwarteten Werts, z. B. "100–399 kt" oder "on | off".</summary>

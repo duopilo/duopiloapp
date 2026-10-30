@@ -41,6 +41,9 @@ public sealed class AircraftProfile
     /// <summary>Erlaubte Eingaben (Eingabe-Modul). Nur was hier steht, kann Kopilot im Cockpit bedienen.</summary>
     public List<Kopilot.Input.ProfileAction> Actions { get; set; } = [];
 
+    /// <summary>Wie Kopilot nach Fahrwerk und Klappen nachliest, ob die Stellung erreicht ist. Fehlt = Standard-SimVars.</summary>
+    public VerificationConfig? Verification { get; set; }
+
     [JsonIgnore]
     public string? SourceFile { get; set; }
 
@@ -176,6 +179,27 @@ public sealed class AircraftLimits
     /// <summary>Speed-Limit unterhalb FL100.</summary>
     public double SpeedLimitBelowFl100Kt { get; set; } = 250;
 
+    /// <summary>
+    /// Höchste Höhe (Druckhöhe, ft), bis zu der das Fahrwerk ausgefahren werden darf (A320/A330: 25 000 ft).
+    /// Fehlt = gear.down in der Luft nur mit Rückfrage.
+    /// </summary>
+    public double? MaxGearAltitudeFt { get; set; }
+
+    /// <summary>
+    /// Klappenstellungen (Klartext wie in der Klappen-Bindung, z. B. "FULL"), in denen die Speedbrake nicht ausgefahren werden darf.
+    /// Fehlt = Speedbrake bei ausgefahrenen Klappen nur mit Rückfrage. Leere Liste = keine Einschränkung.
+    /// </summary>
+    public List<string>? SpeedbrakeInhibitFlaps { get; set; }
+
+    /// <summary>
+    /// Woher die MSA für die Prüfung der FCU-Höhe kommt: "ofp" = MORA aus dem SimBrief-Navlog (aktueller Abschnitt der Route).
+    /// Fehlt = FCU-Höhe nur mit Rückfrage.
+    /// </summary>
+    public string? MsaSource { get; set; }
+
+    /// <summary>Bekannte MSA-Quellen.</summary>
+    public static readonly IReadOnlyList<string> MsaSources = ["ofp"];
+
     /// <summary>VFE für die aktuelle Stellung: zuerst nach Klartext (aus dem Profil), sonst nach Hebel-Index. Eingefahren = null.</summary>
     public double? VfeFor(double? flapsIndex, string? flapsLabel = null)
     {
@@ -216,6 +240,76 @@ public sealed class AircraftLimits
         var key = flapsLabel ?? (flapsIndex is { } f ? Math.Round(f).ToString(CultureInfo.InvariantCulture) : null);
         return key is not null && LandingFlaps.Contains(key, StringComparer.OrdinalIgnoreCase);
     }
+}
+
+/// <summary>
+/// Nachlesen nach Fahrwerk/Klappen (Eingabe-Modul): Erst wenn die Stellung erreicht ist, sagt Kopilot "Gear down, three green"
+/// bzw. "Flaps two" – sonst nach der Zeitgrenze "Gear disagree" bzw. "Flaps disagree".
+/// </summary>
+public sealed class VerificationConfig
+{
+    public GearVerification? Gear { get; set; }
+
+    public FlapsVerification? Flaps { get; set; }
+}
+
+/// <summary>Eine Variable, die beim Nachlesen gelesen wird.</summary>
+public sealed class VerificationVariable
+{
+    public string Name { get; set; } = "";
+
+    public string Unit { get; set; } = "number";
+
+    /// <summary>Name für Log und Meldung, z. B. "nose".</summary>
+    public string? Label { get; set; }
+}
+
+/// <summary>Fahrwerk: jedes Bein einzeln. Unten verriegelt ab <see cref="DownAt"/>, oben ab <see cref="UpAt"/>.</summary>
+public sealed class GearVerification
+{
+    public List<VerificationVariable> Legs { get; set; } = [];
+
+    public double DownAt { get; set; } = 99;
+
+    public double UpAt { get; set; } = 1;
+
+    public int TimeoutSec { get; set; } = 20;
+
+    /// <summary>MSFS-Standard: Bug- und Hauptfahrwerk in Prozent.</summary>
+    public static GearVerification Default() => new()
+    {
+        Legs =
+        [
+            new VerificationVariable { Name = "GEAR CENTER POSITION", Unit = "percent", Label = "nose" },
+            new VerificationVariable { Name = "GEAR LEFT POSITION", Unit = "percent", Label = "left" },
+            new VerificationVariable { Name = "GEAR RIGHT POSITION", Unit = "percent", Label = "right" },
+        ],
+    };
+}
+
+/// <summary>
+/// Klappen: Die Stellung gilt als erreicht, wenn sich die Flächen bewegt haben und dann <see cref="SettleSec"/> lang stillstehen
+/// (Änderung höchstens <see cref="Tolerance"/>). Beim Einfahren auf 0 reicht, dass alle Flächen eingefahren sind.
+/// </summary>
+public sealed class FlapsVerification
+{
+    public List<VerificationVariable> Surfaces { get; set; } = [];
+
+    public double SettleSec { get; set; } = 2;
+
+    public double Tolerance { get; set; } = 0.5;
+
+    public int TimeoutSec { get; set; } = 40;
+
+    /// <summary>MSFS-Standard: Hinterkantenklappen und Vorflügel links in Prozent.</summary>
+    public static FlapsVerification Default() => new()
+    {
+        Surfaces =
+        [
+            new VerificationVariable { Name = "TRAILING EDGE FLAPS LEFT PERCENT", Unit = "percent", Label = "flaps" },
+            new VerificationVariable { Name = "LEADING EDGE FLAPS LEFT PERCENT", Unit = "percent", Label = "slats" },
+        ],
+    };
 }
 
 public sealed class ProfileVariable

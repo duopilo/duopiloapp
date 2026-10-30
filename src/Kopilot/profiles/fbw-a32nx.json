@@ -107,7 +107,13 @@
     "vloKt": 250,
     "vfeKt": { "1": 230, "1+F": 215, "2": 200, "3": 185, "FULL": 177 },
     "landingFlaps": [ "3", "FULL" ],
-    "speedLimitBelowFl100Kt": 250
+    "speedLimitBelowFl100Kt": 250,
+    // Sicherheitssperren des Eingabe-Moduls (v0.9.1): Fahrwerk ausfahren nur unter 25 000 ft (A320-Limit),
+    // Speedbrake nicht in CONF FULL (FCOM: Speedbrake-Ausfahren in CONF FULL gesperrt, A321: auch CONF 3),
+    // MSA für die FCU-Höhe aus der MORA im SimBrief-Navlog.
+    "maxGearAltitudeFt": 25000,
+    "speedbrakeInhibitFlaps": [ "FULL" ],
+    "msaSource": "ofp"
   },
   "electrical": [
     { "key": "gen1Volt", "name": "L:A32NX_ELEC_ENG_GEN_1_POTENTIAL", "description": "GEN 1 (V)" },

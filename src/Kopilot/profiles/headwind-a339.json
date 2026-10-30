@@ -88,7 +88,12 @@
     "vloKt": 250,
     "vfeKt": { "1": 240, "1+F": 215, "2": 196, "3": 186, "FULL": 180 },
     "landingFlaps": [ "3", "FULL" ],
-    "speedLimitBelowFl100Kt": 250
+    "speedLimitBelowFl100Kt": 250,
+    // Sicherheitssperren des Eingabe-Moduls (v0.9.1): Fahrwerk ausfahren nur unter 25 000 ft (A330-Limit),
+    // Speedbrake nicht in CONF FULL (gegen das Headwind-/A330-FCOM prüfen), MSA aus der MORA im SimBrief-Navlog.
+    "maxGearAltitudeFt": 25000,
+    "speedbrakeInhibitFlaps": [ "FULL" ],
+    "msaSource": "ofp"
   },
   // ECAM: Die Headwind-FWC (PseudoFWC.ts) schreibt dieselben EWD-Zeilen wie der A32NX. Im Flug gelesen: Memos 7001 IGNITION, 54001 PRED W/S OFF.
   // Tabelle aus dem Headwind-Repo (hdw-a339x/src/systems/shared/src/EwdMessages.ts) – wie die FBW-Tabelle plus A330-Codes.

@@ -39,6 +39,21 @@ public sealed record InputResult(
     bool? CheckIndependent = null,
     string? StateAfterText = null)
 {
+    /// <summary>Rückfrage mit Warnhinweis (englisch, zum Vorlesen) – bei <see cref="AwaitingCautionConfirmation"/>.</summary>
+    public string? Caution { get; init; }
+
+    /// <summary>Warnhinweise auf Deutsch (Gründe der Rückfrage).</summary>
+    public IReadOnlyList<string>? Cautions { get; init; }
+
+    /// <summary>Nach dem Readback folgt noch eine Rückfrage mit Warnhinweis (bei <see cref="AwaitingConfirmation"/>).</summary>
+    public bool CautionFollows { get; init; }
+
+    /// <summary>Was nach der Ausführung noch geprüft wird (z. B. Fahrwerk verriegelt) – das Ergebnis kommt als Callout.</summary>
+    public string? FollowUp { get; init; }
+
+    /// <summary>Readback bestätigt: jetzt die Rückfrage mit Warnhinweis vorlesen und mit demselben Token erneut bestätigen lassen.</summary>
+    public const string AwaitingCautionConfirmation = "awaiting_caution_confirmation";
+
     public const string AwaitingConfirmation = "awaiting_confirmation";
     public const string Executed = "executed";
     public const string Refused = "refused";
@@ -54,6 +69,12 @@ public sealed record InputResult(
 /// Eingabe-Modul: Aktion vorbereiten (Readback), nach Bestätigung des Piloten ausführen, danach prüfen.
 /// Es gibt immer höchstens eine offene Aktion; sie verfällt nach <see cref="InputOptions.ConfirmWindowSeconds"/>.
 /// Unmittelbar vor dem Senden (unter der Ausführungssperre) werden Freigabe, Flugzeug, Sperren und Bedingungen erneut geprüft.
+/// <para>
+/// Plausibilitätssperren und Rückfragen (<see cref="SafetyRules"/>): Verlangt eine Aktion eine Rückfrage mit Warnhinweis
+/// (z. B. Transponder STBY im Flug), führt das erste "confirm" nicht aus, sondern liefert die Rückfrage
+/// (<see cref="InputResult.AwaitingCautionConfirmation"/>); erst das zweite "confirm" mit demselben Token führt aus.
+/// Nach Fahrwerk und Klappen liest <see cref="ConfigVerifier"/> die erreichte Stellung nach und sagt sie an.
+/// </para>
 /// </summary>
 public sealed partial class InputService
 {
@@ -100,6 +121,8 @@ public sealed partial class InputService
     private readonly VerifiedActionStore _verified;
     private readonly TimeProvider _time;
     private readonly ILogger<InputService> _log;
+    private readonly IInputContext? _context;
+    private readonly ConfigVerifier? _verifier;
     private readonly object _lock = new();
     private readonly LinkedList<InputLogEntry> _history = new();
     private readonly SemaphoreSlim _execution = new(1, 1);
@@ -117,7 +140,13 @@ public sealed partial class InputService
 
     private sealed record RetiredToken(string Token, string Summary, string Fate);
 
-    public InputService(IOptions<KopilotOptions> options, IInputBackend backend, ILogger<InputService> log, TimeProvider? time = null)
+    public InputService(
+        IOptions<KopilotOptions> options,
+        IInputBackend backend,
+        ILogger<InputService> log,
+        TimeProvider? time = null,
+        IInputContext? context = null,
+        ConfigVerifier? verifier = null)
     {
         _backend = backend;
         _options = options.Value.Input;
@@ -125,7 +154,12 @@ public sealed partial class InputService
         _verified = new VerifiedActionStore(options.Value.ResolveDataDirectory());
         _time = time ?? TimeProvider.System;
         _log = log;
+        _context = context;
+        _verifier = verifier;
     }
+
+    /// <summary>Zuletzt gestartetes Nachlesen von Fahrwerk/Klappen (für Tests), null = keins.</summary>
+    public Task? LastVerification { get; private set; }
 
     /// <summary>Eingaben erlaubt? Dashboard-Schalter (input.json) vor appsettings.</summary>
     public bool Enabled => _store.Load()?.Enabled ?? _options.Enabled;
@@ -288,15 +322,22 @@ public sealed partial class InputService
             return Refuse(actionId, value, $"Aktion \"{actionId}\" gibt es für {profile.Name} nicht – siehe list_actions.");
         }
 
-        var result = ActionPlanner.Plan(action, value, profile.Limits, _backend.Snapshot());
-        if (result.Plan is not { } plan)
+        var snapshot = _backend.Snapshot();
+        var result = ActionPlanner.Plan(action, value, profile.Limits, snapshot);
+        if (result.Plan is not { } planned)
         {
             return Refuse(action.Id, value, result.Refusal!);
         }
 
-        if (await CheckRequirementsAsync(plan, ct) is { } unmet)
+        if (await CheckRequirementsAsync(planned, ct) is { } unmet)
         {
-            return Refuse(action.Id, plan.ValueText, unmet);
+            return Refuse(action.Id, planned.ValueText, unmet);
+        }
+
+        var safety = await ApplySafetyAsync(planned, profile, snapshot, ct);
+        if (safety.Plan is not { } plan)
+        {
+            return Refuse(action.Id, planned.ValueText, safety.Refusal!);
         }
 
         var now = _time.GetUtcNow();
@@ -326,7 +367,13 @@ public sealed partial class InputService
                 _pendingInput = value;
                 _pendingProfile = profile;
                 _pendingEpoch = epoch;
-                AddLogLocked(plan.Action.Id, plan.ValueText, "vorbereitet", plan.Readback, null);
+                LogMissingLimitsLocked(plan);
+                AddLogLocked(
+                    plan.Action.Id,
+                    plan.ValueText,
+                    "vorbereitet",
+                    plan.NeedsCrossConfirmation ? $"{plan.Readback} · danach Rückfrage: {CautionText(plan)}" : plan.Readback,
+                    null);
                 Share(pending);
             }
 
@@ -348,7 +395,11 @@ public sealed partial class InputService
             Value: plan.ValueText,
             Readback: plan.Readback,
             ExpiresInSec: (int)ConfirmWindow.TotalSeconds,
-            Verified: VerifiedBy(plan.Action) is not null);
+            Verified: VerifiedBy(plan.Action) is not null)
+        {
+            CautionFollows = plan.NeedsCrossConfirmation,
+            Cautions = plan.NeedsCrossConfirmation ? plan.Cautions.Select(c => c.Reason).ToList() : null,
+        };
     }
 
     // ------------------------------------------------------------------ Schritt 2: bestätigen und ausführen
@@ -359,6 +410,7 @@ public sealed partial class InputService
         string? input;
         AircraftProfile? pendingProfile;
         long pendingEpoch;
+        long sequence;
         lock (_lock)
         {
             ExpireLocked();
@@ -398,6 +450,7 @@ public sealed partial class InputService
             input = _pendingInput;
             pendingProfile = _pendingProfile;
             pendingEpoch = _pendingEpoch;
+            sequence = Interlocked.Read(ref _prepareSequence);
             pending = TakeLocked("schon mit confirm_action verwendet");
         }
 
@@ -429,13 +482,27 @@ public sealed partial class InputService
                 return Refuse(action.Id, pending.Plan.ValueText, "Flugzeug oder Profil hat gewechselt – bitte neu vorbereiten.");
             }
 
-            var fresh = ActionPlanner.Plan(action, input, profile!.Limits, _backend.Snapshot());
-            if (fresh.Plan is not { } plan)
+            var snapshot = _backend.Snapshot();
+            var fresh = ActionPlanner.Plan(action, input, profile!.Limits, snapshot);
+            if (fresh.Plan is not { } planned)
             {
                 return Refuse(action.Id, pending.Plan.ValueText, fresh.Refusal!);
             }
 
-            return await ExecuteAsync(plan, profile.Name, timeout.Token);
+            var safety = await ApplySafetyAsync(planned, profile, snapshot, timeout.Token);
+            if (safety.Plan is not { } plan)
+            {
+                return Refuse(action.Id, pending.Plan.ValueText, safety.Refusal!);
+            }
+
+            // Rückfrage mit Warnhinweis: Der bestätigte Readback reicht nicht – erst die Rückfrage hören und erneut bestätigen.
+            // Ist inzwischen ein neuer Warnhinweis dazugekommen (Zustand geändert), wird auch der erst noch abgefragt.
+            if (plan.Cautions.Any(c => !pending.ConfirmedCautions.Contains(c.Code, StringComparer.Ordinal)))
+            {
+                return AskCaution(pending, plan, input, profile, pendingEpoch, sequence);
+            }
+
+            return await ExecuteAsync(plan, profile, timeout.Token);
         }
         catch (Exception ex)
         {
@@ -482,11 +549,19 @@ public sealed partial class InputService
         return null;
     }
 
-    private async Task<InputResult> ExecuteAsync(ActionPlan plan, string profileName, CancellationToken ct)
+    private async Task<InputResult> ExecuteAsync(ActionPlan plan, AircraftProfile profile, CancellationToken ct)
     {
+        var profileName = profile.Name;
         if (await CheckRequirementsAsync(plan, ct) is { } unmet)
         {
             return Refuse(plan.Action.Id, plan.ValueText, unmet);
+        }
+
+        // Fahrwerk/Klappen: das Monitoring sagt den Hebelwechsel nicht an, die Stellung kommt nach dem Nachlesen
+        var job = _verifier is null ? null : ConfigVerifier.JobFor(plan, profile);
+        if (job is not null)
+        {
+            _verifier!.Claim(job);
         }
 
         var skipped = 0;
@@ -500,6 +575,7 @@ public sealed partial class InputService
                     var state = await _backend.ReadAsync(condition.Variable, condition.Unit, ct);
                     if (state is null)
                     {
+                        Unclaim(job);
                         return Fail(plan, $"Zustand {condition.Variable} nicht lesbar.", executedAny: sent > 0);
                     }
 
@@ -529,10 +605,12 @@ public sealed partial class InputService
         catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
         {
             // Bekannte Fälle: Verbindung weg, Event/Variable gesperrt, MSFS antwortet nicht
+            Unclaim(job);
             return Fail(plan, ex.Message, executedAny: sent > 0);
         }
         catch (Exception ex)
         {
+            Unclaim(job);
             return ErrorResult(plan, ex, executedAny: sent > 0);
         }
 
@@ -597,6 +675,21 @@ public sealed partial class InputService
             AddLogLocked(plan.Action.Id, plan.ValueText, "ausgeführt", newlyVerified ? detail + " · als geprüft gespeichert" : detail, verified);
         }
 
+        // Nachlesen mit Callout ("Gear down, three green" / "Gear disagree") – nur wenn wirklich etwas gesendet wurde und der Hebel steht
+        string? followUp = null;
+        if (job is not null)
+        {
+            if (sent > 0 && verified != false)
+            {
+                followUp = job.Describe();
+                LastVerification = StartVerification(job, plan);
+            }
+            else
+            {
+                Unclaim(job);
+            }
+        }
+
         return new InputResult(
             InputResult.Executed,
             Reason: verified == false
@@ -613,7 +706,162 @@ public sealed partial class InputService
             Skipped: skipped,
             AlreadySet: alreadySet,
             CheckIndependent: plan.Check?.Independent,
-            StateAfterText: afterText);
+            StateAfterText: afterText)
+        {
+            FollowUp = followUp,
+        };
+    }
+
+    private void Unclaim(VerificationJob? job)
+    {
+        if (job is not null)
+        {
+            _verifier?.Unclaim(job);
+        }
+    }
+
+    /// <summary>Nachlesen im Hintergrund – confirm_action wartet nicht darauf, das Ergebnis kommt als Callout und im Protokoll.</summary>
+    private Task StartVerification(VerificationJob job, ActionPlan plan) => Task.Run(async () =>
+    {
+        var outcome = await _verifier!.RunAsync(job);
+        if (outcome.Superseded)
+        {
+            return;
+        }
+
+        var result = outcome.Ok ? "nachgelesen" : outcome.Readable ? "abweichend" : "nicht nachlesbar";
+        var detail = outcome.Callout is null ? outcome.Message : $"\"{outcome.Callout}\" – {outcome.Message}";
+        lock (_lock)
+        {
+            AddLogLocked(plan.Action.Id, plan.ValueText, result, detail, outcome.Ok ? true : outcome.Readable ? false : null);
+        }
+    });
+
+    // ------------------------------------------------------------------ Plausibilitätssperren und Rückfragen
+
+    /// <summary>
+    /// Code-Sperren (<see cref="SafetyRules"/>) mit Live-Zuständen auswerten. Ergebnis: abgelehnt, oder der Plan mit allen
+    /// Warnhinweisen (aus den Profil-Sperren und den Code-Sperren). Steht das Flugzeug schon auf dem Zielwert, entfällt die Rückfrage.
+    /// </summary>
+    private async Task<PlanResult> ApplySafetyAsync(ActionPlan plan, AircraftProfile profile, FlightSnapshot snapshot, CancellationToken ct)
+    {
+        var states = new Dictionary<string, bool?>(StringComparer.Ordinal);
+        foreach (var read in SafetyRules.Reads(plan, profile))
+        {
+            var state = await _backend.ReadAsync(read.Condition.Variable, read.Condition.Unit, ct);
+            states[read.Key] = state is { } v ? read.Condition.Matches(v) : null;
+        }
+
+        int? cleared = null;
+        MsaReading? msa = null;
+        if (plan.Action.Id.Equals("fcu.altitude", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                cleared = _context?.ClearedAltitudeFt();
+                msa = _context?.Msa(profile.Limits.MsaSource, snapshot) ?? new MsaReading(null, profile.Limits.MsaSource, "keine Daten");
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning("Freigabe/MSA nicht lesbar: {Message}", ex.Message);
+                msa = new MsaReading(null, profile.Limits.MsaSource, ex.Message);
+            }
+        }
+
+        var verdict = SafetyRules.Evaluate(plan, new SafetyContext
+        {
+            Snapshot = snapshot,
+            Limits = profile.Limits,
+            States = states,
+            ClearedAltitudeFt = cleared,
+            Msa = msa,
+        });
+        if (verdict.Refusal is { } refusal)
+        {
+            return PlanResult.Refuse(refusal);
+        }
+
+        var cautions = plan.Cautions.Concat(verdict.Cautions).DistinctBy(c => c.Code).ToList();
+
+        // Steht das Flugzeug schon so (z. B. AP schon aus), ändert sich nichts – dann keine Rückfrage. Squawk hat keine Prüfung.
+        if (cautions.Count > 0 && plan.Check is { } check)
+        {
+            var current = await _backend.ReadAsync(check.Condition.Variable, check.Condition.Unit, ct);
+            if (current is { } c && check.Condition.Matches(c))
+            {
+                cautions.Clear();
+            }
+        }
+
+        return PlanResult.Ok(plan with { Cautions = cautions });
+    }
+
+    /// <summary>Readback ist bestätigt – jetzt die Rückfrage mit Warnhinweis stellen (gleicher Token, neues Zeitfenster).</summary>
+    private InputResult AskCaution(PendingAction old, ActionPlan plan, string? input, AircraftProfile profile, long epoch, long sequence)
+    {
+        var now = _time.GetUtcNow();
+        var next = new PendingAction(old.Token, plan, now, now + ConfirmWindow)
+        {
+            CautionStage = true,
+            ConfirmedCautions = plan.Cautions.Select(c => c.Code).ToList(),
+        };
+        var reasons = plan.Cautions.Select(c => c.Reason).ToList();
+        lock (_lock)
+        {
+            if (sequence != Interlocked.Read(ref _prepareSequence) || _pending is not null)
+            {
+                AddLogLocked(plan.Action.Id, plan.ValueText, "verworfen", "Inzwischen wurde eine neuere Aktion angefordert.", null);
+                return new InputResult(
+                    InputResult.Failed,
+                    "Inzwischen wurde eine neuere Aktion angefordert – diese Rückfrage ist verworfen.",
+                    Action: plan.Action.Id,
+                    Value: plan.ValueText);
+            }
+
+            // Der Token lebt weiter: aus der Liste der beendeten Tokens nehmen
+            for (var node = _retired.First; node is not null; node = node.Next)
+            {
+                if (string.Equals(node.Value.Token, old.Token, StringComparison.OrdinalIgnoreCase))
+                {
+                    _retired.Remove(node);
+                    break;
+                }
+            }
+
+            _pending = next;
+            _pendingInput = input;
+            _pendingProfile = profile;
+            _pendingEpoch = epoch;
+            LogMissingLimitsLocked(plan);
+            AddLogLocked(plan.Action.Id, plan.ValueText, "Rückfrage", CautionText(plan), null);
+            Share(next);
+        }
+
+        return new InputResult(
+            InputResult.AwaitingCautionConfirmation,
+            Reason: string.Join(" ", reasons),
+            Token: old.Token,
+            Action: plan.Action.Id,
+            Value: plan.ValueText,
+            Readback: plan.CautionPrompt,
+            ExpiresInSec: (int)ConfirmWindow.TotalSeconds,
+            Verified: VerifiedBy(plan.Action) is not null)
+        {
+            Caution = plan.CautionPrompt,
+            Cautions = reasons,
+        };
+    }
+
+    private static string CautionText(ActionPlan plan) => string.Join(" · ", plan.Cautions.Select(c => c.Reason));
+
+    /// <summary>Fehlende Grenzwerte im Protokoll und im Log vermerken.</summary>
+    private void LogMissingLimitsLocked(ActionPlan plan)
+    {
+        foreach (var caution in plan.Cautions.Where(c => c.MissingLimit))
+        {
+            _log.LogWarning("Eingabe {Action}: Grenzwert fehlt ({Code}) – {Reason}", plan.Action.Id, caution.Code, caution.Reason);
+            AddLogLocked(plan.Action.Id, plan.ValueText, "Grenzwert fehlt", caution.Reason, null);
+        }
     }
 
     /// <summary>
@@ -796,7 +1044,7 @@ public sealed partial class InputService
             if (pending is not null)
             {
                 _store.SavePending(new SharedPending(
-                    pending.Plan.Action.Id, pending.Plan.ValueText, pending.Plan.Readback, pending.ExpiresUtc, Environment.ProcessId, TokenHash(pending.Token)));
+                    pending.Plan.Action.Id, pending.Plan.ValueText, pending.Prompt, pending.ExpiresUtc, Environment.ProcessId, TokenHash(pending.Token)));
             }
             else if (_store.LoadPending()?.ProcessId == Environment.ProcessId)
             {
