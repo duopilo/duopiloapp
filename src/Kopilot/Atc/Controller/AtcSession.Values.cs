@@ -21,7 +21,7 @@ public sealed partial class AtcSession
         switch (name)
         {
             case "callsign":
-                return AtcSpeech.Callsign(Plan.Callsign, _t.Telephony);
+                return AtcSpeech.Callsign(Plan.Callsign, _t.CallsignTelephony);
             case "station":
                 return station.NameValue;
             case "freq":

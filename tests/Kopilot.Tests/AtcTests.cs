@@ -22,8 +22,7 @@ public sealed partial class AtcTests
         return Path.Combine([dir.FullName, .. parts]);
     }
 
-    private static AtcTemplates Templates() =>
-        AtcTemplateLoader.Parse(File.ReadAllText(RepoFile("src", "Kopilot", AtcTemplateLoader.FileName)));
+    private static AtcTemplates Templates() => TestData.Templates();
 
     private static OfpAirport Airport(string icao, string name, string runway, double lat, double lon, int elevation, int ta, string? metar = null) =>
         new(icao, name, runway, lat, lon, elevation, ta, ta + 1000, metar);
@@ -191,7 +190,8 @@ public sealed partial class AtcTests
         Assert.Equal(new[] { "sid", "initialAlt", "squawk" }, templates.Message(AtcMessageIds.DeliveryClearance)!.Readback);
         Assert.Contains("{callsign}, cleared to {dest}, {sid} departure, runway {runway}, climb {initialAlt}, squawk {squawk}", templates.Message(AtcMessageIds.DeliveryClearance)!.Variants);
         Assert.NotEmpty(templates.Voices.Pool);
-        Assert.Equal("Lufthansa", templates.Telephony["dlh"]); // Groß-/Kleinschreibung egal
+        Assert.Equal("Lufthansa", templates.CallsignTelephony["dlh"]); // OpenFlights, Groß-/Kleinschreibung egal
+        Assert.Equal(AtcTemplates.CurrentVersion, templates.Version);
     }
 
     [Fact]
@@ -295,7 +295,7 @@ public sealed partial class AtcTests
     [Fact]
     public void Rufzeichen_mit_Telephony()
     {
-        var telephony = Templates().Telephony;
+        var telephony = Templates().CallsignTelephony;
         Assert.Equal("Lufthansa four alpha bravo", AtcSpeech.Callsign("DLH4AB", telephony).Spoken);
         Assert.Equal("Speedbird one two three", AtcSpeech.Callsign("BAW123", telephony).Spoken);
         Assert.Equal("delta echo alpha bravo charlie", AtcSpeech.Callsign("D-EABC", telephony).Spoken);
@@ -465,8 +465,10 @@ public sealed partial class AtcTests
         Assert.Equal("RESNO", ofp.Fixes[plan.Oceanic.EntryFix].Ident);
         Assert.Equal("LOMSI", ofp.Fixes[plan.Oceanic.ExitFix].Ident);
         Assert.Equal(new[] { "RESNO", "55N020W", "55N030W", "54N040W", "52N050W", "LOMSI" }, plan.Oceanic.ReportFixes.Select(i => ofp.Fixes[i].Ident));
-        Assert.Equal(new[] { "", "EGGX", "CZQX", "" }, plan.Firs.Select(f => f.Fir));
-        Assert.Equal(new[] { false, true, true, false }, plan.Firs.Select(f => f.Oceanic));
+        // Oceanic-Teil westlich 30°W ist Gander Oceanic (CZQO), ab dem Austrittspunkt LOMSI Gander Center (CZQX)
+        Assert.Equal(new[] { "", "EGGX", "CZQO", "CZQX", "" }, plan.Firs.Select(f => f.Fir));
+        Assert.Equal(new[] { false, true, true, false, false }, plan.Firs.Select(f => f.Oceanic));
+        Assert.Equal(plan.FixDistanceNm(8)!.Value, plan.Firs[3].StartNm, 3);
 
         // Grenze zu Shanwick kurz vor RESNO, zu Gander zwischen 20°W und 30°W
         var resno = plan.FixDistanceNm(3)!.Value;

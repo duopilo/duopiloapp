@@ -88,6 +88,8 @@ public static class AtcControllerTools
                 hint = "Die Sitzung beginnt mit dem ersten Funkspruch (atc_transmit) oder atc_control start. " +
                        "Eine gesicherte Sitzung desselben Flugs wird dabei fortgesetzt.",
                 persistence = Persistence(atc),
+                templateNotes = atc.TemplateNotes,
+                airspace = atc.AirspaceSources,
                 activeAlerts = AlertView.Active(alerts),
             };
         }
@@ -129,7 +131,15 @@ public static class AtcControllerTools
                 clearedAltitude = session.ClearedAltitudeFt,
                 cruiseFt = plan.CruiseFt,
                 alongTrackNm = session.AlongTrackNm is { } a ? Math.Round(a, 1) : (double?)null,
-                firs = plan.Firs.Select(f => new { fir = f.Fir, startNm = Math.Round(f.StartNm), oceanic = f.Oceanic }).ToList(),
+                firs = plan.Firs.Select(f => new
+                {
+                    fir = f.Fir,
+                    station = session.StationName(f),
+                    sector = f.Sector,
+                    frequency = f.FrequencyMhz,
+                    startNm = Math.Round(f.StartNm),
+                    oceanic = f.Oceanic,
+                }).ToList(),
             },
             oceanic = plan.Oceanic is null
                 ? null
@@ -149,6 +159,8 @@ public static class AtcControllerTools
             templates = atc.TemplatesPath,
             templateErrors = atc.TemplateErrors,
             persistence = Persistence(atc),
+            templateNotes = atc.TemplateNotes,
+            airspace = atc.AirspaceSources,
             activeAlerts = AlertView.Active(alerts),
         };
     }

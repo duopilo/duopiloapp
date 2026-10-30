@@ -1,11 +1,26 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
+using Kopilot.Atc.Airspace;
 using Kopilot.FlightPlan;
 
 namespace Kopilot.Atc;
 
-/// <summary>Abschnitt der Route in einer FIR. <paramref name="StartNm"/> = Streckenposition der FIR-Grenze ab dem Startflughafen.</summary>
-public sealed record AtcFirSegment(string Fir, double StartNm, bool Oceanic);
+/// <summary>
+/// Abschnitt der Route bei einer Kontrollstelle. <paramref name="StartNm"/> = Streckenposition der Grenze ab dem Startflughafen.
+/// <paramref name="Fir"/> ist die FIR bzw. Stelle der Station (OFP-Angabe, bei Gander Oceanic "CZQO", bei Sektoren einer
+/// Stelle ohne eigene FIR-Grenze deren Kennung, z. B. "EDYY" für Maastricht). Mit Sektordaten zusätzlich der Sektor
+/// (Kennung der Kontrollposition), sein Rufname laut Daten und die Frequenz.
+/// </summary>
+public sealed record AtcFirSegment(string Fir, double StartNm, bool Oceanic)
+{
+    /// <summary>Kontrollposition im Sektordatensatz ("MC"), null = eine Station für die ganze FIR.</summary>
+    public string? Sector { get; init; }
+
+    /// <summary>Rufname laut Sektordaten ("Montreal Centre") – die Vorlagen haben Vorrang.</summary>
+    public string? SectorName { get; init; }
+
+    public double? FrequencyMhz { get; init; }
+}
 
 /// <summary>Oceanic-Teil der Route: Eintrittspunkt, Meldepunkte (inkl. Ein- und Austritt) und Austrittspunkt (Indizes in <see cref="Ofp.Fixes"/>).</summary>
 public sealed record AtcOceanicSegment(int EntryFix, int ExitFix, IReadOnlyList<int> ReportFixes, string EntryFir);
@@ -54,6 +69,9 @@ public sealed partial class AtcPlan
     /// <summary>Kennung des Flugs für die Stimmen ("SimBrief-Request-ID", sonst Route).</summary>
     public required string FlightKey { get; init; }
 
+    /// <summary>Luftraumdaten, mit denen der Plan gebaut wurde (FIR-Namen für die Stationen).</summary>
+    public AirspaceDatabase Airspace { get; init; } = AirspaceDatabase.Empty;
+
     public double TotalNm => PointDistanceNm.Count > 0 ? PointDistanceNm[^1] : 0;
 
     /// <summary>Streckenposition eines Fixes, null ohne Koordinaten.</summary>
@@ -88,9 +106,14 @@ public sealed partial class AtcPlan
     /// <summary>Nächste FIR-Grenze nach <paramref name="alongNm"/>.</summary>
     public AtcFirSegment? NextFir(double alongNm) => Firs.FirstOrDefault(s => s.StartNm > alongNm + 0.01);
 
-    /// <summary>Plan aus dem OFP ableiten. <paramref name="simCallsign"/> wird genommen, wenn das OFP kein Rufzeichen hat.</summary>
-    public static AtcPlan Build(Ofp ofp, string? simCallsign, AtcTemplates templates)
+    /// <summary>
+    /// Plan aus dem OFP ableiten. <paramref name="simCallsign"/> wird genommen, wenn das OFP kein Rufzeichen hat. Mit
+    /// <paramref name="airspace"/> liegen die FIR-Grenzen dort, wo die Route die VAT-Spy-Grenze schneidet, und die FIRs sind
+    /// in Sektoren mit eigenen Frequenzen geteilt; ohne Daten in der Mitte zwischen den Fixes der beiden FIRs.
+    /// </summary>
+    public static AtcPlan Build(Ofp ofp, string? simCallsign, AtcTemplates templates, AirspaceDatabase? airspace = null)
     {
+        airspace ??= AirspaceDatabase.Empty;
         var points = ofp.RoutePoints();
         var distances = new List<double>(points.Count);
         var total = 0.0;
@@ -111,9 +134,10 @@ public sealed partial class AtcPlan
             cruise = 30000;
         }
 
-        var firs = FirOfFixes(ofp.Fixes);
+        var firs = FirOfFixes(ofp.Fixes, templates, airspace);
         var oceanic = OceanicSegment(ofp, firs, templates);
-        var segments = Segments(ofp, points, distances, firs, oceanic, templates);
+        var segments = Segments(ofp, points, distances, firs, oceanic, templates, airspace);
+        segments = SplitSectors(ofp, segments, points, distances, cruise, templates, airspace);
 
         return new AtcPlan
         {
@@ -131,6 +155,7 @@ public sealed partial class AtcPlan
             DirectFix = DirectCandidate(ofp.Fixes),
             TodNm = TodDistance(points, distances),
             FlightKey = ofp.RequestId ?? $"{ofp.Origin.Icao}-{ofp.Destination.Icao}-{ofp.GeneratedUtc?.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture)}",
+            Airspace = airspace,
         };
     }
 
@@ -192,8 +217,12 @@ public sealed partial class AtcPlan
         return null;
     }
 
-    /// <summary>FIR je Fix. Fehlen die Angaben im OFP, werden nur die Oceanic-Koordinaten zugeordnet (Nordatlantik: 30°W).</summary>
-    private static string[] FirOfFixes(IReadOnlyList<OfpFix> fixes)
+    /// <summary>
+    /// FIR je Fix. Fehlen die Angaben im OFP, werden die Oceanic-Koordinaten zugeordnet (Nordatlantik: 30°W) und – mit
+    /// Luftraumdaten – die übrigen Fixe nach den VAT-Spy-Grenzen. Danach bekommen Oceanic-Fixe einer FIR mit eigenem
+    /// Oceanic-Teil dessen Kennung (Gander: das OFP schreibt CZQX, die Stelle über dem Atlantik ist CZQO).
+    /// </summary>
+    private static string[] FirOfFixes(IReadOnlyList<OfpFix> fixes, AtcTemplates templates, AirspaceDatabase airspace)
     {
         var result = new string[fixes.Count];
         if (fixes.Any(f => !string.IsNullOrWhiteSpace(f.Fir)))
@@ -211,26 +240,70 @@ public sealed partial class AtcPlan
             {
                 result[i] = first;
             }
+        }
+        else
+        {
+            for (var i = 0; i < fixes.Count; i++)
+            {
+                result[i] = IsOceanicCoordinate(fixes[i]) ? HeuristicOceanicFir(fixes[i]) : "";
+            }
 
-            return result;
+            // Ein- und Austrittspunkt (benannte Fixe direkt vor/nach den Koordinaten) gehören zum Oceanic-Teil
+            var firstOceanic = Array.FindIndex(result, r => r.Length > 0);
+            var lastOceanic = Array.FindLastIndex(result, r => r.Length > 0);
+            if (firstOceanic > 0 && fixes[firstOceanic - 1].Type != "apt")
+            {
+                result[firstOceanic - 1] = result[firstOceanic];
+            }
+
+            if (lastOceanic >= 0 && lastOceanic + 1 < fixes.Count && fixes[lastOceanic + 1].Type != "apt")
+            {
+                result[lastOceanic + 1] = result[lastOceanic];
+            }
+
+            // Übrige Fixe nach den VAT-Spy-Grenzen – die FIR des Fixes davor bleibt, solange er drin liegt
+            string? previous = null;
+            for (var i = 0; i < fixes.Count; i++)
+            {
+                if (result[i].Length > 0 || fixes[i].Lat is not { } lat || fixes[i].Lon is not { } lon)
+                {
+                    previous = result[i].Length > 0 ? result[i] : previous;
+                    continue;
+                }
+
+                // Bei Überlappungen zuerst FIRs mit eigenem Eintrag in den Vorlagen, dann die kleinste (große Überlagerungen wie NAT verlieren)
+                var fir = previous is not null && airspace.InFir(previous, lat, lon)
+                    ? previous
+                    : airspace.FirsAt(lat, lon).OrderByDescending(f => templates.Fir(f.Id) is not null).ThenBy(f => f.Area).FirstOrDefault()?.Id;
+                if (fir is not null)
+                {
+                    result[i] = fir;
+                    previous = fir;
+                }
+            }
+        }
+
+        // Benannte Fixe zählen nur zwischen den Koordinaten zum Oceanic-Teil – ein Austrittspunkt wie HOIST bleibt Domestic
+        var firstCoordinate = -1;
+        var lastCoordinate = -1;
+        for (var i = 0; i < fixes.Count; i++)
+        {
+            if (IsOceanicCoordinate(fixes[i]))
+            {
+                firstCoordinate = firstCoordinate < 0 ? i : firstCoordinate;
+                lastCoordinate = i;
+            }
         }
 
         for (var i = 0; i < fixes.Count; i++)
         {
-            result[i] = IsOceanicCoordinate(fixes[i]) ? HeuristicOceanicFir(fixes[i]) : "";
-        }
-
-        // Ein- und Austrittspunkt (benannte Fixe direkt vor/nach den Koordinaten) gehören zum Oceanic-Teil
-        var firstOceanic = Array.FindIndex(result, r => r.Length > 0);
-        var lastOceanic = Array.FindLastIndex(result, r => r.Length > 0);
-        if (firstOceanic > 0 && fixes[firstOceanic - 1].Type != "apt")
-        {
-            result[firstOceanic - 1] = result[firstOceanic];
-        }
-
-        if (lastOceanic >= 0 && lastOceanic + 1 < fixes.Count && fixes[lastOceanic + 1].Type != "apt")
-        {
-            result[lastOceanic + 1] = result[lastOceanic];
+            if (templates.Fir(result[i])?.OceanicFir is { Length: > 0 } oceanicFir
+                && (IsOceanicCoordinate(fixes[i])
+                    || (i > firstCoordinate && i < lastCoordinate && fixes[i].Lat is { } lat && fixes[i].Lon is { } lon
+                        && airspace.InFir(oceanicFir, lat, lon))))
+            {
+                result[i] = oceanicFir.Trim().ToUpperInvariant();
+            }
         }
 
         return result;
@@ -250,15 +323,17 @@ public sealed partial class AtcPlan
         return GenericOceanicFir;
     }
 
-    private static bool IsOceanicFir(string fir, AtcTemplates templates) =>
+    internal static bool IsOceanicFir(string fir, AtcTemplates templates) =>
         fir == GenericOceanicFir || templates.Fir(fir)?.Oceanic == true;
 
     /// <summary>
-    /// FIR-Abschnitte entlang der Route. Die Grenze liegt in der Mitte zwischen dem letzten Fix der alten und dem ersten der
-    /// neuen FIR – beim Oceanic-Teil kurz vor dem Eintrittspunkt bzw. kurz nach dem Austrittspunkt, die liegen auf der Grenze.
+    /// FIR-Abschnitte entlang der Route. Beim Oceanic-Teil liegt die Grenze kurz vor dem Eintrittspunkt bzw. am
+    /// Austrittspunkt (die liegen auf der Grenze). Sonst schneidet Kopilot die Route mit den VAT-Spy-Grenzen beider FIRs
+    /// (<see cref="Crossing"/>); ohne Grenzen liegt sie in der Mitte zwischen dem letzten Fix der alten und dem ersten der neuen FIR.
     /// </summary>
     private static List<AtcFirSegment> Segments(
-        Ofp ofp, IReadOnlyList<RoutePoint> points, IReadOnlyList<double> distances, string[] firs, AtcOceanicSegment? oceanic, AtcTemplates templates)
+        Ofp ofp, IReadOnlyList<RoutePoint> points, IReadOnlyList<double> distances, string[] firs, AtcOceanicSegment? oceanic,
+        AtcTemplates templates, AirspaceDatabase airspace)
     {
         double? FixNm(int fix)
         {
@@ -279,6 +354,7 @@ public sealed partial class AtcPlan
         var segments = new List<AtcFirSegment>();
         string? current = null;
         double previousDistance = 0;
+        var previousPoint = -1;
         for (var p = 0; p < points.Count; p++)
         {
             var fixIndex = points[p].FixIndex;
@@ -304,20 +380,35 @@ public sealed partial class AtcPlan
                 var toOceanic = IsOceanicFir(fir, templates);
                 var fromOceanic = IsOceanicFir(current, templates);
                 var boundary = (previousDistance + distances[p]) / 2;
+                var atOceanicEdge = false;
                 if (toOceanic && !fromOceanic && entryNm is { } en && en <= distances[p] + 0.01)
                 {
                     boundary = Math.Max(previousDistance, en - 1);
+                    atOceanicEdge = true;
                 }
                 else if (fromOceanic && !toOceanic && exitNm is { } ex && ex >= previousDistance - 0.01)
                 {
                     boundary = Math.Min(distances[p], ex + 1);
+                    atOceanicEdge = true;
                 }
 
-                segments.Add(new AtcFirSegment(fir, boundary, toOceanic));
+                var crossing = atOceanicEdge || previousPoint < 0
+                    ? null
+                    : Crossing(airspace, current, fir, points[previousPoint], points[p], previousDistance, distances[p]);
+                if (crossing is { Count: > 0 })
+                {
+                    segments.AddRange(crossing.Select(c => new AtcFirSegment(c.Fir, c.StartNm, IsOceanicFir(c.Fir, templates))));
+                }
+                else
+                {
+                    segments.Add(new AtcFirSegment(fir, boundary, toOceanic));
+                }
+
                 current = fir;
             }
 
             previousDistance = distances[p];
+            previousPoint = p;
         }
 
         return segments;

@@ -62,7 +62,8 @@ public sealed partial class AtcSession
         _stations = new AtcStations(
             templates,
             context.FacilityFrequencies,
-            new AtcVoiceAssigner(templates.Voices, plan.FlightKey, context.CalloutVoice, context.InstalledVoices));
+            new AtcVoiceAssigner(templates.Voices, plan.FlightKey, context.CalloutVoice, context.InstalledVoices),
+            plan.Airspace);
         Squawk = GenerateSquawk(plan.FlightKey);
         Oceanic = plan.Oceanic is null ? OceanicClearanceState.NotRequired : OceanicClearanceState.NotYetDue;
         Station = _stations.Airport(OriginIcao, plan.Ofp.Origin.Name, AtcStationType.Delivery);
@@ -290,6 +291,13 @@ public sealed partial class AtcSession
     /// <summary>Wert einer Variable im aktuellen Zustand (für Status und Tests).</summary>
     public AtcValue? Value(string name) => Resolve(name, null, Station);
 
+    /// <summary>Rufname der Station eines Routenabschnitts (für Status und Sprachschleife), ohne eine Stimme zu vergeben.</summary>
+    public string StationName(AtcFirSegment segment) => _stations.SegmentName(segment);
+
+    /// <summary>Alle Kontrollstellen entlang der Route (für die Sprachschleife).</summary>
+    public IReadOnlyList<string> RouteStationNames() =>
+        Plan.Firs.Select(_stations.SegmentName).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
     // ------------------------------------------------------------------ Einstieg
 
     private void Place(AtcInput input)
@@ -352,12 +360,12 @@ public sealed partial class AtcSession
         _firSegment = segment;
         if (segment is { Oceanic: true })
         {
-            Enter(AtcPhase.Oceanic, AtcStep.OceanicReports, _stations.Fir(segment.Fir, oceanic: true), now);
+            Enter(AtcPhase.Oceanic, AtcStep.OceanicReports, _stations.Segment(segment), now);
             StartReports();
         }
         else
         {
-            Enter(AtcPhase.Center, AtcStep.CenterContact, _stations.Fir(segment?.Fir, oceanic: false), now);
+            Enter(AtcPhase.Center, AtcStep.CenterContact, _stations.Segment(segment), now);
         }
     }
 
@@ -830,7 +838,7 @@ public sealed partial class AtcSession
     private void HandoffToFir(List<AtcTransmission> output, string messageId, AtcFirSegment? segment, DateTimeOffset now)
     {
         var oceanic = segment is { Oceanic: true };
-        var station = _stations.Fir(segment?.Fir, oceanic);
+        var station = _stations.Segment(segment);
         Handoff(output, messageId, station, oceanic ? AtcPhase.Oceanic : AtcPhase.Center, oceanic ? AtcStep.OceanicReports : AtcStep.CenterContact, now);
         _firSegment = segment;
         if (oceanic)

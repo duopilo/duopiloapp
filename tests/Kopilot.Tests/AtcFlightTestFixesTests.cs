@@ -8,17 +8,7 @@ public sealed class AtcFlightTestFixesTests
 {
     private static readonly DateTimeOffset T0 = new(2026, 10, 29, 18, 0, 0, TimeSpan.Zero);
 
-    private static AtcTemplates Templates()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "src", "Kopilot", AtcTemplateLoader.FileName)))
-        {
-            dir = dir.Parent;
-        }
-
-        Assert.NotNull(dir);
-        return AtcTemplateLoader.Parse(File.ReadAllText(Path.Combine(dir!.FullName, "src", "Kopilot", AtcTemplateLoader.FileName)));
-    }
+    private static AtcTemplates Templates() => TestData.Templates();
 
     private static OfpFix Fix(string ident, double lat, double lon, string fir, string type = "wpt", bool sidStar = false) => new()
     {
@@ -157,9 +147,10 @@ public sealed class AtcFlightTestFixesTests
     [Fact]
     public void Airline_nicht_in_der_Liste_wird_buchstabiert()
     {
-        var telephony = Templates().Telephony;
-        Assert.False(telephony.ContainsKey("ASA"));
-        Assert.Equal("alpha sierra alpha one two three", AtcSpeech.Callsign("ASA123", telephony).Spoken);
+        var telephony = Templates().CallsignTelephony;
+        Assert.False(telephony.ContainsKey("XQX"));
+        Assert.Equal("x-ray quebec x-ray one two three", AtcSpeech.Callsign("XQX123", telephony).Spoken);
+        Assert.Equal("Alaska one two three", AtcSpeech.Callsign("ASA123", telephony).Spoken); // Ausnahme: OpenFlights-Zeile kaputt
     }
 
     [Fact]
@@ -296,13 +287,20 @@ public sealed class AtcFlightTestFixesTests
         var templates = Templates();
         var stations = new AtcStations(templates, _ => null, new AtcVoiceAssigner(templates.Voices, "cfg2205", null, null));
 
-        var kzmp = stations.Fir("KZMP", oceanic: false);
-        Assert.Equal("Center", kzmp.Name);
-        Assert.Equal("FIR/KZMP", kzmp.Key);
-        Assert.Equal(AtcStationType.Center, kzmp.Type);
-        Assert.Equal("132.6", kzmp.Frequency.Written);
-        Assert.NotEqual(kzmp.Key, stations.Fir("KZDV", oceanic: false).Key);
+        // Ohne Luftraumdaten: generische Station "Center" mit Platzhalter
+        var czwg = stations.Fir("CZWG", oceanic: false);
+        Assert.Equal("Center", czwg.Name);
+        Assert.Equal("FIR/CZWG", czwg.Key);
+        Assert.Equal(AtcStationType.Center, czwg.Type);
+        Assert.Equal("132.6", czwg.Frequency.Written);
+        Assert.NotEqual(czwg.Key, stations.Fir("CZEG", oceanic: false).Key);
         Assert.Equal("Montreal Center", stations.Fir("CZUL", oceanic: false).Name); // Einträge der Vorlagen bleiben
+
+        // Ergänzt: Minneapolis, Denver, Los Angeles mit Namen und Frequenz
+        Assert.Equal("Minneapolis Center", stations.Fir("KZMP", oceanic: false).Name);
+        Assert.Equal("Denver Center", stations.Fir("KZDV", oceanic: false).Name);
+        Assert.Equal("Los Angeles Center", stations.Fir("KZLA", oceanic: false).Name);
+        Assert.Equal("templates", stations.Fir("KZLA", oceanic: false).FrequencySource);
     }
 
     [Fact]
@@ -319,7 +317,7 @@ public sealed class AtcFlightTestFixesTests
 
         Assert.Equal("CFG2205, contact Center 132.6", Assert.Single(flight.Tick(((yyr + yqt) / 2) + 5)).Text);
         Assert.Equal("FIR/CZWG", session.Station.Key);
-        Assert.Equal("CFG2205, contact Center 132.6", Assert.Single(flight.Tick(((yqt + dlh) / 2) + 5)).Text);
+        Assert.Equal("CFG2205, contact Minneapolis Center 119.1", Assert.Single(flight.Tick(((yqt + dlh) / 2) + 5)).Text);
         Assert.Equal("FIR/KZMP", session.Station.Key);
 
         // "Center" allein ist kein Stationsrufzeichen für die Sprachschleife ("runway two four right center" …)

@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text.RegularExpressions;
+using Kopilot.Atc.Airspace;
 
 namespace Kopilot.Atc;
 
@@ -18,7 +19,7 @@ public enum AtcStationType
 /// <summary>Eine Funkstelle im Flug, z. B. "Frankfurt Delivery" oder "Shanwick Oceanic", mit Frequenz und fester Stimme.</summary>
 /// <param name="Key">Eindeutiger Schlüssel: "EDDF/delivery", "FIR/EDGG", "FIR/EGGX".</param>
 /// <param name="Facility">Flughafen oder FIR (ICAO), leer bei einer unbekannten FIR.</param>
-/// <param name="FrequencySource">"facility" (MSFS Facilities-API), "templates" (atc-templates.json) oder "placeholder".</param>
+/// <param name="FrequencySource">"facility" (MSFS Facilities-API), "sectors" (VATSIM-Sektordaten), "templates" (atc-templates.json) oder "placeholder".</param>
 public sealed record AtcStation(
     string Key,
     AtcStationType Type,
@@ -64,7 +65,10 @@ public sealed class AtcFrequencyBook
     public IReadOnlyDictionary<string, int> Counts => _airports.ToDictionary(p => p.Key, p => p.Value.Count);
 }
 
-/// <summary>Baut die Stationen eines Flugs: Name aus den Vorlagen bzw. dem OFP, Frequenz aus Facilities-API, Vorlagen oder Platzhalter.</summary>
+/// <summary>
+/// Baut die Stationen eines Flugs: Name aus den Vorlagen, den Sektordaten, VAT-Spy bzw. dem OFP, Frequenz aus Sektordaten,
+/// Facilities-API, Vorlagen oder Platzhalter.
+/// </summary>
 public sealed partial class AtcStations
 {
     /// <summary>Eintrag unter "firs" für Oceanic-Gebiete ohne eigenen Eintrag (Koordinaten außerhalb des Nordatlantiks).</summary>
@@ -73,16 +77,21 @@ public sealed partial class AtcStations
     /// <summary>Eintrag unter "firs" für Land-FIRs ohne eigenen Eintrag (z. B. KZMP): Name und Frequenz einer generischen Center-Station.</summary>
     public const string GenericCenterFir = "CENTER";
 
+    private static readonly string[] UnitWords = ["Control", "Radar", "Center", "Centre", "Oceanic", "Information", "Radio", "Approach"];
+
     private readonly AtcTemplates _templates;
     private readonly Func<string, IReadOnlyList<AirportFrequency>?> _facilityFrequencies;
     private readonly AtcVoiceAssigner _voices;
+    private readonly AirspaceDatabase _airspace;
     private readonly Dictionary<string, AtcStation> _cache = new(StringComparer.OrdinalIgnoreCase);
 
-    public AtcStations(AtcTemplates templates, Func<string, IReadOnlyList<AirportFrequency>?> facilityFrequencies, AtcVoiceAssigner voices)
+    /// <param name="airspace">Luftraumdaten für die Namen von FIRs ohne eigenen Eintrag (VAT-Spy), null = keine.</param>
+    public AtcStations(AtcTemplates templates, Func<string, IReadOnlyList<AirportFrequency>?> facilityFrequencies, AtcVoiceAssigner voices, AirspaceDatabase? airspace = null)
     {
         _templates = templates;
         _facilityFrequencies = facilityFrequencies;
         _voices = voices;
+        _airspace = airspace ?? AirspaceDatabase.Empty;
     }
 
     public static string TypeKey(AtcStationType type) => type.ToString().ToLowerInvariant();
@@ -148,11 +157,10 @@ public sealed partial class AtcStations
             return cached;
         }
 
-        // FIR ohne eigenen Eintrag: generische Station aus "OCEANIC" bzw. "CENTER" (der Schlüssel bleibt je FIR, damit
-        // Übergaben zwischen zwei unbekannten FIRs und eigene Stimmen erhalten bleiben)
+        // FIR ohne eigenen Eintrag: Frequenz der generischen Station aus "OCEANIC" bzw. "CENTER" (der Schlüssel bleibt je FIR,
+        // damit Übergaben zwischen zwei unbekannten FIRs und eigene Stimmen erhalten bleiben)
         var config = _templates.Fir(code) ?? _templates.Fir(oceanic ? GenericOceanicFir : GenericCenterFir);
         var typeConfig = _templates.StationType(type);
-        var name = config?.Name is { Length: > 0 } n ? n.Trim() : typeConfig.Name;
         AtcValue frequency;
         string source;
         if (ParseFrequency(config?.Frequency) is { } f)
@@ -166,9 +174,86 @@ public sealed partial class AtcStations
             source = "placeholder";
         }
 
-        var station = new AtcStation(key, type, code, name, frequency, source, _voices.VoiceFor(key, type));
+        var station = new AtcStation(key, type, code, FirName(code, oceanic, null), frequency, source, _voices.VoiceFor(key, type));
         _cache[key] = station;
         return station;
+    }
+
+    /// <summary>
+    /// Station eines Routenabschnitts: mit Sektor eine eigene Station je Kontrollposition ("FIR/CZUL/MC") mit der Frequenz
+    /// aus den Sektordaten, sonst die Station der FIR.
+    /// </summary>
+    public AtcStation Segment(AtcFirSegment? segment)
+    {
+        if (segment is null)
+        {
+            return Fir(null, oceanic: false);
+        }
+
+        if (segment.Sector is not { Length: > 0 } sector || segment.FrequencyMhz is not { } mhz || ParseFrequency(mhz.ToString(CultureInfo.InvariantCulture)) is not { } frequency)
+        {
+            return Fir(segment.Fir, segment.Oceanic);
+        }
+
+        var code = segment.Fir.Trim().ToUpperInvariant();
+        var type = segment.Oceanic ? AtcStationType.Oceanic : AtcStationType.Center;
+        var key = $"FIR/{code}/{sector}";
+        if (_cache.TryGetValue(key, out var cached))
+        {
+            return cached;
+        }
+
+        var station = new AtcStation(key, type, code, SegmentName(segment), frequency, "sectors", _voices.VoiceFor(key, type));
+        _cache[key] = station;
+        return station;
+    }
+
+    /// <summary>Rufname der Station eines Routenabschnitts, ohne eine Stimme zu vergeben (für die Sprachschleife).</summary>
+    public string SegmentName(AtcFirSegment segment) =>
+        FirName(segment.Fir.Trim().ToUpperInvariant(), segment.Oceanic, segment.SectorName);
+
+    /// <summary>
+    /// Name einer Kontrollstelle: Vorlage ("Langen Radar") → Rufname aus den Sektordaten ("Montreal Centre" → "Montreal
+    /// Center") → VAT-Spy-Name mit Zusatz nach Region ("Minneapolis" → "Minneapolis Center") → generische Station.
+    /// </summary>
+    public string FirName(string code, bool oceanic, string? sectorName)
+    {
+        if (_templates.Fir(code)?.Name is { Length: > 0 } configured)
+        {
+            return configured.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(sectorName))
+        {
+            return CentreSpelling().Replace(sectorName.Trim(), "Center");
+        }
+
+        if (code.Length > 0 && _airspace.Fir(code)?.Name is { Length: > 0 } vatSpyName)
+        {
+            var name = vatSpyName.Trim();
+            if (UnitWords.Any(u => name.EndsWith(" " + u, StringComparison.OrdinalIgnoreCase)))
+            {
+                return CentreSpelling().Replace(name, "Center");
+            }
+
+            var suffix = oceanic ? _templates.StationType(AtcStationType.Oceanic).Name : Suffix(code);
+            return $"{name} {suffix}".Trim();
+        }
+
+        var generic = _templates.Fir(oceanic ? GenericOceanicFir : GenericCenterFir);
+        var typeName = _templates.StationType(oceanic ? AtcStationType.Oceanic : AtcStationType.Center).Name;
+        return generic?.Name is { Length: > 0 } n ? n.Trim() : typeName;
+    }
+
+    /// <summary>Zusatz nach Region ("K" → "Center", "ED" → "Radar"), längster Präfix gewinnt; ohne Angabe die Stationsart.</summary>
+    private string Suffix(string code)
+    {
+        var best = _templates.FirSuffixes
+            .Where(p => code.StartsWith(p.Key, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(p.Value))
+            .OrderByDescending(p => p.Key.Length)
+            .Select(p => p.Value.Trim())
+            .FirstOrDefault();
+        return best ?? _templates.StationType(AtcStationType.Center).Name;
     }
 
     /// <summary>Rufname eines Flughafens: aus den Vorlagen, sonst aus dem OFP-Namen ohne "International", "Airport" …</summary>
@@ -226,6 +311,9 @@ public sealed partial class AtcStations
 
     [GeneratedRegex(@"\b(International|Intl|Airport|Airfield|Aeropuerto|Flughafen|Regional|Municipal)\b\.?", RegexOptions.IgnoreCase)]
     private static partial Regex AirportSuffix();
+
+    [GeneratedRegex(@"\bCentre\b", RegexOptions.IgnoreCase)]
+    private static partial Regex CentreSpelling();
 }
 
 /// <summary>
@@ -275,7 +363,11 @@ public sealed partial class AtcVoiceAssigner
             return known;
         }
 
-        var configured = _config.Stations.GetValueOrDefault(stationKey) ?? _config.Stations.GetValueOrDefault(AtcStations.TypeKey(type));
+        // Feste Stimme: für die Station, für ihre FIR (Sektor "FIR/CZUL/MC" → "FIR/CZUL") oder für die Stationsart
+        var parent = stationKey.Count(c => c == '/') >= 2 ? stationKey[..stationKey.LastIndexOf('/')] : null;
+        var configured = _config.Stations.GetValueOrDefault(stationKey)
+            ?? (parent is null ? null : _config.Stations.GetValueOrDefault(parent))
+            ?? _config.Stations.GetValueOrDefault(AtcStations.TypeKey(type));
         var voice = configured is not null && Usable(configured.Trim()) ? configured.Trim() : Pick(stationKey);
         _assigned[stationKey] = voice;
         return voice;
