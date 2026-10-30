@@ -20,6 +20,9 @@ public static class SettingsEndpoints
     /// <param name="Action">"new" oder "remove".</param>
     public sealed record TokenBody(string? Action);
 
+    /// <param name="Language">Sprachcode, z. B. "en" oder "de".</param>
+    public sealed record LanguageBody(string? Language);
+
     /// <summary>null = unverändert.</summary>
     public sealed record ModulesBody(bool? Monitoring, bool? Atc, bool? Input, bool? Voice);
 
@@ -55,6 +58,9 @@ public static class SettingsEndpoints
 
         app.MapPost("/api/settings/modules", (HttpContext context, SettingsService settings, ModulesBody body) =>
             IsDashboardAction(context) ? Answer(settings, settings.SaveModules(body.Monitoring, body.Atc, body.Input, body.Voice)) : Results.BadRequest()).LocalOnly();
+
+        app.MapPost("/api/settings/language", (HttpContext context, SettingsService settings, LanguageBody body) =>
+            IsDashboardAction(context) ? Answer(settings, settings.SaveLanguage(body.Language)) : Results.BadRequest()).LocalOnly();
 
         // Neustart der Tray-Instanz (nach Änderungen, die erst beim Start gelesen werden)
         app.MapPost("/api/restart", (HttpContext context) =>

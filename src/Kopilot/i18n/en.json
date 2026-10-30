@@ -1,0 +1,14 @@
+{
+  "_comment": "Kopilot texts, English (default and fallback). Flat keys, named placeholders {name} or {name:format}. Keys starting with log. are ILogger templates: keep the placeholder order. See docs/i18n.md.",
+  "language.name": "English",
+
+  "tools.traffic.radiusLimited": "Radius limited to {max} NM (200 km) – SimConnect doesn't accept more.",
+  "tools.traffic.noFlight": "No flight loaded (main menu or loading screen).",
+  "tools.traffic.queryFailed": "Traffic query failed: {error}",
+  "tools.traffic.noOwnPosition": "Own position unknown – traffic can't be computed relative to the aircraft.",
+  "tools.traffic.noResponse": "MSFS didn't answer the traffic query. Is a flight running? Otherwise check kopilot_status.",
+  "tools.traffic.incomplete": "MSFS didn't answer completely – some targets may be missing.",
+  "tools.traffic.noneMaybeDisabled": "No traffic within {radius} NM. If that can't be right: AI traffic or multiplayer is probably turned off in the sim.",
+  "tools.traffic.noneAirborne": "No airborne traffic within {radius} NM (only aircraft on the ground).",
+  "tools.traffic.none": "No traffic within {radius} NM."
+}

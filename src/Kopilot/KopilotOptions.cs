@@ -11,6 +11,12 @@ public sealed class KopilotOptions
     /// </summary>
     public string Transport { get; set; } = "http";
 
+    /// <summary>
+    /// Language of the dashboard, tool messages and logs ("en", "de" – see src/Kopilot/i18n). English is the default.
+    /// Callouts, checklists, FMA calls, warnings and radio stay English whatever this says (SOP). Changeable in the dashboard settings.
+    /// </summary>
+    public string Language { get; set; } = Localization.Loc.DefaultLanguage;
+
     /// <summary>Name, unter dem sich Kopilot bei SimConnect anmeldet.</summary>
     public string ClientName { get; set; } = "Kopilot";
 

@@ -17,6 +17,9 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddKopilotCore(this IServiceCollection services, IConfiguration configuration)
     {
         services.Configure<KopilotOptions>(configuration.GetSection(KopilotOptions.Section));
+
+        // Sprache für Dashboard, Tool-Meldungen und Logs (Kopilot:Language) – so früh wie möglich, damit schon die Startlogs passen
+        Kopilot.Localization.Loc.Configure(configuration);
         services.AddSingleton<ProfileStore>();
         services.AddSingleton<SimConnectClient>();
         services.AddHostedService(sp => sp.GetRequiredService<SimConnectClient>());

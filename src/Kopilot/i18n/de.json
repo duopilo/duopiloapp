@@ -1,0 +1,14 @@
+{
+  "_comment": "Kopilot-Texte, Deutsch. Fehlende Schlüssel fallen auf Englisch zurück. Platzhalter {name} wie im Englischen; bei log.-Schlüsseln Reihenfolge beibehalten. Siehe docs/i18n.md.",
+  "language.name": "Deutsch",
+
+  "tools.traffic.radiusLimited": "Radius auf {max} NM (200 km) begrenzt – mehr nimmt SimConnect nicht an.",
+  "tools.traffic.noFlight": "Kein Flug geladen (Hauptmenü oder Ladebildschirm).",
+  "tools.traffic.queryFailed": "Verkehrsabfrage fehlgeschlagen: {error}",
+  "tools.traffic.noOwnPosition": "Eigene Position unbekannt – Verkehr kann nicht relativ zum Flugzeug berechnet werden.",
+  "tools.traffic.noResponse": "MSFS hat nicht auf die Verkehrsabfrage geantwortet. Läuft ein Flug? Sonst kopilot_status prüfen.",
+  "tools.traffic.incomplete": "MSFS hat nicht vollständig geantwortet – evtl. fehlen Ziele.",
+  "tools.traffic.noneMaybeDisabled": "Kein Verkehr im Umkreis von {radius} NM. Falls das nicht stimmen kann: KI-Verkehr bzw. Multiplayer ist im Sim vermutlich deaktiviert.",
+  "tools.traffic.noneAirborne": "Kein Verkehr in der Luft im Umkreis von {radius} NM (nur Flugzeuge am Boden).",
+  "tools.traffic.none": "Kein Verkehr im Umkreis von {radius} NM."
+}

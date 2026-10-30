@@ -2,6 +2,7 @@ using Kopilot.Atc;
 using Kopilot.FlightPlan;
 using Kopilot.Hosting;
 using Kopilot.Input;
+using Kopilot.Localization;
 using Kopilot.Monitoring;
 using Kopilot.Remote;
 using Kopilot.Voice;
@@ -44,6 +45,7 @@ public sealed class SettingsService
     private static readonly string[] OverridableKeys =
     [
         Keys.SimBriefUsername, Keys.SimBriefPilotId, Keys.PublicUrl, Keys.ConsentPassword, Keys.BearerToken, Keys.Monitoring, Keys.Atc,
+        Keys.Language,
     ];
 
     private static readonly HttpClient TunnelHttp = new() { Timeout = TimeSpan.FromSeconds(10) };
@@ -90,6 +92,7 @@ public sealed class SettingsService
         public const string BearerToken = "Remote:BearerToken";
         public const string Monitoring = "Monitoring:Enabled";
         public const string Atc = "Atc:Enabled";
+        public const string Language = "Language";
     }
 
     /// <summary>Was erst nach einem Neustart gilt (Anzeigenamen). Leer = alles ist wirksam.</summary>
@@ -162,6 +165,12 @@ public sealed class SettingsService
                     : new { available = true, enabled = voice.Status.Enabled, state = voice.Status.State, file = voice.Store.FilePath },
             },
             reports = new { repository = o.Reports.GitHubRepository },
+            language = new
+            {
+                current = Loc.Language,
+                available = Loc.Available.Select(l => new { code = l.Code, name = l.Name }),
+                overrides = Loc.OverrideDirectory,
+            },
         };
     }
 
@@ -190,6 +199,29 @@ public sealed class SettingsService
         return new SettingsResult(true, account is null
             ? "SimBrief ausgeschaltet."
             : changed ? $"SimBrief gespeichert ({account}) – gilt sofort." : $"SimBrief unverändert ({account}).");
+    }
+
+    /// <summary>
+    /// Sprache für Dashboard, Tool-Meldungen und Logs speichern und sofort übernehmen. Callouts, Checklisten, FMA-Ansagen,
+    /// Warnungen und Funk bleiben Englisch.
+    /// </summary>
+    public SettingsResult SaveLanguage(string? language)
+    {
+        var code = Loc.Normalize(language);
+        if (code is null)
+        {
+            return SettingsResult.Fail(Loc.T("settings.language.unknown", language ?? "", string.Join(", ", Loc.Available.Select(l => l.Code))));
+        }
+
+        if (!Write([SettingValue.Of(KeyPath(Keys.Language), code)], out var error))
+        {
+            return SettingsResult.Fail(error);
+        }
+
+        var previous = Loc.Language;
+        Loc.SetLanguage(code);
+        _log.LogInformation(Loc.Log("log.settings.languageChanged"), previous, code);
+        return new SettingsResult(true, Loc.T("settings.language.saved", Loc.Available.FirstOrDefault(l => l.Code == code)?.Name ?? code));
     }
 
     /// <summary>
