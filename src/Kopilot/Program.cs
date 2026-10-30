@@ -105,6 +105,11 @@ else
 
     // Sprachausgabe nur in dieser (Tray-)Instanz – die stdio-Instanz von Claude Desktop würde sonst doppelt sprechen
     builder.Services.AddSingleton<Kopilot.Speech.KokoroSpeechEngine>();
+
+    // Piper: zweite lokale Stimme für Smalltalk in Sprachen ohne Kokoro-Stimme (Deutsch) – lädt erst bei Bedarf
+    builder.Services.AddSingleton<Kopilot.Speech.PiperSpeechEngine>();
+    builder.Services.AddSingleton<Kopilot.Speech.ITtsEngine>(sp => sp.GetRequiredService<Kopilot.Speech.PiperSpeechEngine>());
+    builder.Services.AddSingleton(sp => new Kopilot.Speech.TtsEngineRegistry(sp.GetServices<Kopilot.Speech.ITtsEngine>()));
     builder.Services.AddSingleton<Kopilot.Speech.CalloutSpeaker>();
     builder.Services.AddSingleton<Kopilot.Speech.ISpeechOutput>(sp => sp.GetRequiredService<Kopilot.Speech.CalloutSpeaker>());
     builder.Services.AddSingleton<Kopilot.Atc.IAtcRadio>(sp => sp.GetRequiredService<Kopilot.Speech.CalloutSpeaker>());

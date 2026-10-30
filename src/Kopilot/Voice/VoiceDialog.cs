@@ -40,7 +40,23 @@ public sealed record VoiceReply(string Text, string Spoken)
     /// <summary>Challenge oder Abweichung einer Checkliste: Erst wenn sie ganz gesprochen ist, läuft die Wartezeit für die Wiederholung.</summary>
     public bool Checklist { get; init; }
 
+    /// <summary>
+    /// Smalltalk (Sprachmodell, Vorstellung): freier Text ohne Funk-Aussprache, ganz unten in der Warteschlange – jede andere Ansage
+    /// unterbricht ihn. Nie ein Readback, nie bestätigbar.
+    /// </summary>
+    public bool Smalltalk { get; init; }
+
+    /// <summary>Sprache des Smalltalks ("de"); null = Englisch.</summary>
+    public string? Language { get; init; }
+
+    /// <summary>Stimme für den Smalltalk in einer anderen Sprache ("piper:de_DE-thorsten-medium"); null = die Stimme von Kopilot.</summary>
+    public string? Voice { get; init; }
+
     public static VoiceReply Of(string text) => new(text, Kopilot.Speech.Pronunciation.ForSpeech(text));
+
+    /// <summary>Smalltalk: so sprechen, wie er ist.</summary>
+    public static VoiceReply Chat(string text, string? language = null, string? voice = null) =>
+        new(text, text) { Smalltalk = true, Language = language is null or "en" ? null : language, Voice = voice };
 }
 
 /// <summary>Vorbereitete Aktion, die auf "Confirm" wartet.</summary>
@@ -99,6 +115,9 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
 
     /// <summary>Challenge-Response-Checklisten.</summary>
     public ChecklistRunner Checklists { get; } = new(time);
+
+    /// <summary>"Briefing": Vorstellung des First Officers (null = es gibt keinen, dann still).</summary>
+    public Func<VoiceReply?>? Briefing { get; set; }
 
     /// <summary>Spracheingabe stumm ("Kopilot Pause" oder Tastenkürzel). Dann zählt nur noch "Kopilot weiter".</summary>
     public bool Muted => _muted;
@@ -207,6 +226,12 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
             case IntentKind.Checklist:
                 return StartChecklist(intent.Value);
 
+            case IntentKind.Briefing when RequireWakeWord && !addressed:
+                return null;
+
+            case IntentKind.Briefing:
+                return Briefing?.Invoke() is { } introduction ? Remember(introduction) : null;
+
             case IntentKind.ChecklistControl:
                 // Ohne laufende Checkliste gibt es nichts zu überspringen
                 return null;
@@ -221,6 +246,33 @@ public sealed class VoiceDialog(IVoiceActionGateway gateway, IVoiceFlightStateSo
                 return words > 0 && words <= SayAgainMaxWords ? VoiceReply.Of(SayAgain) : null;
         }
     }
+
+    /// <summary>
+    /// Darf ein Satz ans Sprachmodell (Smalltalk)? Nur, wenn ihn die Sprachschleife sonst mit "Say again" beantworten oder verwerfen
+    /// würde – und nie, solange etwas Wichtigeres offen ist: ein Readback, eine Checkliste, eine Meldung, die auf "check" wartet,
+    /// oder die Spracheingabe stumm ist. Ohne Anrede nur kurze Sätze (längere sind meist Gespräche im Raum).
+    /// </summary>
+    /// <param name="unaddressedMaxWords">Höchstzahl der Wörter ohne Anrede (0 = nur mit Anrede).</param>
+    public bool CanChat(VoiceIntent intent, string normalized, bool addressed, int unaddressedMaxWords)
+    {
+        Expire();
+        if (intent.Kind != IntentKind.Unknown || Muted || Pending is not null || Checklists.Active is not null
+            || Acknowledgments is { PendingTexts.Count: > 0 })
+        {
+            return false;
+        }
+
+        if (RequireWakeWord && !addressed)
+        {
+            return false;
+        }
+
+        var words = VoiceText.Words(normalized).Length - (addressed ? 1 : 0);
+        return words > 0 && (addressed || words <= unaddressedMaxWords);
+    }
+
+    /// <summary>Antwort des Smalltalks merken ("Say again" wiederholt sie). Ein offener Readback bleibt unberührt.</summary>
+    public VoiceReply RememberChat(VoiceReply reply) => Remember(reply with { Smalltalk = true, ReadbackToken = null, Checklist = false });
 
     /// <summary>Was die letzten "check"/"copy" ausgelöst haben (eskalierte Meldungen aufheben) – holt die Sprachschleife ab.</summary>
     public IReadOnlyList<AcknowledgmentAction> TakeAcknowledgmentActions()

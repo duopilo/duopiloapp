@@ -68,6 +68,8 @@ button, select, input, textarea { font: inherit; color: inherit; }
 .aircraft { color: var(--white); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 46ch; }
 .aircraft .tag { color: var(--panel-dim); margin-left: 8px; }
 .paused-pill { font-family: var(--mono); font-weight: 700; color: #1b1300; background: var(--amber); padding: 3px 10px; border-radius: 4px; }
+.fo-pill { font: 700 12px var(--mono); color: var(--cyan); border: 1px solid currentColor; padding: 2px 8px; border-radius: 4px; white-space: nowrap; }
+.fo-pill.chat { color: var(--green); }
 .spacer { flex: 1; }
 
 /* Attention Getter – wie die Tasten auf dem Glareshield */
@@ -432,6 +434,7 @@ dialog.report::backdrop { background: rgba(5, 8, 11, .7); }
   </div>
   <div class="link"><span class="lamp" id="lamp"></span><span id="linkText" data-i18n="dashboard.header.connecting">Connecting …</span></div>
   <div class="aircraft" id="aircraft"></div>
+  <span class="fo-pill" id="foPill" hidden></span>
   <span class="paused-pill" id="paused" data-i18n="dashboard.header.paused" hidden>Sim paused</span>
   <span class="spacer"></span>
   <nav class="hnav" aria-label="Kopilot">
@@ -694,6 +697,51 @@ dialog.report::backdrop { background: rgba(5, 8, 11, .7); }
       <p class="msg" id="modMsg" role="status"></p>
     </section>
 
+    <section class="card" id="chatCard" aria-labelledby="hChat">
+      <h2 id="hChat" data-i18n="dashboard.settings.smalltalk.title">First officer and small talk</h2>
+      <p class="hint" data-i18n="dashboard.settings.smalltalk.hint">With the voice loop on, each flight gets its own first officer: a random name with a matching voice (never the voice of an ATC station). They introduce themselves at the briefing and also answer to their name. Optional small talk via a language model: only sentences that are neither a command, a query nor a radio call – callouts, warnings, checklists and radio always come first and interrupt it. The model never triggers anything. Applies immediately.</p>
+      <form id="chatForm" autocomplete="off">
+        <div class="fields-2">
+          <label class="field"><span data-i18n="dashboard.settings.smalltalk.name">Fixed name (empty = random per flight)</span> <input id="foName" maxlength="24" spellcheck="false"></label>
+          <label class="field"><span data-i18n="dashboard.settings.smalltalk.gender">Gender for your own name</span>
+            <select id="foGender">
+              <option value="auto" data-i18n="dashboard.settings.smalltalk.genderAuto">Automatic</option>
+              <option value="female" data-i18n="dashboard.settings.smalltalk.genderFemale">Female</option>
+              <option value="male" data-i18n="dashboard.settings.smalltalk.genderMale">Male</option>
+            </select>
+          </label>
+        </div>
+        <label class="check"><input type="checkbox" id="foEnabled"> <span data-i18n="dashboard.settings.smalltalk.foEnabled">First officer with name and voice per flight</span></label>
+        <label class="check"><input type="checkbox" id="foIntroduce"> <span data-i18n="dashboard.settings.smalltalk.introduce">Introduce themselves at the briefing (at the gate, or say "Briefing")</span></label>
+        <h3 data-i18n="dashboard.settings.smalltalk.llmTitle">Small talk (language model)</h3>
+        <div class="fields-2">
+          <label class="field"><span data-i18n="dashboard.settings.smalltalk.provider">Provider</span>
+            <select id="chatProvider">
+              <option value="off" data-i18n="dashboard.settings.smalltalk.providerOff">Off</option>
+              <option value="claude" data-i18n="dashboard.settings.smalltalk.providerClaude">Claude (own API key)</option>
+              <option value="openai" data-i18n="dashboard.settings.smalltalk.providerOpenai">OpenAI-compatible interface</option>
+              <option value="ollama" data-i18n="dashboard.settings.smalltalk.providerOllama">Ollama on another computer</option>
+            </select>
+          </label>
+          <label class="field"><span data-i18n="dashboard.settings.smalltalk.model">Model</span> <input id="chatModel" maxlength="100" spellcheck="false"></label>
+        </div>
+        <label class="field" id="chatUrlRow"><span data-i18n="dashboard.settings.smalltalk.url">Address</span> <input id="chatUrl" type="url" inputmode="url" spellcheck="false"></label>
+        <label class="field" id="chatKeyRow"><span data-i18n="dashboard.settings.smalltalk.apiKey">API key (stored only in appsettings.Local.json)</span> <input id="chatKey" type="password" autocomplete="new-password" spellcheck="false"></label>
+        <label class="check" id="chatKeyRemoveRow" hidden><input type="checkbox" id="chatKeyRemove"> <span data-i18n="dashboard.settings.smalltalk.removeKey">Remove API key</span></label>
+        <div class="fields-2">
+          <label class="field"><span data-i18n="dashboard.settings.smalltalk.words">Answers at most (words)</span> <input id="chatWords" type="number" min="10" max="150" step="5"></label>
+          <label class="field"><span data-i18n="dashboard.settings.smalltalk.rpm">Requests per minute at most</span> <input id="chatRpm" type="number" min="1" max="30" step="1"></label>
+        </div>
+        <p class="set-warn" id="chatPrivacy" hidden></p>
+        <div class="row">
+          <button class="btn primary" type="submit" data-i18n="dashboard.common.save">Save</button>
+          <button class="btn" id="chatTest" type="button" data-i18n="dashboard.settings.smalltalk.test">Test</button>
+          <span class="msg" id="chatMsg" role="status"></span>
+        </div>
+      </form>
+      <p class="state-line" id="chatState"></p>
+    </section>
+
     <section class="card" id="langCard" aria-labelledby="hLanguage">
       <h2 id="hLanguage" data-i18n="dashboard.settings.language.title">Language</h2>
       <p class="hint" data-i18n="dashboard.settings.language.hint">The dashboard, tool messages and tray follow this setting. Callouts, checklists, FMA calls, warnings and radio stay in English – like a real crew (SOP) – and so do the logs. Applies immediately.</p>
@@ -844,6 +892,14 @@ function renderHeader(d) {
     ? esc(ac.title || t("dashboard.header.unknownAircraft")) + (ac.profile ? `<span class="tag">${esc(t("dashboard.header.profile", { profile: ac.profile }))}</span>` : `<span class="tag">${esc(t("dashboard.header.noProfile"))}</span>`)
     : "";
   $("paused").hidden = !d.paused;
+  const fo = d.firstOfficer;
+  const foPill = $("foPill");
+  foPill.hidden = !fo;
+  if (fo) {
+    setText("foPill", t("dashboard.header.firstOfficer", { name: fo.name }) + (fo.pending ? " …" : ""));
+    foPill.classList.toggle("chat", !!fo.smalltalk && fo.smalltalk !== "off");
+    foPill.title = [t("dashboard.header.firstOfficerTitle", { voice: fo.voice }), fo.note].filter(Boolean).join(" · ");
+  }
 
   const banner = $("banner");
   let text = null;
@@ -1155,6 +1211,8 @@ function renderVoiceLoop() {
       ? t("dashboard.voice.recognizedDropped", { recognized: st.recognized, total: st.utterances, dropped: st.dropped, reason: st.lastDropReason })
       : t("dashboard.voice.recognized", { recognized: st.recognized, total: st.utterances }));
   }
+  if (st.firstOfficer) info.push(t("dashboard.voice.firstOfficer", { name: st.firstOfficer.name, voice: st.firstOfficer.voice }));
+  if (st.smalltalkNote) info.push(st.smalltalkNote);
   if (st.state === "off") info.push(t("dashboard.voice.settingsFile", { file: st.settingsFile || "" }));
   setText("vlInfo", info.join(" · "));
   const err = $("vlError");
@@ -1706,8 +1764,87 @@ function renderSettings() {
   setSwitch("modVoice", !!voice.enabled, [!voice.available ? t("dashboard.settings.modules.trayOnly") : voice.enabled ? t("dashboard.settings.modules.voiceState", { state: voiceState(voice.state) }) : t("dashboard.settings.modules.off"), false]);
 
   renderLanguage(s.language);
+  renderSmalltalk(s.smalltalk);
   settingsUi.filled = true;
 }
+
+/* First officer and small talk: the key never comes back from the server, only "set / not set" */
+const chatPlaceholders = { claude: "claude-haiku-5-5", openai: "gpt-…", ollama: "llama3.2" };
+function renderChatFields() {
+  const p = $("chatProvider").value;
+  const s = settingsUi.data && settingsUi.data.smalltalk;
+  $("chatUrlRow").hidden = p !== "openai" && p !== "ollama";
+  $("chatUrl").placeholder = p === "ollama" ? "http://192.168.1.20:11434" : "https://api.openai.com/v1";
+  $("chatKeyRow").hidden = p !== "claude" && p !== "openai";
+  $("chatModel").placeholder = chatPlaceholders[p] || "";
+  $("chatModel").disabled = p === "off";
+  const keySet = !!(s && s.apiKey && s.apiKey.set);
+  $("chatKey").placeholder = keySet ? t("dashboard.settings.smalltalk.keySet") : t("dashboard.settings.smalltalk.keyNotSet");
+  $("chatKeyRemoveRow").hidden = !keySet || $("chatKeyRow").hidden;
+  const privacy = $("chatPrivacy");
+  privacy.hidden = p === "off";
+  privacy.textContent = p === "off" ? "" : t("dashboard.settings.smalltalk.privacy", { provider: $("chatProvider").selectedOptions[0].textContent });
+  $("chatTest").disabled = !(s && s.provider !== "off" && s.provider === p);
+}
+function renderSmalltalk(s) {
+  const card = $("chatCard");
+  card.hidden = !s || !s.available;
+  if (card.hidden) return;
+  if (!settingsUi.filled) {
+    $("foName").value = s.firstOfficer.name || "";
+    $("foGender").value = s.firstOfficer.gender || "auto";
+    $("foEnabled").checked = !!s.firstOfficer.enabled;
+    $("foIntroduce").checked = !!s.firstOfficer.introduce;
+    $("chatProvider").value = s.provider || "off";
+    $("chatModel").value = s.model || "";
+    $("chatUrl").value = s.url || "";
+    $("chatWords").value = s.maxReplyWords;
+    $("chatRpm").value = s.requestsPerMinute;
+  }
+  renderChatFields();
+  const parts = [];
+  const fo = s.firstOfficer.current;
+  parts.push(fo ? t("dashboard.settings.smalltalk.currentFo", { name: fo.name, voice: fo.voice }) : t("dashboard.settings.smalltalk.noFo"));
+  if (s.provider !== "off") {
+    parts.push(t("dashboard.settings.smalltalk.active", { provider: s.providerName, model: s.effectiveModel || DASH, host: s.host || DASH }));
+    parts.push(t("dashboard.settings.smalltalk.usage", { used: s.status.requestsLastMinute, limit: s.requestsPerMinute }));
+    if (s.status.lastOk === true) parts.push(t("dashboard.settings.smalltalk.lastOk", { ms: s.status.lastMs }));
+    else if (s.status.lastOk === false) parts.push(t("dashboard.settings.smalltalk.lastError", { error: s.status.lastError || "?" }));
+  }
+  if (s.note) parts.push(s.note);
+  $("chatState").innerHTML = parts.map(esc).join(" · ") + (s.problem ? ` <span class="a">${esc(s.problem)}</span>` : "");
+}
+$("chatProvider").addEventListener("change", renderChatFields);
+$("chatForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const num = (id) => { const v = parseInt($(id).value, 10); return Number.isFinite(v) ? v : null; };
+  const body = {
+    provider: $("chatProvider").value,
+    model: $("chatModel").value.trim(),
+    url: $("chatUrl").value.trim(),
+    apiKey: $("chatKey").value,
+    removeApiKey: $("chatKeyRemove").checked,
+    maxReplyWords: num("chatWords"),
+    requestsPerMinute: num("chatRpm"),
+    firstOfficerEnabled: $("foEnabled").checked,
+    firstOfficerName: $("foName").value.trim(),
+    firstOfficerGender: $("foGender").value,
+    introduce: $("foIntroduce").checked,
+  };
+  const j = await saveSettings("/api/settings/smalltalk", body, "chatMsg");
+  if (j && j.ok) { $("chatKey").value = ""; $("chatKeyRemove").checked = false; }
+});
+$("chatTest").addEventListener("click", async () => {
+  $("chatTest").disabled = true;
+  showMsg("chatMsg", t("dashboard.settings.smalltalk.testing"));
+  try {
+    const j = await postJson("/api/settings/smalltalk/test");
+    if (j.settings) { settingsUi.data = j.settings; renderSettings(); }
+    const r = j.test || {};
+    showMsg("chatMsg", r.ok ? t("dashboard.settings.smalltalk.testOk", { text: r.text, ms: r.ms }) : (r.error || t("dashboard.common.noResponse")), !r.ok);
+  } catch { showMsg("chatMsg", t("dashboard.common.noResponse"), true); }
+  renderChatFields();
+});
 function setSwitch(id, on, note, arming) {
   const b = $(id);
   b.setAttribute("aria-checked", on ? "true" : "false");

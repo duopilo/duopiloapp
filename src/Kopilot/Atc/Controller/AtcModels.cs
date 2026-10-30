@@ -184,12 +184,16 @@ public sealed record AtcTransmission(
 /// <param name="SquawkFromSim">
 /// Squawk aus dem Transponder übernehmen, wenn ihn das MSFS-ATC (auch stumm geschaltet) im Flug ändert – statt "check squawk".
 /// </param>
+/// <param name="KopilotVoice">
+/// Stimme von Kopilot zur Laufzeit (z. B. die des First Officers, die pro Flug wechselt) – neue Stationen bekommen sie nie.
+/// </param>
 public sealed record AtcSessionContext(
     Func<string, IReadOnlyList<AirportFrequency>?> FacilityFrequencies,
     ITaxiRouteProvider TaxiRoutes,
     string? CalloutVoice = null,
     IReadOnlyCollection<string>? InstalledVoices = null,
-    bool SquawkFromSim = false);
+    bool SquawkFromSim = false,
+    Func<string?>? KopilotVoice = null);
 
 /// <summary>Offenes Readback: welche Werte der Pilot noch zurücklesen muss und was danach passiert.</summary>
 public sealed record AtcPendingReadback(string MessageId, AtcStation Station, IReadOnlyList<ReadbackItem> Items, Action<List<AtcTransmission>, AtcInput> OnCorrect);

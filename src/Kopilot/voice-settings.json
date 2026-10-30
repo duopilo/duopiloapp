@@ -1,5 +1,7 @@
 {
   // Kopilot – Sprachschleife (Mikrofon → Whisper → Kopilot-Befehle / ATC → Sprachausgabe), komplett lokal, ohne Sprachmodell.
+  // First Officer (Name und Stimme pro Flug) und optionaler Smalltalk über ein Sprachmodell: im Dashboard unter
+  // Einstellungen → First Officer und Smalltalk (appsettings.Local.json), nicht hier.
   // ACHTUNG: Diese Datei neben der Kopilot.exe ist nur die VORLAGE und wird von update.cmd überschrieben.
   // Kopilot kopiert sie beim ersten Start nach %LOCALAPPDATA%\Kopilot\voice-settings.json – nur DIESE Datei gilt.
   // Einfacher: im Dashboard unter Ansagen → Stimme die Sprachschleife einschalten und das Mikrofon wählen (gilt sofort).
@@ -46,7 +48,8 @@
   },
 
   "voices": {
-    // Kokoro-Stimme für Kopilot (Callouts und Antworten), z. B. "bm_george". Leer = Stimme aus dem Dashboard.
+    // Feste Kokoro-Stimme für Kopilot (Callouts und Antworten), z. B. "bm_george". Leer = Stimme des First Officers
+    // (pro Flug, passend zu seinem Namen), ist er aus: Stimme aus dem Dashboard. Eine feste Stimme bestimmt das Geschlecht des Namens.
     "kopilot": "",
     // Lautstärke (Faktor auf die Lautstärke im Dashboard). Die Stimmen der ATC-Stationen vergibt das ATC-Modul (atc-templates.json).
     "kopilotVolume": 1.0,

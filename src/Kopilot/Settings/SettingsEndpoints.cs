@@ -63,6 +63,21 @@ public static class SettingsEndpoints
         app.MapPost("/api/settings/language", (HttpContext context, SettingsService settings, LanguageBody body) =>
             IsDashboardAction(context) ? Answer(settings, settings.SaveLanguage(body.Language)) : Results.BadRequest()).LocalOnly();
 
+        // First Officer und Smalltalk (Sprachmodell): gilt sofort. Der Schlüssel geht nur hinein, nie zurück.
+        app.MapPost("/api/settings/smalltalk", (HttpContext context, SettingsService settings, SmalltalkChange body) =>
+            IsDashboardAction(context) ? Answer(settings, settings.SaveSmalltalk(body)) : Results.BadRequest()).LocalOnly();
+
+        app.MapPost("/api/settings/smalltalk/test", async (HttpContext context, SettingsService settings, CancellationToken ct) =>
+        {
+            if (!IsDashboardAction(context))
+            {
+                return Results.BadRequest();
+            }
+
+            var test = await settings.TestSmalltalkAsync(ct);
+            return Results.Content(Json.Serialize(new { test, settings = settings.View() }), "application/json");
+        }).LocalOnly();
+
         // Neustart der Tray-Instanz (nach Änderungen, die erst beim Start gelesen werden)
         app.MapPost("/api/restart", (HttpContext context) =>
         {

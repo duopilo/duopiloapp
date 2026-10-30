@@ -140,6 +140,9 @@ public interface ISpeechOutput
     Task<SpeechStatus> UpdateAsync(SpeechSettings settings, CancellationToken ct);
 
     Task SpeakNowAsync(string text, CancellationToken ct);
+
+    /// <summary>Kokoro-Stimme, mit der Kopilot gerade spricht (ATC meidet sie). Standard: die Stimme aus dem Dashboard.</summary>
+    string? KopilotVoice => Status.Settings.KokoroVoice;
 }
 
 /// <summary>Speichert die Dashboard-Einstellungen in DataDirectory\speech.json.</summary>

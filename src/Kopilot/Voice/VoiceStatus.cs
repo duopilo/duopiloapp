@@ -96,7 +96,30 @@ public sealed record VoiceStatus
 
     /// <summary>Unbeantwortete Meldungen nach der Wiederholung (Warnton und Eintrag im Dashboard).</summary>
     public IReadOnlyList<string>? MissedAcknowledgment { get; init; }
+
+    /// <summary>First Officer des laufenden Flugs (null = aus oder Sprachschleife aus).</summary>
+    public FirstOfficerStatus? FirstOfficer { get; init; }
+
+    /// <summary>Smalltalk: Anbieter ("off", "claude", "openai", "ollama").</summary>
+    public string? Smalltalk { get; init; }
+
+    /// <summary>Sprache des Smalltalks gerade ("de", "en").</summary>
+    public string? SmalltalkLanguage { get; init; }
+
+    /// <summary>Kurzer Hinweis zum Smalltalk (z. B. „keine deutsche Stimme – Smalltalk auf Englisch“), in der eingestellten Sprache.</summary>
+    public string? SmalltalkNote { get; init; }
+
+    /// <summary>Smalltalk wartet gerade auf die Antwort des Sprachmodells.</summary>
+    public bool SmalltalkPending { get; init; }
+
+    /// <summary>Letzte Antwort des Smalltalks.</summary>
+    public string? LastSmalltalk { get; init; }
 }
+
+/// <summary>Der First Officer für Dashboard und Status.</summary>
+/// <param name="Voice">Kokoro-Stimme (Callouts, Antworten, englischer Smalltalk).</param>
+/// <param name="SmalltalkVoice">Stimme für den Smalltalk in einer anderen Sprache ("piper:de_DE-thorsten-medium"), null = <paramref name="Voice"/>.</param>
+public sealed record FirstOfficerStatus(string Name, string Gender, string Voice, string? SmalltalkVoice, bool Introduced, bool FixedName, string Flight);
 
 /// <summary>Liefert den Zustand der Sprachschleife. In der stdio-Instanz (Claude Desktop) gibt es keine: <see cref="NoVoiceLoop"/>.</summary>
 public interface IVoiceStatusSource

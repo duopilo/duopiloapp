@@ -137,7 +137,7 @@ public sealed record RecognitionSettings
 /// <summary>Stimmen und Lautstärke.</summary>
 public sealed record VoicesSettings
 {
-    /// <summary>Kokoro-Stimme für Kopilot (Callouts und Antworten). Leer = Stimme aus dem Dashboard.</summary>
+    /// <summary>Feste Kokoro-Stimme für Kopilot (Callouts und Antworten). Leer = Stimme des First Officers, ist er aus: die aus dem Dashboard.</summary>
     public string Kopilot { get; init; } = "";
 
     /// <summary>Lautstärke von Kopilot (Faktor auf die Lautstärke im Dashboard).</summary>

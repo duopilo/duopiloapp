@@ -78,6 +78,8 @@ public sealed class SettingsTests : IAsyncLifetime
     [InlineData("/api/settings/claude/token", """{"action":"new"}""")]
     [InlineData("/api/settings/claude/check", "{}")]
     [InlineData("/api/settings/modules", """{"monitoring":false}""")]
+    [InlineData("/api/settings/smalltalk", """{"provider":"claude","apiKey":"sk-ant-test-1234567890"}""")]
+    [InlineData("/api/settings/smalltalk/test", "{}")]
     [InlineData("/api/restart", "{}")]
     [InlineData("/api/report/capture", "{}")]
     [InlineData("/api/report", """{"id":"x","description":"y"}""")]
@@ -113,6 +115,58 @@ public sealed class SettingsTests : IAsyncLifetime
 
         using var dashboardAfter = JsonDocument.Parse(await _app.Local().GetStringAsync("/api/dashboard"));
         Assert.True(dashboardAfter.RootElement.GetProperty("plan").GetProperty("configured").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Smalltalk_wird_gespeichert_gilt_sofort_und_der_Schluessel_bleibt_geheim()
+    {
+        const string key = "sk-ant-api03-GEHEIMGEHEIMGEHEIM0123456789";
+        var result = await PostAsync(
+            "/api/settings/smalltalk",
+            $$"""{"provider":"claude","apiKey":"{{key}}","maxReplyWords":30,"requestsPerMinute":4,"firstOfficerName":"Lena","firstOfficerGender":"auto","introduce":false}""");
+
+        Assert.True(result.GetProperty("ok").GetBoolean(), result.ToString());
+        var smalltalk = result.GetProperty("settings").GetProperty("smalltalk");
+        Assert.Equal("claude", smalltalk.GetProperty("provider").GetString());
+        Assert.True(smalltalk.GetProperty("apiKey").GetProperty("set").GetBoolean());
+        Assert.Equal("claude-haiku-5-5", smalltalk.GetProperty("effectiveModel").GetString());
+        Assert.Equal("Lena", smalltalk.GetProperty("firstOfficer").GetProperty("name").GetString());
+        Assert.False(smalltalk.GetProperty("firstOfficer").GetProperty("introduce").GetBoolean());
+        Assert.False(result.GetProperty("settings").GetProperty("restart").GetProperty("required").GetBoolean());
+        Assert.DoesNotContain("GEHEIM", result.ToString());
+        Assert.DoesNotContain("GEHEIM", await _app.Local().GetStringAsync("/api/settings"));
+
+        // Schlüssel nur in appsettings.Local.json, Kommentare bleiben; der Dienst hat die Werte sofort
+        var saved = Load();
+        Assert.Equal(key, saved["Kopilot:Smalltalk:ApiKey"]);
+        Assert.Equal("30", saved["Kopilot:Smalltalk:MaxReplyWords"]);
+        Assert.Equal("Lena", saved["Kopilot:FirstOfficer:Name"]);
+        Assert.Contains("// Eigene Einstellungen", File.ReadAllText(_settingsFile));
+        var service = _app.App.Services.GetRequiredService<Kopilot.Smalltalk.SmalltalkService>();
+        Assert.Equal(key, service.Config.ApiKey);
+        Assert.Equal(4, service.Config.RequestsPerMinute);
+        Assert.Equal("Lena", service.FirstOfficer.Name);
+
+        // Leerer Schlüssel = unverändert, entfernen nur ausdrücklich
+        await PostAsync("/api/settings/smalltalk", """{"apiKey":""}""");
+        Assert.Equal(key, service.Config.ApiKey);
+        await PostAsync("/api/settings/smalltalk", """{"removeApiKey":true,"provider":"off"}""");
+        Assert.Equal("", service.Config.ApiKey);
+        Assert.False(service.Config.Enabled);
+    }
+
+    [Theory]
+    [InlineData("""{"provider":"gemini"}""")]
+    [InlineData("""{"url":"ftp://ollama"}""")]
+    [InlineData("""{"maxReplyWords":5}""")]
+    [InlineData("""{"apiKey":"has space"}""")]
+    [InlineData("""{"firstOfficerName":"123"}""")]
+    public async Task Ungueltiger_Smalltalk_wird_abgelehnt_und_nichts_geschrieben(string body)
+    {
+        var result = await PostAsync("/api/settings/smalltalk", body);
+
+        Assert.False(result.GetProperty("ok").GetBoolean());
+        Assert.Equal(InstallerFile, File.ReadAllText(_settingsFile));
     }
 
     [Fact]

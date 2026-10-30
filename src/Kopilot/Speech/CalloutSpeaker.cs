@@ -43,6 +43,7 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
     private readonly AlertBus _bus;
     private readonly MonitoringService _monitoring;
     private readonly KokoroSpeechEngine _kokoro;
+    private readonly TtsEngineRegistry? _engines;
     private readonly SpeechSettingsStore _store;
     private readonly ILogger<CalloutSpeaker> _log;
     private readonly CalloutQueue _queue = new();
@@ -79,11 +80,19 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
     private Task? _kokoroLoad;
     private CancellationToken _stopping;
 
-    public CalloutSpeaker(IOptions<KopilotOptions> options, AlertBus bus, MonitoringService monitoring, KokoroSpeechEngine kokoro, ILogger<CalloutSpeaker> log)
+    /// <param name="engines">Weitere lokale Engines für Smalltalk in anderen Sprachen (Piper). null = nur Englisch.</param>
+    public CalloutSpeaker(
+        IOptions<KopilotOptions> options,
+        AlertBus bus,
+        MonitoringService monitoring,
+        KokoroSpeechEngine kokoro,
+        ILogger<CalloutSpeaker> log,
+        TtsEngineRegistry? engines = null)
     {
         _bus = bus;
         _monitoring = monitoring;
         _kokoro = kokoro;
+        _engines = engines;
         _log = log;
         _store = new SpeechSettingsStore(Path.Combine(options.Value.ResolveDataDirectory(), "speech.json"));
         _settings = (_store.Load() ?? SpeechSettings.FromOptions(options.Value.Speech, options.Value.Monitoring)).Normalized();
@@ -111,9 +120,35 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
             _kokoro.Voices,
             _lastSynthesisMs));
 
+    /// <summary>Kokoro-Stimme, mit der Kopilot gerade spricht: die der Sprachschleife (First Officer), sonst die aus dem Dashboard.</summary>
+    public string? KopilotVoice => _voice.KopilotVoice ?? _settings.KokoroVoice;
+
     // ------------------------------------------------------------------ IVoiceOutput (Sprachschleife)
 
     public bool Available => ActiveEngine is not null;
+
+    /// <summary>
+    /// Spricht gerade eine Windows-Stimme (statt Kokoro), ihr Geschlecht – damit Name und Stimme des First Officers zusammenpassen.
+    /// null = Kokoro oder unbekannt.
+    /// </summary>
+    public VoiceGender? EngineVoiceGender
+    {
+        get
+        {
+            if (ActiveEngine != SpeechEngines.Windows || _speech?.ActiveVoice is not { } active)
+            {
+                return null;
+            }
+
+            var gender = _voices.FirstOrDefault(v => string.Equals(v.Name, active, StringComparison.OrdinalIgnoreCase))?.Gender;
+            return gender?.ToLowerInvariant() switch
+            {
+                "female" => VoiceGender.Female,
+                "male" => VoiceGender.Male,
+                _ => null,
+            };
+        }
+    }
 
     public bool IsSpeaking => _current is not null || Volatile.Read(ref _speakingNow) > 0;
 
@@ -189,6 +224,7 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
             Source = request.Source,
             OnSpoken = request.OnSpoken,
             Tone = request.Tone,
+            Plain = request.Plain,
         };
 
         var (accepted, preempt) = _queue.Offer(item, now, _current?.Priority);
@@ -514,7 +550,14 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
             Source = "atc:" + transmission.StationName,
         };
 
-        if (_queue.Offer(item, now, _current?.Priority).Accepted)
+        var (accepted, preempt) = _queue.Offer(item, now, _current?.Priority);
+        if (preempt)
+        {
+            // Funk unterbricht Smalltalk
+            Preempt();
+        }
+
+        if (accepted)
         {
             _signal.Release();
         }
@@ -552,15 +595,30 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
             return;
         }
 
-        var text = Pronunciation.ForSpeech(item.Spoken ?? item.Text);
+        // Freier Text (Smalltalk) so, wie er ist – Funk und Callouts mit der gemeinsamen Aussprache
+        var text = item.Plain ? (item.Spoken ?? item.Text).Trim() : Pronunciation.ForSpeech(item.Spoken ?? item.Text);
         if (text.Length == 0)
         {
             return;
         }
 
+        if (item.Plain && _engines?.Find(item.Voice) is { } other)
+        {
+            // Andere Sprache (z. B. Deutsch mit Piper): gleiche Wiedergabe wie Kokoro
+            var foreign = await other.Engine.SynthesizeAsync(text, other.Voice, _settings.Rate, ct);
+            ct.ThrowIfCancellationRequested();
+            await PlayClipAsync(speech, foreign, item, ct);
+            return;
+        }
+
         if (ActiveEngine == SpeechEngines.Kokoro)
         {
-            var clip = await KokoroClipAsync(text, VoiceFor(item), ct);
+            // Smalltalk nicht zwischenspeichern – er verdrängte sonst die vorab gerechneten Callouts
+            var voice = VoiceFor(item);
+            var settings = _settings;
+            var clip = item.Plain
+                ? await Task.Run(() => _kokoro.Synthesize(text, voice, settings.Rate), ct)
+                : await KokoroClipAsync(text, voice, ct);
             ct.ThrowIfCancellationRequested();
             if (clip.Samples.Length == 0)
             {
@@ -585,6 +643,25 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
         try
         {
             await speech.SpeakAsync(text, ct);
+        }
+        finally
+        {
+            _engineLock.Release();
+        }
+    }
+
+    private async Task PlayClipAsync(WindowsSpeech speech, SpeechClip clip, SpeechItem item, CancellationToken ct)
+    {
+        if (clip.Samples.Length == 0)
+        {
+            return;
+        }
+
+        var wav = WavEncoder.Encode(clip.Samples, clip.SampleRate, _settings.Volume * item.Volume);
+        await _engineLock.WaitAsync(ct);
+        try
+        {
+            await speech.PlayWavAsync(wav, ct);
         }
         finally
         {

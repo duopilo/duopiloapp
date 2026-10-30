@@ -37,6 +37,9 @@ public enum IntentKind
     /// <summary>Während einer Checkliste: "Skip" (Punkt überspringen) oder "Stop checklist". <see cref="VoiceIntent.Value"/> = "skip" oder "stop".</summary>
     ChecklistControl,
 
+    /// <summary>"Briefing" – der First Officer stellt sich vor ("Hi, I'm Sam, I'll be your first officer today").</summary>
+    Briefing,
+
     Unknown,
 }
 
@@ -237,6 +240,11 @@ public static partial class VoiceIntents
         if (Checklist(text) is { } checklist)
         {
             return checklist;
+        }
+
+        if (BriefingPattern().IsMatch(text))
+        {
+            return new VoiceIntent(IntentKind.Briefing);
         }
 
         if (Query(text) is { } query)
@@ -551,6 +559,10 @@ public static partial class VoiceIntents
 
     [GeneratedRegex(@"^(?:say again|bitte say again)$")]
     private static partial Regex SayAgainPattern();
+
+    // "Briefing", "Start briefing", "Let's do the briefing", "Briefing starten", "Lass uns briefen" (Höflichkeit und Artikel sind schon weg)
+    [GeneratedRegex(@"^(?:(?:start|begin|starte|beginne|lets|let s|let us|lass uns|time for|zeit für|zeit fuer)(?: do| the| den| das| zum)? )?(?:crew |departure |abflug )?(?:briefing|briefen)(?: (?:time|starten|beginnen|machen|anfangen))?$")]
+    private static partial Regex BriefingPattern();
 
     [GeneratedRegex(@"^(?:(?:stop|cancel|abort|end|beenden|abbrechen|stopp) checklist|checklist (?:stop|cancel|abort|end|beenden|abbrechen|stopp))$")]
     private static partial Regex ChecklistStopPattern();

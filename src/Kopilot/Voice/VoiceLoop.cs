@@ -4,6 +4,7 @@ using Kopilot.Input;
 using Kopilot.Localization;
 using Kopilot.Monitoring;
 using Kopilot.Sim;
+using Kopilot.Smalltalk;
 using Kopilot.Speech;
 using Kopilot.Traffic;
 using Microsoft.Extensions.Options;
@@ -14,8 +15,11 @@ namespace Kopilot.Voice;
 /// Lokale Sprachschleife: Mikrofon dauerhaft offen, Silero VAD schneidet Sätze aus, Whisper schreibt sie ab,
 /// der Router schickt Funksprüche ans ATC-Modul und alles andere an die Kopilot-Befehle; Kopilot antwortet über die
 /// gemeinsame Sprachausgabe. Halbduplex: Solange Kopilot spricht, ist das Mikrofon stumm.
-/// Kein Sprachmodell, kein Push-to-Talk, alles lokal. Läuft nur in der Tray-Instanz (HTTP-Modus).
-/// Änderungen im Dashboard (an/aus, Mikrofon) starten die Schleife neu, ohne Kopilot neu zu starten.
+/// Kein Push-to-Talk, alles lokal – nur der optionale Smalltalk geht an ein Sprachmodell (<see cref="SmalltalkService"/>): Sätze,
+/// die weder Befehl noch Abfrage noch Funkspruch sind. Dessen Antwort wird nur gesprochen (ganz unten in der Warteschlange), nie
+/// ausgeführt. Der First Officer (Name und Stimme pro Flug) stellt sich beim Briefing vor und hört auf seinen Namen.
+/// Läuft nur in der Tray-Instanz (HTTP-Modus). Änderungen im Dashboard (an/aus, Mikrofon) starten die Schleife neu, ohne Kopilot
+/// neu zu starten.
 /// </summary>
 public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
 {
@@ -35,6 +39,11 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
     private readonly ILogger<VoiceLoop> _log;
     private readonly VoiceSettingsStore _store;
     private readonly VoiceDialog _dialog;
+    private readonly SmalltalkService _smalltalk;
+    private readonly TtsEngineRegistry _engines;
+    private readonly SimBriefService _simBrief;
+    private readonly IVoiceFlightStateSource _state;
+    private readonly FirstOfficerRoster _roster;
     private readonly VoiceDiagnostics _diag = new();
     private readonly object _statusLock = new();
     private readonly object _runLock = new();
@@ -57,6 +66,14 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
     private bool _outputConfigured;
     private int _tickQueued;
     private int _queuedUtterances;
+    private VoiceOutputOptions _outputOptions = VoiceOutputOptions.Default;
+    private string? _appliedPersonaVoice;
+    private IReadOnlyCollection<string>? _installedVoices;
+    private CancellationToken _runToken;
+    private CancellationToken _stoppingToken;
+    private CancellationTokenSource? _chatCts;
+    private long _chatSeq;
+    private int _ticks;
 
     public VoiceLoop(
         IOptions<KopilotOptions> options,
@@ -68,7 +85,9 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         AlertBus bus,
         SimBriefService simBrief,
         TrafficService traffic,
-        ILogger<VoiceLoop> log)
+        ILogger<VoiceLoop> log,
+        SmalltalkService smalltalk,
+        TtsEngineRegistry? engines = null)
     {
         _options = options.Value;
         _output = output;
@@ -79,8 +98,18 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         _bus = bus;
         _log = log;
         _store = new VoiceSettingsStore(_options.ResolveDataDirectory());
-        _dialog = new VoiceDialog(new InputActionGateway(input), new SimVoiceFlightState(sim, monitoring, simBrief, traffic, atc));
+        _state = new SimVoiceFlightState(sim, monitoring, simBrief, traffic, atc);
+        _dialog = new VoiceDialog(new InputActionGateway(input), _state);
         _status = new VoiceStatus { SettingsFile = _store.FilePath, AtcModule = atc.Enabled };
+        _smalltalk = smalltalk;
+        _engines = engines ?? new TtsEngineRegistry([]);
+        _simBrief = simBrief;
+        _roster = new FirstOfficerRoster(new FirstOfficerStore(Path.Combine(_options.ResolveDataDirectory(), FirstOfficerStore.FileName)));
+        _dialog.Briefing = Introduction;
+
+        // Einstellungen (Name, Smalltalk) oder Oberflächensprache geändert: First Officer und Stimme neu prüfen
+        _smalltalk.Changed += () => _events.Writer.TryWrite(new VoiceEvent.SettingsChanged());
+        Loc.LanguageChanged += _ => _events.Writer.TryWrite(new VoiceEvent.SettingsChanged());
     }
 
     /// <summary>Einstellungsdatei (fürs Dashboard).</summary>
@@ -99,6 +128,9 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
             // Checkliste und Quittungen gehören dem Erkennungs-Thread – hier nur Momentaufnahmen lesen
             var checklist = _dialog.Checklists.Active is { } active ? $"{active.Title}: {_dialog.Checklists.Current?.Challenge}" : null;
             var acks = _dialog.Acknowledgments;
+            var persona = s.Enabled ? _roster.Current : null;
+            var config = _smalltalk.Config;
+            var choice = config.Enabled ? SmalltalkChoice(persona) : null;
             return _diag.Apply(
                 s with
                 {
@@ -108,6 +140,19 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
                     Checklist = checklist,
                     AwaitingAcknowledgment = acks?.PendingTexts,
                     MissedAcknowledgment = acks?.EscalatedTexts,
+                    FirstOfficer = persona is null
+                        ? null
+                        : new FirstOfficerStatus(
+                            persona.Name,
+                            persona.GenderText,
+                            persona.Voice,
+                            choice is null ? null : VoiceKey(choice),
+                            persona.Introduced,
+                            persona.FixedName,
+                            persona.FlightKey),
+                    Smalltalk = config.Provider,
+                    SmalltalkLanguage = choice?.Language,
+                    SmalltalkNote = choice is null ? null : SmalltalkNote(choice),
                 },
                 DateTimeOffset.UtcNow);
         }
@@ -144,6 +189,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
     {
         // Auf einem eigenen Thread weiter, damit der Start der anderen Dienste nicht wartet
         await Task.Yield();
+        _stoppingToken = stoppingToken;
 
         var failures = 0;
         while (!stoppingToken.IsCancellationRequested)
@@ -278,16 +324,21 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
             ExtraCallsigns = ExtraCallsigns,
             ExtraStations = settings.Atc.Stations,
             AtcHeardUtc = () => _output.LastAtcSpeechEndUtc,
+            PersonaName = () => _roster.Current?.AddressWord,
+            ChatWords = () => _smalltalk.Config.Enabled ? _smalltalk.Config.UnaddressedMaxWords : null,
         };
 
         IVoiceActivityDetector? vad = null;
         WhisperRecognizer? recognizer = null;
         GlobalHotkey? hotkey = null;
         using var loops = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        _runToken = loops.Token;
         try
         {
             (vad, recognizer) = await LoadModelsAsync(settings, ct);
             hotkey = RegisterHotkey(settings.Hotkeys.Mute);
+            UpdatePersona();
+            PrepareSmalltalkVoice();
 
             var runtime = recognizer.Runtime;
             SetStatus(s => s with { State = "listening", Runtime = runtime, ListeningSinceUtc = DateTimeOffset.UtcNow, Error = null });
@@ -338,6 +389,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         }
         finally
         {
+            CancelChat();
             hotkey?.Dispose();
             recognizer?.Dispose();
             vad?.Dispose();
@@ -350,7 +402,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
 
     private void ApplyOutputSettings(VoiceSettings s)
     {
-        _output.ConfigureVoice(new VoiceOutputOptions
+        _outputOptions = new VoiceOutputOptions
         {
             KopilotVoice = s.Voices.Kopilot.Length > 0 ? s.Voices.Kopilot : null,
             KopilotVolume = s.Voices.KopilotVolume,
@@ -359,7 +411,9 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
             CalloutsEnabled = s.Callouts.Enabled,
             ActiveRules = s.Callouts.Active,
             MutedRules = s.Callouts.Muted,
-        });
+        };
+        _output.ConfigureVoice(WithPersona(_outputOptions));
+        _appliedPersonaVoice = _roster.Current?.Voice;
 
         var taxi = s.Callouts.TaxiSpeed;
         _monitoring.ConfigureTaxiSpeed(taxi.Enabled, taxi.ThresholdKt, taxi.CooldownSec);
@@ -377,6 +431,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         _output.ConfigureVoice(VoiceOutputOptions.Default);
         _monitoring.ConfigureTaxiSpeed(true, _options.Monitoring.TaxiSpeedKt, _options.Monitoring.TaxiSpeedCooldownSec);
         _outputConfigured = false;
+        _appliedPersonaVoice = null;
     }
 
     private void LogSettings(VoiceSettings s, IReadOnlyList<MicrophoneDevice> devices)
@@ -818,6 +873,13 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
                         Interlocked.Decrement(ref _queuedUtterances);
                         await HandleUtteranceAsync(recognizer, u, ct);
                         break;
+                    case VoiceEvent.ChatAnswer answer:
+                        OnChatAnswer(answer);
+                        break;
+                    case VoiceEvent.SettingsChanged _:
+                        UpdatePersona();
+                        PrepareSmalltalkVoice();
+                        break;
                 }
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -922,15 +984,22 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         {
             Speak(outcome.Reply);
         }
+
+        if (outcome.Chat)
+        {
+            StartChat(text);
+        }
     }
 
     private void Speak(VoiceReply reply)
     {
-        var accepted = _output.Say(new SpeechRequest(reply.Text, SpeechPriority.Response)
+        var accepted = _output.Say(new SpeechRequest(reply.Text, reply.Smalltalk ? SpeechPriority.Smalltalk : SpeechPriority.Response)
         {
             Spoken = reply.Spoken,
             Volume = _settings.Voices.KopilotVolume,
-            Source = "kopilot",
+            Source = reply.Smalltalk ? "kopilot:smalltalk" : "kopilot",
+            Plain = reply.Smalltalk,
+            Voice = reply.Voice,
 
             // Erst wenn der Readback ganz gesprochen ist, zählt "Confirm" (Rückmeldung kommt auf dem Sprach-Thread)
             OnSpoken = end => _events.Writer.TryWrite(new VoiceEvent.ReplySpoken(reply, end)),
@@ -974,9 +1043,16 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         Apply(acks.Observe(e));
     }
 
-    /// <summary>Sekundentakt: Readbacks verfallen lassen, Challenge wiederholen, Quittungen nachhalten.</summary>
+    /// <summary>Sekundentakt: Readbacks verfallen lassen, Challenge wiederholen, Quittungen nachhalten, First Officer prüfen.</summary>
     private void OnTick()
     {
+        if (++_ticks % 5 == 0)
+        {
+            // Neuer SimBrief-Plan = neuer Flug = neuer First Officer; am Gate stellt er sich vor
+            UpdatePersona();
+            MaybeIntroduce();
+        }
+
         if (_dialog.Tick() is { } repeat)
         {
             _log.LogInformation(Loc.Log("log.voice.checklist.repeat"), repeat.Text);
@@ -1060,6 +1136,249 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         return list;
     }
 
+    // ------------------------------------------------------------------ First Officer und Smalltalk
+
+    /// <summary>
+    /// First Officer für den laufenden Flug sicherstellen (neuer Plan → neuer Name und neue Stimme) und seine Stimme an die
+    /// Sprachausgabe geben. Nie die Stimme einer ATC-Station.
+    /// </summary>
+    private void UpdatePersona()
+    {
+        FirstOfficerPersona? persona;
+        bool changed;
+        try
+        {
+            IReadOnlyCollection<string> avoid = _atc.Enabled ? _atc.AssignedVoices() : [];
+            (persona, changed) = _roster.Ensure(
+                FirstOfficerRoster.FlightKeyOf(_simBrief.Current),
+                _smalltalk.FirstOfficer,
+                _settings.Voices.Kopilot.Length > 0 ? _settings.Voices.Kopilot : null,
+                _output.EngineVoiceGender,
+                InstalledVoices(),
+                avoid);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(Loc.Log("log.voice.firstOfficer.failed"), ex.Message);
+            return;
+        }
+
+        if (changed)
+        {
+            _smalltalk.ResetHistory();
+            if (persona is null)
+            {
+                _log.LogInformation(Loc.Log("log.voice.firstOfficer.off"));
+            }
+            else
+            {
+                _log.LogInformation(Loc.Log("log.voice.firstOfficer.assigned"), persona.FlightKey, persona.Name, persona.GenderText, persona.Voice);
+            }
+        }
+
+        if (_outputConfigured && persona?.Voice != _appliedPersonaVoice)
+        {
+            _appliedPersonaVoice = persona?.Voice;
+            _output.ConfigureVoice(WithPersona(_outputOptions));
+        }
+    }
+
+    private VoiceOutputOptions WithPersona(VoiceOutputOptions options) =>
+        _roster.Current is { } persona ? options with { KopilotVoice = persona.Voice } : options;
+
+    private IReadOnlyCollection<string> InstalledVoices() =>
+        _installedVoices ??= KokoroSpeechEngine.ListVoices(Path.Combine(AppContext.BaseDirectory, "voices"));
+
+    /// <summary>Sprache und Stimme des Smalltalks: Oberflächensprache, Geschlecht passend zum First Officer.</summary>
+    private SmalltalkVoiceChoice SmalltalkChoice(FirstOfficerPersona? persona) =>
+        SmalltalkVoices.Choose(Loc.Language, persona?.Gender ?? VoiceGender.Male, persona?.Name ?? "kopilot", _engines.Engines);
+
+    /// <summary>Stimme einer anderen Engine nur, wenn der Smalltalk wirklich in der gewünschten Sprache läuft.</summary>
+    private static string? VoiceKey(SmalltalkVoiceChoice choice) =>
+        choice.FellBack || choice.Language == SmalltalkVoices.English ? null : choice.Voice?.Key;
+
+    /// <summary>Hinweis im Dashboard, wenn der Smalltalk auf Englisch zurückfällt.</summary>
+    private string? SmalltalkNote(SmalltalkVoiceChoice choice)
+    {
+        var language = Loc.Available.FirstOrDefault(l => l.Code == choice.Wanted)?.Name ?? choice.Wanted;
+        return choice.Reason switch
+        {
+            "noVoice" => Loc.T("voice.smalltalk.noVoice", language),
+            "downloading" => Loc.T("voice.smalltalk.voiceLoading", language),
+            "failed" => Loc.T("voice.smalltalk.voiceFailed", language, _engines.Engine(choice.Voice?.Engine)?.Error ?? "?"),
+            _ => null,
+        };
+    }
+
+    /// <summary>Stimme für den Smalltalk in der Oberflächensprache im Hintergrund laden (Piper), wenn sie gebraucht wird.</summary>
+    private void PrepareSmalltalkVoice()
+    {
+        if (!_smalltalk.Config.Enabled)
+        {
+            return;
+        }
+
+        var choice = SmalltalkChoice(_roster.Current);
+        if (choice.Voice is { } voice && choice.Reason == "downloading" && _engines.Engine(voice.Engine) is { } engine
+            && engine.StateOf(voice) == TtsState.Idle)
+        {
+            _log.LogInformation(Loc.Log("log.voice.smalltalk.preparingVoice"), voice.Key, choice.Wanted);
+            _ = engine.PrepareAsync(voice, _stoppingToken);
+        }
+    }
+
+    /// <summary>
+    /// Satz ans Sprachmodell – im Hintergrund, damit die Schleife weiter Callouts, Quittungen und Funk verarbeitet. Die Antwort kommt
+    /// als Ereignis zurück und wird nur gesprochen. Ein neuer Satz ersetzt eine noch offene Frage.
+    /// </summary>
+    private void StartChat(string text)
+    {
+        var persona = _roster.Current;
+        var choice = SmalltalkChoice(persona);
+        PrepareSmalltalkVoice();
+        var question = new SmalltalkQuestion(text, choice.Language, persona?.Name, ReadContext());
+        _log.LogInformation(Loc.Log("log.voice.smalltalk.asked"), SmalltalkProviders.DisplayName(_smalltalk.Config.Provider), choice.Language);
+        CancelChat();
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(_runToken);
+        _chatCts = cts;
+        var seq = ++_chatSeq;
+        SetStatus(s => s with { SmalltalkPending = true });
+        _ = Task.Run(
+            async () =>
+            {
+                try
+                {
+                    var answer = await _smalltalk.AskAsync(question, cts.Token);
+                    _events.Writer.TryWrite(new VoiceEvent.ChatAnswer(seq, answer, choice));
+                }
+                catch (OperationCanceledException)
+                {
+                    // Ersetzt oder Schleife beendet
+                }
+                catch (Exception ex)
+                {
+                    _events.Writer.TryWrite(new VoiceEvent.ChatAnswer(seq, new SmalltalkAnswer(false, SmalltalkService.Unavailable(question.Language), ex.Message), choice));
+                }
+                finally
+                {
+                    cts.Dispose();
+                }
+            },
+            CancellationToken.None);
+    }
+
+    private void CancelChat()
+    {
+        try
+        {
+            _chatCts?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Frage war schon beantwortet
+        }
+
+        _chatCts = null;
+    }
+
+    /// <summary>
+    /// Antwort des Sprachmodells: sprechen (ganz unten in der Warteschlange, jede andere Ansage unterbricht sie) – aber nicht, wenn
+    /// inzwischen etwas Wichtigeres läuft (Readback, Checkliste, stumm). Nie als Befehl ausgewertet.
+    /// </summary>
+    private void OnChatAnswer(VoiceEvent.ChatAnswer e)
+    {
+        if (e.Seq != _chatSeq)
+        {
+            return;
+        }
+
+        SetStatus(s => s with { SmalltalkPending = false });
+        if (_dialog.Muted || _dialog.Checklists.Active is not null || _dialog.Pending is not null)
+        {
+            _log.LogInformation(Loc.Log("log.voice.smalltalk.dropped"), e.Answer.Text);
+            return;
+        }
+
+        var reply = _dialog.RememberChat(VoiceReply.Chat(e.Answer.Text, e.Choice.Language, VoiceKey(e.Choice)));
+        SetStatus(s => s with { LastSmalltalk = reply.Text, LastReply = reply.Text });
+        _log.LogInformation(
+            Loc.Log("log.voice.smalltalk.reply"),
+            e.Choice.Language,
+            e.Answer.Ok ? Loc.En("voice.word.yes") : Loc.En("voice.word.no"),
+            e.Answer.ElapsedMs ?? 0,
+            reply.Text);
+        Speak(reply);
+    }
+
+    /// <summary>Lesender Kontext fürs Sprachmodell: Flugphase, Position, Route, Sprit, Wetter.</summary>
+    private SmalltalkContext ReadContext()
+    {
+        try
+        {
+            var state = _state.Read();
+            var connected = _sim.Connection.IsConnected;
+            return SmalltalkContext.From(
+                state,
+                _monitoring.Phase,
+                _simBrief.Current,
+                connected ? _sim.Num("lat") : null,
+                connected ? _sim.Num("lon") : null,
+                connected ? _sim.Str("title") : null,
+                connected ? _sim.Num("zuluTimeSec") : null);
+        }
+        catch (Exception ex)
+        {
+            _log.LogDebug(Loc.Log("log.voice.smalltalk.contextFailed"), ex.Message);
+            return SmalltalkContext.Empty;
+        }
+    }
+
+    /// <summary>"Briefing" (oder am Gate von selbst): Vorstellung des First Officers – im Smalltalk-Modus in dessen Sprache.</summary>
+    private VoiceReply? Introduction()
+    {
+        if (_roster.Current is not { } persona)
+        {
+            return null;
+        }
+
+        var choice = _smalltalk.Config.Enabled ? SmalltalkChoice(persona) : null;
+        var language = choice?.Language ?? SmalltalkVoices.English;
+        _roster.MarkIntroduced();
+        _log.LogInformation(Loc.Log("log.voice.firstOfficer.introduced"), persona.Name, language);
+        return VoiceReply.Chat(FirstOfficerCasting.Introduction(persona.Name, language), language, choice is null ? null : VoiceKey(choice));
+    }
+
+    /// <summary>
+    /// Vorstellung von selbst, einmal pro Flug: am Boden am Startflughafen (höchstens 5 NM), Sim läuft, nichts anderes offen.
+    /// Nach der Landung am Ziel nie.
+    /// </summary>
+    private void MaybeIntroduce()
+    {
+        if (_roster.Current is not { Introduced: false } || !_smalltalk.FirstOfficer.Introduce || _dialog.Muted
+            || _dialog.Checklists.Active is not null || _dialog.Pending is not null
+            || !_output.Available || _output.IsSpeaking || _output.PilotSpeaking)
+        {
+            return;
+        }
+
+        if (!_sim.Connection.IsConnected || _monitoring.LastSnapshot is not { Paused: false } || _monitoring.Phase != "ground")
+        {
+            return;
+        }
+
+        if (_simBrief.Current is not { } ofp || ofp.Origin.Lat is not { } originLat || ofp.Origin.Lon is not { } originLon
+            || _sim.Num("lat") is not { } lat || _sim.Num("lon") is not { } lon
+            || RouteMath.DistanceNm(lat, lon, originLat, originLon) > 5)
+        {
+            return;
+        }
+
+        if (Introduction() is { } introduction)
+        {
+            Speak(_dialog.RememberChat(introduction));
+        }
+    }
+
     // ------------------------------------------------------------------ Hilfen
 
     private void SetStatus(Func<VoiceStatus, VoiceStatus> change)
@@ -1118,5 +1437,11 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         public sealed record ReplySpoken(VoiceReply Reply, DateTimeOffset EndUtc) : VoiceEvent;
 
         public sealed record Tick : VoiceEvent;
+
+        /// <summary>Antwort des Sprachmodells auf Frage Nummer <paramref name="Seq"/> (ältere werden verworfen).</summary>
+        public sealed record ChatAnswer(long Seq, SmalltalkAnswer Answer, SmalltalkVoiceChoice Choice) : VoiceEvent;
+
+        /// <summary>Einstellungen des First Officers/Smalltalks oder Oberflächensprache geändert.</summary>
+        public sealed record SettingsChanged : VoiceEvent;
     }
 }

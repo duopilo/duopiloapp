@@ -5,6 +5,7 @@ using Kopilot.Input;
 using Kopilot.Localization;
 using Kopilot.Monitoring;
 using Kopilot.Remote;
+using Kopilot.Smalltalk;
 using Kopilot.Voice;
 using Microsoft.Extensions.Options;
 
@@ -45,7 +46,7 @@ public sealed class SettingsService
     private static readonly string[] OverridableKeys =
     [
         Keys.SimBriefUsername, Keys.SimBriefPilotId, Keys.PublicUrl, Keys.ConsentPassword, Keys.BearerToken, Keys.Monitoring, Keys.Atc,
-        Keys.Language,
+        Keys.Language, Keys.SmalltalkProvider, Keys.SmalltalkModel, Keys.SmalltalkUrl, Keys.SmalltalkApiKey, Keys.FirstOfficerName,
     ];
 
     private static readonly HttpClient TunnelHttp = new() { Timeout = TimeSpan.FromSeconds(10) };
@@ -93,6 +94,16 @@ public sealed class SettingsService
         public const string Monitoring = "Monitoring:Enabled";
         public const string Atc = "Atc:Enabled";
         public const string Language = "Language";
+        public const string SmalltalkProvider = "Smalltalk:Provider";
+        public const string SmalltalkModel = "Smalltalk:Model";
+        public const string SmalltalkUrl = "Smalltalk:Url";
+        public const string SmalltalkApiKey = "Smalltalk:ApiKey";
+        public const string SmalltalkMaxReplyWords = "Smalltalk:MaxReplyWords";
+        public const string SmalltalkRequestsPerMinute = "Smalltalk:RequestsPerMinute";
+        public const string FirstOfficerEnabled = "FirstOfficer:Enabled";
+        public const string FirstOfficerName = "FirstOfficer:Name";
+        public const string FirstOfficerGender = "FirstOfficer:Gender";
+        public const string FirstOfficerIntroduce = "FirstOfficer:Introduce";
     }
 
     /// <summary>Was erst nach einem Neustart gilt (Anzeigenamen). Leer = alles ist wirksam.</summary>
@@ -165,6 +176,7 @@ public sealed class SettingsService
                     : new { available = true, enabled = voice.Status.Enabled, state = voice.Status.State, file = voice.Store.FilePath },
             },
             reports = new { repository = o.Reports.GitHubRepository },
+            smalltalk = SmalltalkView(),
             language = new
             {
                 current = Loc.Language,
@@ -420,6 +432,230 @@ public sealed class SettingsService
         return result;
     }
 
+    /// <summary>
+    /// First Officer und Smalltalk speichern und sofort übernehmen. null = unverändert; der Schlüssel nur, wenn einer eingegeben wurde
+    /// (er geht nie zurück an den Browser und nie ins Log).
+    /// </summary>
+    public SettingsResult SaveSmalltalk(SmalltalkChange change)
+    {
+        if (_services.GetService<SmalltalkService>() is not { } service)
+        {
+            return SettingsResult.Fail(Loc.T("settings.smalltalk.unavailable"));
+        }
+
+        var values = new List<SettingValue>();
+        var current = service.Config;
+        var options = new SmalltalkOptions
+        {
+            Provider = current.Provider,
+            Model = current.Model,
+            Url = current.Url,
+            ApiKey = current.ApiKey,
+            MaxReplyWords = current.MaxReplyWords,
+            RequestsPerMinute = current.RequestsPerMinute,
+            TimeoutSec = current.TimeoutSec,
+            UnaddressedMaxWords = current.UnaddressedMaxWords,
+        };
+
+        if (change.Provider is not null)
+        {
+            var provider = SmalltalkProviders.Normalize(change.Provider);
+            if (provider == SmalltalkProviders.Off && !string.Equals(change.Provider.Trim(), SmalltalkProviders.Off, StringComparison.OrdinalIgnoreCase))
+            {
+                return SettingsResult.Fail(Loc.T("settings.smalltalk.unknownProvider", change.Provider, string.Join(", ", SmalltalkProviders.All)));
+            }
+
+            options.Provider = provider;
+            values.Add(SettingValue.Of(KeyPath(Keys.SmalltalkProvider), provider));
+        }
+
+        if (change.Model is not null)
+        {
+            var model = change.Model.Trim();
+            if (model.Length > 100 || model.Any(char.IsControl) || model.Any(char.IsWhiteSpace))
+            {
+                return SettingsResult.Fail(Loc.T("settings.smalltalk.modelInvalid"));
+            }
+
+            options.Model = model;
+            values.Add(SettingValue.Of(KeyPath(Keys.SmalltalkModel), model));
+        }
+
+        if (change.Url is not null)
+        {
+            var url = SmalltalkConfig.NormalizeUrl(change.Url);
+            if (url.Length > 0 && !SmalltalkConfig.ValidUrl(url))
+            {
+                return SettingsResult.Fail(Loc.T("settings.smalltalk.urlInvalid"));
+            }
+
+            options.Url = url;
+            values.Add(SettingValue.Of(KeyPath(Keys.SmalltalkUrl), url));
+        }
+
+        if (change.RemoveApiKey)
+        {
+            options.ApiKey = "";
+            values.Add(SettingValue.Of(KeyPath(Keys.SmalltalkApiKey), ""));
+        }
+        else if (!string.IsNullOrWhiteSpace(change.ApiKey))
+        {
+            var key = change.ApiKey.Trim();
+            if (key.Length > 400 || key.Any(c => char.IsControl(c) || char.IsWhiteSpace(c)))
+            {
+                return SettingsResult.Fail(Loc.T("settings.smalltalk.keyInvalid"));
+            }
+
+            options.ApiKey = key;
+            values.Add(SettingValue.Of(KeyPath(Keys.SmalltalkApiKey), key));
+        }
+
+        if (change.MaxReplyWords is { } words)
+        {
+            if (words is < 10 or > 150)
+            {
+                return SettingsResult.Fail(Loc.T("settings.smalltalk.wordsRange", 10, 150));
+            }
+
+            options.MaxReplyWords = words;
+            values.Add(new SettingValue(KeyPath(Keys.SmalltalkMaxReplyWords), words.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+        }
+
+        if (change.RequestsPerMinute is { } rpm)
+        {
+            if (rpm is < 1 or > 30)
+            {
+                return SettingsResult.Fail(Loc.T("settings.smalltalk.rpmRange", 1, 30));
+            }
+
+            options.RequestsPerMinute = rpm;
+            values.Add(new SettingValue(KeyPath(Keys.SmalltalkRequestsPerMinute), rpm.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+        }
+
+        var fo = service.FirstOfficer;
+        var firstOfficer = new FirstOfficerOptions { Enabled = fo.Enabled, Name = fo.Name, Gender = fo.Gender, Introduce = fo.Introduce };
+        if (change.FirstOfficerEnabled is { } enabled)
+        {
+            firstOfficer.Enabled = enabled;
+            values.Add(SettingValue.Of(KeyPath(Keys.FirstOfficerEnabled), enabled));
+        }
+
+        if (change.FirstOfficerName is not null)
+        {
+            var raw = change.FirstOfficerName.Trim();
+            var name = FirstOfficerConfig.CleanName(raw);
+            if (raw.Length > 0 && (name.Length == 0 || FirstOfficerNames.AddressWord(name) is null))
+            {
+                return SettingsResult.Fail(Loc.T("settings.smalltalk.nameInvalid"));
+            }
+
+            firstOfficer.Name = name;
+            values.Add(SettingValue.Of(KeyPath(Keys.FirstOfficerName), name));
+        }
+
+        if (change.FirstOfficerGender is not null)
+        {
+            var gender = FirstOfficerConfig.NormalizeGender(change.FirstOfficerGender);
+            firstOfficer.Gender = gender;
+            values.Add(SettingValue.Of(KeyPath(Keys.FirstOfficerGender), gender));
+        }
+
+        if (change.Introduce is { } introduce)
+        {
+            firstOfficer.Introduce = introduce;
+            values.Add(SettingValue.Of(KeyPath(Keys.FirstOfficerIntroduce), introduce));
+        }
+
+        if (values.Count == 0)
+        {
+            return new SettingsResult(true, Loc.T("settings.nothingChanged"));
+        }
+
+        if (!Write(values, out var error))
+        {
+            return SettingsResult.Fail(error);
+        }
+
+        var config = SmalltalkConfig.From(options);
+        service.Update(config, FirstOfficerConfig.From(firstOfficer));
+        _log.LogInformation(Loc.Log("log.settings.smalltalkChanged"), config.ToString(), firstOfficer.Enabled, firstOfficer.Name.Length > 0 ? firstOfficer.Name : "random");
+        var saved = config.Enabled ? Loc.T("settings.smalltalk.saved", SmalltalkProviders.DisplayName(config.Provider)) : Loc.T("settings.smalltalk.savedOff");
+        return new SettingsResult(true, config.Problem() is { } problem ? $"{saved} {problem}" : saved);
+    }
+
+    /// <summary>Probefrage an das Sprachmodell (Knopf „Testen“) – zählt wie jede Anfrage gegen die Grenze pro Minute.</summary>
+    public async Task<object> TestSmalltalkAsync(CancellationToken ct)
+    {
+        if (_services.GetService<SmalltalkService>() is not { } service)
+        {
+            return new { ok = false, error = Loc.T("settings.smalltalk.unavailable") };
+        }
+
+        if (!service.Config.Enabled)
+        {
+            return new { ok = false, error = Loc.T("smalltalk.config.off") };
+        }
+
+        var name = _services.GetService<VoiceLoop>()?.Status.FirstOfficer?.Name ?? service.FirstOfficer.Name;
+        var question = new SmalltalkQuestion("Please say hello to the captain in one short sentence.", "en", name.Length > 0 ? name : null, SmalltalkContext.Empty);
+        var answer = await service.AskAsync(question, ct);
+        service.ResetHistory();
+        return answer.Ok
+            ? new { ok = true, text = answer.Text, ms = answer.ElapsedMs, error = (string?)null }
+            : new { ok = false, text = answer.Text, ms = answer.ElapsedMs, error = answer.Reason };
+    }
+
+    /// <summary>Smalltalk und First Officer für die Einstellungsseite – der Schlüssel nur als „gesetzt / nicht gesetzt“.</summary>
+    private object SmalltalkView()
+    {
+        if (_services.GetService<SmalltalkService>() is not { } service)
+        {
+            return new { available = false };
+        }
+
+        var c = service.Config;
+        var fo = service.FirstOfficer;
+        var st = service.Status;
+        var voice = _services.GetService<VoiceLoop>()?.Status;
+        return new
+        {
+            available = true,
+            provider = c.Provider,
+            providers = SmalltalkProviders.All,
+            providerName = SmalltalkProviders.DisplayName(c.Provider),
+            model = c.Model,
+            effectiveModel = c.EffectiveModel,
+            defaultModel = SmalltalkConfig.DefaultClaudeModel,
+            url = c.Url,
+            host = c.Enabled ? c.Host : null,
+            apiKey = new { set = c.HasApiKey },
+            maxReplyWords = c.MaxReplyWords,
+            requestsPerMinute = c.RequestsPerMinute,
+            timeoutSec = c.TimeoutSec,
+            problem = c.Enabled ? c.Problem() : null,
+            status = new
+            {
+                requestsLastMinute = st.RequestsLastMinute,
+                lastUtc = st.LastUtc,
+                lastOk = st.LastOk,
+                lastError = st.LastError,
+                lastMs = st.LastMs,
+            },
+            note = voice?.SmalltalkNote,
+            language = voice?.SmalltalkLanguage,
+            firstOfficer = new
+            {
+                enabled = fo.Enabled,
+                name = fo.Name,
+                gender = fo.Gender,
+                introduce = fo.Introduce,
+                current = voice?.FirstOfficer is { } p
+                    ? new { name = p.Name, gender = p.Gender, voice = p.Voice, smalltalkVoice = p.SmalltalkVoice, introduced = p.Introduced }
+                    : null,
+            },
+        };
+    }
+
     private static string ModuleState(string label, bool on) => on ? Loc.T("settings.modules.on", label) : Loc.T("settings.modules.off", label);
 
     private static object TunnelResult(string state, string message) => new { state, message, checkedUtc = DateTimeOffset.UtcNow };
@@ -478,3 +714,18 @@ public sealed class SettingsService
 
     private static string NormalizeUrl(string url) => url.Trim().TrimEnd('/');
 }
+
+/// <summary>Änderung auf der Einstellungsseite: First Officer und Smalltalk. null = unverändert.</summary>
+/// <param name="ApiKey">Neuer Schlüssel; null oder "" = unverändert.</param>
+public sealed record SmalltalkChange(
+    string? Provider = null,
+    string? Model = null,
+    string? Url = null,
+    string? ApiKey = null,
+    bool RemoveApiKey = false,
+    int? MaxReplyWords = null,
+    int? RequestsPerMinute = null,
+    bool? FirstOfficerEnabled = null,
+    string? FirstOfficerName = null,
+    string? FirstOfficerGender = null,
+    bool? Introduce = null);
