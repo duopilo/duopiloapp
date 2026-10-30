@@ -464,7 +464,7 @@ After publishing, the folder `C:\Tools\Kopilot` must contain `Kopilot.exe`, `Mic
 
 ## Release and installer
 
-A tag `v…` starts the "Release" workflow (`.github/workflows/release.yml`): self-contained build for win-x64 with the version from the tag, installer (Inno Setup, `installer/`) and ZIP, both attached to a GitHub release with a changelog from the commits since the last tag. Tags with a suffix (`v1.0.0-beta.1`) become pre-releases.
+A tag `v…` starts the "Release" workflow (`.github/workflows/release.yml`): self-contained build for win-x64 with the version from the tag, installer (Inno Setup, `installer/`) and ZIP, both attached to a GitHub release with a changelog from the commits since the last tag. The release is created as a **draft** (not public); publish it deliberately with "Publish release" on GitHub or `gh release edit v0.9.1 --draft=false`. Tags with a suffix (`v1.0.0-beta.1`) become pre-releases.
 
 ```powershell
 git switch main; git pull
