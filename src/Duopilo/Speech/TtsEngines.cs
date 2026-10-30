@@ -50,7 +50,7 @@ public sealed record TtsVoice(string Engine, string Id, string Language, VoiceGe
 /// </summary>
 public interface ITtsEngine
 {
-    /// <summary>Kennung, z. B. "piper" – Präfix von <see cref="TtsVoice.Key"/>.</summary>
+    /// <summary>Kennung, z. B. "supertonic" oder "piper" – Präfix von <see cref="TtsVoice.Key"/>.</summary>
     string Id { get; }
 
     /// <summary>Alle Stimmen, die die Engine laden kann (auch noch nicht heruntergeladene).</summary>
@@ -69,7 +69,7 @@ public interface ITtsEngine
     Task<SpeechClip> SynthesizeAsync(string text, TtsVoice voice, double rate, CancellationToken ct);
 }
 
-/// <summary>Alle Engines für freien Text in anderen Sprachen als Englisch (in der Tray-Instanz: Piper).</summary>
+/// <summary>Alle Engines für freien Text in anderen Sprachen als Englisch (in der Tray-Instanz: Supertonic, dann Piper).</summary>
 public sealed class TtsEngineRegistry(IEnumerable<ITtsEngine> engines)
 {
     public IReadOnlyList<ITtsEngine> Engines { get; } = engines.ToList();
@@ -95,15 +95,20 @@ public sealed class TtsEngineRegistry(IEnumerable<ITtsEngine> engines)
 /// <param name="Voice">Stimme einer anderen Engine (null = die Kokoro-Stimme von Duopilo, für Englisch).</param>
 /// <param name="Wanted">Gewünschte Sprache (Oberflächensprache) – weicht von <paramref name="Language"/> ab, wenn es auf Englisch zurückfällt.</param>
 /// <param name="Reason">Warum Englisch statt der gewünschten Sprache: "noVoice", "downloading", "failed" (null = alles wie gewünscht).</param>
-public sealed record SmalltalkVoiceChoice(string Language, TtsVoice? Voice, string Wanted, string? Reason = null)
+/// <param name="Prepare">
+/// Bevorzugte Stimme, die noch geladen werden muss, während eine andere (Rückfall, z. B. Piper) schon spricht. null = nichts zu laden
+/// außer ggf. <paramref name="Voice"/> selbst (bei "downloading").
+/// </param>
+public sealed record SmalltalkVoiceChoice(string Language, TtsVoice? Voice, string Wanted, string? Reason = null, TtsVoice? Prepare = null)
 {
     public bool FellBack => Reason is not null;
 }
 
 /// <summary>
 /// Sprache und Stimme für den Smalltalk: die Oberflächensprache (Prompt K), Englisch mit der Kokoro-Stimme von Duopilo, andere
-/// Sprachen mit einer lokalen Engine (Piper) – Geschlecht passend zum First Officer. Gibt es keine Stimme für die Sprache oder
-/// ist sie noch nicht geladen, Englisch (Hinweis im Dashboard).
+/// Sprachen mit einer lokalen Engine – Geschlecht passend zum First Officer. Engines in Reihenfolge der Vorliebe (Supertonic, dann
+/// Piper): Die erste, die nicht gescheitert ist, ist die gewünschte. Ist sie noch nicht geladen, spricht eine andere, die schon
+/// bereit ist (und die gewünschte lädt im Hintergrund); sonst Englisch (Hinweis im Dashboard), ebenso ohne Stimme für die Sprache.
 /// </summary>
 public static class SmalltalkVoices
 {
@@ -117,33 +122,41 @@ public static class SmalltalkVoices
             return new SmalltalkVoiceChoice(English, null, wanted);
         }
 
-        // Gleiches Geschlecht zuerst; pro Flug (seed) fest, aber zufällig unter mehreren passenden Stimmen
-        ITtsEngine? engine = null;
-        TtsVoice? voice = null;
+        // Je Engine eine Stimme gleichen Geschlechts; pro Flug (seed) fest, aber zufällig unter mehreren passenden
+        var options = new List<(TtsVoice Voice, TtsState State)>();
         foreach (var e in engines)
         {
             var candidates = e.Voices.Where(v => v.Language == wanted && v.Gender == gender).ToList();
-            if (candidates.Count == 0)
+            if (candidates.Count > 0)
             {
-                continue;
+                var voice = candidates[Duopilo.Atc.AtcVoiceAssigner.StableHash(seed) % candidates.Count];
+                options.Add((voice, e.StateOf(voice)));
             }
-
-            engine = e;
-            voice = candidates[Duopilo.Atc.AtcVoiceAssigner.StableHash(seed) % candidates.Count];
-            break;
         }
 
-        if (engine is null || voice is null)
+        if (options.Count == 0)
         {
             return new SmalltalkVoiceChoice(English, null, wanted, "noVoice");
         }
 
-        return engine.StateOf(voice) switch
+        // Gewünscht: die erste Engine, die nicht gescheitert ist
+        var preferred = options.FindIndex(o => o.State != TtsState.Failed);
+        if (preferred < 0)
         {
-            TtsState.Ready => new SmalltalkVoiceChoice(wanted, voice, wanted),
-            TtsState.Failed => new SmalltalkVoiceChoice(English, voice, wanted, "failed"),
-            _ => new SmalltalkVoiceChoice(English, voice, wanted, "downloading"),
-        };
+            return new SmalltalkVoiceChoice(English, options[0].Voice, wanted, "failed");
+        }
+
+        var (wish, state) = options[preferred];
+        if (state == TtsState.Ready)
+        {
+            return new SmalltalkVoiceChoice(wanted, wish, wanted);
+        }
+
+        // Noch nicht geladen: eine andere Stimme, die schon bereit ist, spricht solange
+        var ready = options.FindIndex(preferred + 1, o => o.State == TtsState.Ready);
+        return ready >= 0
+            ? new SmalltalkVoiceChoice(wanted, options[ready].Voice, wanted, Prepare: wish)
+            : new SmalltalkVoiceChoice(English, wish, wanted, "downloading");
     }
 
     /// <summary>Englischer Name einer Sprache für das Sprachmodell ("de" → "German").</summary>

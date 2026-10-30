@@ -1201,6 +1201,12 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
     private string? SmalltalkNote(SmalltalkVoiceChoice choice)
     {
         var language = Loc.Available.FirstOrDefault(l => l.Code == choice.Wanted)?.Name ?? choice.Wanted;
+        if (choice.Prepare is not null && !choice.FellBack)
+        {
+            // Bevorzugte Stimme lädt noch, solange spricht der Rückfall in der richtigen Sprache
+            return Loc.T("voice.smalltalk.betterVoiceLoading", language);
+        }
+
         return choice.Reason switch
         {
             "noVoice" => Loc.T("voice.smalltalk.noVoice", language),
@@ -1210,7 +1216,10 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         };
     }
 
-    /// <summary>Stimme für den Smalltalk in der Oberflächensprache im Hintergrund laden (Piper), wenn sie gebraucht wird.</summary>
+    /// <summary>
+    /// Stimme für den Smalltalk in der Oberflächensprache im Hintergrund laden (Supertonic, sonst Piper), wenn sie gebraucht wird –
+    /// auch, wenn solange ein Rückfall spricht.
+    /// </summary>
     private void PrepareSmalltalkVoice()
     {
         if (!_smalltalk.Config.Enabled)
@@ -1219,8 +1228,8 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
         }
 
         var choice = SmalltalkChoice(_roster.Current);
-        if (choice.Voice is { } voice && choice.Reason == "downloading" && _engines.Engine(voice.Engine) is { } engine
-            && engine.StateOf(voice) == TtsState.Idle)
+        var target = choice.Prepare ?? (choice.Reason == "downloading" ? choice.Voice : null);
+        if (target is { } voice && _engines.Engine(voice.Engine) is { } engine && engine.StateOf(voice) == TtsState.Idle)
         {
             _log.LogInformation(Loc.Log("log.voice.smalltalk.preparingVoice"), voice.Key, choice.Wanted);
             _ = engine.PrepareAsync(voice, _stoppingToken);
