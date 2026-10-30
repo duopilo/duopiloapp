@@ -99,7 +99,7 @@ With a SimBrief plan, Kopilot compares the fuel on board with the plan during cr
 - **Warning (`FUEL_WARNING`, caution)** – checked continuously, not just at waypoints:
   - the deviation has grown worse by more than `DeviationIncreaseKg` since the last check (suspected leak): "…, deviation increased by 0.6";
   - the predicted landing fuel (planned landing fuel + today's deviation) drops below minimum + buffer or below the minimum: "…, landing fuel 6.8, minimum 6.5" / "…, landing fuel 6.2, below minimum". The minimum is `fuel_min_onboard` at the destination according to the navlog (otherwise alternate plus final reserve). The buffer is at most half of what the plan lands above the minimum – otherwise a tightly planned flight would warn at the very first check. The same warning only comes again once the landing fuel has been 100 kg above the limit in between.
-- **Refueling** via the toolbar or EFB (fuel rises) and drops faster than any fuel burn are not leaks: Kopilot reports them silently ("Refueling detected: 3,530 → 11,090 kg") and restarts the comparison.
+- **Refueling** via the toolbar or EFB (fuel rises) and drops faster than any fuel burn are not leaks: Kopilot reports them silently ("Refuelling detected: 3,530 → 11,090 kg") and restarts the comparison.
 
 Below the route, the dashboard shows the trend of the deviation against plan (x = distance like the route bar, warnings amber, refueling as a cyan line) with the latest checks as a table; `get_progress` returns it as `fuelCheck`. Configurable in `appsettings.Local.json`:
 

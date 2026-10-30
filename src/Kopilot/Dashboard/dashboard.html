@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -430,103 +430,103 @@ dialog.report::backdrop { background: rgba(5, 8, 11, .7); }
     </svg>
     Kopilot <small id="version"></small>
   </div>
-  <div class="link"><span class="lamp" id="lamp"></span><span id="linkText">Verbinde …</span></div>
+  <div class="link"><span class="lamp" id="lamp"></span><span id="linkText" data-i18n="dashboard.header.connecting">Connecting …</span></div>
   <div class="aircraft" id="aircraft"></div>
-  <span class="paused-pill" id="paused" hidden>Sim pausiert</span>
+  <span class="paused-pill" id="paused" data-i18n="dashboard.header.paused" hidden>Sim paused</span>
   <span class="spacer"></span>
   <nav class="hnav" aria-label="Kopilot">
-    <button class="hbtn" id="reportOpen" type="button" title="Hält Position, Höhe, ATC-Station, Frequenzen und die letzten Funksprüche jetzt fest – dann beschreiben und als GitHub-Issue melden">Fehler melden</button>
-    <a class="hbtn" id="settingsLink" href="#einstellungen">Einstellungen</a>
+    <button class="hbtn" id="reportOpen" type="button" title="Captures position, altitude, ATC station, frequencies and the latest transmissions right now – then describe the problem and report it as a GitHub issue" data-i18n-title="dashboard.header.reportTitle" data-i18n="dashboard.report.title">Report a problem</button>
+    <a class="hbtn" id="settingsLink" href="#einstellungen" data-i18n="dashboard.settings.title">Settings</a>
   </nav>
   <div class="attention">
-    <button class="ag warn" id="agWarn" type="button" title="Master Warning – Klick quittiert das Blinken">MASTER<br>WARN</button>
-    <button class="ag caut" id="agCaut" type="button" title="Master Caution – Klick quittiert das Blinken">MASTER<br>CAUT</button>
+    <button class="ag warn" id="agWarn" type="button" title="Master Warning – click to stop the flashing" data-i18n-title="dashboard.header.masterWarnTitle">MASTER<br>WARN</button>
+    <button class="ag caut" id="agCaut" type="button" title="Master Caution – click to stop the flashing" data-i18n-title="dashboard.header.masterCautTitle">MASTER<br>CAUT</button>
   </div>
-  <label class="brt">Helligkeit <input type="range" id="brt" min="35" max="100" step="5" value="100"></label>
+  <label class="brt"><span data-i18n="dashboard.header.brightness">Brightness</span> <input type="range" id="brt" min="35" max="100" step="5" value="100"></label>
 </header>
 
 <div class="banner" id="banner" hidden></div>
 
 <main>
-  <section class="du fma" aria-label="Flugmodus-Anzeige">
+  <section class="du fma" aria-label="Flight mode annunciator" data-i18n-aria-label="dashboard.fma.ariaLabel">
     <div class="fma-row">
-      <div class="fma-col"><div class="act" id="fmaThrust"></div><div class="arm" id="fmaAthrArm"></div><div class="lbl">Schub</div></div>
-      <div class="fma-col"><div class="act" id="fmaVert"></div><div class="arm" id="fmaVertArm"></div><div class="lbl">Vertikal</div></div>
-      <div class="fma-col"><div class="act" id="fmaLat"></div><div class="arm" id="fmaLatArm"></div><div class="lbl">Lateral</div></div>
-      <div class="fma-col ap"><div class="act" id="fmaAp"></div><div class="arm" id="fmaFd"></div><div class="lbl">Autopilot</div></div>
+      <div class="fma-col"><div class="act" id="fmaThrust"></div><div class="arm" id="fmaAthrArm"></div><div class="lbl" data-i18n="dashboard.fma.thrust">Thrust</div></div>
+      <div class="fma-col"><div class="act" id="fmaVert"></div><div class="arm" id="fmaVertArm"></div><div class="lbl" data-i18n="dashboard.fma.vertical">Vertical</div></div>
+      <div class="fma-col"><div class="act" id="fmaLat"></div><div class="arm" id="fmaLatArm"></div><div class="lbl" data-i18n="dashboard.fma.lateral">Lateral</div></div>
+      <div class="fma-col ap"><div class="act" id="fmaAp"></div><div class="arm" id="fmaFd"></div><div class="lbl" data-i18n="dashboard.fma.autopilot">Autopilot</div></div>
     </div>
     <div class="fma-note" id="fmaNote" hidden></div>
     <details class="fma-history" id="fmaHistory">
-      <summary>FMA-Verlauf</summary>
+      <summary data-i18n="dashboard.fma.history">FMA history</summary>
       <ol id="fmaLog"></ol>
     </details>
   </section>
 
-  <section class="du pfd" aria-label="Flugdaten">
-    <h2>Flugdaten</h2>
+  <section class="du pfd" aria-label="Flight data" data-i18n-aria-label="dashboard.pfd.title">
+    <h2 data-i18n="dashboard.pfd.title">Flight data</h2>
     <div class="vals">
       <div class="val"><div class="lbl">IAS</div><div><span class="big" id="ias">–</span><span class="unit">kt</span></div><div class="sub" id="iasSub"></div></div>
-      <div class="val"><div class="lbl">Höhe</div><div><span class="big" id="alt">–</span><span class="unit">ft</span></div><div class="sub" id="altSub"></div></div>
+      <div class="val"><div class="lbl" data-i18n="dashboard.pfd.altitude">Altitude</div><div><span class="big" id="alt">–</span><span class="unit">ft</span></div><div class="sub" id="altSub"></div></div>
       <div class="val"><div class="lbl">V/S</div><div><span class="big" id="vs">–</span><span class="unit">ft/min</span></div><div class="sub" id="vsSub"></div></div>
-      <div class="val"><div class="lbl">Kurs</div><div><span class="big" id="hdg">–</span><span class="unit">°</span></div><div class="sub" id="hdgSub"></div></div>
+      <div class="val"><div class="lbl" data-i18n="dashboard.pfd.heading">Heading</div><div><span class="big" id="hdg">–</span><span class="unit">°</span></div><div class="sub" id="hdgSub"></div></div>
       <div class="att" id="att"></div>
     </div>
   </section>
 
-  <section class="du call" aria-label="Ansagen" aria-live="polite">
-    <h2>Ansagen
+  <section class="du call" aria-label="Callouts" data-i18n-aria-label="dashboard.callouts.title" aria-live="polite">
+    <h2><span data-i18n="dashboard.callouts.title">Callouts</span>
       <span class="right">
-        <button class="btn" id="speak" type="button" aria-pressed="false">Ansagen aus</button>
-        <select class="btn" id="voice" aria-label="Stimme im Browser"></select>
-        <button class="btn" id="speechSettings" type="button" aria-expanded="false" aria-controls="speechPanel" hidden>Stimme</button>
-        <button class="btn" id="speakTest" type="button">Test</button>
-        <button class="btn" id="inputToggle" type="button" aria-pressed="false" title="Eingaben: Kopilot darf nach Readback und Bestätigung Schalter bedienen" hidden>Eingabe gesperrt</button>
+        <button class="btn" id="speak" type="button" aria-pressed="false" data-i18n="dashboard.speech.calloutsOff">Callouts off</button>
+        <select class="btn" id="voice" aria-label="Browser voice" data-i18n-aria-label="dashboard.speech.browserVoice"></select>
+        <button class="btn" id="speechSettings" type="button" aria-expanded="false" aria-controls="speechPanel" data-i18n="dashboard.speech.voice" hidden>Voice</button>
+        <button class="btn" id="speakTest" type="button" data-i18n="dashboard.speech.test">Test</button>
+        <button class="btn" id="inputToggle" type="button" aria-pressed="false" title="Inputs: Kopilot may operate switches after readback and confirmation" data-i18n-title="dashboard.input.toggleTitle" data-i18n="dashboard.input.locked" hidden>Input locked</button>
       </span>
     </h2>
     <div class="speech-panel" id="speechPanel" hidden>
-      <label>Sprachausgabe <select class="btn" id="srvEngine">
-        <option value="auto">Automatisch</option>
-        <option value="windows">Windows-Stimme</option>
-        <option value="kokoro">Kokoro (neuronal)</option>
+      <label><span data-i18n="dashboard.speech.output">Speech output</span> <select class="btn" id="srvEngine">
+        <option value="auto" data-i18n="dashboard.speech.engineAuto">Automatic</option>
+        <option value="windows" data-i18n="dashboard.speech.windowsVoice">Windows voice</option>
+        <option value="kokoro" data-i18n="dashboard.speech.engineKokoro">Kokoro (neural)</option>
       </select></label>
-      <label id="srvVoiceLabel">Windows-Stimme <select class="btn" id="srvVoice"></select></label>
-      <label id="srvKokoroLabel">Kokoro-Stimme <select class="btn" id="srvKokoroVoice"></select></label>
-      <label>Ausgabe <select class="btn" id="srvDevice"></select></label>
-      <label>Lautstärke <input type="range" id="srvVolume" min="0" max="1" step="0.05"></label>
-      <label>Tempo <input type="range" id="srvRate" min="0.7" max="1.6" step="0.05"></label>
-      <label>Ansagen <select class="btn" id="srvSeverity">
-        <option value="Info">alle</option>
-        <option value="Caution">ab Caution</option>
-        <option value="Warning">nur Warnings</option>
+      <label id="srvVoiceLabel"><span data-i18n="dashboard.speech.windowsVoice">Windows voice</span> <select class="btn" id="srvVoice"></select></label>
+      <label id="srvKokoroLabel"><span data-i18n="dashboard.speech.kokoroVoice">Kokoro voice</span> <select class="btn" id="srvKokoroVoice"></select></label>
+      <label><span data-i18n="dashboard.speech.device">Output</span> <select class="btn" id="srvDevice"></select></label>
+      <label><span data-i18n="dashboard.speech.volume">Volume</span> <input type="range" id="srvVolume" min="0" max="1" step="0.05"></label>
+      <label><span data-i18n="dashboard.speech.rate">Rate</span> <input type="range" id="srvRate" min="0.7" max="1.6" step="0.05"></label>
+      <label><span data-i18n="dashboard.callouts.title">Callouts</span> <select class="btn" id="srvSeverity">
+        <option value="Info" data-i18n="dashboard.speech.severityAll">all</option>
+        <option value="Caution" data-i18n="dashboard.speech.severityCaution">Caution and above</option>
+        <option value="Warning" data-i18n="dashboard.speech.severityWarning">Warnings only</option>
       </select></label>
-      <label class="check"><input type="checkbox" id="srvAuto"> Radiohöhen, Minimum und Retard auch von Kopilot (nur für Flugzeuge ohne eigene Ansagen)</label>
+      <label class="check"><input type="checkbox" id="srvAuto"> <span data-i18n="dashboard.speech.aircraftAuto">Radio altitudes, minimum and retard from Kopilot too (only for aircraft without their own callouts)</span></label>
       <p class="speech-info" id="srvInfo"></p>
       <p class="speech-error" id="srvError" hidden></p>
       <div class="voice-loop" id="voiceLoop" hidden>
-        <h3>Sprachschleife (Mikrofon → Kopilot und ATC)</h3>
-        <label class="check"><input type="checkbox" id="vlEnabled"> Sprachschleife an – Mikrofon dauerhaft offen, Befehle und Funk ohne Claude</label>
-        <label>Mikrofon <select class="btn" id="vlMic"></select></label>
-        <span>Pegel <span class="level" title="Spitzenpegel der letzten Sekunden"><i id="vlLevel"></i></span> <span id="vlLevelText"></span></span>
+        <h3 data-i18n="dashboard.voice.title">Voice loop (microphone → Kopilot and ATC)</h3>
+        <label class="check"><input type="checkbox" id="vlEnabled"> <span data-i18n="dashboard.voice.enable">Voice loop on – microphone always open, commands and radio without Claude</span></label>
+        <label><span data-i18n="dashboard.common.microphone">Microphone</span> <select class="btn" id="vlMic"></select></label>
+        <span><span data-i18n="dashboard.common.level">Level</span> <span class="level" title="Peak level of the last few seconds" data-i18n-title="dashboard.common.peakLevel"><i id="vlLevel"></i></span> <span id="vlLevelText"></span></span>
         <p class="speech-info" id="vlInfo"></p>
         <p class="speech-error" id="vlError" hidden></p>
       </div>
     </div>
     <div class="pending" id="pending" hidden>
       <div class="rb" id="pendingReadback"></div>
-      <button class="btn" id="pendingCancel" type="button">Abbrechen</button>
+      <button class="btn" id="pendingCancel" type="button" data-i18n="dashboard.common.cancel">Cancel</button>
       <div class="pl" id="pendingInfo"></div>
     </div>
-    <div class="hero quiet" id="hero"><div class="callout" id="heroCallout">Verbinde mit Kopilot …</div><div class="msg" id="heroMsg"></div><div class="when" id="heroWhen"></div></div>
+    <div class="hero quiet" id="hero"><div class="callout" id="heroCallout" data-i18n="dashboard.callouts.connecting">Connecting to Kopilot …</div><div class="msg" id="heroMsg"></div><div class="when" id="heroWhen"></div></div>
     <div class="chips" id="activeChips"></div>
     <ul class="history" id="history"></ul>
     <details class="input-log" id="inputLog" hidden>
-      <summary>Eingaben</summary>
+      <summary data-i18n="dashboard.input.logTitle">Inputs</summary>
       <ul id="inputLogList"></ul>
     </details>
   </section>
 
-  <section class="du ecam" aria-label="Warnungen">
-    <h2>Warnungen <span class="right dim" id="ecamTable"></span></h2>
+  <section class="du ecam" aria-label="Warnings" data-i18n-aria-label="dashboard.ecam.title">
+    <h2><span data-i18n="dashboard.ecam.title">Warnings</span> <span class="right dim" id="ecamTable"></span></h2>
     <div class="ecam-cols">
       <ul id="ecamLeft"></ul>
       <ul id="ecamRight"></ul>
@@ -534,35 +534,35 @@ dialog.report::backdrop { background: rgba(5, 8, 11, .7); }
     <div class="sim-warn" id="simWarn"></div>
   </section>
 
-  <section class="du route" aria-label="Route">
-    <h2>Route <span class="right"><span class="dim" id="routeInfo"></span><button class="btn" id="planReload" type="button">Plan laden</button></span></h2>
+  <section class="du route" aria-label="Route" data-i18n-aria-label="dashboard.route.title">
+    <h2><span data-i18n="dashboard.route.title">Route</span> <span class="right"><span class="dim" id="routeInfo"></span><button class="btn" id="planReload" type="button" data-i18n="dashboard.route.loadPlan">Load plan</button></span></h2>
     <div id="routeBody"></div>
     <div class="fuel-trend" id="fuelTrend" hidden>
-      <div class="ft-head"><span class="lbl">Fuel Check – Abweichung gegen Plan</span><span class="ft-last" id="ftLast"></span></div>
-      <div class="ft-plot" id="ftPlot" tabindex="0" role="group" aria-label="Fuel Check: Abweichung gegen Plan entlang der Route. Pfeiltasten wählen einen Check.">
+      <div class="ft-head"><span class="lbl" data-i18n="dashboard.fuel.title">Fuel check – deviation from plan</span><span class="ft-last" id="ftLast"></span></div>
+      <div class="ft-plot" id="ftPlot" tabindex="0" role="group" aria-label="Fuel check: deviation from plan along the route. Arrow keys select a check." data-i18n-aria-label="dashboard.fuel.plotLabel">
         <svg id="ftSvg" aria-hidden="true"></svg>
         <div class="ft-tip" id="ftTip" role="status" hidden></div>
       </div>
       <table class="ft-table" id="ftTable">
-        <thead><tr><th>Zeit</th><th>Ort</th><th>An Bord</th><th>Gegen Plan</th><th>Seit Check</th><th>Landung</th></tr></thead>
+        <thead><tr><th data-i18n="dashboard.fuel.col.time">Time</th><th data-i18n="dashboard.fuel.col.where">Where</th><th data-i18n="dashboard.fuel.col.onBoard">On board</th><th data-i18n="dashboard.fuel.col.vsPlan">Vs. plan</th><th data-i18n="dashboard.fuel.col.sinceCheck">Since check</th><th data-i18n="dashboard.fuel.col.landing">Landing</th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
   </section>
 
-  <section class="du eng" aria-label="Triebwerke">
-    <h2>Triebwerke <span class="right dim" id="ffSource"></span></h2>
+  <section class="du eng" aria-label="Engines" data-i18n-aria-label="dashboard.engines.title">
+    <h2><span data-i18n="dashboard.engines.title">Engines</span> <span class="right dim" id="ffSource"></span></h2>
     <div class="engs" id="engs"></div>
     <div class="totals" id="totals"></div>
   </section>
 
-  <section class="du cfg" aria-label="Konfiguration">
-    <h2>Konfiguration</h2>
+  <section class="du cfg" aria-label="Configuration" data-i18n-aria-label="dashboard.config.title">
+    <h2 data-i18n="dashboard.config.title">Configuration</h2>
     <dl class="rows" id="cfg"></dl>
   </section>
 
-  <section class="du atc" aria-label="ATC und Wetter">
-    <h2>ATC und Wetter</h2>
+  <section class="du atc" aria-label="ATC and weather" data-i18n-aria-label="dashboard.atc.title">
+    <h2 data-i18n="dashboard.atc.title">ATC and weather</h2>
     <div id="rwy"></div>
     <dl class="rows" id="atcRows"></dl>
   </section>
@@ -570,28 +570,28 @@ dialog.report::backdrop { background: rgba(5, 8, 11, .7); }
 
 <section class="setup">
   <details id="setup">
-    <summary>Einrichtung und Diagnose</summary>
-    <p>Hier prüfst du, welche Werte aus dem Flugzeugprofil kommen. „Ungeprüft“ heißt: Der Variablenname stammt aus der Doku und wurde im Sim noch nicht gegen das Cockpit verglichen. Eine 0 beweist nicht, dass die Variable existiert – schalte im Cockpit etwas um und schau, ob der Wert folgt.</p>
+    <summary data-i18n="dashboard.setup.title">Setup and diagnostics</summary>
+    <p data-i18n="dashboard.setup.intro">Here you check which values come from the aircraft profile. “Unverified” means: the variable name comes from the documentation and hasn't been compared against the cockpit in the sim yet. A 0 doesn't prove that the variable exists – switch something in the cockpit and see whether the value follows.</p>
     <div class="actions">
-      <button class="btn" id="reloadProfiles" type="button">Profile neu laden</button>
-      <button class="btn" id="reloadPlan" type="button">SimBrief-Plan neu laden</button>
+      <button class="btn" id="reloadProfiles" type="button" data-i18n="dashboard.setup.reloadProfiles">Reload profiles</button>
+      <button class="btn" id="reloadPlan" type="button" data-i18n="dashboard.setup.reloadPlan">Reload SimBrief plan</button>
       <span class="toast" id="toast"></span>
     </div>
     <div class="setup-grid">
       <div>
-        <h3 id="profileTitle">Flugzeugprofil</h3>
+        <h3 id="profileTitle" data-i18n="dashboard.setup.aircraftProfile">Aircraft profile</h3>
         <p id="profileInfo"></p>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Wert</th><th>Variable</th><th>Status</th><th>Jetzt</th></tr></thead>
+            <thead><tr><th data-i18n="dashboard.setup.col.value">Value</th><th data-i18n="dashboard.setup.col.variable">Variable</th><th data-i18n="dashboard.setup.col.status">Status</th><th data-i18n="dashboard.setup.col.now">Now</th></tr></thead>
             <tbody id="bindings"></tbody>
           </table>
         </div>
       </div>
       <div>
-        <h3>Log</h3>
+        <h3 data-i18n="dashboard.setup.log">Log</h3>
         <div class="log" id="log" tabindex="0"></div>
-        <p class="links">Rohdaten: <a href="/status">Status</a><a href="/state">Flugzustand</a><a href="/systems">Systeme</a><a href="/warnings">Warnungen</a><a href="/alerts">Meldungen</a><a href="/atc">ATC</a><a href="/progress">Fortschritt</a><a href="/profile">Profil</a></p>
+        <p class="links"><span data-i18n="dashboard.setup.rawData">Raw data:</span> <a href="/status" data-i18n="dashboard.setup.link.status">Status</a><a href="/state" data-i18n="dashboard.setup.link.state">Flight state</a><a href="/systems" data-i18n="dashboard.setup.link.systems">Systems</a><a href="/warnings" data-i18n="dashboard.setup.link.warnings">Warnings</a><a href="/alerts" data-i18n="dashboard.setup.link.alerts">Alerts</a><a href="/atc">ATC</a><a href="/progress" data-i18n="dashboard.setup.link.progress">Progress</a><a href="/profile" data-i18n="dashboard.setup.link.profile">Profile</a></p>
       </div>
     </div>
   </details>
@@ -599,66 +599,66 @@ dialog.report::backdrop { background: rgba(5, 8, 11, .7); }
 
 <section class="settings" id="settings" aria-labelledby="settingsTitle" hidden>
   <div class="settings-head">
-    <h1 id="settingsTitle">Einstellungen</h1>
-    <a class="hbtn" href="#">Zurück zum Cockpit</a>
+    <h1 id="settingsTitle" data-i18n="dashboard.settings.title">Settings</h1>
+    <a class="hbtn" href="#" data-i18n="dashboard.settings.back">Back to cockpit</a>
     <span class="file" id="setFile"></span>
   </div>
   <div class="restart-bar" id="restartBar" role="status" hidden>
     <span id="restartText"></span>
-    <button class="btn primary" id="restartBtn" type="button">Kopilot neu starten</button>
+    <button class="btn primary" id="restartBtn" type="button" data-i18n="dashboard.settings.restart">Restart Kopilot</button>
   </div>
   <p class="set-warn" id="setEnv" hidden></p>
 
   <div class="set-grid">
     <section class="card" aria-labelledby="hClaude">
-      <h2 id="hClaude">Verbindung zu Claude</h2>
-      <p class="hint">Claude Desktop und Claude Code auf diesem PC verbinden sich lokal. Für claude.ai, die Handy-App und den Sprachmodus braucht Kopilot einen Cloudflare Tunnel mit öffentlicher Adresse (Anleitung: docs/cloudflared.md im Repository).</p>
+      <h2 id="hClaude" data-i18n="dashboard.settings.claude.title">Connection to Claude</h2>
+      <p class="hint" data-i18n="dashboard.settings.claude.hint">Claude Desktop and Claude Code on this PC connect locally. For claude.ai, the mobile app and voice mode, Kopilot needs a Cloudflare Tunnel with a public address (guide: docs/cloudflared.md in the repository).</p>
       <dl class="kv">
-        <dt>Lokal (MCP)</dt><dd><code id="clMcp"></code></dd>
-        <dt>Claude-Connector</dt><dd id="clOauth"></dd>
-        <dt>Bearer-Token</dt><dd id="clBearer"></dd>
-        <dt>Tunnel</dt><dd><span id="clTunnel">nicht geprüft</span> <button class="btn" id="clCheck" type="button">Prüfen</button></dd>
+        <dt data-i18n="dashboard.settings.claude.local">Local (MCP)</dt><dd><code id="clMcp"></code></dd>
+        <dt data-i18n="dashboard.settings.claude.connector">Claude connector</dt><dd id="clOauth"></dd>
+        <dt data-i18n="dashboard.settings.claude.bearer">Bearer token</dt><dd id="clBearer"></dd>
+        <dt data-i18n="dashboard.settings.claude.tunnel">Tunnel</dt><dd><span id="clTunnel" data-i18n="dashboard.settings.claude.tunnelNotChecked">not checked</span> <button class="btn" id="clCheck" type="button" data-i18n="dashboard.settings.claude.check">Check</button></dd>
       </dl>
       <form id="clForm" autocomplete="off">
-        <label class="field">Öffentliche Adresse (Tunnel)
+        <label class="field"><span data-i18n="dashboard.settings.claude.publicUrl">Public address (tunnel)</span>
           <input id="clUrl" type="url" inputmode="url" placeholder="https://kopilot.example.com" spellcheck="false">
         </label>
-        <label class="field">Freigabe-Passwort für den Claude-Connector
+        <label class="field"><span data-i18n="dashboard.settings.claude.password">Consent password for the Claude connector</span>
           <input id="clPwd" type="password" autocomplete="new-password" spellcheck="false">
         </label>
-        <label class="check" id="clPwdRemoveRow" hidden><input type="checkbox" id="clPwdRemove"> Passwort entfernen (Connector aus)</label>
+        <label class="check" id="clPwdRemoveRow" hidden><input type="checkbox" id="clPwdRemove"> <span data-i18n="dashboard.settings.claude.removePassword">Remove password (connector off)</span></label>
         <div class="row">
-          <button class="btn primary" type="submit">Speichern</button>
+          <button class="btn primary" type="submit" data-i18n="dashboard.common.save">Save</button>
           <span class="msg" id="clMsg" role="status"></span>
         </div>
       </form>
-      <h3>Bearer-Token für Claude Code und andere Clients</h3>
+      <h3 data-i18n="dashboard.settings.claude.tokenTitle">Bearer token for Claude Code and other clients</h3>
       <div class="row">
-        <button class="btn" id="tokNew" type="button">Neu erzeugen</button>
-        <button class="btn danger" id="tokRemove" type="button">Entfernen</button>
+        <button class="btn" id="tokNew" type="button" data-i18n="dashboard.settings.claude.tokenNew">Generate new</button>
+        <button class="btn danger" id="tokRemove" type="button" data-i18n="dashboard.settings.claude.tokenRemove">Remove</button>
         <span class="msg" id="tokMsg" role="status"></span>
       </div>
       <div class="token-box" id="tokBox" hidden>
         <div class="row">
-          <label class="field">Neuer Token
+          <label class="field"><span data-i18n="dashboard.settings.claude.tokenValue">New token</span>
             <input id="tokValue" readonly spellcheck="false">
           </label>
-          <button class="btn" id="tokCopy" type="button">Kopieren</button>
+          <button class="btn" id="tokCopy" type="button" data-i18n="dashboard.common.copy">Copy</button>
         </div>
-        <p>Nur jetzt sichtbar. In Claude Code als Header <code>Authorization: Bearer …</code> eintragen. Der alte Token gilt bis zum Neustart.</p>
+        <p data-i18n-html="dashboard.settings.claude.tokenHintHtml">Only visible now. Enter it in Claude Code as the header <code>Authorization: Bearer …</code>. The old token stays valid until the restart.</p>
       </div>
     </section>
 
     <section class="card" aria-labelledby="hSimBrief">
       <h2 id="hSimBrief">SimBrief</h2>
-      <p class="hint">Für Route, Fortschritt, Fuel Check und ATC. Username oder Pilot-ID (simbrief.com → Account Settings) – die Pilot-ID hat Vorrang. Gilt sofort.</p>
+      <p class="hint" data-i18n="dashboard.settings.simbrief.hint">For route, progress, fuel check and ATC. Username or Pilot ID (simbrief.com → Account Settings) – the Pilot ID takes precedence. Applies immediately.</p>
       <form id="sbForm" autocomplete="off">
         <div class="fields-2">
-          <label class="field">Username <input id="sbUser" spellcheck="false"></label>
-          <label class="field">Pilot-ID <input id="sbPilot" inputmode="numeric" spellcheck="false"></label>
+          <label class="field"><span data-i18n="dashboard.settings.simbrief.username">Username</span> <input id="sbUser" spellcheck="false"></label>
+          <label class="field"><span data-i18n="dashboard.settings.simbrief.pilotId">Pilot ID</span> <input id="sbPilot" inputmode="numeric" spellcheck="false"></label>
         </div>
         <div class="row">
-          <button class="btn primary" type="submit">Speichern und Plan laden</button>
+          <button class="btn primary" type="submit" data-i18n="dashboard.settings.simbrief.saveLoad">Save and load plan</button>
           <span class="msg" id="sbMsg" role="status"></span>
         </div>
       </form>
@@ -666,68 +666,129 @@ dialog.report::backdrop { background: rgba(5, 8, 11, .7); }
     </section>
 
     <section class="card" aria-labelledby="hMic">
-      <h2 id="hMic">Mikrofon</h2>
-      <p class="hint">Für die Sprachschleife (Befehle und Funk ohne Claude). Fehlt das Gerät (VR-Brille aus), nimmt Kopilot das Windows-Standardgerät und wechselt, sobald es auftaucht. Gilt sofort.</p>
-      <label class="field">Aufnahmegerät <select id="micSel"></select></label>
-      <div class="row"><span>Pegel</span> <span class="level" title="Spitzenpegel der letzten Sekunden"><i id="micLevel"></i></span> <span id="micLevelText"></span></div>
+      <h2 id="hMic" data-i18n="dashboard.common.microphone">Microphone</h2>
+      <p class="hint" data-i18n="dashboard.settings.mic.hint">For the voice loop (commands and radio without Claude). If the device is missing (VR headset off), Kopilot uses the Windows default device and switches as soon as it shows up. Applies immediately.</p>
+      <label class="field"><span data-i18n="dashboard.settings.mic.device">Recording device</span> <select id="micSel"></select></label>
+      <div class="row"><span data-i18n="dashboard.common.level">Level</span> <span class="level" title="Peak level of the last few seconds" data-i18n-title="dashboard.common.peakLevel"><i id="micLevel"></i></span> <span id="micLevelText"></span></div>
       <p class="state-line" id="micState"></p>
       <p class="msg err" id="micErr" hidden></p>
     </section>
 
     <section class="card" aria-labelledby="hModules">
-      <h2 id="hModules">Module</h2>
-      <p class="hint">Monitoring und ATC lesen ihre Einstellung beim Start – nach dem Umschalten Kopilot neu starten. Eingabe und Sprachschleife gelten sofort.</p>
+      <h2 id="hModules" data-i18n="dashboard.settings.modules.title">Modules</h2>
+      <p class="hint" data-i18n="dashboard.settings.modules.hint">Monitoring and ATC read their setting at startup – restart Kopilot after switching. Input and voice loop apply immediately.</p>
       <ul class="modules">
-        <li><span><span class="name">Monitoring</span><span class="what">Callouts und Warnungen als Pilot Monitoring</span></span>
-          <button class="switch" id="modMonitoring" type="button" role="switch" aria-checked="false" aria-label="Monitoring">OFF</button>
+        <li><span><span class="name" data-i18n="dashboard.settings.modules.monitoring.name">Monitoring</span><span class="what" data-i18n="dashboard.settings.modules.monitoring.what">Callouts and warnings as pilot monitoring</span></span>
+          <button class="switch" id="modMonitoring" type="button" role="switch" aria-checked="false" aria-label="Monitoring" data-i18n-aria-label="dashboard.settings.modules.monitoring.name">OFF</button>
           <span class="note" id="modMonitoringNote"></span></li>
-        <li><span><span class="name">Eingabe</span><span class="what">Kopilot bedient Schalter – nur nach Readback und Bestätigung</span></span>
-          <button class="switch" id="modInput" type="button" role="switch" aria-checked="false" aria-label="Eingabe">OFF</button>
+        <li><span><span class="name" data-i18n="dashboard.settings.modules.input.name">Input</span><span class="what" data-i18n="dashboard.settings.modules.input.what">Kopilot operates switches – only after readback and confirmation</span></span>
+          <button class="switch" id="modInput" type="button" role="switch" aria-checked="false" aria-label="Input" data-i18n-aria-label="dashboard.settings.modules.input.name">OFF</button>
           <span class="note" id="modInputNote"></span></li>
-        <li><span><span class="name">ATC</span><span class="what">Fluglotsen von Kopilot (Funk, Übergaben, Freigaben)</span></span>
+        <li><span><span class="name">ATC</span><span class="what" data-i18n="dashboard.settings.modules.atc.what">Air traffic control by Kopilot (radio, handoffs, clearances)</span></span>
           <button class="switch" id="modAtc" type="button" role="switch" aria-checked="false" aria-label="ATC">OFF</button>
           <span class="note" id="modAtcNote"></span></li>
-        <li><span><span class="name">Sprachschleife</span><span class="what">Mikrofon dauerhaft offen, Befehle und Funk direkt an Kopilot</span></span>
-          <button class="switch" id="modVoice" type="button" role="switch" aria-checked="false" aria-label="Sprachschleife">OFF</button>
+        <li><span><span class="name" data-i18n="dashboard.settings.modules.voice.name">Voice loop</span><span class="what" data-i18n="dashboard.settings.modules.voice.what">Microphone always open, commands and radio straight to Kopilot</span></span>
+          <button class="switch" id="modVoice" type="button" role="switch" aria-checked="false" aria-label="Voice loop" data-i18n-aria-label="dashboard.settings.modules.voice.name">OFF</button>
           <span class="note" id="modVoiceNote"></span></li>
       </ul>
       <p class="msg" id="modMsg" role="status"></p>
+    </section>
+
+    <section class="card" id="langCard" aria-labelledby="hLanguage">
+      <h2 id="hLanguage" data-i18n="dashboard.settings.language.title">Language</h2>
+      <p class="hint" data-i18n="dashboard.settings.language.hint">The dashboard, tool messages and logs follow this setting. Callouts, checklists, FMA calls, warnings and radio stay in English – like a real crew (SOP). Applies immediately.</p>
+      <label class="field"><span data-i18n="dashboard.settings.language.label">Display language</span> <select id="langSel"></select></label>
+      <p class="state-line" id="langState" hidden></p>
+      <p class="msg" id="langMsg" role="status"></p>
     </section>
   </div>
 </section>
 
 <dialog class="report" id="report" aria-labelledby="reportTitle">
   <form id="reportForm" novalidate>
-    <h2 id="reportTitle">Fehler melden</h2>
+    <h2 id="reportTitle" data-i18n="dashboard.report.title">Report a problem</h2>
     <p class="when" id="rpWhen"></p>
-    <fieldset class="kinds" id="rpKinds"><legend>Was stimmt nicht?</legend></fieldset>
-    <label class="field">Titel <input id="rpTitle" maxlength="200" spellcheck="true"></label>
-    <label class="field">Was ist falsch, was wäre richtig?
-      <textarea id="rpText" rows="5" placeholder="z. B. Sim-ATC übergibt erst hier an Montreal Center, Frequenz 132.25 – Kopilot schon 260 NM vorher bei HOIST."></textarea>
+    <fieldset class="kinds" id="rpKinds"><legend data-i18n="dashboard.report.kinds">What's wrong?</legend></fieldset>
+    <label class="field"><span data-i18n="dashboard.report.titleLabel">Title</span> <input id="rpTitle" maxlength="200" spellcheck="true"></label>
+    <label class="field"><span data-i18n="dashboard.report.description">What is wrong, and what would be right?</span>
+      <textarea id="rpText" rows="5" placeholder="e.g. Sim ATC only hands off to Montreal Center here, frequency 132.25 – Kopilot did it 260 NM earlier at HOIST." data-i18n-placeholder="dashboard.report.placeholder"></textarea>
     </label>
-    <details id="rpDetails"><summary>Kontext, der mitgeschickt wird</summary><pre id="rpContext"></pre></details>
+    <details id="rpDetails"><summary data-i18n="dashboard.report.context">Context that is sent along</summary><pre id="rpContext"></pre></details>
     <div class="row">
-      <button class="btn primary" id="rpGithub" type="submit">Auf GitHub melden</button>
-      <button class="btn" id="rpLocal" type="button">Nur lokal speichern</button>
-      <button class="btn" id="rpClose" type="button">Abbrechen</button>
+      <button class="btn primary" id="rpGithub" type="submit" data-i18n="dashboard.report.github">Report on GitHub</button>
+      <button class="btn" id="rpLocal" type="button" data-i18n="dashboard.report.saveLocal">Save locally only</button>
+      <button class="btn" id="rpClose" type="button" data-i18n="dashboard.common.cancel">Cancel</button>
       <span class="msg err" id="rpErr" role="alert"></span>
     </div>
     <div class="result" id="rpResult" role="status" hidden></div>
   </form>
 </dialog>
 
-<div class="offline" id="offline" role="alert" hidden>Kopilot antwortet nicht. Läuft Kopilot noch? Das Symbol im Infobereich zeigt es – sonst Kopilot.exe neu starten.</div>
+<div class="offline" id="offline" role="alert" data-i18n="dashboard.offline.text" hidden>Kopilot isn't responding. Is Kopilot still running? The icon in the notification area shows it – otherwise restart Kopilot.exe.</div>
 
+<!--KOPILOT_I18N-->
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
 const DASH = "–";
 
-const PHASES = {
-  ground: "Boden", takeoff_roll: "Startlauf", takeoff: "Start", climb: "Steigflug", cruise: "Reiseflug",
-  level: "Horizontalflug", descent: "Sinkflug", approach: "Anflug", rollout: "Ausrollen", paused: "pausiert",
-  stale: "keine Daten", menu: "Hauptmenü", offline: "nicht verbunden", unknown: "unbekannt",
-};
+/* ------------------------------------------------------------------ Texts (i18n) */
+// The server embeds the texts of the selected language in <script id="i18n"> (keys "dashboard.…", missing ones in English).
+// Without them the English text in the HTML stays and the rest comes from /api/i18n.
+const i18n = { language: "en", available: [], strings: {}, loading: false };
+function setStrings(j) {
+  if (!j || !j.strings || typeof j.strings !== "object") return false;
+  i18n.language = j.language || "en";
+  i18n.available = Array.isArray(j.available) ? j.available : [];
+  i18n.strings = j.strings;
+  return true;
+}
+// t("dashboard.route.fuelSub", { actual: 1200 }) – named placeholders {name} or {name:0.0} like on the server, {{ and }} are braces
+function t(key, params) {
+  const s = i18n.strings[key];
+  const text = typeof s === "string" ? s : key;
+  if (text.indexOf("{") < 0 && text.indexOf("}") < 0) return text;
+  return text.replace(/\{\{|\}\}|\{([^{}:]+)(?::([^{}]*))?\}/g, (m, name, format) => {
+    if (m === "{{") return "{";
+    if (m === "}}") return "}";
+    const k = name.trim();
+    if (!params || !Object.prototype.hasOwnProperty.call(params, k)) return m;
+    const v = params[k];
+    if (v === null || v === undefined) return "";
+    const d = format && /^0(?:\.(0+))?$/.exec(format.trim());
+    return d && typeof v === "number" ? v.toFixed(d[1] ? d[1].length : 0) : String(v);
+  });
+}
+// Static texts: data-i18n (textContent), data-i18n-html (innerHTML), data-i18n-title/-placeholder/-aria-label (attributes)
+function applyI18n() {
+  document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll("[data-i18n-html]").forEach((el) => { el.innerHTML = t(el.dataset.i18nHtml); });
+  for (const [attr, prop] of [["title", "i18nTitle"], ["placeholder", "i18nPlaceholder"], ["aria-label", "i18nAriaLabel"]]) {
+    document.querySelectorAll("[data-i18n-" + attr + "]").forEach((el) => el.setAttribute(attr, t(el.dataset[prop])));
+  }
+  document.documentElement.lang = i18n.language;
+}
+async function loadStrings(lang) {
+  const r = await fetch("/api/i18n" + (lang ? "?lang=" + encodeURIComponent(lang) : ""), { cache: "no-store" });
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  if (!setStrings(await r.json())) throw new Error("i18n");
+}
+(() => {
+  let ok = false;
+  try { const el = $("i18n"); ok = !!el && setStrings(JSON.parse(el.textContent)); } catch { ok = false; }
+  if (ok) { applyI18n(); return; }
+  // Fallback: keep the English HTML, use its texts for t() until the server sends the rest
+  document.querySelectorAll("[data-i18n]").forEach((el) => { i18n.strings[el.dataset.i18n] = el.textContent; });
+  loadStrings().then(() => refreshTexts(), () => { /* stays English */ });
+})();
+
+const phaseName = (phase) => ({
+  ground: t("dashboard.phase.ground"), takeoff_roll: t("dashboard.phase.takeoffRoll"), takeoff: t("dashboard.phase.takeoff"),
+  climb: t("dashboard.phase.climb"), cruise: t("dashboard.phase.cruise"), level: t("dashboard.phase.level"),
+  descent: t("dashboard.phase.descent"), approach: t("dashboard.phase.approach"), rollout: t("dashboard.phase.rollout"),
+  paused: t("dashboard.phase.paused"), stale: t("dashboard.phase.stale"), menu: t("dashboard.phase.menu"),
+  offline: t("dashboard.phase.offline"), unknown: t("dashboard.phase.unknown"),
+}[phase] || phase);
 const SEV = { Warning: "r", Caution: "a", Info: "g" };
 
 function load(key, fallback) {
@@ -745,6 +806,7 @@ const ui = {
   voice: load("voice", ""),
   ack: { warn: false, caut: false },
   lit: { warn: false, caut: false },
+  data: null, // last /api/dashboard answer (re-rendered after a language switch)
 };
 
 /* ------------------------------------------------------------------ kleine Helfer */
@@ -771,25 +833,25 @@ function renderHeader(d) {
   const lamp = $("lamp");
   if (!d.connected) {
     lamp.className = "lamp wait";
-    $("linkText").textContent = "Wartet auf MSFS";
+    $("linkText").textContent = t("dashboard.header.waitingMsfs");
   } else {
     lamp.className = "lamp on";
-    $("linkText").textContent = d.flightLoaded === false ? "MSFS im Hauptmenü" : "MSFS verbunden";
+    $("linkText").textContent = d.flightLoaded === false ? t("dashboard.header.mainMenu") : t("dashboard.header.connected");
   }
 
   const ac = d.sim && d.sim.aircraft;
   $("aircraft").innerHTML = ac
-    ? esc(ac.title || "Flugzeug unbekannt") + (ac.profile ? `<span class="tag">Profil ${esc(ac.profile)}</span>` : `<span class="tag">ohne Profil</span>`)
+    ? esc(ac.title || t("dashboard.header.unknownAircraft")) + (ac.profile ? `<span class="tag">${esc(t("dashboard.header.profile", { profile: ac.profile }))}</span>` : `<span class="tag">${esc(t("dashboard.header.noProfile"))}</span>`)
     : "";
   $("paused").hidden = !d.paused;
 
   const banner = $("banner");
   let text = null;
   if (!d.connected) {
-    text = "<strong>Warte auf Microsoft Flight Simulator.</strong> Kopilot verbindet sich automatisch, sobald MSFS läuft."
+    text = `<strong>${esc(t("dashboard.banner.waitingTitle"))}</strong> ${esc(t("dashboard.banner.waitingText"))}`
       + (d.lastError ? `<br><span class="a">${esc(d.lastError)}</span>` : "");
   } else if (d.flightLoaded === false) {
-    text = "<strong>Kein Flug geladen.</strong> Sobald ein Flug läuft, erscheinen hier die Werte.";
+    text = `<strong>${esc(t("dashboard.banner.noFlightTitle"))}</strong> ${esc(t("dashboard.banner.noFlightText"))}`;
   }
   banner.hidden = !text;
   if (text) banner.innerHTML = text;
@@ -835,13 +897,13 @@ function renderFma(s) {
 
   const note = $("fmaNote");
   note.hidden = !generic;
-  if (generic) note.textContent = "Für dieses Flugzeug sind keine FMA-Variablen im Profil – AP-Status aus den generischen SimVars, Schub und Modi unbekannt.";
+  if (generic) note.textContent = t("dashboard.fma.generic");
 }
 
 function renderFmaLog(d) {
   const list = d.fmaLog || [];
   setHtml("fmaLog", list.map((e) => `<li><span class="t">${esc(e.time)}</span><span class="ch">${esc(e.changes.join("; "))}</span><span class="at">${n(e.ra) !== null ? "RA " + e.ra : n(e.alt) !== null ? e.alt + " ft" : ""}${n(e.ias) !== null ? "  " + e.ias + " kt" : ""}</span></li>`).join("")
-    || `<li><span class="t"></span><span class="at">Noch keine FMA-Wechsel aufgezeichnet.</span></li>`);
+    || `<li><span class="t"></span><span class="at">${esc(t("dashboard.fma.noChanges"))}</span></li>`);
 }
 
 /* ------------------------------------------------------------------ Flugdaten */
@@ -849,7 +911,7 @@ function renderPfd(s) {
   const f = s ? s.flight : {};
   setText("ias", fmt(f.ias));
   let iasSub = "";
-  if (n(f.iasTarget) !== null) iasSub += span(f.iasTarget + (f.speedManaged ? " managed" : f.targetFromMach ? " aus Mach" : " gewählt"), f.speedManaged ? "m" : "c");
+  if (n(f.iasTarget) !== null) iasSub += span(f.speedManaged ? t("dashboard.pfd.speedManaged", { speed: f.iasTarget }) : f.targetFromMach ? t("dashboard.pfd.speedFromMach", { speed: f.iasTarget }) : t("dashboard.pfd.speedSelected", { speed: f.iasTarget }), f.speedManaged ? "m" : "c");
   if (n(f.vls) !== null) iasSub += " " + span("VLS " + f.vls, "a");
   if (n(f.gs) !== null) iasSub += " " + span("GS " + f.gs, "dim");
   setHtml("iasSub", iasSub);
@@ -862,7 +924,7 @@ function renderPfd(s) {
   setHtml("altSub", altSub);
 
   setText("vs", signed(f.vs));
-  setHtml("vsSub", f.onGround ? span("am Boden", "dim") : "");
+  setHtml("vsSub", f.onGround ? span(t("dashboard.pfd.onGround"), "dim") : "");
   setText("hdg", hdg3(f.hdg));
   let hdgSub = "";
   if (n(f.hdgSel) !== null) hdgSub += span("HDG " + hdg3(f.hdgSel), "c");
@@ -870,7 +932,7 @@ function renderPfd(s) {
   setHtml("hdgSub", hdgSub);
 
   const pitch = n(f.pitch) === null ? DASH : (f.pitch >= 0 ? "+" : "−") + Math.abs(f.pitch).toFixed(1) + "°";
-  const bank = n(f.bank) === null ? DASH : Math.abs(f.bank).toFixed(0) + "° " + (f.bank > 0.5 ? "rechts" : f.bank < -0.5 ? "links" : "");
+  const bank = n(f.bank) === null ? DASH : Math.abs(f.bank).toFixed(0) + "° " + (f.bank > 0.5 ? t("dashboard.pfd.bankRight") : f.bank < -0.5 ? t("dashboard.pfd.bankLeft") : "");
   let att = `<span>Pitch <b>${esc(pitch)}</b></span><span>Bank <b>${esc(bank)}</b></span><span>TAS <b>${esc(fmt(f.tas))}</b> kt</span>`;
   const to = s && s.takeoff;
   if (to && (f.onGround || (n(f.ra) !== null && f.ra < 1500)) && (n(to.v1) !== null || n(to.flex) !== null)) {
@@ -904,14 +966,14 @@ function renderCallouts(d) {
     if (hero.className !== "hero") hero.className = "hero";
     setText("heroCallout", show.callout, SEV[show.severity] || "w");
     setText("heroMsg", show.message || "");
-    setText("heroWhen", timeOf(show.timeUtc) + " UTC" + (head.active ? "  aktiv" : ""));
+    setText("heroWhen", timeOf(show.timeUtc) + " UTC" + (head.active ? "  " + t("dashboard.callouts.active") : ""));
   } else {
     if (hero.className !== "hero quiet") hero.className = "hero quiet";
-    const phase = PHASES[d.monitoring.phase] || d.monitoring.phase;
-    setText("heroCallout", d.monitoring.enabled ? "Keine Meldungen" : "Monitoring ist aus", d.monitoring.enabled ? "g" : "a");
-    setText("heroMsg", !d.monitoring.enabled ? "Einschalten unter Einstellungen → Module, danach Kopilot neu starten."
-      : d.monitoring.quietForSec > 0 ? `Ruhezeit nach dem Laden: noch ${d.monitoring.quietForSec} s.`
-      : `Monitoring läuft. Phase: ${phase}.`);
+    const phase = phaseName(d.monitoring.phase);
+    setText("heroCallout", d.monitoring.enabled ? t("dashboard.callouts.noAlerts") : t("dashboard.callouts.monitoringOff"), d.monitoring.enabled ? "g" : "a");
+    setText("heroMsg", !d.monitoring.enabled ? t("dashboard.callouts.enableHint")
+      : d.monitoring.quietForSec > 0 ? t("dashboard.callouts.quietPeriod", { seconds: d.monitoring.quietForSec })
+      : t("dashboard.callouts.monitoringRunning", { phase }));
     setText("heroWhen", "");
   }
 
@@ -919,9 +981,9 @@ function renderCallouts(d) {
 
   setHtml("history", ui.events.slice(0, 14).map((e) => {
     const cls = e.kind === "Clear" ? "clear" : "";
-    const co = e.kind === "Clear" ? (e.rule + " beendet") : (e.callout || e.rule);
+    const co = e.kind === "Clear" ? t("dashboard.callouts.ruleEnded", { rule: e.rule }) : (e.callout || e.rule);
     return `<li class="${cls}"><span class="t">${esc(timeOf(e.timeUtc))}</span><span><span class="co ${e.kind === "Clear" ? "" : SEV[e.severity] || "w"}">${esc(co)}</span><br><span class="ms">${esc(e.message)}</span></span></li>`;
-  }).join("") || `<li><span class="t"></span><span class="ms">Noch keine Meldungen in dieser Sitzung.</span></li>`);
+  }).join("") || `<li><span class="t"></span><span class="ms">${esc(t("dashboard.callouts.noneYet"))}</span></li>`);
 }
 
 /*
@@ -936,7 +998,7 @@ function fillVoices() {
   const list = voices();
   const current = ui.voice;
   sel.innerHTML = list.length ? list.map((v) => `<option value="${esc(v.name)}">${esc(v.name.replace(/^Microsoft /, "").replace(/ Online \(Natural\)/, " (natural)"))}</option>`).join("")
-    : `<option value="">Keine englische Stimme</option>`;
+    : `<option value="">${esc(t("dashboard.speech.noEnglishVoice"))}</option>`;
   if (current && list.some((v) => v.name === current)) sel.value = current;
   else if (list.length) {
     const pick = list.find((v) => /en-GB/i.test(v.lang) && /natural/i.test(v.name)) || list.find((v) => /natural/i.test(v.name)) || list.find((v) => /en-GB/i.test(v.lang)) || list[0];
@@ -957,8 +1019,8 @@ function speechOn() { return server.available ? !!server.status.settings.enabled
 function renderSpeechButton() {
   const b = $("speak");
   b.setAttribute("aria-pressed", speechOn() ? "true" : "false");
-  b.textContent = speechOn() ? "Ansagen an" : "Ansagen aus";
-  b.title = server.available ? "Kopilot spricht über Windows" : "Der Browser liest vor";
+  b.textContent = speechOn() ? t("dashboard.speech.calloutsOn") : t("dashboard.speech.calloutsOff");
+  b.title = server.available ? t("dashboard.speech.titleWindows") : t("dashboard.speech.titleBrowser");
   $("voice").hidden = server.available;
   $("speechSettings").hidden = !server.status;
 }
@@ -969,10 +1031,10 @@ function renderServerSpeech() {
   const voicesList = st.voices || [];
   setHtml("srvVoice", voicesList.length
     ? voicesList.map((v) => `<option value="${esc(v.id)}">${esc(v.name.replace(/^Microsoft /, ""))} (${esc(v.language)})</option>`).join("")
-    : `<option value="">Keine Stimme gefunden</option>`);
+    : `<option value="">${esc(t("dashboard.speech.noVoice"))}</option>`);
   const active = voicesList.find((v) => v.id === set.voice || v.name === set.voice) || voicesList.find((v) => v.name === st.activeVoice);
   if (active) $("srvVoice").value = active.id;
-  setHtml("srvDevice", `<option value="">Windows-Standardgerät</option>` + (st.devices || []).map((d) => `<option value="${esc(d.id)}">${esc(d.name)}</option>`).join(""));
+  setHtml("srvDevice", `<option value="">${esc(t("dashboard.common.defaultDevice"))}</option>` + (st.devices || []).map((d) => `<option value="${esc(d.id)}">${esc(d.name)}</option>`).join(""));
   $("srvDevice").value = set.device || "";
   $("srvVolume").value = set.volume;
   $("srvRate").value = set.rate;
@@ -980,16 +1042,16 @@ function renderServerSpeech() {
   $("srvAuto").checked = !!set.aircraftAutoCallouts;
   $("srvEngine").value = set.engine || "auto";
   const k = st.kokoro || { state: "Idle", voices: [] };
-  setHtml("srvKokoroVoice", (k.voices || []).map((v) => `<option value="${esc(v)}">${esc(kokoroName(v))}</option>`).join("") || `<option value="">keine Stimmen gefunden</option>`);
+  setHtml("srvKokoroVoice", (k.voices || []).map((v) => `<option value="${esc(v)}">${esc(kokoroName(v))}</option>`).join("") || `<option value="">${esc(t("dashboard.speech.noKokoroVoices"))}</option>`);
   $("srvKokoroVoice").value = set.kokoroVoice || "";
   $("srvKokoroLabel").hidden = set.engine === "windows";
   $("srvVoiceLabel").hidden = set.engine === "kokoro";
   const info = [];
-  if (st.activeEngine === "windows") info.push(`Spricht: Windows (${(st.activeVoice || "").replace(/^Microsoft /, "")})`);
-  if (st.activeEngine === "kokoro") info.push(`Spricht: Kokoro (${kokoroName(set.kokoroVoice)})` + (k.lastSynthesisMs != null ? ` · zuletzt ${k.lastSynthesisMs} ms Rechenzeit` : ""));
-  if (k.state === "Downloading") info.push(`Kokoro lädt ${Math.round((k.progress || 0) * 100)} % von ~310 MB`);
-  if (k.state === "Loading") info.push("Kokoro startet …");
-  if (!st.activeEngine) info.push("Gerade liest der Browser vor.");
+  if (st.activeEngine === "windows") info.push(t("dashboard.speech.speakingWindows", { voice: (st.activeVoice || "").replace(/^Microsoft /, "") }));
+  if (st.activeEngine === "kokoro") info.push(t("dashboard.speech.speakingKokoro", { voice: kokoroName(set.kokoroVoice) }) + (k.lastSynthesisMs != null ? " · " + t("dashboard.speech.lastSynthesis", { ms: k.lastSynthesisMs }) : ""));
+  if (k.state === "Downloading") info.push(t("dashboard.speech.kokoroDownloading", { percent: Math.round((k.progress || 0) * 100) }));
+  if (k.state === "Loading") info.push(t("dashboard.speech.kokoroStarting"));
+  if (!st.activeEngine) info.push(t("dashboard.speech.browserSpeaking"));
   setText("srvInfo", info.join(" · "));
   clearTimeout(server.pollTimer);
   if (!$("speechPanel").hidden && (k.state === "Downloading" || k.state === "Loading")) server.pollTimer = setTimeout(loadServerSpeech, 2000);
@@ -1000,7 +1062,7 @@ function renderServerSpeech() {
 function kokoroName(id) {
   const m = /^([ab])([fm])_(\w+)$/.exec(id || "");
   if (!m) return id || "";
-  return `${m[3].charAt(0).toUpperCase()}${m[3].slice(1)} (${m[1] === "b" ? "GB" : "US"}, ${m[2] === "f" ? "w" : "m"})`;
+  return `${m[3].charAt(0).toUpperCase()}${m[3].slice(1)} (${m[1] === "b" ? "GB" : "US"}, ${m[2] === "f" ? t("dashboard.speech.voiceFemale") : t("dashboard.speech.voiceMale")})`;
 }
 async function loadServerSpeech() {
   if (server.loading) return;
@@ -1061,7 +1123,10 @@ $("srvKokoroVoice").addEventListener("change", async (e) => {
   try { await fetch("/api/speech/test", { method: "POST", headers: { "X-Kopilot": "1" } }); } catch { /* egal */ }
 });
 /* ------------------------------------------------------------------ Sprachschleife (im Panel "Stimme") */
-const VOICE_STATE = { off: "aus", loading: "lädt Modelle", listening: "hört zu", muted: "stumm", error: "Fehler", unavailable: "nicht verfügbar" };
+const voiceState = (state) => ({
+  off: t("dashboard.voice.state.off"), loading: t("dashboard.voice.state.loading"), listening: t("dashboard.voice.state.listening"),
+  muted: t("dashboard.voice.state.muted"), error: t("dashboard.voice.state.error"), unavailable: t("dashboard.common.unavailable"),
+}[state] || state);
 const voiceLoop = { data: null, timer: null, saving: false };
 function renderVoiceLoop() {
   const d = voiceLoop.data;
@@ -1074,22 +1139,26 @@ function renderVoiceLoop() {
   const configured = d.settings.microphone || "";
   const known = !configured || mics.some((m) => m.name === configured);
   setHtml("vlMic",
-    `<option value="">Windows-Standardgerät${st.defaultMicrophone ? " (" + esc(st.defaultMicrophone) + ")" : ""}</option>` +
-    mics.map((m) => `<option value="${esc(m.name)}">${esc(m.fullName)}${m.isDefault ? " – Standard" : ""}</option>`).join("") +
-    (known ? "" : `<option value="${esc(configured)}">${esc(configured)} (nicht gefunden)</option>`));
+    `<option value="">${esc(t("dashboard.common.defaultDevice"))}${st.defaultMicrophone ? " (" + esc(st.defaultMicrophone) + ")" : ""}</option>` +
+    mics.map((m) => `<option value="${esc(m.name)}">${esc(m.fullName)}${m.isDefault ? " – " + esc(t("dashboard.common.isDefault")) : ""}</option>`).join("") +
+    (known ? "" : `<option value="${esc(configured)}">${esc(t("dashboard.common.notFound", { name: configured }))}</option>`));
   if (!voiceLoop.saving) $("vlMic").value = configured;
   const level = st.levelDbfs;
   $("vlLevel").style.width = level == null ? "0" : Math.max(0, Math.min(100, (level + 60) / 60 * 100)) + "%";
   setText("vlLevelText", level == null ? DASH : `${Math.round(level)} dBFS`);
-  const info = [`Zustand: ${VOICE_STATE[st.state] || st.state}`];
-  if (st.microphone) info.push(`Mikrofon: ${st.microphone}`);
-  if (st.downloadProgress != null) info.push(`Modell lädt ${Math.round(st.downloadProgress * 100)} %`);
-  if (st.lastTranscript) info.push(`zuletzt: „${st.lastTranscript}“ → ${st.lastRoute || "?"}${st.lastReply ? " → " + st.lastReply : ""}`);
-  if (st.utterances) info.push(`${st.recognized}/${st.utterances} Sätze erkannt${st.dropped ? `, ${st.dropped} verworfen (${st.lastDropReason})` : ""}`);
-  if (st.state === "off") info.push("Einstellungsdatei: " + (st.settingsFile || ""));
+  const info = [t("dashboard.voice.stateLine", { state: voiceState(st.state) })];
+  if (st.microphone) info.push(t("dashboard.voice.microphoneLine", { microphone: st.microphone }));
+  if (st.downloadProgress != null) info.push(t("dashboard.voice.modelDownloading", { percent: Math.round(st.downloadProgress * 100) }));
+  if (st.lastTranscript) info.push(t("dashboard.voice.lastHeard", { transcript: st.lastTranscript, route: st.lastRoute || "?" }) + (st.lastReply ? " → " + st.lastReply : ""));
+  if (st.utterances) {
+    info.push(st.dropped
+      ? t("dashboard.voice.recognizedDropped", { recognized: st.recognized, total: st.utterances, dropped: st.dropped, reason: st.lastDropReason })
+      : t("dashboard.voice.recognized", { recognized: st.recognized, total: st.utterances }));
+  }
+  if (st.state === "off") info.push(t("dashboard.voice.settingsFile", { file: st.settingsFile || "" }));
   setText("vlInfo", info.join(" · "));
   const err = $("vlError");
-  const problem = d.error || st.error || (st.microphoneFound === false ? `Mikrofon „${st.microphoneConfigured}“ nicht gefunden – es läuft das Standardgerät.` : "");
+  const problem = d.error || st.error || (st.microphoneFound === false ? t("dashboard.voice.micNotFound", { name: st.microphoneConfigured }) : "");
   err.hidden = !problem;
   err.textContent = problem || "";
   clearTimeout(voiceLoop.timer);
@@ -1125,9 +1194,9 @@ function renderEcam(s) {
   if (!s) { setHtml("ecamLeft", ""); setHtml("ecamRight", ""); setHtml("simWarn", ""); $("ecamTable").textContent = ""; return; }
   const w = s.warnings;
   const e = w.ecam;
-  $("ecamTable").textContent = e.available ? (e.table ? "Meldungstabelle: " + e.table : "") : "";
+  $("ecamTable").textContent = e.available ? (e.table ? t("dashboard.ecam.table", { table: e.table }) : "") : "";
   if (!e.available) {
-    setHtml("ecamLeft", `<li class="msg dim">Für dieses Flugzeug liest Kopilot kein ECAM. Master Warning und Master Caution erscheinen oben rechts, sobald das Profil sie kennt.</li>`);
+    setHtml("ecamLeft", `<li class="msg dim">${esc(t("dashboard.ecam.unavailable"))}</li>`);
     setHtml("ecamRight", "");
   } else {
     const titleColor = w.master ? "r" : "a";
@@ -1147,13 +1216,13 @@ function renderRoute(d) {
   if (!p.configured) {
     reload.hidden = true;
     $("routeInfo").textContent = "";
-    setHtml("routeBody", `<p class="empty">SimBrief ist nicht eingerichtet. Trag unter <a href="#einstellungen">Einstellungen → SimBrief</a> deinen Username oder deine Pilot-ID ein.</p>`);
+    setHtml("routeBody", `<p class="empty">${t("dashboard.route.notConfiguredHtml")}</p>`);
     return;
   }
   reload.hidden = false;
   if (!p.loaded) {
     $("routeInfo").textContent = "";
-    setHtml("routeBody", `<p class="empty">Noch kein Flugplan geladen.${p.error ? " " + esc(p.error) : ""} Erzeuge den OFP auf simbrief.com und tippe auf „Plan laden“.</p>`);
+    setHtml("routeBody", `<p class="empty">${esc(t("dashboard.route.noPlan"))}${p.error ? " " + esc(p.error) : ""} ${esc(t("dashboard.route.noPlanHint"))}</p>`);
     return;
   }
   $("routeInfo").textContent = [p.callsign, p.initialAltitudeFt ? "FL" + Math.round(p.initialAltitudeFt / 100) : null, p.costIndex !== null && p.costIndex !== undefined ? "CI " + p.costIndex : null].filter(Boolean).join("   ");
@@ -1161,7 +1230,7 @@ function renderRoute(d) {
   const g = p.progress;
   const ends = `<div class="ends"><span>${esc(p.origin.icao)} <span class="dim">${esc(p.origin.runway || "")}</span></span><span>${esc(p.destination.icao)} <span class="dim">${esc(p.destination.runway || "")}</span>${p.alternate ? ` <span class="dim">ALTN ${esc(p.alternate)}</span>` : ""}</span></div>`;
   if (!g) {
-    setHtml("routeBody", ends + `<p class="empty">Position noch nicht auf der Route – sobald der Sim Werte liefert, erscheint hier der Fortschritt.</p>`);
+    setHtml("routeBody", ends + `<p class="empty">${esc(t("dashboard.route.notOnRouteYet"))}</p>`);
     return;
   }
 
@@ -1172,30 +1241,35 @@ function renderRoute(d) {
   marks += `<div class="mark w" style="left:${pct(g.flownNm + g.next.distNm)}%">${esc(g.next.ident)}</div>`;
   if (g.toc) marks += `<div class="mark c" style="left:${pct(g.flownNm + g.toc.distNm)}%">T/C</div>`;
   if (g.tod) marks += `<div class="mark w" style="left:${pct(g.flownNm + g.tod.distNm)}%">T/D</div>`;
-  const plane = `<svg class="plane" style="left:${at}%" viewBox="0 0 22 20" aria-label="Flugzeug"><path d="M2 10h18M11 3v14M6 15h10" stroke="#ffd400" stroke-width="2.4" fill="none" stroke-linecap="round" transform="rotate(90 11 10)"/></svg>`;
+  const plane = `<svg class="plane" style="left:${at}%" viewBox="0 0 22 20" aria-label="${esc(t("dashboard.route.aircraft"))}"><path d="M2 10h18M11 3v14M6 15h10" stroke="#ffd400" stroke-width="2.4" fill="none" stroke-linecap="round" transform="rotate(90 11 10)"/></svg>`;
   const track = `<div class="track"><div class="line"></div><div class="flown" style="width:${at}%"></div>${marks}${plane}</div>`;
 
-  const xtkSide = Math.abs(g.xtk) < 0.1 ? "" : g.xtk > 0 ? " rechts" : " links";
+  const xtkSide = Math.abs(g.xtk) < 0.1 ? "" : g.xtk > 0 ? t("dashboard.route.rightOfRoute") : t("dashboard.route.leftOfRoute");
   const fuelDiff = n(g.fuel.diff);
   const fuelCls = fuelDiff === null ? "dim" : fuelDiff >= 0 ? "g" : fuelDiff > -500 ? "w" : "a";
   const stats = `<div class="stats">
-    <div class="stat"><div class="lbl">Nächster Fix${g.next.source === "fms" ? " (FMS)" : ""}</div><div class="big">${esc(g.next.ident)}</div><div class="sub">${esc(g.next.airway || "")} ${fmt(g.next.distNm, 1)} nm  ETA ${esc(g.next.eta || DASH)}${g.next.altFt ? "  " + g.next.altFt + " ft" : ""}</div></div>
-    <div class="stat"><div class="lbl">Bis ${esc(p.destination.icao)}</div><div class="big">${fmt(g.toGoNm)} nm</div><div class="sub">ETA ${esc(g.eta || DASH)}${g.versusSchedule ? "  " + esc(g.versusSchedule) : ""}</div></div>
-    <div class="stat"><div class="lbl">${g.toc ? "Top of Climb" : "Top of Descent"}</div><div class="big">${g.toc ? fmt(g.toc.distNm) + " nm" : g.tod ? fmt(g.tod.distNm) + " nm" : DASH}</div><div class="sub">${g.toc ? "ETA " + esc(g.toc.eta || DASH) : g.tod ? "ETA " + esc(g.tod.eta || DASH) : "hinter dir"}</div></div>
-    <div class="stat"><div class="lbl">Querablage</div><div class="big ${g.onRoute ? "g" : "a"}">${Math.abs(g.xtk).toFixed(1)} nm</div><div class="sub">${xtkSide ? esc(xtkSide.trim()) + " der Route" : "auf der Route"}${g.terminal ? "  SID/STAR" : ""}</div></div>
-    <div class="stat"><div class="lbl">Treibstoff gegen Plan</div><div class="big ${fuelCls}">${fuelDiff === null ? DASH : (fuelDiff >= 0 ? "+" : "−") + Math.abs(fuelDiff) + " kg"}</div><div class="sub">an Bord ${fmt(g.fuel.actual)} kg  Landung ca. ${fmt(g.fuel.predictedLanding)} kg</div></div>
+    <div class="stat"><div class="lbl">${esc(t("dashboard.route.nextFix"))}${g.next.source === "fms" ? " (FMS)" : ""}</div><div class="big">${esc(g.next.ident)}</div><div class="sub">${esc(g.next.airway || "")} ${fmt(g.next.distNm, 1)} nm  ETA ${esc(g.next.eta || DASH)}${g.next.altFt ? "  " + g.next.altFt + " ft" : ""}</div></div>
+    <div class="stat"><div class="lbl">${esc(t("dashboard.route.toDestination", { icao: p.destination.icao }))}</div><div class="big">${fmt(g.toGoNm)} nm</div><div class="sub">ETA ${esc(g.eta || DASH)}${g.versusSchedule ? "  " + esc(g.versusSchedule) : ""}</div></div>
+    <div class="stat"><div class="lbl">${g.toc ? "Top of Climb" : "Top of Descent"}</div><div class="big">${g.toc ? fmt(g.toc.distNm) + " nm" : g.tod ? fmt(g.tod.distNm) + " nm" : DASH}</div><div class="sub">${g.toc ? "ETA " + esc(g.toc.eta || DASH) : g.tod ? "ETA " + esc(g.tod.eta || DASH) : esc(t("dashboard.route.behind"))}</div></div>
+    <div class="stat"><div class="lbl">${esc(t("dashboard.route.crossTrack"))}</div><div class="big ${g.onRoute ? "g" : "a"}">${Math.abs(g.xtk).toFixed(1)} nm</div><div class="sub">${esc(xtkSide || t("dashboard.route.onRoute"))}${g.terminal ? "  SID/STAR" : ""}</div></div>
+    <div class="stat"><div class="lbl">${esc(t("dashboard.route.fuelVsPlan"))}</div><div class="big ${fuelCls}">${fuelDiff === null ? DASH : (fuelDiff >= 0 ? "+" : "−") + Math.abs(fuelDiff) + " kg"}</div><div class="sub">${esc(t("dashboard.route.fuelSub", { actual: fmt(g.fuel.actual), landing: fmt(g.fuel.predictedLanding) }))}</div></div>
   </div>`;
-  const note = g.next.notInPlan ? `<p class="empty">Das FMS fliegt einen Punkt an, der nicht im SimBrief-Plan steht – Route und Distanzen kommen aus dem Plan.</p>` : "";
+  const note = g.next.notInPlan ? `<p class="empty">${esc(t("dashboard.route.fmsNotInPlan"))}</p>` : "";
   setHtml("routeBody", ends + track + stats + note);
 }
-$("planReload").addEventListener("click", () => action("/api/simbrief/refresh", "SimBrief-Plan geladen."));
+$("planReload").addEventListener("click", () => action("/api/simbrief/refresh", t("dashboard.setup.planLoaded")));
 
 /* ------------------------------------------------------------------ Fuel Check (Trend) */
 const ft = { data: null, key: "", width: 0, sel: null, pts: [] };
-const kgDe = (v) => (n(v) === null ? DASH : (v < 0 ? "−" : "") + Math.abs(Math.round(v / 10) * 10).toLocaleString("de-DE") + " kg");
-const kgSigned = (v) => (n(v) === null ? DASH : (v > 0 ? "+" : "") + kgDe(v));
-const FT_KIND = { Waypoint: "Wegpunkt", Interval: "Intervall", Deviation: "Warnung", Landing: "Warnung", Refuel: "Tanken", Defuel: "Treibstoff geändert" };
-const FT_WARN = { deviation: "Abweichung gewachsen", landing_buffer: "Landung unter Minimum + Puffer", landing_minimum: "Landung unter Minimum" };
+const kgLoc = (v) => (n(v) === null ? DASH : (v < 0 ? "−" : "") + Math.abs(Math.round(v / 10) * 10).toLocaleString(i18n.language || "en") + " kg");
+const kgSigned = (v) => (n(v) === null ? DASH : (v > 0 ? "+" : "") + kgLoc(v));
+const ftKind = (kind) => ({
+  Waypoint: t("dashboard.fuel.kind.waypoint"), Interval: t("dashboard.fuel.kind.interval"), Deviation: t("dashboard.fuel.kind.warning"),
+  Landing: t("dashboard.fuel.kind.warning"), Refuel: t("dashboard.fuel.kind.refuel"), Defuel: t("dashboard.fuel.kind.defuel"),
+}[kind]);
+const ftWarn = (w) => ({
+  deviation: t("dashboard.fuel.warn.deviation"), landing_buffer: t("dashboard.fuel.warn.landingBuffer"), landing_minimum: t("dashboard.fuel.warn.landingMinimum"),
+}[w] || w);
 const isCheck = (e) => e.kind !== "Refuel" && e.kind !== "Defuel" && n(e.diff) !== null;
 
 function renderFuelTrend(p) {
@@ -1212,7 +1286,7 @@ function renderFuelTrend(p) {
   renderFuelTable(f);
   const lastCheck = [...f.items].reverse().find(isCheck);
   $("ftLast").innerHTML = lastCheck
-    ? `Letzter Check <b>${esc(lastCheck.fix || FT_KIND[lastCheck.kind])}</b> ${esc(lastCheck.time)}  <b>${esc(kgSigned(lastCheck.diff))}</b>${n(f.intervalMinutes) && f.intervalMinutes > 0 ? `  Intervall ${esc(f.intervalMinutes)} min` : ""}`
+    ? `${esc(t("dashboard.fuel.lastCheck"))} <b>${esc(lastCheck.fix || ftKind(lastCheck.kind))}</b> ${esc(lastCheck.time)}  <b>${esc(kgSigned(lastCheck.diff))}</b>${n(f.intervalMinutes) && f.intervalMinutes > 0 ? "  " + esc(t("dashboard.fuel.interval", { minutes: f.intervalMinutes })) : ""}`
     : "";
 }
 
@@ -1238,7 +1312,7 @@ function drawFuelTrend() {
   for (let v = lo; v <= hi + 1e-6; v += step) {
     const yy = y(v).toFixed(1);
     g += `<line x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}" stroke="${v === 0 ? "#4a5560" : "#1d242b"}" stroke-width="1"/>`;
-    g += `<text x="${L - 8}" y="${yy}" text-anchor="end" dominant-baseline="middle">${v === 0 ? "Plan" : esc(kgSigned(v).replace(" kg", ""))}</text>`;
+    g += `<text x="${L - 8}" y="${yy}" text-anchor="end" dominant-baseline="middle">${v === 0 ? esc(t("dashboard.fuel.plan")) : esc(kgSigned(v).replace(" kg", ""))}</text>`;
   }
   g += `<text x="${L}" y="${H - 4}">0 nm</text><text x="${W - R}" y="${H - 4}" text-anchor="end">${esc(Math.round(total))} nm</text>`;
 
@@ -1247,7 +1321,7 @@ function drawFuelTrend() {
     const xx = x(e.nm).toFixed(1);
     g += `<line x1="${xx}" x2="${xx}" y1="${T}" y2="${H - B}" stroke="#31c6ee" stroke-width="1"/>`;
     const right = x(e.nm) > W - 120;
-    g += `<text x="${(x(e.nm) + (right ? -6 : 6)).toFixed(1)}" y="${T + 10}" text-anchor="${right ? "end" : "start"}">${e.kind === "Refuel" ? "Tanken" : "Änderung"}</text>`;
+    g += `<text x="${(x(e.nm) + (right ? -6 : 6)).toFixed(1)}" y="${T + 10}" text-anchor="${right ? "end" : "start"}">${esc(e.kind === "Refuel" ? t("dashboard.fuel.kind.refuel") : t("dashboard.fuel.change"))}</text>`;
   }
 
   // Linie je Abschnitt zwischen zwei Tankvorgängen
@@ -1298,12 +1372,16 @@ function showFuelTip(i) {
   const e = p.e;
   tip.replaceChildren();
   const line = (text, cls) => { const d = document.createElement("div"); d.textContent = text; if (cls) d.className = cls; tip.appendChild(d); };
-  line(kgSigned(e.diff) + " gegen Plan", "v");
-  line([e.fix || FT_KIND[e.kind], e.time].filter(Boolean).join(" · "));
-  line("An Bord " + kgDe(e.actual));
-  if (n(e.change) !== null) line("Seit letztem Check " + kgSigned(e.change));
-  if (n(e.landing) !== null) line("Landung ca. " + kgDe(e.landing) + (n(e.minimum) !== null ? " (Min " + kgDe(e.minimum) + ")" : ""));
-  for (const w of e.warnings || []) line(FT_WARN[w] || w, "warn");
+  line(t("dashboard.fuel.tip.vsPlan", { kg: kgSigned(e.diff) }), "v");
+  line([e.fix || ftKind(e.kind), e.time].filter(Boolean).join(" · "));
+  line(t("dashboard.fuel.tip.onBoard", { kg: kgLoc(e.actual) }));
+  if (n(e.change) !== null) line(t("dashboard.fuel.tip.sinceLast", { kg: kgSigned(e.change) }));
+  if (n(e.landing) !== null) {
+    line(n(e.minimum) !== null
+      ? t("dashboard.fuel.tip.landingMin", { kg: kgLoc(e.landing), min: kgLoc(e.minimum) })
+      : t("dashboard.fuel.tip.landing", { kg: kgLoc(e.landing) }));
+  }
+  for (const w of e.warnings || []) line(ftWarn(w), "warn");
   tip.hidden = false;
   const W = $("ftPlot").clientWidth;
   const tw = tip.offsetWidth;
@@ -1349,26 +1427,26 @@ function renderFuelTable(f) {
     if (!isCheck(e)) {
       tr.className = "refuel";
       cell(e.time);
-      cell(FT_KIND[e.kind]);
-      cell(kgDe(e.actual));
+      cell(ftKind(e.kind));
+      cell(kgLoc(e.actual));
       cell(n(e.from) !== null ? kgSigned(e.actual - e.from) : DASH);
-      cell("Vergleich neu");
+      cell(t("dashboard.fuel.comparisonRestarts"));
       cell("");
     } else {
       cell(e.time, "dim");
       const where = document.createElement("td");
-      where.textContent = e.fix || FT_KIND[e.kind];
+      where.textContent = e.fix || ftKind(e.kind);
       if (e.warnings && e.warnings.length) {
         const w = document.createElement("span");
         w.className = "warn";
-        w.textContent = e.warnings.map((x) => FT_WARN[x] || x).join(", ");
+        w.textContent = e.warnings.map((x) => ftWarn(x)).join(", ");
         where.appendChild(w);
       }
       tr.appendChild(where);
-      cell(kgDe(e.actual));
+      cell(kgLoc(e.actual));
       cell(kgSigned(e.diff));
       cell(kgSigned(e.change), "dim");
-      cell(n(e.landing) !== null ? kgDe(e.landing) : DASH, "dim");
+      cell(n(e.landing) !== null ? kgLoc(e.landing) : DASH, "dim");
     }
     body.appendChild(tr);
   }
@@ -1379,27 +1457,27 @@ function renderEngines(s) {
   if (!s) { setHtml("engs", ""); setHtml("totals", ""); $("ffSource").textContent = ""; return; }
   const engs = $("engs");
   engs.style.setProperty("--n", s.engines.length);
-  setHtml("engs", s.engines.map((e) => `<div class="engine"><div class="lbl">ENG ${e.n}${e.running ? "" : "  aus"}</div>
+  setHtml("engs", s.engines.map((e) => `<div class="engine"><div class="lbl">ENG ${e.n}${e.running ? "" : "  " + esc(t("dashboard.engines.off"))}</div>
     <div class="n1 ${e.running ? "g" : "dim"}">${fmt(e.n1, 1)}<span class="unit dim"> %N1</span></div>
     <div class="bar"><i style="width:${Math.min(100, Math.max(0, (e.n1 || 0) / 1.1))}%"></i></div>
     <div class="sub">EGT ${fmt(e.egt)} °C<br>FF ${fmt(e.ff)} kg/h</div></div>`).join(""));
-  $("ffSource").textContent = s.fuelFlowSource === "profile" ? "Fuel Flow aus dem Profil" : "Fuel Flow generisch";
-  const elec = (s.electrical || []).map((e) => `<span><span class="dim">${esc(e.label)}</span> ${e.text ? span(e.text, e.text === "versorgt" ? "g" : "a") : esc(fmt(e.value))}</span>`).join("");
-  setHtml("totals", `Treibstoff <b>${fmt(s.fuelKg)}</b> kg   Gewicht <b>${fmt(s.grossWeightKg)}</b> kg` + (elec ? `<div class="elec">${elec}</div>` : ""));
+  $("ffSource").textContent = s.fuelFlowSource === "profile" ? t("dashboard.engines.ffProfile") : t("dashboard.engines.ffGeneric");
+  const elec = (s.electrical || []).map((e) => `<span><span class="dim">${esc(e.label)}</span> ${e.text ? span(e.text, e.text === "powered" ? "g" : "a") : esc(fmt(e.value))}</span>`).join("");
+  setHtml("totals", `${esc(t("dashboard.engines.fuel"))} <b>${fmt(s.fuelKg)}</b> kg   ${esc(t("dashboard.engines.weight"))} <b>${fmt(s.grossWeightKg)}</b> kg` + (elec ? `<div class="elec">${elec}</div>` : ""));
 }
 
 /* ------------------------------------------------------------------ Konfiguration */
 function renderConfig(s) {
   if (!s) { setHtml("cfg", ""); return; }
   const c = s.config;
-  const gear = n(c.gearPct) === null ? (c.gearHandleDown ? span("unten", "g") : span("oben", "w"))
-    : c.gearPct >= 99 ? span("unten", "g") : c.gearPct <= 1 ? span("oben", "w") : span(`fährt (${c.gearPct} %)`, "a");
+  const gear = n(c.gearPct) === null ? (c.gearHandleDown ? span(t("dashboard.config.gearDown"), "g") : span(t("dashboard.config.gearUp"), "w"))
+    : c.gearPct >= 99 ? span(t("dashboard.config.gearDown"), "g") : c.gearPct <= 1 ? span(t("dashboard.config.gearUp"), "w") : span(t("dashboard.config.gearMoving", { percent: c.gearPct }), "a");
   const rows = [
-    ["Klappen", span(n(c.flaps) === null ? DASH : String(c.flaps), "w")],
-    ["Fahrwerk", gear],
-    ["Spoiler", c.spoilersArmed ? span("armed", "c") : c.speedbrakePct > 2 ? span(`Speedbrake ${c.speedbrakePct} %`, "w") : span("eingefahren", "w")],
+    [t("dashboard.config.flaps"), span(n(c.flaps) === null ? DASH : String(c.flaps), "w")],
+    [t("dashboard.config.gear"), gear],
+    [t("dashboard.config.spoilers"), c.spoilersArmed ? span("armed", "c") : c.speedbrakePct > 2 ? span(`Speedbrake ${c.speedbrakePct} %`, "w") : span(t("dashboard.config.retracted"), "w")],
     ["Autobrake", c.autobrake ? span(c.autobrake, c.autobrake === "OFF" || c.autobrake === "DISARM" ? "w" : "g") : span(DASH, "dim")],
-    ["Parkbremse", c.parkingBrake ? span("gesetzt", "a") : span("gelöst", "w")],
+    [t("dashboard.config.parkingBrake"), c.parkingBrake ? span(t("dashboard.config.brakeSet"), "a") : span(t("dashboard.config.brakeReleased"), "w")],
   ];
   setHtml("cfg", rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join(""));
 }
@@ -1409,18 +1487,18 @@ function renderAtc(s) {
   if (!s) { setHtml("rwy", ""); setHtml("atcRows", ""); return; }
   const a = s.atc;
   setHtml("rwy", a.runway
-    ? `<div class="rwy">${esc(a.runway.ident)}</div><div class="rwy-sub">${esc(a.runway.spoken)}${a.runway.airport ? "  " + esc(a.runway.airport) : ""}${a.runway.designatorSource ? "" : "  L/C/R unbekannt"}</div>`
-    : `<div class="rwy-sub">Keine Bahn vom Ingame-ATC zugewiesen.</div>`);
+    ? `<div class="rwy">${esc(a.runway.ident)}</div><div class="rwy-sub">${esc(a.runway.spoken)}${a.runway.airport ? "  " + esc(a.runway.airport) : ""}${a.runway.designatorSource ? "" : "  " + esc(t("dashboard.atc.designatorUnknown"))}</div>`
+    : `<div class="rwy-sub">${esc(t("dashboard.atc.noRunway"))}</div>`);
   const cl = a.clearances;
   const chip = (on, label) => span(label, on ? "g" : "none");
   const e = s.environment;
   const rows = [
     ["Callsign", span(a.callsign || DASH, "w")],
-    ["Freigaben", [chip(cl.ifr, "IFR"), chip(cl.taxi, "TAXI"), chip(cl.takeoff, "T/O"), chip(cl.landing, "LDG")].join("  ")],
+    [t("dashboard.atc.clearances"), [chip(cl.ifr, "IFR"), chip(cl.taxi, "TAXI"), chip(cl.takeoff, "T/O"), chip(cl.landing, "LDG")].join("  ")],
     ["Wind", span(n(e.windDir) === null ? DASH : `${hdg3(e.windDir)}/${e.windKt} kt`, "w")],
     ["OAT", span(n(e.oat) === null ? DASH : `${e.oat} °C`, "w")],
-    ["QNH", span(n(e.qnh) === null ? DASH : `${e.qnh} hPa`, "w") + (n(e.baro) !== null ? "  " + span(`eingestellt ${e.baro}`, Math.round(e.baro) === 1013 ? "c" : "dim") : "")],
-    ["Zeit", span(e.utc ? e.utc + " UTC" : DASH, "w")],
+    ["QNH", span(n(e.qnh) === null ? DASH : `${e.qnh} hPa`, "w") + (n(e.baro) !== null ? "  " + span(t("dashboard.atc.baroSet", { baro: e.baro }), Math.round(e.baro) === 1013 ? "c" : "dim") : "")],
+    [t("dashboard.atc.time"), span(e.utc ? e.utc + " UTC" : DASH, "w")],
   ];
   setHtml("atcRows", rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join(""));
 }
@@ -1430,13 +1508,13 @@ function renderSetup(d) {
   if (!$("setup").open) return;
   const s = d.sim;
   const ac = s ? s.aircraft : null;
-  $("profileTitle").textContent = ac && ac.profile ? "Profil " + ac.profile : "Flugzeugprofil";
-  $("profileInfo").textContent = !s ? "Keine Verbindung zum Sim."
-    : !ac.profile ? `Für „${ac.title || "dieses Flugzeug"}“ gibt es kein Profil. Pfad: ${ac.path || "unbekannt"}`
+  $("profileTitle").textContent = ac && ac.profile ? t("dashboard.header.profile", { profile: ac.profile }) : t("dashboard.setup.aircraftProfile");
+  $("profileInfo").textContent = !s ? t("dashboard.setup.noSim")
+    : !ac.profile ? t("dashboard.setup.noProfile", { aircraft: ac.title || t("dashboard.setup.thisAircraft"), path: ac.path || t("dashboard.common.unknown") })
     : `${ac.profileFile || ""}${ac.profileNotes ? " – " + ac.profileNotes : ""}`;
   const b = (s && s.bindings) || [];
-  setHtml("bindings", b.map((x) => `<tr><td>${esc(x.key)}</td><td class="var">${esc(x.variable)}</td><td><span class="state ${x.verified ? "ok" : "open"}">${x.verified ? "geprüft" : "ungeprüft"}</span></td><td class="mono">${esc(x.text ?? (x.raw ?? DASH))}${x.text && n(x.raw) !== null ? ` <span class="dim">(${esc(x.raw)})</span>` : ""}</td></tr>`).join("")
-    || `<tr><td colspan="4" class="dim">Keine Bindings.</td></tr>`);
+  setHtml("bindings", b.map((x) => `<tr><td>${esc(x.key)}</td><td class="var">${esc(x.variable)}</td><td><span class="state ${x.verified ? "ok" : "open"}">${esc(x.verified ? t("dashboard.setup.verified") : t("dashboard.setup.unverified"))}</span></td><td class="mono">${esc(x.text ?? (x.raw ?? DASH))}${x.text && n(x.raw) !== null ? ` <span class="dim">(${esc(x.raw)})</span>` : ""}</td></tr>`).join("")
+    || `<tr><td colspan="4" class="dim">${esc(t("dashboard.setup.noBindings"))}</td></tr>`);
 
   if (d.log) {
     const box = $("log");
@@ -1455,12 +1533,12 @@ async function action(url, done) {
     if (j.error || (j.errors && j.errors.length)) toast.className = "toast a";
   } catch {
     toast.className = "toast a";
-    toast.textContent = "Kopilot hat nicht geantwortet.";
+    toast.textContent = t("dashboard.common.noResponse");
   }
   setTimeout(() => { toast.textContent = ""; }, 6000);
 }
-$("reloadProfiles").addEventListener("click", () => action("/api/reload-profiles", "Profile neu geladen."));
-$("reloadPlan").addEventListener("click", () => action("/api/simbrief/refresh", "SimBrief-Plan geladen."));
+$("reloadProfiles").addEventListener("click", () => action("/api/reload-profiles", t("dashboard.setup.profilesReloaded")));
+$("reloadPlan").addEventListener("click", () => action("/api/simbrief/refresh", t("dashboard.setup.planLoaded")));
 
 /*
   Eingabe-Modul: Freigabe (zwei Klicks), offene Aktion mit Readback und Countdown, Protokoll.
@@ -1474,25 +1552,30 @@ function renderInput(d) {
   if (!inp) return;
   inputUi.enabled = !!inp.enabled;
   const arming = !inp.enabled && Date.now() < inputUi.armUntil;
-  const text = inp.enabled ? "Eingabe frei" : arming ? "Wirklich freigeben?" : "Eingabe gesperrt";
+  const text = inp.enabled ? t("dashboard.input.enabled") : arming ? t("dashboard.input.confirmEnable") : t("dashboard.input.locked");
   if (btn.textContent !== text) btn.textContent = text;
   btn.setAttribute("aria-pressed", inp.enabled ? "true" : "false");
   btn.className = "btn" + (inp.enabled ? " input-on" : arming ? " arm" : "");
-  btn.title = inp.enabled ? `Kopilot darf ${inp.actions} Aktionen nach Bestätigung ausführen – klicken zum Sperren` : "Kopilot darf nichts bedienen – zweimal klicken zum Freigeben";
+  btn.title = inp.enabled ? t("dashboard.input.enabledTitle", { actions: inp.actions }) : t("dashboard.input.lockedTitle");
 
   const p = inp.pending;
   $("pending").hidden = !p;
   if (p) {
     setText("pendingReadback", p.readback);
-    setText("pendingInfo", `Wartet auf „confirm“ – noch ${p.expiresInSec} s · ${p.action}${p.value ? " = " + p.value : ""}${p.other ? " · Claude Desktop" : ""}`);
+    setText("pendingInfo", t("dashboard.input.waitingConfirm", { seconds: p.expiresInSec }) + ` · ${p.action}${p.value ? " = " + p.value : ""}${p.other ? " · Claude Desktop" : ""}`);
   }
 
   const log = inp.log || [];
   $("inputLog").hidden = log.length === 0;
-  const cls = { "ausgeführt": "g", "geprüft": "g", "abgelehnt": "a", "fehlgeschlagen": "a", "abgelaufen": "dim", "abgebrochen": "dim", "ersetzt": "dim", "vorbereitet": "c" };
+  const cls = {
+    executed: "g", verified: "g", checked: "g",
+    refused: "a", failed: "a", disagree: "a", unreadable: "a", limitMissing: "a",
+    expired: "dim", cancelled: "dim", replaced: "dim", discarded: "dim",
+    prepared: "c", caution: "c",
+  };
   setHtml("inputLogList", log.map((e) => {
     const ok = e.verified === true ? " ✓" : e.verified === false ? " ✗" : "";
-    return `<li><span class="t">${esc(e.time)}</span><span><b class="${e.verified === false ? "a" : cls[e.outcome] || "w"}">${esc(e.outcome)}${ok}</b> ${esc(e.action)}${e.value ? " = " + esc(e.value) : ""}${e.detail ? `<br><span class="dim">${esc(e.detail)}</span>` : ""}</span></li>`;
+    return `<li><span class="t">${esc(e.time)}</span><span><b class="${e.verified === false ? "a" : cls[e.code] || cls[e.outcome] || "w"}">${esc(e.outcome)}${ok}</b> ${esc(e.action)}${e.value ? " = " + esc(e.value) : ""}${e.detail ? `<br><span class="dim">${esc(e.detail)}</span>` : ""}</span></li>`;
   }).join(""));
 }
 async function postInput(url, body) {
@@ -1504,7 +1587,7 @@ $("inputToggle").addEventListener("click", () => {
   if (inputUi.enabled) { postInput("/api/input", { enabled: false }); return; }
   if (Date.now() < inputUi.armUntil) { inputUi.armUntil = 0; postInput("/api/input", { enabled: true }); return; }
   inputUi.armUntil = Date.now() + 4000;
-  $("inputToggle").textContent = "Wirklich freigeben?";
+  $("inputToggle").textContent = t("dashboard.input.confirmEnable");
   $("inputToggle").className = "btn arm";
 });
 $("pendingCancel").addEventListener("click", () => postInput("/api/input/cancel"));
@@ -1531,7 +1614,7 @@ function showMsg(id, text, error) {
 }
 async function copyText(text, button) {
   try { await navigator.clipboard.writeText(text); } catch { return false; }
-  if (button) { const was = button.textContent; button.textContent = "Kopiert"; setTimeout(() => { button.textContent = was; }, 2000); }
+  if (button) { const was = button.textContent; button.textContent = t("dashboard.common.copied"); setTimeout(() => { button.textContent = was; }, 2000); }
   return true;
 }
 const clockZ = (iso) => (iso ? new Date(iso).toISOString().slice(11, 19) + "Z" : "");
@@ -1540,7 +1623,7 @@ const clockZ = (iso) => (iso ? new Date(iso).toISOString().slice(11, 19) + "Z" :
 const settingsUi = { data: null, timer: null, inputArm: 0, filled: false };
 
 function route() {
-  const show = location.hash === "#einstellungen";
+  const show = location.hash === "#einstellungen" || location.hash === "#settings";
   $("settings").hidden = !show;
   document.querySelector("main").hidden = show;
   document.querySelector(".setup").hidden = show;
@@ -1564,63 +1647,65 @@ function applySettings(j, msgId) {
 }
 async function saveSettings(url, body, msgId) {
   try { const j = await postJson(url, body); applySettings(j, msgId); return j; }
-  catch { showMsg(msgId, "Kopilot hat nicht geantwortet.", true); return null; }
+  catch { showMsg(msgId, t("dashboard.common.noResponse"), true); return null; }
 }
 
 function renderSettings() {
   const s = settingsUi.data;
   if (!s) return;
-  $("setFile").textContent = s.file + (s.fileExists ? "" : " (wird beim ersten Speichern angelegt)");
+  $("setFile").textContent = s.fileExists ? s.file : t("dashboard.settings.fileNew", { file: s.file });
 
   const bar = $("restartBar");
   bar.hidden = !s.restart.required || restartUi.active;
-  $("restartText").textContent = `Gespeichert, aber erst nach einem Neustart wirksam: ${s.restart.changes.join(", ")}.`
-    + (s.restart.available ? "" : " Neustart über das Symbol im Infobereich (Beenden) und Kopilot.exe.");
+  $("restartText").textContent = t("dashboard.settings.restartNeeded", { changes: s.restart.changes.join(", ") })
+    + (s.restart.available ? "" : " " + t("dashboard.settings.restartManual"));
   $("restartBtn").hidden = !s.restart.available;
   const env = $("setEnv");
   env.hidden = !s.environmentOverrides.length;
   env.textContent = s.environmentOverrides.length
-    ? `Umgebungsvariablen überschreiben die Datei: ${s.environmentOverrides.join(", ")} – Änderungen an diesen Werten wirken erst, wenn die Variable weg ist.` : "";
+    ? t("dashboard.settings.envOverrides", { variables: s.environmentOverrides.join(", ") }) : "";
 
   // Claude
   const c = s.claude;
   $("clMcp").textContent = c.mcpUrl;
   $("clOauth").innerHTML = c.oauth.active
-    ? `${span("aktiv", "pill on")} ${c.connectorUrl ? `<code>${esc(c.connectorUrl)}</code> <button class="btn" type="button" data-copy="${esc(c.connectorUrl)}">Kopieren</button>` : ""}`
-    : c.oauth.configured ? span("nach Neustart aktiv", "pill pend") + (c.connectorUrl ? ` <code>${esc(c.connectorUrl)}</code>` : "")
-    : span("aus", "pill off") + ` <span class="dim">braucht öffentliche Adresse und Passwort (mind. ${c.consentPassword.minLength} Zeichen)</span>`;
+    ? `${span(t("dashboard.settings.state.active"), "pill on")} ${c.connectorUrl ? `<code>${esc(c.connectorUrl)}</code> <button class="btn" type="button" data-copy="${esc(c.connectorUrl)}">${esc(t("dashboard.common.copy"))}</button>` : ""}`
+    : c.oauth.configured ? span(t("dashboard.settings.state.activeAfterRestart"), "pill pend") + (c.connectorUrl ? ` <code>${esc(c.connectorUrl)}</code>` : "")
+    : span(t("dashboard.settings.state.off"), "pill off") + ` <span class="dim">${esc(t("dashboard.settings.claude.oauthNeeds", { min: c.consentPassword.minLength }))}</span>`;
   $("clBearer").innerHTML = c.bearer.active === c.bearer.configured
-    ? (c.bearer.active ? span("aktiv", "pill on") : span("aus", "pill off"))
-    : span(c.bearer.configured ? "neu – nach Neustart aktiv" : "entfernt – nach Neustart aus", "pill pend");
-  const t = c.tunnel;
-  $("clTunnel").innerHTML = !t ? `<span class="dim">nicht geprüft</span>`
-    : span(t.state === "ok" ? "steht" : t.state === "off" ? "aus" : t.state === "blocked" ? "gesperrt" : "Fehler", "pill " + (t.state === "ok" ? "on" : t.state === "off" ? "off" : "pend"))
-      + ` <span class="dim">${esc(t.message)}</span>`;
+    ? (c.bearer.active ? span(t("dashboard.settings.state.active"), "pill on") : span(t("dashboard.settings.state.off"), "pill off"))
+    : span(c.bearer.configured ? t("dashboard.settings.state.newAfterRestart") : t("dashboard.settings.state.removedAfterRestart"), "pill pend");
+  const tun = c.tunnel;
+  $("clTunnel").innerHTML = !tun ? `<span class="dim">${esc(t("dashboard.settings.claude.tunnelNotChecked"))}</span>`
+    : span(tun.state === "ok" ? t("dashboard.settings.tunnel.up") : tun.state === "off" ? t("dashboard.settings.state.off") : tun.state === "blocked" ? t("dashboard.settings.tunnel.blocked") : t("dashboard.settings.tunnel.error"), "pill " + (tun.state === "ok" ? "on" : tun.state === "off" ? "off" : "pend"))
+      + ` <span class="dim">${esc(tun.message)}</span>`;
   $("clCheck").disabled = !c.publicUrl;
   if (!settingsUi.filled) $("clUrl").value = c.publicUrl || "";
-  $("clPwd").placeholder = c.consentPassword.set ? "gesetzt – leer lassen, um es zu behalten" : `nicht gesetzt (mind. ${c.consentPassword.minLength} Zeichen)`;
+  $("clPwd").placeholder = c.consentPassword.set ? t("dashboard.settings.claude.passwordSet") : t("dashboard.settings.claude.passwordNotSet", { min: c.consentPassword.minLength });
   $("clPwdRemoveRow").hidden = !c.consentPassword.set;
   $("tokRemove").disabled = !c.bearer.configured;
 
   // SimBrief
   const b = s.simBrief;
   if (!settingsUi.filled) { $("sbUser").value = b.username || ""; $("sbPilot").value = b.pilotId || ""; }
-  $("sbState").innerHTML = !b.configured ? "Kein Konto eingetragen."
-    : b.plan ? `Plan geladen: <b>${esc([b.plan.callsign, b.plan.origin && b.plan.destination ? b.plan.origin + " → " + b.plan.destination : ""].filter(Boolean).join("  "))}</b>${b.plan.fetchedUtc ? " · " + esc(clockZ(b.plan.fetchedUtc)) : ""}`
-    : b.error ? `<span class="a">${esc(b.error)}</span>` : "Noch kein Plan geladen.";
+  $("sbState").innerHTML = !b.configured ? esc(t("dashboard.settings.simbrief.noAccount"))
+    : b.plan ? `${esc(t("dashboard.settings.simbrief.planLoaded"))} <b>${esc([b.plan.callsign, b.plan.origin && b.plan.destination ? b.plan.origin + " → " + b.plan.destination : ""].filter(Boolean).join("  "))}</b>${b.plan.fetchedUtc ? " · " + esc(clockZ(b.plan.fetchedUtc)) : ""}`
+    : b.error ? `<span class="a">${esc(b.error)}</span>` : esc(t("dashboard.settings.simbrief.noPlan"));
 
   // Module
   const m = s.modules;
   const restartNote = (x) => (x.enabled !== x.running
-    ? [`${x.enabled ? "Eingeschaltet" : "Ausgeschaltet"} – gilt nach dem Neustart, bis dahin ${x.running ? "läuft es weiter" : "bleibt es aus"}.`, true]
-    : [x.running ? "Läuft." : "Aus.", false]);
+    ? [x.enabled ? t("dashboard.settings.modules.onAfterRestart") : t("dashboard.settings.modules.offAfterRestart"), true]
+    : [x.running ? t("dashboard.settings.modules.running") : t("dashboard.settings.modules.off"), false]);
   setSwitch("modMonitoring", m.monitoring.enabled, restartNote(m.monitoring));
   setSwitch("modAtc", m.atc.enabled, restartNote(m.atc));
   const arming = !m.input.enabled && Date.now() < settingsUi.inputArm;
-  setSwitch("modInput", m.input.enabled, [m.input.enabled ? "Freigegeben – Kopilot darf nach Bestätigung schalten." : "Gesperrt.", false], arming);
+  setSwitch("modInput", m.input.enabled, [m.input.enabled ? t("dashboard.settings.modules.inputEnabled") : t("dashboard.settings.modules.inputLocked"), false], arming);
   const voice = m.voice;
   $("modVoice").disabled = !voice.available;
-  setSwitch("modVoice", !!voice.enabled, [!voice.available ? "Nur in der Tray-Instanz." : voice.enabled ? `Zustand: ${VOICE_STATE[voice.state] || voice.state}.` : "Aus.", false]);
+  setSwitch("modVoice", !!voice.enabled, [!voice.available ? t("dashboard.settings.modules.trayOnly") : voice.enabled ? t("dashboard.settings.modules.voiceState", { state: voiceState(voice.state) }) : t("dashboard.settings.modules.off"), false]);
+
+  renderLanguage(s.language);
   settingsUi.filled = true;
 }
 function setSwitch(id, on, note, arming) {
@@ -1645,8 +1730,8 @@ $("clForm").addEventListener("submit", async (e) => {
 });
 $("clCheck").addEventListener("click", async () => {
   $("clCheck").disabled = true;
-  $("clTunnel").innerHTML = `<span class="dim">prüfe …</span>`;
-  try { applySettings(await postJson("/api/settings/claude/check")); } catch { $("clTunnel").textContent = "Kopilot hat nicht geantwortet."; }
+  $("clTunnel").innerHTML = `<span class="dim">${esc(t("dashboard.settings.claude.checking"))}</span>`;
+  try { applySettings(await postJson("/api/settings/claude/check")); } catch { $("clTunnel").textContent = t("dashboard.common.noResponse"); }
   $("clCheck").disabled = false;
 });
 $("tokNew").addEventListener("click", async () => {
@@ -1662,11 +1747,11 @@ $("sbForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const j = await saveSettings("/api/settings/simbrief", { username: $("sbUser").value.trim(), pilotId: $("sbPilot").value.trim() }, "sbMsg");
   if (!j || !j.ok || !j.settings.simBrief.configured) return;
-  showMsg("sbMsg", "Lade Plan …");
+  showMsg("sbMsg", t("dashboard.settings.simbrief.loading"));
   try {
     const p = await postJson("/api/simbrief/refresh");
-    showMsg("sbMsg", p.loaded && !p.error ? "Gespeichert, Plan geladen." : (p.error || "Kein Plan gefunden."), !!p.error || !p.loaded);
-  } catch { showMsg("sbMsg", "Kopilot hat nicht geantwortet.", true); }
+    showMsg("sbMsg", p.loaded && !p.error ? t("dashboard.settings.simbrief.savedLoaded") : (p.error || t("dashboard.settings.simbrief.notFound")), !!p.error || !p.loaded);
+  } catch { showMsg("sbMsg", t("dashboard.common.noResponse"), true); }
   loadSettings();
 });
 const toggleModule = (key, value) => saveSettings("/api/settings/modules", { [key]: value }, "modMsg");
@@ -1683,6 +1768,59 @@ $("modInput").addEventListener("click", () => {
   setTimeout(renderSettings, 4100);
 });
 
+/* Language: dashboard, tool messages and logs; callouts, checklists, FMA calls, warnings and radio stay English */
+function renderLanguage(l) {
+  const sel = $("langSel");
+  const lang = l || { current: i18n.language, available: i18n.available };
+  const list = lang.available && lang.available.length ? lang.available : [{ code: lang.current, name: lang.current }];
+  const sig = list.map((x) => x.code + "=" + x.name).join("|");
+  if (sel.dataset.sig !== sig) {
+    // Each language in its own name
+    sel.replaceChildren(...list.map((x) => { const o = document.createElement("option"); o.value = x.code; o.textContent = x.name; o.lang = x.code; return o; }));
+    sel.dataset.sig = sig;
+  }
+  if (!sel.disabled) sel.value = lang.current;
+  const st = $("langState");
+  st.hidden = !lang.overrides;
+  st.textContent = lang.overrides ? t("dashboard.settings.language.overrides", { folder: lang.overrides }) : "";
+  // Switched elsewhere (tray, another tab): follow the server
+  if (l && l.current && l.current !== i18n.language && !sel.disabled && !i18n.loading) {
+    i18n.loading = true;
+    loadStrings(l.current).then(() => { i18n.loading = false; refreshTexts(); }, () => { i18n.loading = false; });
+  }
+}
+$("langSel").addEventListener("change", async (e) => {
+  const sel = e.target;
+  const code = sel.value;
+  sel.disabled = true;
+  let j = null;
+  try { j = await postJson("/api/settings/language", { language: code }); } catch { /* message below */ }
+  if (j && j.ok) {
+    i18n.loading = true;
+    // If this fails, renderLanguage() tries again (server language differs from the texts in use)
+    try { await loadStrings((j.settings && j.settings.language && j.settings.language.current) || code); } catch { /* retried */ }
+    i18n.loading = false;
+  }
+  sel.disabled = false;
+  if (j && j.settings) settingsUi.data = j.settings;
+  refreshTexts();
+  if (!j) showMsg("langMsg", t("dashboard.common.noResponse"), true);
+  else showMsg("langMsg", j.error || j.message, !!j.error);
+});
+
+/* After a language switch: static texts, then every part that builds its texts in the script */
+function refreshTexts() {
+  applyI18n();
+  if ("speechSynthesis" in window) fillVoices();
+  renderSpeechButton();
+  renderServerSpeech();
+  renderVoiceLoop();
+  ft.key = "";
+  if (ui.data) render(ui.data);
+  if (!$("offline").hidden) showOffline();
+  if (!$("settings").hidden) { renderSettings(); loadMic(); }
+}
+
 /* Mikrofon: die Sprachschleife hat schon eine API (/api/voice) – hier nur Gerät, Pegel und Zustand */
 async function loadMic() {
   clearTimeout(settingsUi.timer);
@@ -1698,8 +1836,8 @@ function renderMic(d) {
   const err = $("micErr");
   if (!d || !d.available) {
     sel.disabled = true;
-    setHtml("micSel", `<option>nicht verfügbar</option>`);
-    $("micState").textContent = (d && d.error) || "Kopilot hat nicht geantwortet.";
+    setHtml("micSel", `<option>${esc(t("dashboard.common.unavailable"))}</option>`);
+    $("micState").textContent = (d && d.error) || t("dashboard.common.noResponse");
     return;
   }
   sel.disabled = false;
@@ -1709,33 +1847,32 @@ function renderMic(d) {
   const known = !configured || mics.some((x) => x.name === configured);
   if (document.activeElement !== sel) {
     setHtml("micSel",
-      `<option value="">Windows-Standardgerät${st.defaultMicrophone ? " (" + esc(st.defaultMicrophone) + ")" : ""}</option>` +
-      mics.map((x) => `<option value="${esc(x.name)}">${esc(x.fullName)}${x.isDefault ? " – Standard" : ""}</option>`).join("") +
-      (known ? "" : `<option value="${esc(configured)}">${esc(configured)} (nicht gefunden)</option>`));
+      `<option value="">${esc(t("dashboard.common.defaultDevice"))}${st.defaultMicrophone ? " (" + esc(st.defaultMicrophone) + ")" : ""}</option>` +
+      mics.map((x) => `<option value="${esc(x.name)}">${esc(x.fullName)}${x.isDefault ? " – " + esc(t("dashboard.common.isDefault")) : ""}</option>`).join("") +
+      (known ? "" : `<option value="${esc(configured)}">${esc(t("dashboard.common.notFound", { name: configured }))}</option>`));
     sel.value = configured;
   }
   const level = st.levelDbfs;
   $("micLevel").style.width = level == null ? "0" : Math.max(0, Math.min(100, (level + 60) / 60 * 100)) + "%";
-  $("micLevelText").textContent = level == null ? (d.settings.enabled ? DASH : "nur bei eingeschalteter Sprachschleife") : `${Math.round(level)} dBFS`;
-  const info = [`Sprachschleife: ${VOICE_STATE[st.state] || st.state || DASH}`];
-  if (st.microphone) info.push(`nimmt auf von ${st.microphone}`);
-  if (st.lastTranscript) info.push(`zuletzt gehört: „${st.lastTranscript}“`);
+  $("micLevelText").textContent = level == null ? (d.settings.enabled ? DASH : t("dashboard.settings.mic.onlyWhenOn")) : `${Math.round(level)} dBFS`;
+  const info = [t("dashboard.settings.mic.voiceLoop", { state: voiceState(st.state) || DASH })];
+  if (st.microphone) info.push(t("dashboard.settings.mic.recordingFrom", { microphone: st.microphone }));
+  if (st.lastTranscript) info.push(t("dashboard.settings.mic.lastHeard", { transcript: st.lastTranscript }));
   $("micState").textContent = info.join(" · ");
-  const problem = d.error || st.error || (st.microphoneFound === false ? `„${st.microphoneConfigured}“ nicht gefunden – es läuft das Standardgerät.` : "");
+  const problem = d.error || st.error || (st.microphoneFound === false ? t("dashboard.settings.mic.notFound", { name: st.microphoneConfigured }) : "");
   err.hidden = !problem;
   err.textContent = problem || "";
 }
 $("micSel").addEventListener("change", async (e) => {
-  try { renderMic(await postJson("/api/voice", { microphone: e.target.value })); } catch { $("micState").textContent = "Kopilot hat nicht geantwortet."; }
+  try { renderMic(await postJson("/api/voice", { microphone: e.target.value })); } catch { $("micState").textContent = t("dashboard.common.noResponse"); }
 });
 
 /* Neustart: neue Instanz starten, alte beendet sich – das Dashboard verbindet sich danach von selbst wieder */
 const restartUi = { active: false, sawOffline: false, timer: null };
-const OFFLINE_TEXT = $("offline").textContent;
 function showOffline() {
   const box = $("offline");
   box.classList.toggle("restarting", restartUi.active);
-  box.textContent = restartUi.active ? "Kopilot startet neu …" : OFFLINE_TEXT;
+  box.textContent = restartUi.active ? t("dashboard.offline.restarting") : t("dashboard.offline.text");
   box.hidden = false;
 }
 $("restartBtn").addEventListener("click", async () => {
@@ -1755,7 +1892,7 @@ function restartFinished() {
   restartUi.active = false;
   clearTimeout(restartUi.timer);
   $("restartBtn").disabled = false;
-  if (!$("settings").hidden) { settingsUi.filled = false; loadSettings(); loadMic(); showMsg("modMsg", "Kopilot wurde neu gestartet."); }
+  if (!$("settings").hidden) { settingsUi.filled = false; loadSettings(); loadMic(); showMsg("modMsg", t("dashboard.settings.restarted")); }
   loadServerSpeech();
 }
 
@@ -1773,11 +1910,11 @@ $("reportOpen").addEventListener("click", async () => {
   reportUi.titleEdited = false;
   reportUi.done = false;
   reportUi.repository = j.repository;
-  const parts = [`Momentaufnahme ${clockZ(j.capturedUtc)}`];
+  const parts = [t("dashboard.report.snapshot", { time: clockZ(j.capturedUtc) })];
   if (j.summary.station) parts.push(j.summary.station);
   if (n(j.summary.com1) !== null) parts.push("COM1 " + Number(j.summary.com1).toFixed(3));
   if (n(j.summary.altitudeFt) !== null) parts.push(Math.round(j.summary.altitudeFt) + " ft");
-  if (!j.summary.simConnected) parts.push("Sim nicht verbunden");
+  if (!j.summary.simConnected) parts.push(t("dashboard.report.simNotConnected"));
   $("rpWhen").textContent = parts.join(" · ");
   const kinds = $("rpKinds");
   kinds.querySelectorAll(".kind").forEach((k) => k.remove());
@@ -1796,8 +1933,8 @@ $("reportOpen").addEventListener("click", async () => {
   $("rpResult").hidden = true;
   $("rpGithub").hidden = !j.repository;
   $("rpLocal").hidden = false;
-  $("rpLocal").textContent = j.repository ? "Nur lokal speichern" : "Speichern";
-  $("rpClose").textContent = "Abbrechen";
+  $("rpLocal").textContent = j.repository ? t("dashboard.report.saveLocal") : t("dashboard.common.save");
+  $("rpClose").textContent = t("dashboard.common.cancel");
   [$("rpGithub"), $("rpLocal")].forEach((b) => { b.disabled = false; });
   $("report").showModal();
   kinds.querySelector("input").focus();
@@ -1821,7 +1958,7 @@ async function sendReport(openGithub) {
   let j = null;
   try {
     j = await postJson("/api/report", { id: reportUi.id, categories: selectedKinds(), title: $("rpTitle").value, description: $("rpText").value });
-  } catch { j = { ok: false, error: "Kopilot hat nicht geantwortet." }; }
+  } catch { j = { ok: false, error: t("dashboard.common.noResponse") }; }
   reportUi.busy = false;
   if (!j.ok) {
     $("rpErr").textContent = j.error;
@@ -1835,15 +1972,15 @@ async function sendReport(openGithub) {
   box.className = "result" + (j.fileError ? " err" : "");
   box.replaceChildren();
   const p = (html) => { const el = document.createElement("p"); el.innerHTML = html; box.appendChild(el); return el; };
-  p(j.file ? `Gespeichert unter <code>${esc(j.file)}</code>` : esc(j.fileError || "Nicht lokal gespeichert."));
+  p(j.file ? t("dashboard.report.savedAtHtml", { file: esc(j.file) }) : esc(j.fileError || t("dashboard.report.notSaved")));
   if (j.url) {
-    p(`${openGithub ? "GitHub sollte sich in einem neuen Tab geöffnet haben – dort nur noch absenden. Kein Tab? " : ""}<a href="${esc(j.url)}" target="_blank" rel="noopener noreferrer">Issue auf GitHub öffnen</a>`
-      + (j.truncated ? ` <span class="dim">(Link gekürzt – vollständiger Text in der lokalen Kopie)</span>` : ""));
+    p(`${openGithub ? esc(t("dashboard.report.githubOpened")) + " " : ""}<a href="${esc(j.url)}" target="_blank" rel="noopener noreferrer">${esc(t("dashboard.report.openIssue"))}</a>`
+      + (j.truncated ? ` <span class="dim">${esc(t("dashboard.report.truncated"))}</span>` : ""));
   }
-  const copy = p(`<button class="btn" type="button">Text kopieren</button> <span class="dim">Labels: ${esc(j.labels.join(", ") || "keine")}</span>`).querySelector("button");
+  const copy = p(`<button class="btn" type="button">${esc(t("dashboard.report.copyText"))}</button> <span class="dim">${esc(t("dashboard.report.labels", { labels: j.labels.join(", ") || t("dashboard.report.noLabels") }))}</span>`).querySelector("button");
   copy.addEventListener("click", () => copyText(`${j.title}\n\n${j.body}`, copy));
   box.hidden = false;
-  $("rpClose").textContent = "Schließen";
+  $("rpClose").textContent = t("dashboard.common.close");
 }
 $("reportForm").addEventListener("submit", (e) => { e.preventDefault(); sendReport(!!reportUi.repository); });
 $("rpLocal").addEventListener("click", () => sendReport(false));
@@ -1871,6 +2008,7 @@ async function poll() {
   }
 }
 function render(d) {
+  ui.data = d;
   // Sprachausgabe von Kopilot: Zustand mitführen, nachladen sobald sie bereit ist
   if (d.speech) {
     if (d.speech.available !== server.available || (d.speech.engine || null) !== ((server.status && server.status.activeEngine) || null)) loadServerSpeech();

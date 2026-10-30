@@ -964,7 +964,7 @@
   "dashboard.settings.language.hint": "The dashboard, tool messages and logs follow this setting. Callouts, checklists, FMA calls, warnings and radio stay in English – like a real crew (SOP). Applies immediately.",
   "dashboard.settings.language.label": "Display language",
   "dashboard.settings.language.overrides": "Extra translations loaded from {folder}",
-  "dashboard.report.title": "Report a bug",
+  "dashboard.report.title": "Report a problem",
   "dashboard.report.kinds": "What's wrong?",
   "dashboard.report.titleLabel": "Title",
   "dashboard.report.description": "What is wrong, and what would be right?",
