@@ -331,8 +331,11 @@ public sealed class SupertonicTests
 
         var data = Environment.GetEnvironmentVariable("DUOPILO_SUPERTONIC_DATA") is { Length: > 0 } d ? d : TempDirectory();
         var output = Environment.GetEnvironmentVariable("DUOPILO_SUPERTONIC_OUT");
-        using var engine = Engine(data);
-        var report = new StringBuilder("| Stimme | Satz | Audio s | Wand s |\n|---|---|---:|---:|\n");
+        var threads = int.TryParse(Environment.GetEnvironmentVariable("DUOPILO_SUPERTONIC_THREADS"), out var t) ? t : new SmalltalkOptions().SupertonicThreads;
+        using var engine = new SupertonicSpeechEngine(
+            Options.Create(new DuopiloOptions { DataDirectory = data, Smalltalk = new SmalltalkOptions { SupertonicThreads = threads } }),
+            NullLogger<SupertonicSpeechEngine>.Instance);
+        var report = new StringBuilder($"Threads {threads}\n\n| Stimme | Satz | Audio s | Wand s |\n|---|---|---:|---:|\n");
         string[] sentences =
         [
             "Guten Abend, ich bin heute dein First Officer.",
@@ -343,7 +346,9 @@ public sealed class SupertonicTests
             await engine.PrepareAsync(voice, CancellationToken.None);
             Assert.True(engine.StateOf(voice) == TtsState.Ready, engine.Error);
             var all = new List<float>();
-            foreach (var sentence in sentences)
+            var spoken = 0;
+            // Zweimal: der erste Durchlauf enthält das Laden des Modells, der zweite zeigt die Zeit im laufenden Betrieb
+            foreach (var sentence in sentences.Concat(sentences))
             {
                 var sw = Stopwatch.StartNew();
                 var clip = await engine.SynthesizeAsync(sentence, voice, 1.1, CancellationToken.None);
@@ -352,8 +357,11 @@ public sealed class SupertonicTests
                 Assert.InRange(clip.Duration.TotalSeconds, 1.5, 20);
                 Assert.True(clip.Samples.Max(x => Math.Abs(x)) > 0.05f, "zu leise / stumm");
                 report.Append($"| {voice.Id} | {sentence[..24]}… | {clip.Duration.TotalSeconds:0.00} | {sw.Elapsed.TotalSeconds:0.00} |\n");
-                all.AddRange(clip.Samples);
-                all.AddRange(new float[22_050]);
+                if (++spoken <= sentences.Length)
+                {
+                    all.AddRange(clip.Samples);
+                    all.AddRange(new float[22_050]);
+                }
             }
 
             if (!string.IsNullOrEmpty(output))
@@ -366,7 +374,7 @@ public sealed class SupertonicTests
         Assert.True(File.Exists(Path.Combine(engine.Root, "LICENSE")));
         if (!string.IsNullOrEmpty(output))
         {
-            await File.WriteAllTextAsync(Path.Combine(output, "supertonic-live.md"), report.ToString());
+            await File.WriteAllTextAsync(Path.Combine(output, $"supertonic-live-{threads}.md"), report.ToString());
         }
     }
 }
