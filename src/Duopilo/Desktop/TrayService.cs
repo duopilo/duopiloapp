@@ -28,7 +28,8 @@ public sealed class TrayService(
     MonitoringService monitoring,
     IHostApplicationLifetime lifetime,
     ILogger<TrayService> log,
-    Duopilo.Speech.ISpeechOutput? speech = null) : IHostedService
+    Duopilo.Speech.ISpeechOutput? speech = null,
+    Duopilo.Updates.UpdateService? updates = null) : IHostedService
 {
     private Thread? _thread;
     private TrayContext? _context;
@@ -60,7 +61,7 @@ public sealed class TrayService(
                 var sync = new WinForms.WindowsFormsSynchronizationContext();
                 SynchronizationContext.SetSynchronizationContext(sync);
                 _ui = sync;
-                _context = new TrayContext(info, sim, profiles, alerts, monitoring, lifetime, speech, sync);
+                _context = new TrayContext(info, sim, profiles, alerts, monitoring, lifetime, speech, updates, sync);
             }
             catch (Exception ex)
             {
@@ -104,6 +105,7 @@ public sealed class TrayService(
         private readonly MonitoringService _monitoring;
         private readonly IHostApplicationLifetime _lifetime;
         private readonly Duopilo.Speech.ISpeechOutput? _speech;
+        private readonly Duopilo.Updates.UpdateService? _updates;
         private readonly SynchronizationContext _ui;
 
         private readonly WinForms.NotifyIcon _icon;
@@ -115,14 +117,17 @@ public sealed class TrayService(
         private readonly WinForms.ToolStripMenuItem _logItem;
         private readonly WinForms.ToolStripMenuItem _folderItem;
         private readonly WinForms.ToolStripMenuItem _exitItem;
+        private readonly WinForms.ToolStripMenuItem _updateItem;
+        private readonly WinForms.ToolStripSeparator _updateSeparator;
         private readonly WinForms.Timer _timer;
         private readonly Dictionary<string, Drawing.Icon> _icons = [];
         private string _state = "";
         private bool _closed;
 
-        public TrayContext(DesktopInfo info, SimConnectClient sim, ProfileStore profiles, AlertBus alerts, MonitoringService monitoring, IHostApplicationLifetime lifetime, Duopilo.Speech.ISpeechOutput? speech, SynchronizationContext ui)
+        public TrayContext(DesktopInfo info, SimConnectClient sim, ProfileStore profiles, AlertBus alerts, MonitoringService monitoring, IHostApplicationLifetime lifetime, Duopilo.Speech.ISpeechOutput? speech, Duopilo.Updates.UpdateService? updates, SynchronizationContext ui)
         {
             _speech = speech;
+            _updates = updates;
             _ui = ui;
             _info = info;
             _sim = sim;
@@ -149,11 +154,16 @@ public sealed class TrayService(
             _logItem = new WinForms.ToolStripMenuItem("", null, (_, _) => Open(_info.LogFile)) { Enabled = _info.LogFile is not null };
             _folderItem = new WinForms.ToolStripMenuItem("", null, (_, _) => Open(AppContext.BaseDirectory));
             _exitItem = new WinForms.ToolStripMenuItem("", null, (_, _) => _lifetime.StopApplication());
+            _updateItem = new WinForms.ToolStripMenuItem("", null, (_, _) => InstallUpdate()) { Visible = false };
+            _updateItem.Font = new Drawing.Font(_updateItem.Font, Drawing.FontStyle.Bold);
+            _updateSeparator = new WinForms.ToolStripSeparator { Visible = false };
             SetMenuTexts();
 
             var menu = new WinForms.ContextMenuStrip();
             menu.Items.Add(_statusItem);
             menu.Items.Add(new WinForms.ToolStripSeparator());
+            menu.Items.Add(_updateItem);
+            menu.Items.Add(_updateSeparator);
             menu.Items.Add(_dashboardItem);
             menu.Items.Add(_reloadItem);
             menu.Items.Add(_logItem);
@@ -168,6 +178,7 @@ public sealed class TrayService(
                 Refresh();
                 _autostartItem.Checked = Autostart.IsEnabled();
                 RefreshSpeechItem();
+                RefreshUpdateItem();
             };
 
             _icon = new WinForms.NotifyIcon
@@ -196,6 +207,85 @@ public sealed class TrayService(
 
             // Language changed in the dashboard: update the menu texts (the event comes from any thread)
             Loc.LanguageChanged += OnLanguageChanged;
+
+            // Neue Version gefunden: einmal je Version eine Sprechblase (das Ereignis kommt von einem beliebigen Thread)
+            if (_updates is not null)
+            {
+                _updates.UpdateFound += OnUpdateFound;
+            }
+        }
+
+        private void OnUpdateFound(Duopilo.Updates.UpdateStatus status)
+        {
+            try
+            {
+                _ui.Post(_ => ShowUpdate(status), null);
+            }
+            catch (InvalidOperationException)
+            {
+                // Tray-Thread beendet sich gerade
+            }
+        }
+
+        private void ShowUpdate(Duopilo.Updates.UpdateStatus status)
+        {
+            if (_closed)
+            {
+                return;
+            }
+
+            RefreshUpdateItem();
+            _icon.ShowBalloonTip(
+                6000,
+                Loc.T("tray.balloon.updateTitle", status.Latest ?? ""),
+                status.Installable ? Loc.T("tray.balloon.updateInstallable") : Loc.T("tray.balloon.updateDownload"),
+                WinForms.ToolTipIcon.Info);
+        }
+
+        /// <summary>Menüpunkt „Update auf … installieren“ nur, solange eins da ist.</summary>
+        private void RefreshUpdateItem()
+        {
+            var status = _updates?.Status;
+            var visible = status is { Available: true };
+            _updateItem.Visible = visible;
+            _updateSeparator.Visible = visible;
+            if (!visible)
+            {
+                return;
+            }
+
+            _updateItem.Text = status!.State switch
+            {
+                "downloading" => Loc.T("tray.menu.updateDownloading", (int)Math.Round((status.Progress ?? 0) * 100)),
+                "installing" => Loc.T("tray.menu.updateInstalling"),
+                _ when status.Installable => Loc.T("tray.menu.updateInstall", status.Latest ?? ""),
+                _ => Loc.T("tray.menu.updateOpen", status.Latest ?? ""),
+            };
+            _updateItem.Enabled = status.State is not ("downloading" or "installing");
+        }
+
+        private void InstallUpdate()
+        {
+            if (_updates?.Status is not { Available: true } status)
+            {
+                return;
+            }
+
+            if (!status.Installable)
+            {
+                // Nicht per Installer installiert (ZIP): die Seite des Releases öffnen
+                Open(status.PageUrl);
+                return;
+            }
+
+            if (_updates.Install() is { } error)
+            {
+                _icon.ShowBalloonTip(5000, Loc.T("tray.balloon.updateTitle", status.Latest ?? ""), error, WinForms.ToolTipIcon.Warning);
+                return;
+            }
+
+            _icon.ShowBalloonTip(5000, Loc.T("tray.balloon.updateTitle", status.Latest ?? ""), Loc.T("tray.balloon.updateStarted"), WinForms.ToolTipIcon.Info);
+            RefreshUpdateItem();
         }
 
         private void OnLanguageChanged(string language)
@@ -219,6 +309,7 @@ public sealed class TrayService(
 
             SetMenuTexts();
             RefreshSpeechItem();
+            RefreshUpdateItem();
             Refresh();
         }
 
@@ -360,6 +451,11 @@ public sealed class TrayService(
         {
             _closed = true;
             Loc.LanguageChanged -= OnLanguageChanged;
+            if (_updates is not null)
+            {
+                _updates.UpdateFound -= OnUpdateFound;
+            }
+
             _timer.Stop();
             _timer.Dispose();
             _icon.Visible = false;

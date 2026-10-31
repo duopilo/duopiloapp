@@ -159,6 +159,8 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent runasoriginaluser
+; Update aus Duopilo heraus (still, /LAUNCH=1): danach Duopilo wieder starten
+Filename: "{app}\{#AppExe}"; Flags: nowait runasoriginaluser; Check: LaunchAfterUpdate
 
 [Code]
 const
@@ -173,6 +175,12 @@ var
   { Ordner einer vorhandenen Kopilot-Installation, wenn Duopilo in einen anderen Ordner kommt – sonst leer.
     Wird erst in PrepareToInstall bestimmt (vorher steht der Zielordner noch nicht fest). }
   OldDir: String;
+
+{ Update aus Duopilo heraus: Duopilo startet den Installer still mit /LAUNCH=1 und hat sich vorher beendet. }
+function LaunchAfterUpdate(): Boolean;
+begin
+  Result := ExpandConstant('{param:launch|0}') = '1';
+end;
 
 { Ordner der vorhandenen Installation (gleiche AppId) laut Registry, leer = keine. }
 function PreviousAppDir(): String;

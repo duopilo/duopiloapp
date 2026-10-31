@@ -561,6 +561,8 @@ git push origin v0.9.1
 
 **Der Installer** installiert nach `C:\Program Files\Duopilo` (oder ohne Adminrechte nur für den eigenen Benutzer), legt einen Startmenü-Eintrag an und auf Wunsch den Autostart (derselbe Eintrag wie „Mit Windows starten“ im Tray-Menü). Bei Updates bleibt `appsettings.Local.json` unangetastet; mitgelieferte Profile, `atc-templates.json` und `appsettings.json` werden erneuert, eigene Änderungen daran vorher nach `backup\<Datum>\` gesichert. Die Deinstallation entfernt Programm, Startmenü-Eintrag und Autostart und fragt, ob auch Einstellungen und `%LOCALAPPDATA%\Duopilo` (und ein altes `%LOCALAPPDATA%\Kopilot`) weg sollen.
 
+**Updates aus Duopilo:** Ein per Installer installiertes Duopilo sieht beim Start (nach einer Minute) und dann alle 6 Stunden in den GitHub-Releases nach einer neueren Version – nur veröffentlichte Releases, keine Entwürfe; Vorabversionen (Beta, RC) bekommt, wer selbst eine Vorabversion fährt (einstellbar). Gibt es eine, zeigen Tray (Sprechblase, Menüpunkt „Update … installieren“) und Dashboard (Knopf oben, Karte „Updates“ in den Einstellungen) das an. **Installieren** lädt die `Setup.exe` nach `%LOCALAPPDATA%\Duopilo\updates`, prüft sie gegen `SHA256SUMS.txt` des Releases, beendet Duopilo (auch die Instanz von Claude Desktop) und installiert still mit Neustart danach (unter `C:\Program Files` mit Rückfrage nach Adminrechten). Aus der ZIP-Fassung gibt es nur den Link zur Release-Seite; selbst gebaute Stände (`update.cmd`) prüfen nicht. Einstellungen: `Duopilo:Updates` (`Check`, `Prereleases` = `auto`/`on`/`off`, `IntervalHours`, `Repository`) oder im Dashboard.
+
 **Update von Kopilot** (bis 0.9.x): Die AppId bleibt gleich, Setup erkennt eine Kopilot-Installation also. Liegt sie im alten Standardordner `…\Kopilot`, kommt Duopilo daneben nach `…\Duopilo`, übernimmt `appsettings.Local.json` (weiter für normale Benutzer beschreibbar), eigene Profile und Sicherungen, sichert geänderte mitgelieferte Dateien und entfernt danach die alte Installation (Ordner und Startmenü-Eintrag; der Autostart wird zu „Duopilo“). In einem eigenen Ordner aktualisiert Setup an Ort und Stelle und entfernt nur die alten Programmdateien `Kopilot.*`. Webseite und Support-Link im Setup zeigen auf <https://duopilo.app>.
 
 Der Produktname für Installer, ZIP und Release steht zentral als `<Product>` in `Directory.Build.props`.
@@ -842,6 +844,7 @@ src/Duopilo/
   Sim/TrafficConnection.cs Eigene SimConnect-Verbindung für Verkehr (native SimConnect.dll, Größenprüfung je Nachricht)
   Traffic/                Verkehrsabfrage, Peilung/Uhrzeit/Callout, Hintergrundabfrage für TRAFFIC_PROXIMITY
   Tools/                  MCP-Tools
+  Updates/                Update-Prüfung (GitHub-Releases), Download mit SHA-256-Prüfung, stille Installation mit Neustart
   Localization/           Spracheinstellung, Texte nachschlagen (Loc)
   i18n/                   Texte je Sprache (en.json, de.json)
   profiles/               Flugzeugprofile (JSON)

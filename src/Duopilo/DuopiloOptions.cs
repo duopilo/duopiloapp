@@ -71,6 +71,9 @@ public sealed class DuopiloOptions
     /// <summary>Der First Officer der Sprachschleife: Name und Stimme pro Flug, Vorstellung beim Briefing.</summary>
     public FirstOfficerOptions FirstOfficer { get; set; } = new();
 
+    /// <summary>Update-Prüfung: neue Versionen aus den GitHub-Releases melden und auf Wunsch installieren.</summary>
+    public UpdateOptions Updates { get; set; } = new();
+
     /// <summary>
     /// Datenordner (Logs, Modelle, Caches, Dashboard-Einstellungen). Leer = %LOCALAPPDATA%\Duopilo – beim ersten Start
     /// übernommen aus %LOCALAPPDATA%\Kopilot (<see cref="DataDirectoryMigration"/>).
@@ -190,6 +193,24 @@ public enum TrafficAltitudeReference
 
     /// <summary>PLANE ALTITUDE (wahre Höhe über MSL).</summary>
     True,
+}
+
+/// <summary>Update-Prüfung (nur Tray-Instanz, nur von der Release-Pipeline gebaute Stände – selbst gebaute aktualisiert update.cmd).</summary>
+public sealed class UpdateOptions
+{
+    /// <summary>Beim Start und dann regelmäßig nach einer neuen Version sehen.</summary>
+    public bool Check { get; set; } = true;
+
+    /// <summary>
+    /// Vorabversionen (Beta, RC) anbieten: "auto" (nur, wenn diese Version selbst eine ist), "on" oder "off".
+    /// </summary>
+    public string Prereleases { get; set; } = "auto";
+
+    /// <summary>Abstand der Prüfungen (Stunden, mindestens 1).</summary>
+    public double IntervalHours { get; set; } = 6;
+
+    /// <summary>GitHub-Repository mit den Releases ("owner/name").</summary>
+    public string Repository { get; set; } = "duopilo/duopiloapp";
 }
 
 /// <summary>Sprachausgabe über Windows (nur HTTP-Modus mit Tray). Die Einstellungen aus dem Dashboard liegen in DataDirectory\speech.json.</summary>
