@@ -78,6 +78,7 @@ public static class HttpHost
         app.MapSettings();
         app.MapReports();
         Duopilo.Updates.UpdateEndpoints.MapUpdates(app);
+        Duopilo.Sim.SimConnectEndpoints.MapSimConnect(app);
         app.MapGet("/status", (SimConnectClient sim, ProfileStore profiles, MonitoringService monitoring, SimBriefService simBrief, EcamCatalog ecam, AlertBus alerts, Duopilo.Input.InputService input, Duopilo.Voice.IVoiceStatusSource voice) =>
             JsonText(DuopiloTools.Status(sim, profiles, monitoring, simBrief, ecam, alerts, input, voice))).LocalOnly();
         app.MapGet("/state", (SimConnectClient sim, AlertBus alerts) => JsonText(DuopiloTools.GetFlightState(sim, alerts))).LocalOnly();

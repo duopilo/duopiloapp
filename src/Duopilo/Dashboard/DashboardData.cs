@@ -26,7 +26,8 @@ public sealed class DashboardData(
     InputService? input = null,
     ISpeechOutput? speech = null,
     Duopilo.Voice.IVoiceStatusSource? voice = null,
-    Duopilo.Updates.UpdateService? updates = null)
+    Duopilo.Updates.UpdateService? updates = null,
+    Duopilo.Sim.SdkInstaller? sdk = null)
 {
     /// <summary>Volle Version ("0.10.0-beta.4") für die Kopfzeile.</summary>
     private static readonly string AppVersion = Duopilo.Updates.UpdateLogic.CurrentVersion(typeof(DashboardData).Assembly).ToString();
@@ -52,6 +53,7 @@ public sealed class DashboardData(
         return new
         {
             version = AppVersion,
+            simconnect = Duopilo.Sim.SimConnectEndpoints.View(sdk),
             update = updates?.Status is { Available: true } u
                 ? new { version = u.Latest, state = u.State, installable = u.Installable, progress = u.Progress, pageUrl = u.PageUrl }
                 : null,

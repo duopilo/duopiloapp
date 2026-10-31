@@ -44,7 +44,7 @@ Duopilo downloads these only when the related feature is used, into `%LOCALAPPDA
 
 ## Microsoft Flight Simulator SDK
 
-`Microsoft.FlightSimulator.SimConnect.dll` and `SimConnect.dll` are part of the Microsoft Flight Simulator 2024 SDK. They are not in this repository and are subject to the SDK's own terms, not to the MIT License.
+`Microsoft.FlightSimulator.SimConnect.dll` and `SimConnect.dll` are part of the Microsoft Flight Simulator 2024 SDK. They are not in this repository and not in the release packages (setup and ZIP), and they are subject to the SDK's own terms, not to the MIT License. Duopilo loads them at runtime from the SDK installed on the user's PC. If it is missing, Duopilo offers to download Microsoft's SDK installer directly from Microsoft (`sdk.flightsimulator.com`) and start it; the user accepts Microsoft's license in that installer. Duopilo itself doesn't pass on any part of the SDK.
 
 ## Trademarks
 

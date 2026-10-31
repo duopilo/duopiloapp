@@ -121,12 +121,21 @@
     <SimConnectNativeDll>$(_DuopiloSdkRoot)SimConnect SDK\lib\SimConnect.dll</SimConnectNativeDll>
   </PropertyGroup>
 
+  <!--
+    BundleSimConnect=false (Release-Pipeline): gegen das echte SimConnect bauen, die DLLs aber nicht ausliefern – sie gehören zum
+    MSFS-SDK. Zur Laufzeit lädt Duopilo sie aus dem installierten SDK (Sim/SimConnectLocator.cs) und bietet sonst die Installation
+    an. Lokale Builds (update.cmd) legen sie wie bisher neben Duopilo.exe.
+  -->
+  <PropertyGroup>
+    <BundleSimConnect Condition="'$(BundleSimConnect)' == ''">true</BundleSimConnect>
+  </PropertyGroup>
+
   <ItemGroup Condition="'$(SimConnectManagedDll)' != ''">
     <Reference Include="Microsoft.FlightSimulator.SimConnect">
       <HintPath>$(SimConnectManagedDll)</HintPath>
-      <Private>true</Private>
+      <Private>$(BundleSimConnect)</Private>
     </Reference>
-    <None Include="$(SimConnectNativeDll)" Link="SimConnect.dll" Condition="Exists('$(SimConnectNativeDll)')" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+    <None Include="$(SimConnectNativeDll)" Link="SimConnect.dll" Condition="'$(BundleSimConnect)' == 'true' and Exists('$(SimConnectNativeDll)')" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(SimConnectManagedDll)' == ''">

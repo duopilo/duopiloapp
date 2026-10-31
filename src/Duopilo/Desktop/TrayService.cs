@@ -196,7 +196,17 @@ public sealed class TrayService(
             _timer.Start();
             Refresh();
 
-            if (!_info.StartedByAutostart)
+            if (Duopilo.Sim.SimConnectLocator.Current is null)
+            {
+                // Ohne SimConnect geht nichts: immer zeigen, auch nach Autostart – ein Klick öffnet das Dashboard mit dem Angebot,
+                // das SDK zu installieren
+                _icon.ShowBalloonTip(
+                    8000,
+                    Loc.T("tray.balloon.simconnectTitle"),
+                    Loc.T("tray.balloon.simconnectText"),
+                    WinForms.ToolTipIcon.Warning);
+            }
+            else if (!_info.StartedByAutostart)
             {
                 _icon.ShowBalloonTip(
                     4000,
