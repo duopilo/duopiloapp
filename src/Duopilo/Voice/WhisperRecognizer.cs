@@ -32,11 +32,13 @@ public sealed class WhisperRecognizer : ISpeechRecognizer
     /// Eingebauter Wortschatz-Hinweis: Funk- und Cockpit-Begriffe, deutsch und englisch. Ohne "confirm"/"correct"/"affirm" –
     /// sonst schreibt Whisper aus einem Räuspern gern genau das ab, und das würde eine Aktion bestätigen.
     /// Vorne die Ansprachewörter: „Kopilot“ (fest) und „Duopilo“ (Produktname, damit Whisper ihn so schreibt).
+    /// „cancel Pan Pan“, damit Whisper nicht „Council Pan Pan“ schreibt (Testflug 31.10.). Kein alleinstehendes „Mayday“ oder
+    /// „Pan Pan“ – eine Halluzination davon würde bei ATC einen Notfall auslösen; „cancel Pan Pan“ ohne Notfall ist nur ein „roger“.
     /// </summary>
     public const string DefaultPrompt =
         "Kopilot, Duopilo. Gear up, gear down, flaps one, flaps full, speedbrake retract, arm spoilers, autobrake medium, landing lights on, " +
         "seat belts on, APU start, QNH 1013, standard, altitude 5000, flight level 120, speed 250, heading 090, squawk 7000, TCAS TA/RA, " +
-        "speed check, say again. Frankfurt Tower, Langen Radar, Shanwick, Lufthansa. " +
+        "speed check, say again, radio check, cancel Pan Pan. Frankfurt Tower, Langen Radar, Shanwick, Lufthansa. " +
         "Fahrwerk einfahren, Klappen eins, Anschnallzeichen an.";
 
     private readonly WhisperFactory _factory;

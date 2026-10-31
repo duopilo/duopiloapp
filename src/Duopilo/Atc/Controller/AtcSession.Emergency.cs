@@ -73,8 +73,10 @@ public static partial class AtcEmergencyText
     [GeneratedRegex(@" (?:pan ?pan|pon ?pon)")]
     private static partial Regex PanPan();
 
-    // "cancel (the) mayday/distress/pan pan/emergency", "mayday cancelled", "cancelling distress"
-    [GeneratedRegex(@" (?:cancel(?:l?ing|l?ed)?|terminate|terminating) (?:the |our |my )?(?:may ?days?|maidays?|distress|pan ?pan|urgency|emergency) | (?:may ?days?|maidays?|distress|pan ?pan|urgency|emergency) (?:is )?(?:cancel(?:l?ed)?|terminated) ")]
+    // "cancel (the) mayday/distress/pan pan/emergency", "mayday cancelled", "cancelling distress". Dazu Whisper-Verhörer von
+    // „cancel“ – nur direkt vor dem Notruf-Wort (Testflug 31.10.: „Council Pan Pan“ wurde dreimal als neues Pan Pan bestätigt):
+    // "council", "counsel", "consul", "cancer", "can sell", "kanzel" (deutsche Erkennung)
+    [GeneratedRegex(@" (?:cancel(?:l?ing|l?ed)?|terminate|terminating|council|counsel|consul|cancer|can sell|kanzel) (?:the |our |my )?(?:may ?days?|maidays?|distress|pan ?pan|urgency|emergency) | (?:may ?days?|maidays?|distress|pan ?pan|urgency|emergency) (?:is )?(?:cancel(?:l?ed)?|terminated) ")]
     private static partial Regex Cancel();
 }
 

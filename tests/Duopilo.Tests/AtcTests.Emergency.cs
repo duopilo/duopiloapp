@@ -36,7 +36,18 @@ public sealed partial class AtcTests
     [InlineData("Cancel distress, Lufthansa four alpha bravo", AtcEmergencyCall.Cancel)]
     [InlineData("cancel pan pan", AtcEmergencyCall.Cancel)]
     [InlineData("Mayday cancelled, Lufthansa four alpha bravo", AtcEmergencyCall.Cancel)]
+
+    // Whisper-Verhörer von „cancel“ (Testflug 31.10.)
+    [InlineData("Düsseldorf Delivery, Condor 2205, Council Pan Pan.", AtcEmergencyCall.Cancel)]
+    [InlineData("This is the delivery, Kondo 2205, Council PAN PAN.", AtcEmergencyCall.Cancel)]
+    [InlineData("Lufthansa four alpha bravo, counsel Mayday", AtcEmergencyCall.Cancel)]
+    [InlineData("consul pan-pan", AtcEmergencyCall.Cancel)]
+    [InlineData("cancer pan pan", AtcEmergencyCall.Cancel)]
+    [InlineData("can sell the Mayday", AtcEmergencyCall.Cancel)]
+    [InlineData("Kanzel Pan Pan", AtcEmergencyCall.Cancel)]
+    [InlineData("Council, Pan Pan", AtcEmergencyCall.Cancel)]
     [InlineData("Lufthansa four alpha bravo, request descent", AtcEmergencyCall.None)]
+    [InlineData("City council, request taxi", AtcEmergencyCall.None)]
     [InlineData("May I have the weather for Japan, panorama view", AtcEmergencyCall.None)]
     [InlineData("Maintaining flight level three five zero", AtcEmergencyCall.None)]
     [InlineData("", AtcEmergencyCall.None)]
@@ -101,6 +112,22 @@ public sealed partial class AtcTests
         Assert.Equal(AtcEmergencyKind.PanPan, session.Emergency?.Kind);
 
         var cancel = Assert.Single(flight.Say("Lufthansa four alpha bravo, cancel Pan Pan"));
+        Assert.Equal($"DLH4AB, roger, Pan Pan cancelled, squawk {squawk}", cancel.Text);
+        Assert.Null(session.Emergency);
+    }
+
+    [Fact]
+    public void Pan_Pan_Abbruch_auch_wenn_Whisper_Council_schreibt()
+    {
+        // Testflug 31.10. bei Düsseldorf Delivery: „Council Pan Pan“ wurde dreimal als neues Pan Pan bestätigt
+        var (session, flight) = AtDuesseldorf();
+        var squawk = session.Squawk;
+        flight.Say("Düsseldorf Delivery, Pan-Pan, Pan-Pan.");
+        Assert.Equal(AtcEmergencyKind.PanPan, session.Emergency?.Kind);
+
+        var cancel = Assert.Single(flight.Say("Düsseldorf Delivery, Lufthansa four alpha bravo, Council Pan Pan."));
+
+        Assert.Equal(AtcMessageIds.EmergencyCancelled, cancel.MessageId);
         Assert.Equal($"DLH4AB, roger, Pan Pan cancelled, squawk {squawk}", cancel.Text);
         Assert.Null(session.Emergency);
     }
