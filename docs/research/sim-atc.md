@@ -69,7 +69,7 @@ Kopilot liest den Live-Traffic des Sims (`get_traffic`, Monitoring-Regel `TRAFFI
 ## Folgen für Kopilot
 
 - **Kulissenverkehr, Höhenanweisungen an Live-Traffic, Sektor-Hin-und-Her:** verschwinden für den Piloten, sobald das Sim-ATC stumm ist. Damit fehlen aber die Sim-ATC-Referenzpunkte für FIR- und Sektorgrenzen, die im Testlog als Vergleich dienen.
-- **Live-Traffic:** Kopilot kann ihn nur lesen. Die inkonsistenten Höhen im Live-Traffic bleiben. Konsistenter Verkehr ginge nur mit eigener Einspeisung wie bei BeyondATC, das wäre ein großer eigener Schritt.
+- **Live-Traffic:** Kopilot kann ihn nur lesen. Die inkonsistenten Höhen im Live-Traffic bleiben. Konsistenter Verkehr ginge nur mit eigener Einspeisung wie bei BeyondATC, das wäre ein großer eigener Schritt (siehe [Eigener KI-Verkehr](eigener-verkehr.md)).
 - **Squawk und Frequenz:** Kopilot kann nicht verhindern, dass der Sim sie überschreibt. Es kann `TRANSPONDER CODE` und `COM ACTIVE FREQUENCY` aber überwachen und Abweichungen melden oder zurücksetzen (siehe Idee „Squawk-Abgleich“ im Testlog).
 - **Step Climbs:** haben mit dem Sim-ATC nichts zu tun. Dafür braucht Kopilot ein eigenes Template für Höhenanfragen (siehe „Bug: Steigflug-Anfrage im Reiseflug“ im Testlog).
 
