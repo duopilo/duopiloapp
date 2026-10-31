@@ -1,3 +1,5 @@
+**English** | [Deutsch](DE-MCP-Tools)
+
 # MCP Tools
 
 The tools Claude (or any MCP client) sees. Every response also contains **`activeAlerts`** – the monitoring alerts active right now – so warnings reach Claude even while it asks for something else.

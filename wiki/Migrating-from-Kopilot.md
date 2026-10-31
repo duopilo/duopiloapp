@@ -1,3 +1,5 @@
+**English** | [Deutsch](DE-Umstieg-von-Kopilot)
+
 # Migrating from Kopilot
 
 Up to version 0.9.x Duopilo was called **Kopilot**. Most things carry over by themselves – **one thing needs you**:

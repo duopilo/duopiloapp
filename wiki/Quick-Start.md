@@ -1,3 +1,5 @@
+**English** | [Deutsch](DE-Schnellstart)
+
 # Quick Start
 
 Your first flight with Duopilo. Assumes Duopilo is [installed](Installation).

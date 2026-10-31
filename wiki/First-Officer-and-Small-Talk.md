@@ -1,3 +1,5 @@
+**English** | [Deutsch](DE-First-Officer-und-Smalltalk)
+
 # First Officer & Small Talk
 
 ## First officer

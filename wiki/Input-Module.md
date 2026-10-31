@@ -1,3 +1,5 @@
+**English** | [Deutsch](DE-Eingabe-Modul)
+
 # Input Module
 
 Duopilo can press buttons and set switches – as Pilot Monitoring, **on the pilot's call**, with readback and confirmation. Actions are currently defined for the **FlyByWire A32NX** and the **Headwind A330-900neo**; most of them are not yet verified in the sim.

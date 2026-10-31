@@ -1,3 +1,5 @@
+**English** | [Deutsch](DE-Pilot-Monitoring)
+
 # Pilot Monitoring
 
 Every 200 ms Duopilo checks a set of rules and raises alerts with a short English callout. Alerts are spoken ([Speech Output](Speech-Output)), shown in the dashboard and delivered to Claude (`activeAlerts`, `get_alerts`, `wait_for_alerts`).

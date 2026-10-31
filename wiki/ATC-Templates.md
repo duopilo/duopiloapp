@@ -1,3 +1,5 @@
+**English** | [Deutsch](DE-ATC-Vorlagen)
+
 # ATC Templates
 
 All texts of the [Duopilo ATC](ATC) are in `atc-templates.json` next to `Duopilo.exe`.

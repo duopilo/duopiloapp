@@ -1,3 +1,5 @@
+**English** | [Deutsch](DE-Sprachschleife)
+
 # Voice Loop
 
 Talk to your copilot directly – **without Claude, without push-to-talk** (VR-friendly), fully local and **without a language model**. Only the optional [small talk](First-Officer-and-Small-Talk) can use one.

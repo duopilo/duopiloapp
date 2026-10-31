@@ -1,3 +1,5 @@
+**English** | [Deutsch](DE-Fehlersuche)
+
 # Troubleshooting
 
 ## First look

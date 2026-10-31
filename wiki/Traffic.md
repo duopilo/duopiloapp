@@ -1,3 +1,5 @@
+**English** | [Deutsch](DE-Verkehr)
+
 # Traffic
 
 `get_traffic` lists aircraft and helicopters nearby – AI traffic, live traffic and multiplayer, as far as enabled in the sim. Your own aircraft is excluded. The voice loop answers "Traffic check" the same way.

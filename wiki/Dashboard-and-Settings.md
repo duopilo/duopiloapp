@@ -1,3 +1,5 @@
+**English** | [Deutsch](DE-Dashboard-und-Einstellungen)
+
 # Dashboard & Settings
 
 ## Tray icon

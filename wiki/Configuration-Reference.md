@@ -1,3 +1,5 @@
+**English** | [Deutsch](DE-Konfiguration)
+
 # Configuration Reference
 
 Most settings can be changed in the [dashboard](Dashboard-and-Settings#settings-page). This page lists what's behind it.

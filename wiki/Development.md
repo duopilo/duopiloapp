@@ -1,3 +1,5 @@
+**English** | [Deutsch](DE-Entwicklung)
+
 # Development
 
 Duopilo is C# on **.NET 10** (`net10.0-windows`), an ASP.NET Core host with the official MCP C# SDK, a tray app and a browser dashboard. Tests run without MSFS.

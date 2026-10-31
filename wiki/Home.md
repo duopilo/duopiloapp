@@ -1,3 +1,5 @@
+**English** | [Deutsch](DE-Startseite)
+
 # Duopilo Wiki
 
 **Duopilo** turns Microsoft Flight Simulator 2024 into a two-person cockpit. It reads the aircraft via SimConnect and acts as your **Pilot Monitoring** – you stay **Pilot Flying**.

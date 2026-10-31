@@ -1,3 +1,5 @@
+**English** | [Deutsch](DE-FAQ)
+
 # FAQ
 
 ### Do I need Claude to use Duopilo?

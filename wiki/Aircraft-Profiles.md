@@ -1,3 +1,5 @@
+**English** | [Deutsch](DE-Flugzeugprofile)
+
 # Aircraft Profiles
 
 Study-level aircraft keep much of their state (AP, FMA, autobrake, ECAM, fuel flow) not in standard SimVars but in their own **`L:` variables**. A profile in `profiles\*.json` tells Duopilo where the values come from and which inputs exist. Without a matching profile Duopilo falls back to standard SimVars.

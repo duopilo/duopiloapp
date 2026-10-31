@@ -1,3 +1,5 @@
+**English** | [Deutsch](DE-Installation)
+
 # Installation
 
 ## Requirements

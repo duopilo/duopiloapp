@@ -1,3 +1,5 @@
+**English** | [Deutsch](DE-Sprachausgabe)
+
 # Speech Output
 
 Duopilo speaks callouts, replies and ATC itself – in English, like a real crew. Claude.ai and voice mode can't receive push messages from a server, so this is how warnings reach you without asking.

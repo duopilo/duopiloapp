@@ -1,3 +1,5 @@
+**English** | [Deutsch](DE-SimBrief-und-Flugplan)
+
 # SimBrief & Flight Plan
 
 Airliner FMSs (FlyByWire, iniBuilds) don't expose their route via SimConnect. So Duopilo fetches your **latest SimBrief OFP** (public API, no login).

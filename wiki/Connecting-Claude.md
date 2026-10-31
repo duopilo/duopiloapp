@@ -1,3 +1,5 @@
+**English** | [Deutsch](DE-Claude-verbinden)
+
 # Connecting Claude
 
 Duopilo is an MCP server. Claude then reads the aircraft itself, sees every monitoring alert and can prepare inputs. Pick the way that fits your client:

@@ -1,3 +1,5 @@
+**English** | [Deutsch](DE-ATC)
+
 # ATC
 
 Duopilo has its own ATC: a **state machine with fixed text templates – no language model**. You call on the radio as usual; the [voice loop](Voice-Loop) (or Claude via `atc_transmit`) passes your transmission on, and Duopilo answers as the responsible unit – each station with its own Kokoro voice.

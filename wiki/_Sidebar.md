@@ -1,3 +1,6 @@
+<details open>
+<summary><b>English</b></summary>
+
 **[Duopilo](Home)**
 
 **Getting started**
@@ -30,3 +33,43 @@
 **Project**
 - [Development](Development)
 - [Roadmap](Roadmap)
+
+</details>
+
+<details>
+<summary><b>Deutsch</b></summary>
+
+**[Duopilo](DE-Startseite)**
+
+**Einstieg**
+- [Installation](DE-Installation)
+- [Schnellstart](DE-Schnellstart)
+- [Claude verbinden](DE-Claude-verbinden)
+- [Dashboard & Einstellungen](DE-Dashboard-und-Einstellungen)
+- [Umstieg von Kopilot](DE-Umstieg-von-Kopilot)
+
+**Im Cockpit**
+- [Pilot Monitoring](DE-Pilot-Monitoring)
+- [Sprachausgabe](DE-Sprachausgabe)
+- [Sprachschleife](DE-Sprachschleife)
+- [First Officer & Smalltalk](DE-First-Officer-und-Smalltalk)
+- [Eingabe-Modul](DE-Eingabe-Modul)
+- [ATC](DE-ATC)
+- [Verkehr](DE-Verkehr)
+- [SimBrief & Flugplan](DE-SimBrief-und-Flugplan)
+
+**Referenz**
+- [MCP-Tools](DE-MCP-Tools)
+- [Konfiguration](DE-Konfiguration)
+- [Flugzeugprofile](DE-Flugzeugprofile)
+- [ATC-Vorlagen](DE-ATC-Vorlagen)
+
+**Hilfe**
+- [Fehlersuche](DE-Fehlersuche)
+- [FAQ](DE-FAQ)
+
+**Projekt**
+- [Entwicklung](DE-Entwicklung)
+- [Roadmap](DE-Roadmap)
+
+</details>
