@@ -109,7 +109,78 @@ public sealed class AircraftSignals(SimConnectClient sim)
     /// <summary>A/THR-Status (OFF/ARMED/ACTIVE). Ohne Profil-Binding unbekannt – die generische SimVar ist bei Airlinern unzuverlässig.</summary>
     public string? AutothrustStatus => Text(BindingKeys.AthrStatus);
 
-    public string? AutothrustMode => Text(BindingKeys.AthrMode);
+    /// <summary>
+    /// A/THR-Modus (SPEED, THR CLB, MAN FLX …). Ist die alte Variable leer oder fehlt sie, wie das FBW-PFD aus dem FCU ATS FMA
+    /// Discrete Word ableiten (Headwind A330 schreibt L:A32NX_AUTOTHRUST_MODE nur bei A.FLOOR).
+    /// </summary>
+    public string? AutothrustMode
+    {
+        get
+        {
+            var text = Text(BindingKeys.AthrMode);
+            if (!string.IsNullOrEmpty(text) || Arinc(BindingKeys.AthrFmaWord) is not { IsNormal: true } fma)
+            {
+                return text;
+            }
+
+            bool? engaged = null, active = null;
+            if (Arinc(BindingKeys.AthrDiscreteWord) is { IsNormal: true } ats)
+            {
+                engaged = ats.Bit(13);
+                active = ats.Bit(14);
+            }
+            else if (AutothrustStatus is { } status)
+            {
+                engaged = status is "ARMED" or "ACTIVE";
+                active = status == "ACTIVE";
+            }
+
+            return AutothrustModeFromFcu(fma, engaged, active);
+        }
+    }
+
+    /// <summary>
+    /// A/THR-Modus aus dem FCU ATS FMA Discrete Word – Reihenfolge und Bits wie im FBW-PFD (FMA.tsx, getA1A2CellText). MCT und THR
+    /// hängen davon ab, ob A/THR nur engaged (MAN …) oder auch active ist; unbekannt = wie active. "" = kein Modus.
+    /// </summary>
+    public static string AutothrustModeFromFcu(Arinc429Word fma, bool? engaged, bool? active)
+    {
+        var manual = engaged == true && active == false;
+        if (fma.Bit(11))
+        {
+            return "MAN TOGA";
+        }
+
+        if (fma.Bit(13))
+        {
+            return "MAN FLX";
+        }
+
+        if (fma.Bit(29))
+        {
+            return "MAN DTO";
+        }
+
+        if (fma.Bit(12) && manual)
+        {
+            return "MAN MCT";
+        }
+
+        if (fma.Bit(15) && manual)
+        {
+            return "MAN THR";
+        }
+
+        return fma.Bit(17) ? "A.FLOOR"
+            : fma.Bit(18) ? "TOGA LK"
+            : fma.Bit(19) ? "SPEED"
+            : fma.Bit(20) ? "MACH"
+            : fma.Bit(12) ? "THR MCT"
+            : fma.Bit(14) ? "THR CLB"
+            : fma.Bit(15) ? "THR LVR"
+            : fma.Bit(16) ? "THR IDLE"
+            : "";
+    }
 
     public string? FmaLateral => Text(BindingKeys.FmaLateral);
 

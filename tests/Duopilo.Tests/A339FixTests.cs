@@ -73,14 +73,22 @@ public sealed partial class InputTests
 
     // ------------------------------------------------------------------ 2. Autobrake
 
+    /// <summary>
+    /// Auch beim A32NX: A32NX.AUTOBRAKE_SET übernimmt den Parameter 1:1 (0 aus … 3 MAX, a320_systems_wasm/src/autobrakes.rs),
+    /// nicht 1–4 wie in a320-events.md – "off" hätte LO gesetzt.
+    /// </summary>
     [Theory]
-    [InlineData("off", "A32NX.AUTOBRAKE_SET_DISARM", 0)]
-    [InlineData("lo", "A32NX.AUTOBRAKE_SET_LO", 1)]
-    [InlineData("med", "A32NX.AUTOBRAKE_SET_MED", 2)]
-    [InlineData("max", "A32NX.AUTOBRAKE_SET_MAX", 3)]
-    public void A339_Autobrake_eigenes_Event_je_Stellung(string option, string expectedEvent, double armedMode)
+    [InlineData("Headwind A330-900neo", "off", "A32NX.AUTOBRAKE_SET_DISARM", 0)]
+    [InlineData("Headwind A330-900neo", "lo", "A32NX.AUTOBRAKE_SET_LO", 1)]
+    [InlineData("Headwind A330-900neo", "med", "A32NX.AUTOBRAKE_SET_MED", 2)]
+    [InlineData("Headwind A330-900neo", "max", "A32NX.AUTOBRAKE_SET_MAX", 3)]
+    [InlineData("FlyByWire A32NX", "off", "A32NX.AUTOBRAKE_SET_DISARM", 0)]
+    [InlineData("FlyByWire A32NX", "lo", "A32NX.AUTOBRAKE_SET_LO", 1)]
+    [InlineData("FlyByWire A32NX", "med", "A32NX.AUTOBRAKE_SET_MED", 2)]
+    [InlineData("FlyByWire A32NX", "max", "A32NX.AUTOBRAKE_SET_MAX", 3)]
+    public void Autobrake_eigenes_Event_je_Stellung(string aircraft, string option, string expectedEvent, double armedMode)
     {
-        var profile = A339();
+        var profile = RepoStore().All.Single(p => p.Name == aircraft);
         var plan = ActionPlanner.Plan(profile.Actions.Single(a => a.Id == "brakes.autobrake"), option, profile.Limits, Ground()).Plan!;
 
         var step = Assert.Single(plan.Steps);
