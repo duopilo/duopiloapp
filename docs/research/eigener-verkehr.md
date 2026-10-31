@@ -114,6 +114,25 @@ das grob 100.000 Linienflüge am Tag, als Wochenfahrplan einige MB.
 - Im Reiseflug reicht eine plausible Strecke.
 - Bahn und Reihenfolge im Anflug vergibt Duopilo-ATC, für den Piloten und den Verkehr nach denselben Regeln.
 
+**Nur der Ausschnitt um den Piloten.** Der Verkehr läuft auf zwei Ebenen:
+
+- **Rechnerisch:** Der Fahrplan läuft als reine Daten für einen größeren Umkreis, etwa alles, was in der nächsten Stunde am
+  eigenen Abflug- oder Zielflughafen startet oder landet. Das kostet fast nichts. So kann Duopilo-ATC den Anflug staffeln,
+  bevor der Pilot dort ist, und auf der Frequenz sprechen auch Flugzeuge, die er noch nicht sieht.
+- **Im Sim:** Ein Objekt entsteht erst, wenn ein Flugzeug in einen Radius kommt (etwa TCAS-Reichweite), am Rand und an seiner
+  errechneten Position. Verlässt es den Radius, wird es entfernt. Geparkte Flugzeuge entstehen erst bei Annäherung an den
+  Flughafen. Außerhalb des Bereichs um den Spieler lehnt der Sim neue KI-Objekte ohnehin ab.
+
+Vorrang haben, was der Pilot sieht und hört (Entscheidung 31.10.2026):
+
+1. Verkehr um das eigene Flugzeug, im Reiseflug wie im Anflug.
+2. Flüge, die kurz vor und nach dem Piloten landen. Duopilo-ATC staffelt sie so, dass beim Abrollen zum Beispiel gerade eine
+   Maschine auf der Bahn oder der Parallelbahn landet.
+3. Abflüge am Startflughafen und Rollverkehr.
+4. Geparkte Flugzeuge an den Gates.
+
+Ein Flug nach New York existiert in Frankfurt also höchstens als Zeile im Fahrplan, nie als Flugzeug.
+
 **Woher der Fahrplan kommt:**
 
 1. Aus den adsb.lol-Verlaufsdaten abgeleitet: wer wann von wo nach wo, als Wochenmuster pro Saison, z. B. per GitHub Action.
