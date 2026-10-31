@@ -238,8 +238,34 @@ Dazu A321 (iniBuilds), A330-900 (Headwind), A330-300 und A310 (iniBuilds) sowie 
 misst weiter gegen den Gleitpfad. Pitch und Bank werden aufgezeichnet, das Abfangen ist so messbar (Nase vor dem Aufsetzen gegenüber
 2–1 NM). Bis zu 4 Tests gleichzeitig, je Bahn einer (Parallelanflug 05L/05R).
 
-Nächste Schritte: Nachtests in EDDL 05L (gleiche Umgebung wie oben), dann der Parallelanflug A330-300 auf 05R und A330-900 auf
-05L. Sieht es dann immer noch komisch aus, in Frankfurt testen. Danach Speed über den Schub (`THROTTLE_REQUESTED`) und Stufe B.
+**Parallelanflug (1.11.2026, beta.10, A1, EDDL 05R/05L gleichzeitig):**
+
+| | A330-300 (RR, Lufthansa) auf 05R | A330-900 (Headwind, Condor) auf 05L |
+|---|---|---|
+| Fahrwerk ganz draußen | 4,0 NM | 4,5 NM |
+| Aufsetzen hinter der Schwelle | 936 m | 880 m |
+| IAS, Sinkrate | 127 kt, 45 ft/min | 127 kt, 1392 ft/min |
+| Speed im Anflug | 169 kt | 166 kt |
+| Schwelle über Gleitpfad | +180 ft | +192 ft |
+| Ergebnis | angehalten (27 m vor dem letzten Wegpunkt) | gelandet |
+
+- **Zwei gleichzeitig gehen:** Beide auf ihrer Bahn, Mittellinie unter 1 m.
+- **Fahrwerk jetzt in der Luft:** Mit `gear: all` und Nachschicken kam es bei beiden draußen heraus (die einzelnen Fahrwerkswerte
+  zeigen 100 %); beim A330-900 etwas früher. Ziel für den echten Verkehr: bei 2500 ft über der Bahn draußen.
+- **Tiefere letzte Meile wirkt nicht:** Bei 1 NM folgte die KI noch (rund 10 ft tiefer als vorher), ab etwa 0,5 NM geht sie in
+  ihren Landemodus (STATE_SIMPLE_LANDING) und ignoriert die Wegpunkthöhen.
+- **Längsneigung:** im Anflug −3,5 bis −4° (Nase unten, offenbar richtet die KI die Nase am Flugweg aus), im Landemodus auf 0°.
+  Das Aufsetzen kommt rund 600 m hinter dem ersten Boden-Wegpunkt (300 m).
+
+**Ab beta.11:** Erster Boden-Wegpunkt an der Schwelle (`touchdownM`, −500 bis 600 m), damit die KI früher in den Landemodus geht.
+A2 schickt den Fahrwerksbefehl bei 3000 ft über der Bahn, die Auswertung meldet die Höhe, in der es draußen war, und ob das bis
+2500 ft geklappt hat.
+
+**Rückfallebene:** Klappt das weiterhin nicht, die Modelle von FlyByWire und Headwind aus dem Verkehr nehmen, damit das Fahrwerk
+zumindest sicher vor dem Aufsetzen draußen ist – auch wenn dabei mal etwas leicht im Boden steckt.
+
+Nächste Schritte: Nachtests in EDDL 05L/05R (gleiche Umgebung wie oben) mit A2. Sieht es dann immer noch komisch aus, in Frankfurt
+testen. Danach Speed über den Schub (`THROTTLE_REQUESTED`) und Stufe B.
 
 **Entscheidung danach:**
 

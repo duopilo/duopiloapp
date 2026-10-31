@@ -1,3 +1,4 @@
+using System.Globalization;
 using Duopilo.Sim;
 
 namespace Duopilo.Traffic;
@@ -23,7 +24,7 @@ public sealed record TrafficTestPoint(
 public sealed record TrafficTestGate(string Name, double IndicatedKt, double TargetKt, double AltitudeDeviationFt, double CrossM, double PitchDeg);
 
 /// <summary>Erster Bodenkontakt nach dem Anflug.</summary>
-/// <param name="AlongM">Hinter der Schwelle (geplant: <see cref="TrafficTestPlan.TouchdownM"/>).</param>
+/// <param name="AlongM">Hinter der Schwelle (erster Boden-Wegpunkt: <see cref="TrafficTestPlan.TouchdownM"/>).</param>
 /// <param name="SinkRateFpm">Sinkrate des letzten Messpunkts in der Luft (positiv = sinkend).</param>
 /// <param name="PitchDeg">Längsneigung des letzten Messpunkts in der Luft, Nase hoch positiv.</param>
 /// <param name="FlarePitchGainDeg">
@@ -44,6 +45,11 @@ public sealed record TrafficTestTouchdown(
 /// <param name="Verdict">stopped (gelandet und angehalten), landed, floated (schwebt über der Bahn), airborne, no_data.</param>
 /// <param name="MeanSpeedDeviationKt">Mittlere Abweichung IAS minus Wunsch im Anflug (positiv = zu schnell).</param>
 /// <param name="GearExtendedAtNm">Entfernung zur Schwelle, als das Fahrwerk ganz draußen war (0 = erst hinter der Schwelle).</param>
+/// <param name="GearExtendedAtFt">Höhe über der Bahn, als das Fahrwerk ganz draußen war (0 = erst am Boden).</param>
+/// <param name="GearDownInTime">
+/// Ob das Fahrwerk bis <see cref="TrafficTestPlan.GearDownByFt"/> über der Bahn draußen war; null, solange es offen ist (noch nicht
+/// draußen, aber auch noch nicht darunter).
+/// </param>
 /// <param name="FloatSeconds">Sekunden unter 30 ft über Grund in der Luft, weiter als 300 m hinter dem geplanten Aufsetzpunkt.</param>
 /// <param name="StopShortOfLastWaypointM">Wie weit die KI vor dem letzten Rollwegpunkt angehalten hat.</param>
 /// <param name="ApproachPitchDeg">Mittlere Längsneigung zwischen 2 und 1 NM (Nase hoch positiv).</param>
@@ -55,6 +61,8 @@ public sealed record TrafficTestSummary(
     double? MaxSpeedDeviationKt,
     IReadOnlyList<TrafficTestGate> Gates,
     double? GearExtendedAtNm,
+    double? GearExtendedAtFt,
+    bool? GearDownInTime,
     TrafficTestTouchdown? Touchdown,
     int FloatSeconds,
     bool AirborneBeyondRunwayEnd,
@@ -93,6 +101,8 @@ public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spa
     private int _speedDeviationCount;
     private double? _maxSpeedDeviation;
     private double? _gearExtendedAtNm;
+    private double? _gearExtendedAtFt;
+    private bool _belowGearHeightWithoutGear;
     private TrafficTestTouchdown? _touchdown;
     private double _floatSeconds;
     private bool _airborneBeyondEnd;
@@ -124,10 +134,17 @@ public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spa
             events.Add("ai_state:" + state);
         }
 
+        var heightFt = s.OnGround ? 0 : Math.Max(0, s.AltitudeFt - plan.Runway.ElevationFt);
         if (_gearExtendedAtNm is null && s.GearExtendedPercent >= 99)
         {
             _gearExtendedAtNm = along >= 0 ? 0 : Math.Round(-along / RunwayEnd.MetersPerNm, 1);
-            events.Add("gear_extended");
+            _gearExtendedAtFt = Math.Round(heightFt / 10) * 10;
+            events.Add(string.Create(CultureInfo.InvariantCulture, $"gear_extended at {_gearExtendedAtFt:0} ft"));
+        }
+        else if (_gearExtendedAtNm is null && heightFt < TrafficTestPlan.GearDownByFt && !_belowGearHeightWithoutGear && Samples > 1)
+        {
+            _belowGearHeightWithoutGear = true;
+            events.Add(string.Create(CultureInfo.InvariantCulture, $"gear_not_down_by {TrafficTestPlan.GearDownByFt:0} ft"));
         }
 
         if (!s.OnGround)
@@ -241,6 +258,8 @@ public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spa
             _maxSpeedDeviation is { } m ? Math.Round(m, 1) : null,
             [.. _gates],
             _gearExtendedAtNm,
+            _gearExtendedAtFt,
+            _gearExtendedAtFt is { } gearFt ? gearFt >= TrafficTestPlan.GearDownByFt : _belowGearHeightWithoutGear ? false : null,
             _touchdown,
             (int)Math.Round(_floatSeconds),
             _airborneBeyondEnd,
@@ -254,7 +273,7 @@ public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spa
             [.. _states]);
     }
 
-    /// <summary>Überflogene Wegpunkte des Anflugs (…nm und Schwelle) zwischen vorigem und aktuellem Messpunkt.</summary>
+    /// <summary>Überflogene Messpunkte des Anflugs (…nm und Schwelle) zwischen vorigem und aktuellem Messpunkt.</summary>
     private void RecordGates(AiProbeSample s, double along, double cross)
     {
         if (_previousAlong is not { } previous)
@@ -262,13 +281,8 @@ public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spa
             return;
         }
 
-        foreach (var gate in plan.Waypoints)
+        foreach (var gate in plan.Checkpoints)
         {
-            if (gate.AlongM > 0 || gate.Waypoint.Flags.HasFlag(AiWaypointFlags.OnGround))
-            {
-                continue;
-            }
-
             // Halber Meter Toleranz, damit ein Messpunkt genau auf dem Wegpunkt nicht an Rundung scheitert
             var at = gate.AlongM - 0.5;
             if (previous < at && along >= at)
@@ -276,8 +290,8 @@ public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spa
                 _gates.Add(new TrafficTestGate(
                     gate.Name,
                     Math.Round(s.IndicatedKt),
-                    gate.Waypoint.SpeedKt,
-                    Math.Round(s.AltitudeFt - gate.GlidePathAltitudeFt),
+                    gate.TargetKt,
+                    Math.Round(s.AltitudeFt - gate.GlidePathFt),
                     Math.Round(cross, 1),
                     Math.Round(s.PitchDeg, 1)));
             }

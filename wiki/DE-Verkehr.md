@@ -59,7 +59,7 @@ Jede Antwort wird in `%LOCALAPPDATA%\Duopilo\logs\traffic-messages.csv` protokol
 
 Erster Schritt zu eigenem Verkehr in Duopilo: `traffic_test_start` erzeugt ein KI-Flugzeug (`DUO01`–`DUO04`), das über Wegpunkte einen Endanflug fliegt, landet und auf der Bahn hält – bis zu 4 gleichzeitig, je Bahn eins (z. B. Parallelanflug auf 05L und 05R). Standardmäßig aus – einschalten mit `"TrafficTest": { "Enabled": true }` in `appsettings.Local.json`.
 
-- **A1:** Spawn 5 NM vor der Bahn mit Fahrwerk unten. **A2:** Spawn 15 NM vor der Bahn, Fahrwerk bei 10 NM.
+- **A1:** Spawn 5 NM vor der Bahn mit Fahrwerk unten. **A2:** Spawn 15 NM vor der Bahn, Fahrwerk bei 3000 ft über der Bahn (bei 2500 ft draußen).
 - Die Wegpunkte der letzten Meile liegen bis zu 100 ft unter dem Gleitpfad (`finalLowFt`), weil die KI im kurzen Endanflug abfängt.
 - `traffic_test_status` zeigt die Auswertung (Aufsetzen, Abfangen, Schweben, Speed, Haltepunkt), die Messpunkte liegen unter `%LOCALAPPDATA%\Duopilo\traffic-tests\`.
 - `traffic_test_stop` entfernt die Flugzeuge, mit `runway` nur das eine (auch nach 15 Minuten und beim Beenden von Duopilo).

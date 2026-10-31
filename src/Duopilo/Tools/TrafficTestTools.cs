@@ -19,7 +19,7 @@ public static class TrafficTestTools
         "Developer test tool (off by default, Duopilo:TrafficTest:Enabled): spawns an AI aircraft (tail DUO01–DUO04, no ATC control) that " +
         "flies a final approach to a runway by waypoints, lands and stops on the runway – to find out whether Duopilo can run its own traffic. " +
         "Variant A1: spawn 5 NM out on the extended centerline with the gear already down. Variant A2: spawn 15 NM out with the gear up, gear " +
-        "down at 10 NM. Up to 4 tests at the same time, one per runway (e.g. a parallel approach: one call for 05L, one for 05R); starting a " +
+        "command at 3000 ft above the runway so it is down by 2500 ft (the evaluation checks that). Up to 4 tests at the same time, one per runway (e.g. a parallel approach: one call for 05L, one for 05R); starting a " +
         "test on a runway that already has one replaces it. Pick runways the pilot is not using right now. Samples (1 per second) go to one CSV " +
         "per test in the data folder (traffic-tests). Follow with traffic_test_status, end with traffic_test_stop (the aircraft is removed; " +
         "after MaxMinutes, default 15, also without stop).")]
@@ -27,7 +27,7 @@ public static class TrafficTestTools
         TrafficTestService tests,
         [Description("ICAO code of the airport, e.g. EDDL. Must be within 80 NM of the pilot's aircraft.")] string airport,
         [Description("Runway end to land on, e.g. 23L (5L and 05L are the same).")] string runway,
-        [Description("A1 (gear down from spawn, 5 NM) or A2 (gear up, gear down at 10 NM, spawn 15 NM). Default A1.")] string variant = "A1",
+        [Description("A1 (gear down from spawn, 5 NM) or A2 (spawn 15 NM with the gear up, gear down at 3000 ft above the runway). Default A1.")] string variant = "A1",
         [Description("Aircraft title as listed by traffic_test_models. Empty = automatic (an FSLTL A320 if installed, else any A320).")] string? title = null,
         [Description("Livery name for the title (MSFS 2024 modular aircraft). Empty = default livery.")] string? livery = null,
         [Description("Spawn distance before the threshold in NM (2–30). Empty = default of the variant.")] double? spawnNm = null,
@@ -39,6 +39,9 @@ public static class TrafficTestTools
             "0.5 NM by 60 %, 1 NM by a quarter. The AI levels off on short final and crossed the threshold 170–190 ft high in the first " +
             "tests; aiming lower should bring it down on the glide path. The evaluation still measures against the glide path. " +
             "0 = exactly on the glide path, empty = 100.")] double? finalLowFt = null,
+        [Description(
+            "Where the first ground waypoint lies, in m behind the threshold (−500 to 600, negative = before the threshold). The AI " +
+            "switches to its landing mode about 1 km before it and touched down 200–700 m behind it in the tests. Empty = 0 (at the threshold).")] double? touchdownM = null,
         CancellationToken cancellationToken = default)
     {
         if (!Enum.TryParse<TrafficTestVariant>(variant?.Trim(), ignoreCase: true, out var parsed) || !Enum.IsDefined(parsed))
@@ -53,7 +56,7 @@ public static class TrafficTestTools
 
         try
         {
-            var status = await tests.StartTestAsync(new TrafficTestRequest(airport, runway, parsed, title, livery, spawnNm, gearMethod, finalLowFt), cancellationToken);
+            var status = await tests.StartTestAsync(new TrafficTestRequest(airport, runway, parsed, title, livery, spawnNm, gearMethod, finalLowFt, touchdownM), cancellationToken);
             return Json.Serialize(new { ok = true, status });
         }
         catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or TimeoutException or ArgumentException)
@@ -67,7 +70,8 @@ public static class TrafficTestTools
         "State of the traffic tests (traffic_test_start), one entry per test in 'tests' (running ones and the last ended ones): running/ended, " +
         "tail, last sample (altitude, IAS against the requested speed, ground speed, vertical speed, pitch – nose up positive –, bank, gear, " +
         "distance to the threshold, position relative to the centerline, AI state), events (spawn, gear, touchdown, stopped …) and the " +
-        "evaluation: verdict (stopped, landed, floated = hovered above the runway without touching down, airborne), speed deviation, values " +
+        "evaluation: verdict (stopped, landed, floated = hovered above the runway without touching down, airborne), speed deviation, height " +
+        "above the runway when the gear was down and whether that was by 2500 ft, values " +
         "at the approach gates (altitude deviation from the glide path, pitch), approach pitch, touchdown point, speed, sink rate, pitch and " +
         "flare (pitch gain before touchdown), max bank on final, float seconds, stop point. Paths of the CSV and summary files.")]
     public static string Status(

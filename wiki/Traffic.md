@@ -59,7 +59,7 @@ Every response is logged to `%LOCALAPPDATA%\Duopilo\logs\traffic-messages.csv` (
 
 First step towards Duopilo's own traffic: `traffic_test_start` spawns an AI aircraft (`DUO01`–`DUO04`) that flies a final approach by waypoints, lands and stops on the runway – up to 4 at once, one per runway (e.g. a parallel approach on 05L and 05R). Off by default – switch it on with `"TrafficTest": { "Enabled": true }` in `appsettings.Local.json`.
 
-- **A1:** spawn 5 NM out with the gear down. **A2:** spawn 15 NM out, gear down at 10 NM.
+- **A1:** spawn 5 NM out with the gear down. **A2:** spawn 15 NM out, gear down at 3000 ft above the runway (down by 2500 ft).
 - The waypoints of the last mile lie up to 100 ft below the glide path (`finalLowFt`), because the AI levels off on short final.
 - `traffic_test_status` shows the evaluation (touchdown, flare, floating, speed, stop point), samples go to `%LOCALAPPDATA%\Duopilo\traffic-tests\`.
 - `traffic_test_stop` removes the aircraft, with `runway` only that one (also after 15 minutes and when Duopilo exits).

@@ -1425,7 +1425,7 @@
   "tools.trafficTest.noData": "No values from the test aircraft for {seconds} s – MSFS may have removed it. End with traffic_test_stop and start again.",
   "tools.trafficTest.gearUnknown": "Unknown gear method '{gear}' – all, down (GEAR_DOWN), set (GEAR_SET 1) or handle (GEAR HANDLE POSITION).",
   "tools.trafficTest.tooMany": "{max:0} traffic tests are already running on other runways – end one first with traffic_test_stop (runway).",
-  "tools.trafficTest.variantUnknown": "Unknown variant '{variant}' – A1 (gear down from spawn) or A2 (gear down at 10 NM).",
+  "tools.trafficTest.variantUnknown": "Unknown variant '{variant}' – A1 (gear down from spawn) or A2 (gear down at 3000 ft above the runway).",
   "log.sim.inputEvents": "Input events: {Total} in total, {Matched} matched for {Aircraft}, changed {Changed}, saved to {File}.",
   "log.sim.inputEventsUnavailable": "SimConnect: input events not available ({Error}) – list_input_events stays off.",
   "log.sim.inputEventsSaveFailed": "Input events: list not saved ({Error})."

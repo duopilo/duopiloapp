@@ -102,8 +102,10 @@ public sealed class TrafficTestTests
         Assert.Equal(-5 * RunwayEnd.MetersPerNm, spawnAlong, 0);
 
         var names = plan.Waypoints.Select(w => w.Name).ToList();
-        Assert.Equal(["4nm", "3nm", "2nm", "1nm", "0.5nm", "threshold", "touchdown", "rollout1", "rollout2", "stop", "beyondStop"], names);
-        Assert.Equal(300, plan.Waypoints.Single(w => w.Name == "touchdown").AlongM);
+        // Erster Boden-Wegpunkt an der Schwelle, deshalb dort kein Luft-Wegpunkt – gemessen wird die Schwelle trotzdem
+        Assert.Equal(["4nm", "3nm", "2nm", "1nm", "0.5nm", "touchdown", "rollout1", "rollout2", "stop", "beyondStop"], names);
+        Assert.Equal(0, plan.Waypoints.Single(w => w.Name == "touchdown").AlongM);
+        Assert.Equal(["4nm", "3nm", "2nm", "1nm", "0.5nm", "threshold"], plan.Checkpoints.Select(c => c.Name));
 
         // Entlang der Mittellinie aufsteigend, in der Luft fallende Höhe
         Assert.Equal(plan.Waypoints.Select(w => w.AlongM).OrderBy(a => a), plan.Waypoints.Select(w => w.AlongM));
@@ -111,11 +113,12 @@ public sealed class TrafficTestTests
         Assert.All(air, w => Assert.False(w.Waypoint.Flags.HasFlag(AiWaypointFlags.OnGround)));
         Assert.Equal(air.Select(w => w.Waypoint.AltitudeFt).OrderByDescending(a => a), air.Select(w => w.Waypoint.AltitudeFt));
 
-        // Letzte Meile tiefer gelegt (Standard 100 ft), gemessen wird weiter am Gleitpfad
-        var threshold = plan.Waypoints.Single(w => w.Name == "threshold");
+        // Letzte Meile tiefer gelegt (Standard 100 ft, 0,5 NM 60 %), gemessen wird weiter am Gleitpfad
+        var half = plan.Waypoints.Single(w => w.Name == "0.5nm");
         Assert.Equal(TrafficTestPlan.DefaultFinalLowFt, plan.FinalLowFt);
-        Assert.Equal(end.ElevationFt + 50, threshold.GlidePathAltitudeFt, 3);
-        Assert.Equal(end.ElevationFt + 50 - 100, threshold.Waypoint.AltitudeFt, 3);
+        Assert.Equal(TrafficTestPlan.GlidePathFt(end, 0.5), half.GlidePathAltitudeFt, 3);
+        Assert.Equal(TrafficTestPlan.GlidePathFt(end, 0.5) - 60, half.Waypoint.AltitudeFt, 3);
+        Assert.Equal(end.ElevationFt + 50, plan.Checkpoints.Single(c => c.Name == "threshold").GlidePathFt, 3);
 
         var ground = plan.Waypoints.SkipWhile(w => w.Name != "touchdown").ToList();
         Assert.All(ground, w => Assert.True(w.Waypoint.Flags.HasFlag(AiWaypointFlags.OnGround)));
@@ -135,7 +138,13 @@ public sealed class TrafficTestTests
 
         Assert.Equal(15, plan.SpawnNm);
         Assert.False(plan.GearAtSpawn);
-        Assert.Equal(10, plan.GearDownNm);
+        Assert.Equal(3000, plan.GearDownFt);
+        Assert.Equal(9.3, plan.GearDownNm); // 3000 ft über der Bahn auf dem 3°-Pfad
+
+        // Liegt der Spawn schon unter 3000 ft, kommt das Fahrwerk gleich beim Spawn
+        var low = TrafficTestPlan.Build(End("23L"), TrafficTestVariant.A2, spawnNm: 8);
+        Assert.True(low.GearAtSpawn);
+        Assert.Null(low.GearDownFt);
         Assert.Equal(["12nm", "10nm", "8nm", "6nm", "4nm"], plan.Waypoints.Take(5).Select(w => w.Name));
         Assert.Equal(160, plan.Waypoints[0].Waypoint.SpeedKt);
         Assert.Equal(140, plan.Waypoints.Single(w => w.Name == "4nm").Waypoint.SpeedKt);
@@ -186,6 +195,8 @@ public sealed class TrafficTestTests
         Assert.False(summary.AirborneBeyondRunwayEnd);
         Assert.Equal(46, summary.StopShortOfLastWaypointM);
         Assert.Equal(5, summary.GearExtendedAtNm);
+        Assert.Equal(1640, summary.GearExtendedAtFt);
+        Assert.False(summary.GearDownInTime); // A1 startet unter 2500 ft
         Assert.InRange(summary.MeanSpeedDeviationKt!.Value, 9, 11);
         Assert.Contains(summary.Gates, g => g.Name == "2nm" && g.IndicatedKt == 150 && g.TargetKt == 140);
         Assert.Contains(summary.Gates, g => g.Name == "threshold");
@@ -199,7 +210,7 @@ public sealed class TrafficTestTests
     public void Letzte_Meile_tiefer_ein_Viertel_60_Prozent_voll()
     {
         var end = End("23L");
-        var plan = TrafficTestPlan.Build(end, TrafficTestVariant.A1, finalLowFt: 200);
+        var plan = TrafficTestPlan.Build(end, TrafficTestVariant.A1, touchdownM: 300, finalLowFt: 200);
 
         double Drop(string name)
         {
@@ -213,12 +224,54 @@ public sealed class TrafficTestTests
         Assert.Equal(120, Drop("0.5nm"), 3);
         Assert.Equal(200, Drop("threshold"), 3);
 
-        var exact = TrafficTestPlan.Build(end, TrafficTestVariant.A1, finalLowFt: 0);
+        var exact = TrafficTestPlan.Build(end, TrafficTestVariant.A1, touchdownM: 300, finalLowFt: 0);
         Assert.All(exact.Waypoints, w => Assert.Null(w.PathAltitudeFt));
         Assert.Equal(end.ElevationFt + 50, exact.Waypoints.Single(w => w.Name == "threshold").Waypoint.AltitudeFt, 3);
 
         Assert.Equal(TrafficTestPlan.MaxFinalLowFt, TrafficTestPlan.Build(end, TrafficTestVariant.A1, finalLowFt: 999).FinalLowFt);
         Assert.Equal(0, TrafficTestPlan.Build(end, TrafficTestVariant.A1, finalLowFt: -5).FinalLowFt);
+    }
+
+    [Fact]
+    public void Erster_Boden_Wegpunkt_verschiebbar_Luft_Wegpunkte_davor()
+    {
+        var end = End("23L");
+
+        var before = TrafficTestPlan.Build(end, TrafficTestVariant.A1, touchdownM: -300);
+        Assert.Equal(-300, before.TouchdownM);
+        Assert.Equal(-300, before.Waypoints.Single(w => w.Name == "touchdown").AlongM);
+        Assert.Contains(before.Waypoints, w => w.Name == "0.5nm");
+        Assert.All(before.Waypoints.TakeWhile(w => w.Name != "touchdown"), w => Assert.True(w.AlongM <= -400));
+        Assert.Equal(before.Waypoints.Select(w => w.AlongM).OrderBy(a => a), before.Waypoints.Select(w => w.AlongM));
+
+        var behind = TrafficTestPlan.Build(end, TrafficTestVariant.A1, touchdownM: 300);
+        Assert.Contains(behind.Waypoints, w => w.Name == "threshold");
+
+        Assert.Equal(TrafficTestPlan.MinTouchdownM, TrafficTestPlan.Build(end, TrafficTestVariant.A1, touchdownM: -2000).TouchdownM);
+        Assert.Equal(TrafficTestPlan.MaxTouchdownM, TrafficTestPlan.Build(end, TrafficTestVariant.A1, touchdownM: 5000).TouchdownM);
+    }
+
+    [Theory]
+    [InlineData(2700, true)]
+    [InlineData(2000, false)]
+    public void Auswertung_Fahrwerk_bis_2500_ft_draussen(double extendedAtFt, bool inTime)
+    {
+        var end = End("23L");
+        var plan = TrafficTestPlan.Build(end, TrafficTestVariant.A2);
+        var start = DateTimeOffset.UtcNow;
+        var analysis = new TrafficTestAnalysis(plan, start);
+        var t = 0;
+
+        for (var nm = 12.0; nm > 4; nm -= 0.5)
+        {
+            var alt = TrafficTestPlan.GlidePathFt(end, nm);
+            var gear = alt - end.ElevationFt <= extendedAtFt ? 100 : 0;
+            Add(analysis, end, start, t++, -nm * RunwayEnd.MetersPerNm, alt, ias: 160, gs: 160, onGround: false, agl: alt - end.ElevationFt, gear: gear);
+        }
+
+        var summary = analysis.Summary();
+        Assert.Equal(inTime, summary.GearDownInTime);
+        Assert.InRange(summary.GearExtendedAtFt!.Value, extendedAtFt - 170, extendedAtFt);
     }
 
     [Fact]

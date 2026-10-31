@@ -12,6 +12,7 @@ namespace Duopilo.Traffic;
 /// <param name="SpawnNm">Abstand des Spawns zur Schwelle; leer = Standard der Variante (A1 5 NM, A2 15 NM).</param>
 /// <param name="Gear">Wie das Fahrwerk ausgefahren wird (Event GEAR_DOWN, GEAR_SET, Hebel-SimVar oder alles).</param>
 /// <param name="FinalLowFt">Wie weit die letzte Meile unter dem Gleitpfad liegt; leer = <see cref="TrafficTestPlan.DefaultFinalLowFt"/>.</param>
+/// <param name="TouchdownM">Erster Boden-Wegpunkt hinter der Schwelle (davor negativ); leer = <see cref="TrafficTestPlan.DefaultTouchdownM"/>.</param>
 public sealed record TrafficTestRequest(
     string Airport,
     string Runway,
@@ -20,7 +21,8 @@ public sealed record TrafficTestRequest(
     string? Livery = null,
     double? SpawnNm = null,
     AiGearMethod Gear = AiGearMethod.All,
-    double? FinalLowFt = null);
+    double? FinalLowFt = null,
+    double? TouchdownM = null);
 
 /// <summary>Zeitpunkt und Text eines Ereignisses der Testlinie.</summary>
 public sealed record TrafficTestEvent(double Seconds, string Text);
@@ -71,7 +73,8 @@ public sealed record TrafficTestStatus(
 
 /// <summary>
 /// Testwerkzeug für eigenen KI-Verkehr, Stufe A der Testlinie (docs/research/eigener-verkehr.md): NonATC-Flugzeuge fliegen einen
-/// Endanflug über Wegpunkte, landen und halten auf der Bahn. A1 mit Fahrwerk ab dem Spawn, A2 mit Fahrwerk erst bei 10 NM.
+/// Endanflug über Wegpunkte, landen und halten auf der Bahn. A1 mit Fahrwerk ab dem Spawn, A2 mit Fahrwerk erst bei 3000 ft über der
+/// Bahn, damit es bei 2500 ft draußen ist.
 ///
 /// Bis zu <see cref="MaxConcurrent"/> Tests gleichzeitig, je Bahn einer (z. B. Parallelanflug auf 05L und 05R); ein neuer Test auf
 /// derselben Bahn ersetzt den alten. Messpunkte (1 Hz) gehen je Test als CSV nach traffic-tests\ im Datenordner, die Auswertung als
@@ -198,7 +201,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
 
             var slot = Enumerable.Range(0, MaxConcurrent).First(i => running.All(r => r.Slot != i));
             var (title, livery) = await ResolveModelAsync(request, ct);
-            var plan = TrafficTestPlan.Build(runway, request.Variant, request.SpawnNm, finalLowFt: request.FinalLowFt);
+            var plan = TrafficTestPlan.Build(runway, request.Variant, request.SpawnNm, request.TouchdownM, request.FinalLowFt);
             var spawnUtc = DateTimeOffset.UtcNow;
             var csv = OpenCsv(plan, spawnUtc);
 
@@ -423,12 +426,15 @@ public sealed class TrafficTestService : IHostedService, IDisposable
 
         var plan = run.Analysis.Plan;
 
-        // A2: Fahrwerk erst im Anflug ausfahren
-        if (plan.GearDownNm is { } gearNm && run.GearCommands == 0 && point.DistanceToThresholdNm is { } distance && distance <= gearNm)
+        // A2: Fahrwerk erst im Anflug ausfahren – bei 3000 ft über der Bahn, spätestens am Punkt des Gleitpfads in dieser Höhe
+        var heightFt = sample.AltitudeFt - plan.Runway.ElevationFt;
+        if (plan.GearDownFt is { } gearFt && run.GearCommands == 0 && !sample.OnGround
+            && (heightFt <= gearFt || (plan.GearDownNm is { } gearNm && point.DistanceToThresholdNm is { } d && d <= gearNm)))
         {
             run.GearCommands++;
             run.GearSentSeconds = point.Seconds;
-            run.AddEvent(point.Seconds, string.Create(CultureInfo.InvariantCulture, $"gear_down_sent {GearName(run.GearMethod)} at {distance:0.0} NM"));
+            var distance = point.DistanceToThresholdNm ?? 0;
+            run.AddEvent(point.Seconds, string.Create(CultureInfo.InvariantCulture, $"gear_down_sent {GearName(run.GearMethod)} at {heightFt:0} ft, {distance:0.0} NM"));
             Fire(_sim.SetAiGearAsync(run.ObjectId, true, run.GearMethod, CancellationToken.None), "gear");
         }
 
@@ -551,7 +557,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                     gear = GearName(run.GearMethod),
                     spawnUtc = run.SpawnUtc,
                     endReason = run.EndReason,
-                    plan = new { plan.SpawnNm, plan.GearAtSpawn, plan.GearDownNm, plan.TouchdownM, plan.StopM, plan.FinalLowFt, waypoints = plan.Waypoints },
+                    plan = new { plan.SpawnNm, plan.GearAtSpawn, plan.GearDownFt, plan.GearDownNm, plan.TouchdownM, plan.StopM, plan.FinalLowFt, waypoints = plan.Waypoints },
                     summary,
                     events = run.Events,
                 },
