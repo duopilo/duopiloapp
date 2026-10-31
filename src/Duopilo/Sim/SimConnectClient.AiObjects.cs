@@ -181,29 +181,48 @@ public sealed partial class SimConnectClient
             sc.SetDataOnSimObject((SimDefinitionId)_aiWaypointDefId, objectId, SIMCONNECT_DATA_SET_FLAG.DEFAULT, data);
         }, ct);
 
-    /// <summary>Fahrwerk eines eigenen KI-Flugzeugs: Event GEAR_DOWN/GEAR_UP an das Objekt und GEAR HANDLE POSITION dazu.</summary>
-    public Task SetAiGearAsync(uint objectId, bool down, CancellationToken ct) =>
+    /// <summary>
+    /// Fahrwerk eines eigenen KI-Flugzeugs. Welcher Weg bei welchem Modell wirkt, ist offen – deshalb wählbar:
+    /// Event GEAR_DOWN/GEAR_UP, Event GEAR_SET (1/0), die SimVar GEAR HANDLE POSITION oder alles zusammen.
+    /// </summary>
+    public Task SetAiGearAsync(uint objectId, bool down, AiGearMethod method, CancellationToken ct) =>
         RunOnSimThreadAsync(sc =>
         {
-            var eventName = down ? "GEAR_DOWN" : "GEAR_UP";
-            if (!_eventIds.TryGetValue(eventName, out var id))
+            if (method is AiGearMethod.Down or AiGearMethod.All)
             {
-                id = ClientEventBase + ++_nextEventId;
-                sc.MapClientEventToSimEvent((SimClientEventId)id, eventName);
-                _eventIds[eventName] = id;
+                TransmitToObject(sc, objectId, down ? "GEAR_DOWN" : "GEAR_UP", 0);
             }
 
-            sc.TransmitClientEvent(objectId, (SimClientEventId)id, 0, SimGroupId.PriorityHighest, SIMCONNECT_EVENT_FLAG.GROUPID_IS_PRIORITY);
-
-            if (_aiGearDefId == 0)
+            if (method is AiGearMethod.Set or AiGearMethod.All)
             {
-                _aiGearDefId = ++_nextDefId;
-                sc.AddToDataDefinition((SimDefinitionId)_aiGearDefId, "GEAR HANDLE POSITION", "Bool", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
-                sc.RegisterDataDefineStruct<double>((SimDefinitionId)_aiGearDefId);
+                TransmitToObject(sc, objectId, "GEAR_SET", down ? 1u : 0u);
             }
 
-            sc.SetDataOnSimObject((SimDefinitionId)_aiGearDefId, objectId, SIMCONNECT_DATA_SET_FLAG.DEFAULT, down ? 1.0 : 0.0);
+            if (method is AiGearMethod.Handle or AiGearMethod.All)
+            {
+                if (_aiGearDefId == 0)
+                {
+                    _aiGearDefId = ++_nextDefId;
+                    sc.AddToDataDefinition((SimDefinitionId)_aiGearDefId, "GEAR HANDLE POSITION", "Bool", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
+                    sc.RegisterDataDefineStruct<double>((SimDefinitionId)_aiGearDefId);
+                }
+
+                sc.SetDataOnSimObject((SimDefinitionId)_aiGearDefId, objectId, SIMCONNECT_DATA_SET_FLAG.DEFAULT, down ? 1.0 : 0.0);
+            }
         }, ct);
+
+    /// <summary>Event an ein eigenes KI-Objekt (nicht an das eigene Flugzeug, daher ohne die Sperrliste des Eingabe-Moduls).</summary>
+    private void TransmitToObject(SimConnect sc, uint objectId, string eventName, uint data)
+    {
+        if (!_eventIds.TryGetValue(eventName, out var id))
+        {
+            id = ClientEventBase + ++_nextEventId;
+            sc.MapClientEventToSimEvent((SimClientEventId)id, eventName);
+            _eventIds[eventName] = id;
+        }
+
+        sc.TransmitClientEvent(objectId, (SimClientEventId)id, data, SimGroupId.PriorityHighest, SIMCONNECT_EVENT_FLAG.GROUPID_IS_PRIORITY);
+    }
 
     /// <summary>Entfernt ein eigenes KI-Flugzeug. Objekte anderer Clients oder des Sims lehnt SimConnect ab.</summary>
     public Task RemoveAiObjectAsync(uint objectId, CancellationToken ct)
@@ -294,7 +313,10 @@ public sealed partial class SimConnectClient
                 d.HeadingTrueDeg,
                 d.OnGround != 0,
                 d.GearHandle != 0,
-                d.GearExtendedPercent,
+                d.GearTotalPercent,
+                d.GearCenterPercent,
+                d.GearLeftPercent,
+                d.GearRightPercent,
                 string.IsNullOrWhiteSpace(state) ? null : state);
             try
             {
@@ -572,8 +594,18 @@ public sealed record AiProbeSample(
     double HeadingTrueDeg,
     bool OnGround,
     bool GearHandleDown,
-    double GearExtendedPercent,
-    string? AiState);
+    double GearTotalPercent,
+    double GearCenterPercent,
+    double GearLeftPercent,
+    double GearRightPercent,
+    string? AiState)
+{
+    /// <summary>
+    /// Am weitesten ausgefahrenes Fahrwerk (0–100). Mehrere Werte, weil nicht jedes Modell als KI alle davon pflegt – beim vollen
+    /// A320neo blieb GEAR TOTAL PCT EXTENDED im Test bei etwa 1 %, obwohl das Fahrwerk auf der Bahn sichtbar draußen war.
+    /// </summary>
+    public double GearExtendedPercent => Math.Max(Math.Max(GearTotalPercent, GearCenterPercent), Math.Max(GearLeftPercent, GearRightPercent));
+}
 
 /// <summary>SimVars der KI-Abfrage, in dieser Reihenfolge in der Data Definition (siehe <see cref="AiProbeData"/>).</summary>
 public static class AiProbeVariables
@@ -591,13 +623,16 @@ public static class AiProbeVariables
         ("SIM ON GROUND", "Bool"),
         ("GEAR HANDLE POSITION", "Bool"),
         ("GEAR TOTAL PCT EXTENDED", "percent"),
+        ("GEAR CENTER POSITION", "percent"),
+        ("GEAR LEFT POSITION", "percent"),
+        ("GEAR RIGHT POSITION", "percent"),
     ];
 
     /// <summary>Zustand der KI (z. B. „SIMPLE_LANDING“), als STRING64 hinter den Zahlen.</summary>
     public const string State = "AI TRAFFIC STATE";
 }
 
-/// <summary>Struktur zu <see cref="AiProbeVariables"/>: elf FLOAT64, dann STRING64.</summary>
+/// <summary>Struktur zu <see cref="AiProbeVariables"/>: vierzehn FLOAT64, dann STRING64.</summary>
 [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
 public struct AiProbeData
 {
@@ -621,8 +656,30 @@ public struct AiProbeData
 
     public double GearHandle;
 
-    public double GearExtendedPercent;
+    public double GearTotalPercent;
+
+    public double GearCenterPercent;
+
+    public double GearLeftPercent;
+
+    public double GearRightPercent;
 
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
     public string State;
+}
+
+/// <summary>Wie Duopilo das Fahrwerk eines KI-Flugzeugs bedient (traffic_test_start, Parameter gear).</summary>
+public enum AiGearMethod
+{
+    /// <summary>GEAR_DOWN/GEAR_UP, GEAR_SET und GEAR HANDLE POSITION zusammen.</summary>
+    All,
+
+    /// <summary>Event GEAR_DOWN bzw. GEAR_UP.</summary>
+    Down,
+
+    /// <summary>Event GEAR_SET mit 1 (unten) bzw. 0 (oben).</summary>
+    Set,
+
+    /// <summary>SimVar GEAR HANDLE POSITION schreiben.</summary>
+    Handle,
 }

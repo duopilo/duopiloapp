@@ -189,6 +189,33 @@ im Sim erzeugt. Erzeugte Objekte entfernt es beim Stoppen, nach `MaxMinutes` und
   Wunsch, Halt vor dem letzten Wegpunkt.
 - Sichtprüfung durch den Piloten im Sim, Ergebnisse als Testlog.
 
+**Erste Läufe (31.10.2026, beta.9):** EDDL 05L, Modell: der flugfähige Airbus A320neo (Condor, D-ANCK), weil kein FSLTL-A320
+installiert war. Drei Läufe A1, einer A2.
+
+| | A1 (1) | A2 | A1 (2) | A1 (3) |
+|---|---|---|---|---|
+| Ergebnis | gelandet, angehalten | gelandet | gelandet | gelandet |
+| Aufsetzen hinter der Schwelle | 493 m | 496 m | 525 m | 481 m |
+| Querablage Aufsetzen / Ausrollen max. | 0,1 / 0,8 m | 0,0 / 0,6 m | 0,1 / 0,8 m | 0,1 / 0,7 m |
+| Aufsetzen IAS, Sinkrate | 124 kt, 1036 ft/min | 121 kt, 46 ft/min | 122 kt, 1064 ft/min | 122 kt, 46 ft/min |
+| Speed im Anflug (Wunsch 140 kt) | 160 kt | 160 kt | 160 kt | 160 kt |
+| Gleitpfad bei 4 / 2 NM | +185 / −12 ft | 0 / −4 ft | +180 / −1 ft | +194 / −9 ft |
+
+- **Landen geht:** In keinem Lauf schwebte die KI über die Bahn, auch ohne wirksamen Fahrwerksbefehl in der Luft (anders als
+  in Issue #289 mit dem FSLTL-A320). Mittellinie auf weniger als 1 m genau, Bahnrichtung aus der Facilities-API also richtig.
+- **Aufsetzen** rund 200 m später als geplant, bei A1 zweimal hart (über 1000 ft/min): Der Spawn auf 5 NM liegt höher als der
+  Gleitpfad, danach sinkt die KI mit 160 kt steil. A2 mit 15 NM Anlauf liegt sauber auf dem Gleitpfad und setzt weich auf.
+- **Speed-Wunsch wirkt nicht:** immer 160 kt, wie in Issue #289.
+- **Fahrwerk:** Beim vollen A320neo kam es erst auf der Bahn heraus (Beobachtung im Sim); GEAR TOTAL PCT EXTENDED blieb die
+  ganze Zeit bei etwa 1 %. Die KI fährt es offenbar erst im Landemodus selbst aus (STATE_SIMPLE_LANDING rund 13 s vor dem
+  Aufsetzen). Ab beta.10 wählbar: `gear` = all, down, set oder handle; das CSV protokolliert alle Fahrwerkswerte.
+- **Halt:** Im ersten Lauf 45 m vor dem letzten Wegpunkt (Issue #289: 46 m). In zwei Läufen kamen ab etwa 1400–1500 m bei
+  10 kt keine Werte mehr – Ursache offen (Objekt entfernt oder Abfrage beendet).
+- **KI-Zustände:** STATE_SIMPLE_FLIGHT → STATE_SIMPLE_LANDING → STATE_SIMPLE_TAXI → STATE_SLEEP (nach dem Halt).
+
+Nächste Schritte: dieselben Läufe mit einem FSLTL-Modell und den einzelnen `gear`-Methoden, Speed über den Schub
+(`THROTTLE_REQUESTED`), danach Stufe B.
+
 **Entscheidung danach:**
 
 - Klappt Stufe C: Fahrplan-Verkehr mit Wegpunkten weiterverfolgen.

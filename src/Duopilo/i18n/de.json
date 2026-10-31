@@ -1180,5 +1180,6 @@
   "tools.trafficTest.noModel": "Unter den installierten Modellen ist kein A320. Mit traffic_test_models einen Titel aussuchen und als title übergeben.",
   "tools.trafficTest.titleRequired": "Die installierten Modelle lassen sich mit dieser SimConnect-Bibliothek nicht auflisten – bitte den Flugzeugtitel angeben (title).",
   "tools.trafficTest.noData": "Seit {seconds} s keine Werte vom Testflugzeug – MSFS hat es vielleicht entfernt. Mit traffic_test_stop beenden und neu starten.",
+  "tools.trafficTest.gearUnknown": "Unbekannte Fahrwerks-Methode „{gear}“ – all, down (GEAR_DOWN), set (GEAR_SET 1) oder handle (GEAR HANDLE POSITION).",
   "tools.trafficTest.variantUnknown": "Unbekannte Variante „{variant}“ – A1 (Fahrwerk ab Spawn) oder A2 (Fahrwerk bei 10 NM)."
 }

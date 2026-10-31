@@ -211,6 +211,29 @@ public sealed class TrafficTestTests
     }
 
     [Fact]
+    public void Fahrwerk_zaehlt_der_am_weitesten_ausgefahrene_Wert()
+    {
+        // Wie beim vollen A320neo als KI: GEAR TOTAL PCT EXTENDED bleibt bei 1 %, die einzelnen Beine melden mehr
+        var sample = new AiProbeSample(1, DateTimeOffset.UtcNow, 0, 0, 0, 0, 0, 0, 0, 0, true, true, 1, 0, 100, 98, null);
+        Assert.Equal(100, sample.GearExtendedPercent);
+
+        var retracted = sample with { GearLeftPercent = 0, GearRightPercent = 0 };
+        Assert.Equal(1, retracted.GearExtendedPercent);
+    }
+
+    [Theory]
+    [InlineData(AiGearMethod.All, "all")]
+    [InlineData(AiGearMethod.Down, "down")]
+    [InlineData(AiGearMethod.Set, "set")]
+    [InlineData(AiGearMethod.Handle, "handle")]
+    public void Fahrwerks_Methode_heisst_wie_der_Tool_Parameter(AiGearMethod method, string name)
+    {
+        Assert.Equal(name, TrafficTestService.GearName(method));
+        Assert.True(Enum.TryParse<AiGearMethod>(name, ignoreCase: true, out var parsed));
+        Assert.Equal(method, parsed);
+    }
+
+    [Fact]
     public void Standardmodell_bevorzugt_FSLTL_A320()
     {
         AiModel[] models =
@@ -283,6 +306,6 @@ public sealed class TrafficTestTests
         double gear = 100)
     {
         var (lat, lon) = end.Point(alongM);
-        return analysis.Add(new AiProbeSample(1, start.AddSeconds(seconds), lat, lon, altitudeFt, agl, ias, gs, vs, end.HeadingTrueDeg, onGround, gear > 0, gear, "SIMPLE_LANDING"));
+        return analysis.Add(new AiProbeSample(1, start.AddSeconds(seconds), lat, lon, altitudeFt, agl, ias, gs, vs, end.HeadingTrueDeg, onGround, gear > 0, gear, 0, 0, 0, "SIMPLE_LANDING"));
     }
 }

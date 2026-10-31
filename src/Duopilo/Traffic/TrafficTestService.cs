@@ -10,13 +10,15 @@ namespace Duopilo.Traffic;
 /// <summary>Anfrage für einen Testanflug.</summary>
 /// <param name="Title">Modelltitel; leer = automatisch (A320, FSLTL bevorzugt).</param>
 /// <param name="SpawnNm">Abstand des Spawns zur Schwelle; leer = Standard der Variante (A1 5 NM, A2 15 NM).</param>
+/// <param name="Gear">Wie das Fahrwerk ausgefahren wird (Event GEAR_DOWN, GEAR_SET, Hebel-SimVar oder alles).</param>
 public sealed record TrafficTestRequest(
     string Airport,
     string Runway,
     TrafficTestVariant Variant,
     string? Title = null,
     string? Livery = null,
-    double? SpawnNm = null);
+    double? SpawnNm = null,
+    AiGearMethod Gear = AiGearMethod.All);
 
 /// <summary>Zeitpunkt und Text eines Ereignisses der Testlinie.</summary>
 public sealed record TrafficTestEvent(double Seconds, string Text);
@@ -46,6 +48,7 @@ public sealed record TrafficTestStatus(
     string? Runway,
     string? Title,
     string? Livery,
+    string? Gear,
     uint? ObjectId,
     DateTimeOffset? StartedUtc,
     double? ElapsedSeconds,
@@ -58,7 +61,7 @@ public sealed record TrafficTestStatus(
     string? SummaryFile,
     string? Note)
 {
-    public static readonly TrafficTestStatus Idle = new("idle", null, null, null, null, null, null, null, null, null, null, null, [], null, null, null, null);
+    public static readonly TrafficTestStatus Idle = new("idle", null, null, null, null, null, null, null, null, null, null, null, null, [], null, null, null, null);
 }
 
 /// <summary>
@@ -183,7 +186,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 throw;
             }
 
-            var run = new TrafficTestRun(plan, title, livery, objectId, spawnUtc, csv?.Path, csv?.Writer, _options.TrafficTest.MaxMinutes);
+            var run = new TrafficTestRun(plan, title, livery, request.Gear, objectId, spawnUtc, csv?.Path, csv?.Writer, _options.TrafficTest.MaxMinutes);
             run.AddEvent(0, string.Create(CultureInfo.InvariantCulture, $"spawn {plan.SpawnNm:0.#} NM, {plan.Spawn.AltitudeFt:0} ft, {plan.Spawn.AirspeedKt} kt, object {objectId}"));
             foreach (var warning in plan.Warnings)
             {
@@ -199,9 +202,9 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             {
                 if (plan.GearAtSpawn)
                 {
-                    await _sim.SetAiGearAsync(objectId, true, ct);
+                    await _sim.SetAiGearAsync(objectId, true, request.Gear, ct);
                     run.GearCommands++;
-                    run.AddEvent(0, "gear_down_sent");
+                    run.AddEvent(0, "gear_down_sent " + GearName(request.Gear));
                 }
 
                 await _sim.SetAiWaypointsAsync(objectId, [.. plan.Waypoints.Select(w => w.Waypoint)], ct);
@@ -263,6 +266,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 plan.Runway.Designation,
                 run.Title,
                 run.Livery.Length > 0 ? run.Livery : null,
+                GearName(run.GearMethod),
                 run.ObjectId,
                 run.SpawnUtc,
                 Math.Round(((run.EndedUtc ?? now) - run.SpawnUtc).TotalSeconds),
@@ -364,16 +368,18 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         if (plan.GearDownNm is { } gearNm && run.GearCommands == 0 && point.DistanceToThresholdNm is { } distance && distance <= gearNm)
         {
             run.GearCommands++;
-            run.AddEvent(point.Seconds, string.Create(CultureInfo.InvariantCulture, $"gear_down_sent at {distance:0.0} NM"));
-            Fire(_sim.SetAiGearAsync(run.ObjectId, true, CancellationToken.None), "gear");
+            run.GearSentSeconds = point.Seconds;
+            run.AddEvent(point.Seconds, string.Create(CultureInfo.InvariantCulture, $"gear_down_sent {GearName(run.GearMethod)} at {distance:0.0} NM"));
+            Fire(_sim.SetAiGearAsync(run.ObjectId, true, run.GearMethod, CancellationToken.None), "gear");
         }
 
-        // A1: Kommt das Fahrwerk nach dem Spawn nicht, bis zu dreimal nachschicken
-        if (plan.GearAtSpawn && !sample.GearHandleDown && run.GearCommands is > 0 and < 4 && point.Seconds >= 3 * run.GearCommands)
+        // Fährt das Fahrwerk nach dem Befehl nicht aus, bis zu dreimal im Abstand von 3 s nachschicken (nur in der Luft)
+        if (run.GearCommands is > 0 and < 4 && !sample.OnGround && sample.GearExtendedPercent < 50
+            && point.Seconds >= run.GearSentSeconds + (3 * run.GearCommands))
         {
             run.GearCommands++;
-            run.AddEvent(point.Seconds, "gear_down_resent");
-            Fire(_sim.SetAiGearAsync(run.ObjectId, true, CancellationToken.None), "gear");
+            run.AddEvent(point.Seconds, "gear_down_resent " + GearName(run.GearMethod));
+            Fire(_sim.SetAiGearAsync(run.ObjectId, true, run.GearMethod, CancellationToken.None), "gear");
         }
 
         if (point.Seconds > run.MaxMinutes * 60 && !run.StopScheduled)
@@ -432,7 +438,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             var name = string.Create(CultureInfo.InvariantCulture, $"{spawnUtc:yyyyMMdd-HHmmss}-{plan.Runway.Airport}{plan.Runway.Designation}-{plan.Variant}.csv");
             var path = Path.Combine(Directory, name);
             var writer = new StreamWriter(path, append: false) { AutoFlush = true };
-            writer.WriteLine("utc,t_s,lat,lon,alt_ft,agl_ft,ias_kt,target_kt,gs_kt,vs_fpm,hdg_true,on_ground,gear_handle,gear_pct,ai_state,along_m,cross_m,dist_thr_nm,events");
+            writer.WriteLine("utc,t_s,lat,lon,alt_ft,agl_ft,ias_kt,target_kt,gs_kt,vs_fpm,hdg_true,on_ground,gear_handle,gear_total_pct,gear_center_pct,gear_left_pct,gear_right_pct,ai_state,along_m,cross_m,dist_thr_nm,events");
             return (path, writer);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -452,7 +458,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         try
         {
             writer.WriteLine(string.Create(CultureInfo.InvariantCulture,
-                $"{s.Utc:O},{p.Seconds:0.0},{s.Latitude:0.000000},{s.Longitude:0.000000},{s.AltitudeFt:0},{s.AltitudeAglFt:0},{s.IndicatedKt:0},{p.TargetKt:0},{s.GroundSpeedKt:0},{s.VerticalSpeedFpm:0},{s.HeadingTrueDeg:0},{(s.OnGround ? 1 : 0)},{(s.GearHandleDown ? 1 : 0)},{s.GearExtendedPercent:0},{Csv(s.AiState)},{p.AlongM:0},{p.CrossM:0.0},{p.DistanceToThresholdNm:0.00},{Csv(string.Join(' ', p.Events))}"));
+                $"{s.Utc:O},{p.Seconds:0.0},{s.Latitude:0.000000},{s.Longitude:0.000000},{s.AltitudeFt:0},{s.AltitudeAglFt:0},{s.IndicatedKt:0},{p.TargetKt:0},{s.GroundSpeedKt:0},{s.VerticalSpeedFpm:0},{s.HeadingTrueDeg:0},{(s.OnGround ? 1 : 0)},{(s.GearHandleDown ? 1 : 0)},{s.GearTotalPercent:0.0},{s.GearCenterPercent:0.0},{s.GearLeftPercent:0.0},{s.GearRightPercent:0.0},{Csv(s.AiState)},{p.AlongM:0},{p.CrossM:0.0},{p.DistanceToThresholdNm:0.00},{Csv(string.Join(' ', p.Events))}"));
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException)
         {
@@ -483,6 +489,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                     runwayElevationFt = Math.Round(plan.Runway.ElevationFt),
                     title = run.Title,
                     livery = run.Livery,
+                    gear = GearName(run.GearMethod),
                     spawnUtc = run.SpawnUtc,
                     endReason = run.EndReason,
                     plan = new { plan.SpawnNm, plan.GearAtSpawn, plan.GearDownNm, plan.TouchdownM, plan.StopM, waypoints = plan.Waypoints },
@@ -506,6 +513,9 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         WriteIndented = true,
     };
 
+    /// <summary>Name der Fahrwerks-Methode wie im Tool-Parameter (all, down, set, handle).</summary>
+    public static string GearName(AiGearMethod method) => method.ToString().ToLowerInvariant();
+
     private static string Csv(string? text) =>
         string.IsNullOrEmpty(text) ? "" : text.Contains(',') || text.Contains('"') ? "\"" + text.Replace("\"", "\"\"") + "\"" : text;
 
@@ -520,6 +530,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         TrafficTestPlan plan,
         string title,
         string livery,
+        AiGearMethod gearMethod,
         uint objectId,
         DateTimeOffset spawnUtc,
         string? csvPath,
@@ -533,6 +544,11 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         public string Title { get; } = title;
 
         public string Livery { get; } = livery;
+
+        public AiGearMethod GearMethod { get; } = gearMethod;
+
+        /// <summary>Sekunde des ersten Fahrwerksbefehls (A1 beim Spawn = 0, A2 bei 10 NM).</summary>
+        public double GearSentSeconds { get; set; }
 
         public uint ObjectId { get; } = objectId;
 
