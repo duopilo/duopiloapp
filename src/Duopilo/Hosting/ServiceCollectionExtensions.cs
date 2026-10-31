@@ -31,6 +31,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<TrafficConnection>();
         services.AddSingleton<TrafficService>();
         services.AddHostedService(sp => sp.GetRequiredService<TrafficService>());
+        services.AddSingleton<TrafficTestService>();
+        services.AddHostedService(sp => sp.GetRequiredService<TrafficTestService>());
 
         services.AddSingleton(sp => new AlertBus(sp.GetRequiredService<IOptions<DuopiloOptions>>().Value.Monitoring.HistorySize));
         services.AddSingleton<SnapshotFactory>();

@@ -57,6 +57,10 @@ Up to version 0.9.x Duopilo was called **Kopilot**. Most things carry over by th
 | `get_progress` | Progress against the plan: next fix (on the A32NX the active FMS waypoint, e.g. after DIR TO), distance/ETA, TOD, cross-track, fuel vs. plan, history of the automatic fuel checks (`fuelCheck`). ETA from the navlog times (planned winds), corrected by the deviation at the last fix passed; without navlog times from the ground speed (`etaSource`) |
 | `get_atc` | In-game ATC: callsign, clearances, assigned runway (incl. L/C/R from SimBrief) |
 | `get_traffic` | Traffic nearby (AI and multiplayer): callsign, type, distance, clock bearing, altitude difference, trend, GS, callout for the closest target |
+| `traffic_test_start` | Developer test, off by default: spawns an AI aircraft (`DUO01`) that flies a final approach by waypoints and lands – variant A1 or A2 (see [Traffic test](#traffic-test-developer)) |
+| `traffic_test_status` | State and evaluation of the traffic test: touchdown, floating, speed against request, stop point, CSV file |
+| `traffic_test_stop` | Ends the traffic test and removes the aircraft |
+| `traffic_test_models` | Installed aircraft models (title, livery) for the traffic test |
 | `get_navigation` | The sim's GPS flight plan variables (usually empty with airliner FMSs – use `get_progress` then) |
 | `get_environment` | Wind, OAT, QNH, altimeter setting, visibility, UTC/local time |
 | `get_aircraft_profile` | Profile bindings with raw value, plain text and "verified" status, extra variables, limits |
@@ -201,6 +205,22 @@ This is not TCAS: no resolution advisory, no prediction of the closest point of 
 - `TRAFFIC_PROXIMITY` can therefore be switched on again – remove the workaround `"DisabledRules": [ "TRAFFIC_PROXIMITY" ]` from `appsettings.Local.json`.
 
 **Checking the responses:** Duopilo counts all responses and writes each one to `%LOCALAPPDATA%\Duopilo\logs\traffic-messages.csv` (size, object, entry, flags `empty`/`short`/`mismatch`; about 250 KB per flight hour, rotated at 10 MB). Under `messageCheck`, `get_traffic` shows the verdict on the two crash hypotheses: whether empty responses are shorter than the old structure (368 bytes) and whether live traffic delivers data blocks that are too short. The first responses and all anomalies also go to the normal log, plus a summary every 30 minutes. Disable with `"Duopilo": { "Monitoring": { "Traffic": { "MessageLog": false } } }`.
+
+### Traffic test (developer)
+
+First step towards Duopilo's own traffic (research: [docs/research/eigener-verkehr.md](docs/research/eigener-verkehr.md)): one AI aircraft without ATC control flies a final approach by waypoints, lands and stops on the runway. Off by default because it creates objects in the sim – switch it on in `appsettings.Local.json` and restart Duopilo:
+
+```json
+{ "Duopilo": { "TrafficTest": { "Enabled": true } } }
+```
+
+- **Start:** `traffic_test_start` with airport and runway end (`EDDL`, `23L`), at most 80 NM from your aircraft. Pick a runway you are not using.
+  - **A1:** spawn 5 NM out with the gear already down – without it, AI aircraft tend to float above the runway (see the research).
+  - **A2:** spawn 15 NM out with the gear up, gear down at 10 NM – does a later gear extension work too?
+- **Aircraft:** without `title` Duopilo takes an FSLTL A320 if installed, otherwise any A320; `traffic_test_models` lists the installed models with liveries. Tail number `DUO01`, so `get_traffic` shows it as well.
+- **Path:** 3° glide path to 50 ft over the threshold, touchdown 300 m behind it, rollout with decreasing speed and stop on the runway. One waypoint lies 60 m past the stop point, because the AI stops short of the last one.
+- **Evaluation:** `traffic_test_status` (browser: `/traffic-test`, models: `/traffic-test/models?filter=A320`) – verdict `stopped`, `landed`, `floated` (hovers above the runway) or `airborne`, speed against request, values at the gates, touchdown point and speed, float seconds, stop point. Samples once a second in `%LOCALAPPDATA%\Duopilo\traffic-tests\` (CSV), the evaluation as JSON next to it.
+- **End:** `traffic_test_stop` removes the aircraft; it is also removed after `MaxMinutes` (default 15) and when Duopilo exits.
 
 ## Speech output
 

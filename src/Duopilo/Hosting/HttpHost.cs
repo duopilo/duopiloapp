@@ -103,6 +103,11 @@ public static class HttpHost
         app.MapGet("/input-events", async (Duopilo.Sim.InputEventExplorer explorer, string? filter, bool? values, bool? parameters, bool? changes, int? limit, CancellationToken ct) =>
             JsonText(await DuopiloTools.ListInputEvents(explorer, filter, values ?? true, parameters ?? false, changes ?? false, limit ?? Duopilo.Sim.InputEventExplorer.DefaultLimit, ct))).LocalOnly();
 
+        // Testwerkzeug für eigenen KI-Verkehr (wie traffic_test_status / traffic_test_models) – nur lesend
+        app.MapGet("/traffic-test", (Duopilo.Traffic.TrafficTestService tests) => JsonText(TrafficTestTools.Status(tests))).LocalOnly();
+        app.MapGet("/traffic-test/models", async (Duopilo.Traffic.TrafficTestService tests, string? filter, int? limit, CancellationToken ct) =>
+            JsonText(await TrafficTestTools.Models(tests, filter, limit ?? TrafficTestTools.DefaultModelLimit, ct))).LocalOnly();
+
         if (remote.OAuthEnabled)
         {
             app.MapOAuth();

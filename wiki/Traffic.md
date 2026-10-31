@@ -54,3 +54,13 @@ Off: `"DisabledRules": [ "TRAFFIC_PROXIMITY" ]`.
 Traffic uses its own SimConnect connection directly via the native `SimConnect.dll` and only reads what each message actually contains (`dwSize`). This replaced the managed library for traffic after crashes in test flights. The background scan only queries numbers; callsign and type are known if `get_traffic` saw the target in the last 15 minutes.
 
 Every response is logged to `%LOCALAPPDATA%\Duopilo\logs\traffic-messages.csv` (~250 KB per flight hour, rotated at 10 MB); `get_traffic` → `messageCheck` summarizes anomalies. Off: `"MessageLog": false`.
+
+## Traffic test (developer)
+
+First step towards Duopilo's own traffic: `traffic_test_start` spawns one AI aircraft (`DUO01`) that flies a final approach by waypoints, lands and stops on the runway. Off by default – switch it on with `"TrafficTest": { "Enabled": true }` in `appsettings.Local.json`.
+
+- **A1:** spawn 5 NM out with the gear down. **A2:** spawn 15 NM out, gear down at 10 NM.
+- `traffic_test_status` shows the evaluation (touchdown, floating, speed, stop point), samples go to `%LOCALAPPDATA%\Duopilo\traffic-tests\`.
+- `traffic_test_stop` removes the aircraft (also after 15 minutes and when Duopilo exits).
+
+Background and plan: [research on own traffic](https://github.com/duopilo/duopiloapp/blob/main/docs/research/eigener-verkehr.md).

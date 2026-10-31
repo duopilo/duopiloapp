@@ -160,8 +160,9 @@ Ein Flug nach New York existiert in Frankfurt also höchstens als Zeile im Fahrp
 Ziel ist nur die Mechanik: Folgt ein NonATC-Flugzeug zuverlässig Wegpunkten, landet es und rollt es? Die Strecke ist bewusst
 kurz und nicht ganz realistisch.
 
-**Testwerkzeug:** ein Entwicklertool ähnlich `list_input_events`, standardmäßig aus. Es erzeugt Objekte im Sim, deshalb nur
-auf ausdrückliche Anforderung. Alle erzeugten Objekte entfernt es beim Beenden mit `AIRemoveObject`.
+**Testwerkzeug:** `traffic_test_start`, `traffic_test_status`, `traffic_test_stop` und `traffic_test_models` (Stufe A seit
+31.10.2026, Beschreibung im README unter „Traffic test“). Standardmäßig aus (`Duopilo:TrafficTest:Enabled`), weil es Objekte
+im Sim erzeugt. Erzeugte Objekte entfernt es beim Stoppen, nach `MaxMinutes` und beim Beenden mit `AIRemoveObject`.
 
 **Ablauf:**
 
@@ -170,7 +171,8 @@ auf ausdrückliche Anforderung. Alle erzeugten Objekte entfernt es beim Beenden 
 1. **Stufe A – Endanflug:**
    - **A1** (wie Issue #289): Spawn 5 NM vor einer Bahn am Flughafen des Piloten (z. B. EDDL 23L), Fahrwerk unten,
      Wegpunkte auf dem 3°-Gleitpfad, Aufsetzpunkt rund 300 m hinter der Schwelle, Ausroll-Wegpunkte mit `ON_GROUND` und
-     fallender Geschwindigkeit bis zum Abrollweg, ein Wegpunkt hinter der Haltelinie.
+     fallender Geschwindigkeit bis zum Halt auf der Bahn, ein Wegpunkt 60 m hinter dem Haltepunkt. Abrollen über Rollwege
+     kommt erst mit Stufe C.
    - **A2 – Fahrwerk erst im Flug:** Spawn 15 NM vor der Bahn mit Fahrwerk oben, Fahrwerk bei 10 NM ausfahren (`GEAR_DOWN`
      an das KI-Objekt), Rest wie A1. Klärt, ob Ankünfte einen normalen Flug hinter sich haben können.
 2. **Stufe B – Platzrunde:** Spawn auf der Bahn, Start über `ON_GROUND`-Wegpunkte, Steigflug auf 1.500 ft AGL, Gegenanflug,

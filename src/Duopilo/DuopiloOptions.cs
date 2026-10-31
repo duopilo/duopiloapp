@@ -86,6 +86,9 @@ public sealed class DuopiloOptions
     /// <summary>Update-Prüfung: neue Versionen aus den GitHub-Releases melden und auf Wunsch installieren.</summary>
     public UpdateOptions Updates { get; set; } = new();
 
+    /// <summary>Testwerkzeug für eigenen KI-Verkehr (Entwicklung, standardmäßig aus) – docs/research/eigener-verkehr.md.</summary>
+    public TrafficTestOptions TrafficTest { get; set; } = new();
+
     /// <summary>
     /// Datenordner (Logs, Modelle, Caches, Dashboard-Einstellungen). Leer = %LOCALAPPDATA%\Duopilo – beim ersten Start
     /// übernommen aus %LOCALAPPDATA%\Kopilot (<see cref="DataDirectoryMigration"/>).
@@ -375,6 +378,18 @@ public sealed class ReportOptions
         string.Equals((IssueTemplate ?? "").Trim(), AppNames.Legacy.IssueTemplate, StringComparison.OrdinalIgnoreCase)
             ? AppNames.IssueTemplate
             : (IssueTemplate ?? "").Trim();
+}
+
+/// <summary>
+/// Testwerkzeug für eigenen KI-Verkehr (traffic_test_*): erzeugt ein KI-Flugzeug, das einen Testanflug fliegt. Standardmäßig aus,
+/// weil es Objekte im Sim erzeugt – einschalten in appsettings.Local.json: { "Duopilo": { "TrafficTest": { "Enabled": true } } }.
+/// </summary>
+public sealed class TrafficTestOptions
+{
+    public bool Enabled { get; set; }
+
+    /// <summary>Nach dieser Zeit wird das Testflugzeug entfernt, auch ohne Stopp.</summary>
+    public int MaxMinutes { get; set; } = 15;
 }
 
 public sealed class InputOptions

@@ -44,6 +44,10 @@ See [SimBrief & Flight Plan](SimBrief-and-Flight-Plan).
 | Tool | Content |
 |---|---|
 | `get_traffic` | traffic nearby (AI, live, multiplayer): callsign, type, distance, clock position, altitude difference, trend, GS, callout for the closest target |
+| `traffic_test_start` | developer test, off by default: spawns an AI aircraft (`DUO01`) that flies a final approach and lands – variant A1 or A2 |
+| `traffic_test_status` | state and evaluation of the traffic test (touchdown, floating, speed against request, stop point, CSV file) |
+| `traffic_test_stop` | ends the traffic test and removes the aircraft |
+| `traffic_test_models` | installed aircraft models (title, livery) for the traffic test |
 | `get_atc` | MSFS in-game ATC: callsign, clearances, assigned runway (incl. L/C/R from SimBrief) |
 
 See [Traffic](Traffic).
