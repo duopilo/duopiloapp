@@ -1,0 +1,47 @@
+# Release-PR: Ein gemergter PR mit Label „release“ legt ein Release an.
+#
+#  - Die Version steht im PR-Titel, z. B. „Release v0.10.0-beta.3“ (Zusatz wie -beta.1 → Pre-release).
+#  - Der Workflow setzt den Tag auf den Merge-Commit und startet „Release“ (release.yml) auf dem Tag. Den Start braucht es,
+#    weil ein mit GITHUB_TOKEN gesetzter Tag selbst keinen Workflow auslöst; workflow_dispatch ist davon ausgenommen.
+#  - Text über der ersten Linie „---“ in der PR-Beschreibung kommt oben in die Release-Beschreibung, darunter der Changelog.
+#  - Das Release entsteht wie immer als Entwurf; veröffentlichen bleibt ein eigener Schritt.
+name: Release-PR
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  tag:
+    name: Tag setzen und Release starten
+    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'release')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write # Tag setzen
+      actions: write # release.yml starten
+    steps:
+      - name: Version aus dem Titel, Tag setzen, Release starten
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITEL: ${{ github.event.pull_request.title }}
+          SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          NUMMER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          tag=$(printf '%s' "$TITEL" | grep -oE '(^|[^0-9A-Za-z])v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?' \
+            | head -n1 | sed -E 's/^[^v]*//; s/[.-]+$//' || true)
+          if [ -z "$tag" ]; then
+            echo "::error::Keine Version im Titel von #$NUMMER (erwartet z. B. „Release v0.10.0-beta.3“). Tag von Hand setzen oder Release → Run workflow mit Häkchen."
+            exit 1
+          fi
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" >/dev/null 2>&1; then
+            echo "::error::Tag $tag gibt es schon."
+            exit 1
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$SHA" >/dev/null
+          gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref "$tag"
+          echo "::notice title=Release::$tag auf $SHA gesetzt (PR #$NUMMER), Workflow „Release“ gestartet."
