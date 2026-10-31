@@ -228,7 +228,8 @@ public sealed class VoiceAfterBetaTests
     }
 
     [Theory]
-    [InlineData("hey eric", "erik", "kopilot")]
+    [InlineData("hey eric", "erik", "kopilot hey")]
+    [InlineData("hallo erik", "erik", "kopilot hallo")]
     [InlineData("eric gear up", "erik", "kopilot gear up")]
     [InlineData("hey niko how are you", "nico", "kopilot how are you")]
     [InlineData("nice landing", "nico", "nice landing")]
@@ -252,8 +253,14 @@ public sealed class VoiceAfterBetaTests
 
         var outcome = await dispatcher.HandleAsync("Hey, Eric?", T0, CancellationToken.None);
 
-        Assert.Equal("kopilot", outcome.Normalized);
+        // Nur Gruß und Name: Smalltalk (Testflug 31.10.: "Hallo, Erik." bekam "Say again")
+        Assert.Equal("kopilot hey", outcome.Normalized);
         Assert.Equal(VoiceTarget.Kopilot, outcome.Route.Target);
+        Assert.True(outcome.Chat);
+
+        var hallo = await dispatcher.HandleAsync("Hallo, Erik.", T0.AddSeconds(5), CancellationToken.None);
+        Assert.Equal("kopilot hallo", hallo.Normalized);
+        Assert.True(hallo.Chat);
     }
 
     // ------------------------------------------------------------------ 6. Notruf in der Sprachschleife

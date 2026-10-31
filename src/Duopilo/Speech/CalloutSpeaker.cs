@@ -60,6 +60,7 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
 
     // Stimme, für die die festen Callouts gerade vorab gerechnet werden (Kokoro oder mehrsprachig) – unter _cacheLock
     private string? _prewarmVoice;
+    private int _disposed;
 
     private WindowsSpeech? _speech;
     private volatile SpeechSettings _settings;
@@ -1143,8 +1144,16 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
         };
     }
 
+    /// <summary>
+    /// Nur einmal: Der Container gibt dieselbe Instanz mehrfach frei (CalloutSpeaker, ISpeechOutput, IAtcRadio, Hosted Service).
+    /// </summary>
     public override void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
         base.Dispose();
         _speech?.Dispose();
         _kokoro.Dispose();

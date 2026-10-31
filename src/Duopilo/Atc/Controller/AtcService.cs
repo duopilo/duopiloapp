@@ -512,11 +512,14 @@ public sealed class AtcService : BackgroundService
 
     /// <summary>
     /// Nach dem Start von Duopilo einmal: Gibt es eine gesicherte Sitzung, die nicht zu alt ist, wird sie fortgesetzt, sobald
-    /// MSFS verbunden ist – ohne dass der Pilot erst funken muss. Eine Sicherung eines anderen Flugs bleibt liegen.
+    /// ein Flug läuft und die Position bekannt ist – ohne dass der Pilot erst funken muss. Eine Sicherung eines anderen Flugs
+    /// oder eine, die nicht zur Lage passt (<see cref="AtcSession.SnapshotMismatch"/>), bleibt liegen.
     /// </summary>
     private async Task AutoRestoreAsync(CancellationToken ct)
     {
-        if (_autoRestoreDone || !_sim.Connection.IsConnected)
+        // Erst mit geladenem Flug: im Hauptmenü sind Position und "am Boden" noch nicht die des Flugs
+        if (_autoRestoreDone || SimGate.Read(_sim) != SimActivityState.Running || _sim.Bool("onGround") is null
+            || _sim.Num("lat") is null || _sim.Num("lon") is null)
         {
             return;
         }
@@ -661,6 +664,13 @@ public sealed class AtcService : BackgroundService
             var templates = _templates!;
             var plan = AtcPlan.Build(ofp, SimCallsign(), templates, airspace);
             var snapshot = RestorableSnapshot(plan.FlightKey);
+            if (snapshot is not null && AtcSession.SnapshotMismatch(snapshot, plan, BuildInput()) is { } mismatch)
+            {
+                // Derselbe Plan, aber ein neuer Versuch (z. B. wieder am Gate): neu beginnen statt im Anflug weiterzumachen
+                _log.LogInformation(Loc.Log("log.atc.backupMismatch"), snapshot.SavedUtc, mismatch);
+                snapshot = null;
+            }
+
             if (snapshot is null && restoreOnly)
             {
                 return Loc.T("atc.service.noMatchingBackup");

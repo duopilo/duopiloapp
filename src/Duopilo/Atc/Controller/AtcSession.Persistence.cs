@@ -172,6 +172,36 @@ public sealed partial class AtcSession
             string.Join(',', _overrides.OrderBy(o => o.Key, StringComparer.OrdinalIgnoreCase).Select(o => $"{o.Key}={o.Value}")));
 
     /// <summary>
+    /// Passt eine Sicherung desselben Plans zur Lage? Nein, wenn das Flugzeug am Startflughafen am Boden steht, die Sicherung aber
+    /// schon abgeflogen ist – ein neuer Versuch desselben Plans (Testflug 31.10.: am Gate in Düsseldorf kam „Cologne Approach“
+    /// aus der Sicherung vom Vorabend). Ebenso, wenn die Sicherung noch am Start am Boden ist, das Flugzeug aber anderswo am Boden
+    /// steht. Rückgabe: Grund fürs Log (englisch), null = passt oder nicht zu entscheiden (Position unbekannt, in der Luft,
+    /// Rundflug mit gleichem Start und Ziel).
+    /// </summary>
+    public static string? SnapshotMismatch(AtcSessionSnapshot s, AtcPlan plan, AtcInput input)
+    {
+        var origin = plan.Ofp.Origin;
+        if (input.OnGround != true || (input.GroundSpeedKt ?? 0) > 40 || input.Lat is not { } lat || input.Lon is not { } lon
+            || origin.Lat is not { } olat || origin.Lon is not { } olon
+            || string.Equals(origin.Icao, plan.Ofp.Destination.Icao, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var fromOrigin = Duopilo.FlightPlan.RouteMath.DistanceNm(lat, lon, olat, olon);
+        var departingOnGround = s.Phase is AtcPhase.Delivery or AtcPhase.GroundDeparture
+            || (s.Phase == AtcPhase.TowerDeparture && s.Step != AtcStep.TakeoffRoll);
+        if (fromOrigin <= 5 && !departingOnGround)
+        {
+            return $"on the ground at {origin.Icao}, but the backup is already in phase {s.Phase}";
+        }
+
+        return fromOrigin > 10 && departingOnGround
+            ? $"on the ground {fromOrigin:0} NM from {origin.Icao}, but the backup is still in phase {s.Phase}"
+            : null;
+    }
+
+    /// <summary>
     /// Sitzung aus einer Sicherung desselben Flugs fortsetzen (statt <see cref="Start"/>). Offene Readbacks gelten als erledigt.
     /// Rückgabe: Hinweis fürs Log (null = nichts Besonderes).
     /// </summary>

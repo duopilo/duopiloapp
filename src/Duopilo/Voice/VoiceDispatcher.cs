@@ -109,7 +109,8 @@ public sealed class VoiceDispatcher(VoiceDialog dialog, IAtcLink atc, VoiceRoute
     /// <summary>
     /// Anrede vereinheitlichen: Name des First Officers am Satzanfang ("Sam, gear up") oder mit Gruß davor ("Hey Sam", "Okay Kopilot")
     /// wird zur ersten Anrede ("kopilot gear up") – Router, Befehle und Checklisten kennen nur diese. Sonst unverändert.
-    /// Der Name wird tolerant verglichen ("Hey, Eric?" bei Erik, <see cref="FirstOfficerNames.IsAddress"/>).
+    /// Der Name wird tolerant verglichen ("Hey, Eric?" bei Erik, <see cref="FirstOfficerNames.IsAddress"/>). Nur Gruß und Name
+    /// ("Hallo, Erik") behalten den Gruß ("kopilot hallo") – sonst bliebe nichts für den Smalltalk und es käme "Say again".
     /// </summary>
     public static string Address(string normalized, string? personaName, IReadOnlyCollection<string> wakeWords)
     {
@@ -127,7 +128,13 @@ public sealed class VoiceDispatcher(VoiceDialog dialog, IAtcLink atc, VoiceRoute
             return normalized;
         }
 
-        return string.Join(' ', words.Skip(i + 1).Prepend(wake));
+        var rest = words.Skip(i + 1).ToList();
+        if (rest.Count == 0 && i == 1 && words[0] is not ("ok" or "okay"))
+        {
+            rest.Add(words[0]);
+        }
+
+        return string.Join(' ', rest.Prepend(wake));
     }
 
     private async Task<VoiceOutcome> ToAtcAsync(string text, string normalized, VoiceRoute route, CancellationToken ct)

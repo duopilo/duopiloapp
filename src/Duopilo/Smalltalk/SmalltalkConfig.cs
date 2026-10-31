@@ -34,7 +34,7 @@ public static class SmalltalkProviders
 /// Denkaufwand für Reasoning-Modelle über die OpenAI-kompatible Schnittstelle ("reasoning_effort"). Andere Anbieter lehnen
 /// unbekannte Felder teils ab – deshalb sendet "auto" ihn nur bei Modellen, die ihn sicher kennen (gpt-oss).
 /// </summary>
-public static class SmalltalkReasoning
+public static partial class SmalltalkReasoning
 {
     public const string Auto = "auto";
     public const string Off = "off";
@@ -78,7 +78,42 @@ public static class SmalltalkReasoning
         High => 2048,
         _ => 0,
     };
+
+    /// <summary>
+    /// Denken bei Claude: Claude 5 und neuer denken von selbst (adaptiv), die Denk-Tokens zählen zu max_tokens – ohne Einstellung
+    /// bleibt bei kurzen Antworten oft nichts für den Text ("I can't chat right now"). "auto"/"off": Haiku ohne Denken
+    /// (thinking disabled), Sonnet ohne Denken vor der Antwort (between_tools), Opus/Fable/Mythos lassen sich nicht abschalten –
+    /// dort wenig Aufwand (effort low) mit Spielraum. "low"/"medium"/"high": adaptiv mit diesem Aufwand. Ältere Modelle denken nur
+    /// auf Wunsch: nichts senden (wie bisher).
+    /// </summary>
+    public static ClaudeThinking? Claude(string reasoning, string model)
+    {
+        var m = ClaudeModelName().Match(model);
+        if (!m.Success || !int.TryParse(m.Groups["major"].Value, out var major) || major < 5)
+        {
+            return null;
+        }
+
+        return Normalize(reasoning) switch
+        {
+            Auto or Off => m.Groups["family"].Value switch
+            {
+                "haiku" => new ClaudeThinking("disabled", null),
+                "sonnet" => new ClaudeThinking("between_tools", null),
+                _ => new ClaudeThinking(null, Low),
+            },
+            var effort => new ClaudeThinking(null, effort),
+        };
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^claude-(?<family>[a-z]+)-(?<major>\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+    private static partial System.Text.RegularExpressions.Regex ClaudeModelName();
 }
+
+/// <summary>Denken bei Claude (Messages API).</summary>
+/// <param name="Thinking">Wert für thinking.type ("disabled", "between_tools"), null = nicht senden.</param>
+/// <param name="Effort">Wert für output_config.effort ("low" …), null = nicht senden.</param>
+public sealed record ClaudeThinking(string? Thinking, string? Effort);
 
 /// <summary>Gültige, bereinigte Einstellungen für den Smalltalk (aus <see cref="SmalltalkOptions"/>).</summary>
 public sealed record SmalltalkConfig
@@ -114,6 +149,9 @@ public sealed record SmalltalkConfig
     /// <summary>Wert für "reasoning_effort" in der Anfrage – null = nicht senden (auch bei Claude und Ollama).</summary>
     public string? ReasoningEffort => SmalltalkReasoning.Effort(Provider, Reasoning, EffectiveModel);
 
+    /// <summary>Denken bei Claude 5 und neuer (thinking, output_config.effort) – null = nichts senden (andere Anbieter, ältere Modelle).</summary>
+    public ClaudeThinking? ClaudeThinking => Provider == SmalltalkProviders.Claude ? SmalltalkReasoning.Claude(Reasoning, EffectiveModel) : null;
+
     public bool Enabled => Provider != SmalltalkProviders.Off;
 
     public bool HasApiKey => ApiKey.Length > 0;
@@ -139,7 +177,7 @@ public sealed record SmalltalkConfig
     /// Höchstzahl der Tokens in der Antwort (max_tokens): der Antworttext, bei Reasoning dazu Spielraum für die Denk-Tokens
     /// (<see cref="SmalltalkReasoning.Headroom"/>).
     /// </summary>
-    public int MaxTokens => AnswerTokens + SmalltalkReasoning.Headroom(ReasoningEffort);
+    public int MaxTokens => AnswerTokens + SmalltalkReasoning.Headroom(ReasoningEffort ?? ClaudeThinking?.Effort);
 
     /// <summary>Was fehlt, damit Anfragen gehen (in der eingestellten Sprache) – null = vollständig.</summary>
     public string? Problem() => Provider switch
@@ -180,7 +218,11 @@ public sealed record SmalltalkConfig
 
     /// <summary>Ohne Schlüssel – für Log und Status.</summary>
     public override string ToString() =>
-        $"{Provider} {EffectiveModel} @ {Host ?? "-"} (key {(HasApiKey ? "set" : "not set")}, reasoning {Reasoning}{(ReasoningEffort is { } effort ? " → " + effort : "")}, max_tokens {MaxTokens})";
+        $"{Provider} {EffectiveModel} @ {Host ?? "-"} (key {(HasApiKey ? "set" : "not set")}, reasoning {Reasoning}{(ReasoningEffort is { } effort ? " → " + effort : "")}{ClaudeText()}, max_tokens {MaxTokens})";
+
+    private string ClaudeText() => ClaudeThinking is { } t
+        ? $" → thinking {t.Thinking ?? "adaptive"}{(t.Effort is { } e ? ", effort " + e : "")}"
+        : "";
 }
 
 /// <summary>Gültige Einstellungen für den First Officer (aus <see cref="FirstOfficerOptions"/>).</summary>

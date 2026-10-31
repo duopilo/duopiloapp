@@ -731,7 +731,7 @@ public sealed class SettingsService
             timeoutSec = c.TimeoutSec,
             reasoning = c.Reasoning,
             reasoningOptions = SmalltalkReasoning.All,
-            reasoningEffort = c.ReasoningEffort,
+            reasoningEffort = c.ReasoningEffort ?? c.ClaudeThinking?.Effort,
             maxTokens = c.MaxTokens,
             problem = c.Enabled ? c.Problem() : null,
             status = new

@@ -1221,6 +1221,7 @@
   "log.atc.storeError": "ATC session backup: {Error}",
   "log.atc.backupTooOld": "ATC session backup from {Saved:u} is too old ({Hours:0.0} h) – new session.",
   "log.atc.backupOtherFlight": "ATC session backup belongs to another flight ({Saved}) – new session.",
+  "log.atc.backupMismatch": "ATC session backup from {Saved} not used: {Reason} – new session.",
   "log.atc.saveError": "ATC session: {Error}",
   "log.atc.sessionRestored": "ATC session restored (backup from {Saved:HH:mm:ss}Z): {Callsign} {Orig} → {Dest}, {Station}, phase {Phase}/{Step}, cleared {Cleared} ft, squawk {Squawk}, {Lines} transmissions{Note}",
   "log.atc.sessionStarted": "ATC session: {Callsign} {Orig} → {Dest}, phase {Phase}, squawk {Squawk}{Oceanic}, stations: {Stations}",
