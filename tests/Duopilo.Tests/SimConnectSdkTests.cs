@@ -1,3 +1,4 @@
+using System.Security.Cryptography.X509Certificates;
 using Duopilo.Sim;
 
 namespace Duopilo.Tests;
@@ -144,14 +145,62 @@ public sealed class SimConnectSdkTests
         Assert.EndsWith($"MSFS2024_SDK_Core_Installer_{SdkInstaller.Version}.zip", uri.AbsolutePath, StringComparison.Ordinal);
     }
 
-    [Theory]
-    [InlineData("CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US", true)]
-    [InlineData("CN=Microsoft Corporation,O=Microsoft Corporation,L=Redmond", true)]
-    [InlineData("CN=Microsoft Corporation, O=Evil Corp, C=US", false)]
-    [InlineData("CN=Someone, O=Microsoft Corporation Fake, C=US", false)]
-    [InlineData("", false)]
-    public void Unterzeichner_Microsoft(string subject, bool microsoft) =>
-        Assert.Equal(microsoft, Authenticode.IsMicrosoftSubject(subject));
+    /// <summary>Name wie in einem Zertifikat: CN, O, L, S, C (null = weglassen).</summary>
+    private static X500DistinguishedName Name(string? cn, string? o, string? l = null, string? st = null, string? c = null)
+    {
+        var builder = new X500DistinguishedNameBuilder();
+        foreach (var (value, add) in new (string?, Action<string>)[]
+                 {
+                     (c, v => builder.AddCountryOrRegion(v)),
+                     (st, v => builder.AddStateOrProvinceName(v)),
+                     (l, v => builder.AddLocalityName(v)),
+                     (o, v => builder.AddOrganizationName(v)),
+                     (cn, v => builder.AddCommonName(v)),
+                 })
+        {
+            if (value is not null)
+            {
+                add(value);
+            }
+        }
+
+        return builder.Build();
+    }
+
+    [Fact]
+    public void Erlaubte_Unterzeichner()
+    {
+        Assert.True(Authenticode.IsMicrosoftSubject(Name("Microsoft Corporation", "Microsoft Corporation", "Redmond", "Washington", "US")));
+        Assert.True(Authenticode.IsMicrosoftSubject(Name("Microsoft Windows", "Microsoft Corporation")));
+
+        // So ist der Installer des SDK 1.8.1 signiert (Microsofts Identitätsprüfung, "Microsoft ID Verified CS EOC CA 03")
+        Assert.True(Authenticode.IsMicrosoftSubject(Name("Microsoft Flight Simulator", "Microsoft Flight Simulator", "Redmond", "Washington", "US")));
+    }
+
+    [Fact]
+    public void Andere_Unterzeichner_nicht()
+    {
+        Assert.False(Authenticode.IsMicrosoftSubject(Name("Microsoft Corporation", "Evil Corp", c: "US")));
+        Assert.False(Authenticode.IsMicrosoftSubject(Name("Someone", "Microsoft Corporation Fake", c: "US")));
+        Assert.False(Authenticode.IsMicrosoftSubject(Name("Microsoft Flight Simulator", null)));
+
+        // MSFS-Team nur mit Ort, Bundesstaat und Land wie im echten Zertifikat
+        Assert.False(Authenticode.IsMicrosoftSubject(Name("Microsoft Flight Simulator", "Microsoft Flight Simulator")));
+        Assert.False(Authenticode.IsMicrosoftSubject(Name("Microsoft Flight Simulator", "Microsoft Flight Simulator", "Moskau", "Washington", "US")));
+
+        // Text im CN, der wie eine Organisation aussieht, zählt nicht
+        Assert.False(Authenticode.IsMicrosoftSubject(Name("x, O=Microsoft Corporation, y", "Evil Corp", c: "US")));
+    }
+
+    [Fact]
+    public void Download_von_Microsoft_mit_Pruefsumme()
+    {
+        Assert.Matches("^[0-9a-f]{64}$", SdkInstaller.DefaultSha256);
+        Assert.Equal(SdkInstaller.DefaultSha256, SdkInstaller.ExpectedSha256(SdkInstaller.DefaultUrl));
+
+        // Eigene Adresse: keine Prüfsumme bekannt, dann zählt die Signatur
+        Assert.Null(SdkInstaller.ExpectedSha256("https://example.com/MSFS2024_SDK_Core_Installer_1.8.1.zip"));
+    }
 
     /// <summary>Eine unsignierte Datei (z. B. eine Fehlerseite statt des Installers) wird nie gestartet.</summary>
     [Fact]

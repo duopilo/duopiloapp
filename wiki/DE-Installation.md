@@ -24,7 +24,7 @@ Die Deinstallation entfernt Programm, Startmenü-Eintrag und Autostart und fragt
 
 Außerdem gibt es ein ZIP mit demselben self-contained Build.
 
-**SimConnect** ist weder im Setup noch im ZIP – es gehört zum MSFS-2024-SDK von Microsoft. Duopilo lädt es aus dem installierten SDK (`C:\MSFS 2024 SDK`, die Variable `MSFS2024_SDK` oder der Ordner unter **Einstellungen → SimConnect**). Ohne SDK bietet das Dashboard **MSFS-SDK installieren** an: Duopilo lädt Microsofts Installer direkt von Microsoft, prüft Microsofts Signatur und startet ihn; die Lizenz von Microsoft bestätigst du dort selbst. Danach **Duopilo neu starten**.
+**SimConnect** ist weder im Setup noch im ZIP – es gehört zum MSFS-2024-SDK von Microsoft. Duopilo lädt es aus dem installierten SDK (`C:\MSFS 2024 SDK`, die Variable `MSFS2024_SDK` oder der Ordner unter **Einstellungen → SimConnect**). Ohne SDK bietet das Dashboard **MSFS-SDK installieren** an: Duopilo lädt Microsofts Installer direkt von Microsoft, prüft ihn gegen die bekannte Prüfsumme und startet ihn; die Lizenz von Microsoft bestätigst du dort selbst. Danach **Duopilo neu starten**.
 
 ## Variante B – Aus dem Quellcode bauen
 
