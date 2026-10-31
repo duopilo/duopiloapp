@@ -590,9 +590,16 @@ public sealed class SettingsService
         {
             var voice = change.FirstOfficerVoice.Trim();
             voice = voice.Equals("auto", StringComparison.OrdinalIgnoreCase) ? "" : voice;
-            if (voice.Length > 0 && !KokoroSpeechEngine.IsEnglishVoice(voice))
+            if (voice.Length > 0)
             {
-                return SettingsResult.Fail(Loc.T("settings.smalltalk.voiceInvalid", voice));
+                // Kokoro (nur Englisch) oder mehrsprachig (Supertonic, wenn eingeschaltet)
+                var normalized = FirstOfficerCasting.NormalizeVoice(voice);
+                if (normalized is null || (MultilingualVoices.IsMultilingual(normalized) && EngineVoices().All(v => v.Key != normalized)))
+                {
+                    return SettingsResult.Fail(Loc.T("settings.smalltalk.voiceInvalid", voice));
+                }
+
+                voice = normalized;
             }
 
             var currentVoice = loop?.Store.Load().Settings.Voices.Kopilot ?? "";
@@ -680,8 +687,18 @@ public sealed class SettingsService
             wanted = status?.Voice ?? FirstOfficerCasting.FemaleVoices[0];
         }
 
+        wanted = FirstOfficerCasting.NormalizeVoice(wanted) ?? wanted;
         var name = status?.Name ?? (_services.GetService<SmalltalkService>()?.FirstOfficer.Name is { Length: > 0 } fixedName ? fixedName : null);
-        var error = await speaker.PreviewVoiceAsync(wanted, FirstOfficerCasting.PreviewText(name), ct);
+        var error = await speaker.PreviewVoiceAsync(wanted, FirstOfficerCasting.PreviewText(name), SmalltalkVoices.English, ct);
+
+        // Mehrsprachige Stimme: danach dieselbe Stimme in der Oberflächensprache (so klingt der Smalltalk)
+        var language = Loc.Language.Trim().ToLowerInvariant();
+        if (error is null && language != SmalltalkVoices.English && MultilingualVoices.Find(wanted) is { } multilingual
+            && MultilingualVoices.Speaks(multilingual, language))
+        {
+            error = await speaker.PreviewVoiceAsync(wanted, FirstOfficerCasting.Introduction(name ?? "Alex", language), language, ct);
+        }
+
         return new { ok = error is null, error, voice = wanted };
     }
 
@@ -734,13 +751,21 @@ public sealed class SettingsService
                 gender = fo.Gender,
                 introduce = fo.Introduce,
                 voice = FixedVoice(),
-                voices = FirstOfficerCasting.Voices.Select(v => new { id = v, gender = FirstOfficerCasting.GenderOfVoice(v) == Speech.VoiceGender.Female ? "female" : "male" }),
+                voices = FirstOfficerCasting.Voices
+                    .Select(v => new { id = v, gender = FirstOfficerCasting.GenderOfVoice(v) == Speech.VoiceGender.Female ? "female" : "male", engine = "kokoro", name = v })
+                    .Concat(EngineVoices().Select(v => new { id = v.Key, gender = v.Gender == Speech.VoiceGender.Female ? "female" : "male", engine = v.Engine, name = v.Id })),
                 current = voice?.FirstOfficer is { } p
                     ? new { name = p.Name, gender = p.Gender, voice = p.Voice, smalltalkVoice = p.SmalltalkVoice, introduced = p.Introduced }
                     : null,
             },
         };
     }
+
+    /// <summary>Mehrsprachige Stimmen, die der First Officer bekommen kann (nur Engines, die in dieser Instanz laufen).</summary>
+    private IReadOnlyList<Speech.TtsVoice> EngineVoices() =>
+        _services.GetService<Speech.TtsEngineRegistry>() is { } registry
+            ? MultilingualVoices.All.Where(v => registry.Find(v.Key) is not null).ToList()
+            : [];
 
     /// <summary>Feste Stimme des First Officers aus voice-settings.json ("" = automatisch).</summary>
     private string FixedVoice()

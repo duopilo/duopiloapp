@@ -916,7 +916,7 @@ function renderHeader(d) {
   if (fo) {
     setText("foPill", t("dashboard.header.firstOfficer", { name: fo.name }) + (fo.pending ? " …" : ""));
     foPill.classList.toggle("chat", !!fo.smalltalk && fo.smalltalk !== "off");
-    foPill.title = [t("dashboard.header.firstOfficerTitle", { voice: fo.voice }), fo.note].filter(Boolean).join(" · ");
+    foPill.title = [t("dashboard.header.firstOfficerTitle", { voice: voiceName(fo.voice) }), fo.note].filter(Boolean).join(" · ");
   }
 
   const banner = $("banner");
@@ -1133,6 +1133,11 @@ function renderServerSpeech() {
   err.hidden = !st.error;
   err.textContent = st.error || "";
 }
+/* Stimme des First Officers zum Anzeigen: "supertonic:M1" → "Supertonic M1", Kokoro-Stimmen bleiben ("bf_emma") */
+function voiceName(id) {
+  const m = /^([a-z]+):(.+)$/.exec(id || "");
+  return m ? `${m[1].charAt(0).toUpperCase()}${m[1].slice(1)} ${m[2]}` : (id || "");
+}
 function kokoroName(id) {
   const m = /^([ab])([fm])_(\w+)$/.exec(id || "");
   if (!m) return id || "";
@@ -1232,7 +1237,7 @@ function renderVoiceLoop() {
       ? t("dashboard.voice.recognizedDropped", { recognized: st.recognized, total: st.utterances, dropped: st.dropped, reason: st.lastDropReason })
       : t("dashboard.voice.recognized", { recognized: st.recognized, total: st.utterances }));
   }
-  if (st.firstOfficer) info.push(t("dashboard.voice.firstOfficer", { name: st.firstOfficer.name, voice: st.firstOfficer.voice }));
+  if (st.firstOfficer) info.push(t("dashboard.voice.firstOfficer", { name: st.firstOfficer.name, voice: voiceName(st.firstOfficer.voice) }));
   if (st.smalltalkNote) info.push(st.smalltalkNote);
   if (st.state === "off") info.push(t("dashboard.voice.settingsFile", { file: st.settingsFile || "" }));
   setText("vlInfo", info.join(" · "));
@@ -1828,7 +1833,7 @@ function renderSmalltalk(s) {
   renderChatFields();
   const parts = [];
   const fo = s.firstOfficer.current;
-  parts.push(fo ? t("dashboard.settings.smalltalk.currentFo", { name: fo.name, voice: fo.voice }) : t("dashboard.settings.smalltalk.noFo"));
+  parts.push(fo ? t("dashboard.settings.smalltalk.currentFo", { name: fo.name, voice: voiceName(fo.voice) }) : t("dashboard.settings.smalltalk.noFo"));
   if (s.provider !== "off") {
     parts.push(t("dashboard.settings.smalltalk.active", { provider: s.providerName, model: s.effectiveModel || DASH, host: s.host || DASH }));
     if (s.reasoningEffort) parts.push(t("dashboard.settings.smalltalk.reasoningActive", { effort: s.reasoningEffort, tokens: s.maxTokens }));
@@ -1839,24 +1844,33 @@ function renderSmalltalk(s) {
   if (s.note) parts.push(s.note);
   $("chatState").innerHTML = parts.map(esc).join(" · ") + (s.problem ? ` <span class="a">${esc(s.problem)}</span>` : "");
 }
-/* Stimme des First Officers: Automatisch (pro Flug) oder fest – nur die guten Kokoro-Stimmen, eine eigene aus voice-settings.json dazu */
+/*
+  Stimme des First Officers: Automatisch (pro Flug) oder fest – die Stimme entscheidet über die Sprache des Smalltalks:
+  Kokoro spricht nur Englisch, Supertonic Callouts auf Englisch und Smalltalk in der Oberflächensprache (derselbe Sprecher).
+  Nur die guten Kokoro-Stimmen, eine eigene aus voice-settings.json dazu.
+*/
 function renderFoVoices(fo) {
   const voices = fo.voices || [];
   const fixed = fo.voice || "";
-  const label = (v) => `${v.id} (${t(v.gender === "female" ? "dashboard.settings.smalltalk.voiceFemale" : "dashboard.settings.smalltalk.voiceMale")})`;
+  const gender = (v) => t(v.gender === "female" ? "dashboard.settings.smalltalk.voiceFemale" : "dashboard.settings.smalltalk.voiceMale");
+  const option = (v) => `<option value="${esc(v.id)}">${esc(`${voiceName(v.id)} (${gender(v)})`)}</option>`;
+  const kokoro = voices.filter((v) => v.engine === "kokoro");
+  const multilingual = voices.filter((v) => v.engine !== "kokoro");
+  const group = (key, list) => list.length ? `<optgroup label="${esc(t(key))}">${list.map(option).join("")}</optgroup>` : "";
   setHtml("foVoice",
     `<option value="">${esc(t("dashboard.settings.smalltalk.voiceAuto"))}</option>` +
-    voices.map((v) => `<option value="${esc(v.id)}">${esc(label(v))}</option>`).join("") +
-    (fixed && !voices.some((v) => v.id === fixed) ? `<option value="${esc(fixed)}">${esc(fixed)}</option>` : ""));
+    group("dashboard.settings.smalltalk.voiceGroupMultilingual", multilingual) +
+    group("dashboard.settings.smalltalk.voiceGroupKokoro", kokoro) +
+    (fixed && !voices.some((v) => v.id === fixed) ? `<option value="${esc(fixed)}">${esc(voiceName(fixed))}</option>` : ""));
   $("foVoice").value = fixed;
 }
 $("foPreview").addEventListener("click", async () => {
   $("foPreview").disabled = true;
   const voice = $("foVoice").value;
-  showMsg("chatMsg", t("dashboard.settings.smalltalk.previewing", { voice: voice || t("dashboard.settings.smalltalk.voiceAuto") }));
+  showMsg("chatMsg", t("dashboard.settings.smalltalk.previewing", { voice: voiceName(voice) || t("dashboard.settings.smalltalk.voiceAuto") }));
   try {
     const r = await postJson("/api/settings/firstofficer/preview", { voice });
-    showMsg("chatMsg", r.ok ? t("dashboard.settings.smalltalk.previewed", { voice: r.voice }) : (r.error || t("dashboard.common.noResponse")), !r.ok);
+    showMsg("chatMsg", r.ok ? t("dashboard.settings.smalltalk.previewed", { voice: voiceName(r.voice) }) : (r.error || t("dashboard.common.noResponse")), !r.ok);
   } catch { showMsg("chatMsg", t("dashboard.common.noResponse"), true); }
   $("foPreview").disabled = false;
 });

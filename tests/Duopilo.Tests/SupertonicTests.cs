@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net;
 using System.Text;
+using Duopilo.Smalltalk;
 using Duopilo.Speech;
 using Duopilo.Voice;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -128,7 +129,7 @@ public sealed class SupertonicTests
         Assert.Throws<InvalidDataException>(() => SupertonicStyle.Parse(json.Replace("[1, 1, 3]", "[1, 1, 4]", StringComparison.Ordinal)));
     }
 
-    // ------------------------------------------------------------------ Stimmwahl: Supertonic zuerst, Piper als Rückfall
+    // ------------------------------------------------------------------ Derselbe Sprecher: die Stimme des First Officers entscheidet
 
     private sealed class FakeTts(string id, IReadOnlyList<TtsVoice> voices, TtsState state) : ITtsEngine
     {
@@ -152,88 +153,72 @@ public sealed class SupertonicTests
 
     private static FakeTts Piper(TtsState state) => new(PiperSpeechEngine.EngineId, PiperSpeechEngine.Catalog, state);
 
+    private static readonly DateTimeOffset T0 = new(2026, 10, 31, 12, 0, 0, TimeSpan.Zero);
+
     [Theory]
-    [InlineData(VoiceGender.Male)]
-    [InlineData(VoiceGender.Female)]
-    public void Deutsch_spricht_Supertonic_passend_zum_Geschlecht(VoiceGender gender)
+    [InlineData("supertonic:M1")]
+    [InlineData("supertonic:M2")]
+    [InlineData("supertonic:F1")]
+    public void Supertonic_Stimme_spricht_den_Smalltalk_in_der_Oberflaechensprache(string key)
     {
-        var used = new HashSet<string>();
-        foreach (var name in FirstOfficerNames.For(gender))
-        {
-            var choice = SmalltalkVoices.Choose("de", gender, name, [Supertonic(TtsState.Ready), Piper(TtsState.Ready)]);
+        var choice = SmalltalkVoices.Choose("de", key, [Supertonic(TtsState.Ready), Piper(TtsState.Ready)]);
 
-            Assert.Equal("de", choice.Language);
-            Assert.False(choice.FellBack);
-            Assert.Null(choice.Prepare);
-            Assert.Equal(SupertonicSpeechEngine.EngineId, choice.Voice!.Engine);
-            Assert.Equal(gender, choice.Voice.Gender);
-            used.Add(choice.Voice.Id);
-        }
+        Assert.Equal("de", choice.Language);
+        Assert.False(choice.FellBack);
+        Assert.Null(choice.Prepare);
+        Assert.Equal(key, choice.Voice!.Key);
+        Assert.Equal("de", choice.Voice.Language);
+    }
 
-        // Männliche Namen verteilen sich auf M1 und M2, weibliche haben F1
-        Assert.Equal(gender == VoiceGender.Male ? new[] { "M1", "M2" } : new[] { "F1" }, used.Order(StringComparer.Ordinal));
+    [Fact]
+    public void Supertonic_spricht_auch_englischen_Smalltalk_mit_derselben_Stimme()
+    {
+        var choice = SmalltalkVoices.Choose("en", "supertonic:F1", [Supertonic(TtsState.Ready)]);
+
+        Assert.Equal("en", choice.Language);
+        Assert.False(choice.FellBack);
+        Assert.Equal("supertonic:F1", choice.Voice!.Key);
+        Assert.Equal("en", choice.Voice.Language);
     }
 
     [Theory]
     [InlineData(TtsState.Idle)]
     [InlineData(TtsState.Downloading)]
-    public void Solange_Supertonic_laedt_spricht_Piper_wenn_es_bereit_ist(TtsState state)
+    public void Solange_Supertonic_laedt_spricht_die_Kokoro_Stimme_auch_den_Smalltalk(TtsState state)
     {
-        var choice = SmalltalkVoices.Choose("de", VoiceGender.Female, "Lena", [Supertonic(state), Piper(TtsState.Ready)]);
+        // Piper wäre bereit, spricht aber kein Englisch – nicht derselbe Sprecher wie bei den Callouts, also nicht
+        var choice = SmalltalkVoices.Choose("de", "supertonic:F1", [Supertonic(state), Piper(TtsState.Ready)]);
 
-        Assert.Equal("de", choice.Language);
-        Assert.False(choice.FellBack);
-        Assert.Equal(PiperSpeechEngine.EngineId, choice.Voice!.Engine);
+        Assert.Equal("en", choice.Language);
+        Assert.Equal("downloading", choice.Reason);
+        Assert.Null(choice.Voice);
         Assert.Equal("supertonic:F1", choice.Prepare!.Key);
     }
 
     [Fact]
-    public void Ohne_fertige_Stimme_Englisch_und_Supertonic_wird_geladen()
+    public void Supertonic_gescheitert_dann_Kokoro_auf_Englisch()
     {
-        var choice = SmalltalkVoices.Choose("de", VoiceGender.Male, "Sam", [Supertonic(TtsState.Idle), Piper(TtsState.Idle)]);
+        var german = SmalltalkVoices.Choose("de", "supertonic:M1", [Supertonic(TtsState.Failed), Piper(TtsState.Ready)]);
+        Assert.Equal("en", german.Language);
+        Assert.Equal("failed", german.Reason);
+        Assert.Null(german.Voice);
+
+        // Englisch gewünscht: nichts zu melden, die Kokoro-Stimme spricht
+        var english = SmalltalkVoices.Choose("en", "supertonic:M1", [Supertonic(TtsState.Failed)]);
+        Assert.Equal("en", english.Language);
+        Assert.False(english.FellBack);
+        Assert.Null(english.Voice);
+    }
+
+    [Fact]
+    public void Sprache_ohne_Supertonic_spricht_dieselbe_Stimme_englisch()
+    {
+        var choice = SmalltalkVoices.Choose("zh", "Supertonic:m2", [Supertonic(TtsState.Ready)]);
 
         Assert.Equal("en", choice.Language);
-        Assert.Equal("downloading", choice.Reason);
-        Assert.Equal(SupertonicSpeechEngine.EngineId, choice.Voice!.Engine);
-        Assert.Null(choice.Prepare);
-    }
-
-    [Fact]
-    public void Supertonic_gescheitert_dann_Piper()
-    {
-        var ready = SmalltalkVoices.Choose("de", VoiceGender.Male, "Sam", [Supertonic(TtsState.Failed), Piper(TtsState.Ready)]);
-        Assert.Equal("de", ready.Language);
-        Assert.Equal(PiperSpeechEngine.EngineId, ready.Voice!.Engine);
-        Assert.Null(ready.Prepare);
-
-        // Piper noch nicht da: Piper wird geladen, solange Englisch
-        var loading = SmalltalkVoices.Choose("de", VoiceGender.Male, "Sam", [Supertonic(TtsState.Failed), Piper(TtsState.Idle)]);
-        Assert.Equal("en", loading.Language);
-        Assert.Equal("downloading", loading.Reason);
-        Assert.Equal(PiperSpeechEngine.EngineId, loading.Voice!.Engine);
-
-        // Beide gescheitert: Englisch mit Hinweis
-        var failed = SmalltalkVoices.Choose("de", VoiceGender.Male, "Sam", [Supertonic(TtsState.Failed), Piper(TtsState.Failed)]);
-        Assert.Equal("en", failed.Language);
-        Assert.Equal("failed", failed.Reason);
-    }
-
-    [Fact]
-    public void Ohne_Supertonic_wie_bisher_Piper()
-    {
-        var choice = SmalltalkVoices.Choose("de", VoiceGender.Female, "Lena", [Piper(TtsState.Ready)]);
-
-        Assert.Equal(PiperSpeechEngine.EngineId, choice.Voice!.Engine);
-        Assert.Null(choice.Prepare);
-    }
-
-    [Fact]
-    public void Gleicher_Name_gleiche_Supertonic_Stimme()
-    {
-        var a = SmalltalkVoices.Choose("de", VoiceGender.Male, "Jonas", [Supertonic(TtsState.Ready)]);
-        var b = SmalltalkVoices.Choose("de", VoiceGender.Male, "Jonas", [Supertonic(TtsState.Ready)]);
-
-        Assert.Equal(a.Voice, b.Voice);
+        Assert.Equal("noVoice", choice.Reason);
+        Assert.Equal("supertonic:M2", choice.Voice!.Key);
+        Assert.Equal("en", choice.Voice.Language);
     }
 
     [Fact]
@@ -244,6 +229,123 @@ public sealed class SupertonicTests
         Assert.Equal("F1", registry.Find("supertonic:F1")!.Value.Voice.Id);
         Assert.Equal("de_DE-thorsten-medium", registry.Find("piper:de_DE-thorsten-medium")!.Value.Voice.Id);
         Assert.Null(registry.Find("supertonic:M5"));
+    }
+
+    [Fact]
+    public void Mehrsprachige_Stimmen_Geschlecht_und_Schreibweise()
+    {
+        Assert.Equal(["supertonic:M1", "supertonic:M2", "supertonic:F1"], MultilingualVoices.All.Select(v => v.Key));
+        Assert.All(MultilingualVoices.All, v => Assert.True(MultilingualVoices.Speaks(v, "en") && MultilingualVoices.Speaks(v, "de")));
+        Assert.False(MultilingualVoices.Speaks(PiperSpeechEngine.Catalog[0], "en"));
+
+        Assert.Equal(VoiceGender.Female, FirstOfficerCasting.GenderOfVoice("supertonic:F1"));
+        Assert.Equal(VoiceGender.Male, FirstOfficerCasting.GenderOfVoice("supertonic:M2"));
+        Assert.Equal("supertonic:F1", FirstOfficerCasting.NormalizeVoice(" Supertonic:f1 "));
+        Assert.Equal("bf_emma", FirstOfficerCasting.NormalizeVoice("bf_emma"));
+        Assert.Null(FirstOfficerCasting.NormalizeVoice("piper:de_DE-thorsten-medium"));
+        Assert.Null(FirstOfficerCasting.NormalizeVoice("supertonic:M5"));
+
+        // Feste Stimme in voice-settings.json und an der Sprachausgabe
+        Assert.Equal("supertonic:M2", new VoicesSettings { Kopilot = "Supertonic:m2" }.Normalized().Kopilot);
+        Assert.Equal("", new VoicesSettings { Kopilot = "piper:de_DE-thorsten-medium" }.Normalized().Kopilot);
+        Assert.Equal("supertonic:F1", new VoiceOutputOptions { KopilotEngineVoice = "supertonic:f1" }.Normalized().KopilotEngineVoice);
+        Assert.Null(new VoiceOutputOptions { KopilotEngineVoice = "bf_emma" }.Normalized().KopilotEngineVoice);
+    }
+
+    [Fact]
+    public void Automatisch_mit_Supertonic_passend_zum_Geschlecht_und_Kokoro_als_Rueckfall()
+    {
+        var genders = new HashSet<VoiceGender>();
+        for (var seed = 0; seed < 100; seed++)
+        {
+            // Die Windows-Stimme zählt nicht, wenn Supertonic spricht
+            var p = FirstOfficerCasting.Create("f", new FirstOfficerConfig(), null, VoiceGender.Female, [], [], new Random(seed), T0, MultilingualVoices.All);
+
+            Assert.NotNull(p.EngineVoice);
+            Assert.Equal(p.EngineVoice, p.SpeakingVoice);
+            Assert.Equal(p.Gender, FirstOfficerCasting.GenderOfVoice(p.EngineVoice));
+            Assert.Equal(p.Gender, FirstOfficerCasting.GenderOfVoice(p.Voice));
+            Assert.True(KokoroSpeechEngine.IsEnglishVoice(p.Voice));
+            Assert.False(p.FixedVoice);
+            genders.Add(p.Gender);
+        }
+
+        Assert.Equal(2, genders.Count);
+
+        // Ohne Supertonic wie bisher nur Kokoro
+        var kokoro = FirstOfficerCasting.Create("f", new FirstOfficerConfig(), null, null, [], [], new Random(1), T0);
+        Assert.Null(kokoro.EngineVoice);
+        Assert.Equal(kokoro.Voice, kokoro.SpeakingVoice);
+    }
+
+    [Fact]
+    public void Feste_Supertonic_Stimme_bestimmt_das_Geschlecht()
+    {
+        var p = FirstOfficerCasting.Create("f", new FirstOfficerConfig(), "supertonic:F1", VoiceGender.Male, [], [], new Random(3), T0);
+
+        Assert.True(p.FixedVoice);
+        Assert.Equal("supertonic:F1", p.EngineVoice);
+        Assert.Equal(VoiceGender.Female, p.Gender);
+        Assert.Contains(p.Name, FirstOfficerNames.Female);
+        Assert.Equal(VoiceGender.Female, FirstOfficerCasting.GenderOfVoice(p.Voice));
+    }
+
+    [Fact]
+    public void Supertonic_an_und_aus_behaelt_Name_und_Vorstellung()
+    {
+        var roster = new FirstOfficerRoster(null, null, new Random(5));
+        var config = new FirstOfficerConfig();
+        var (kokoro, _) = roster.Ensure("flight-1", config, null, null, [], []);
+        roster.MarkIntroduced();
+        Assert.Null(kokoro!.EngineVoice);
+
+        // Smalltalk auf Deutsch eingeschaltet: Supertonic dazu, Name bleibt
+        var (multilingual, changed) = roster.Ensure("flight-1", config, null, null, [], [], MultilingualVoices.All);
+        Assert.True(changed);
+        Assert.Equal(kokoro.Name, multilingual!.Name);
+        Assert.True(multilingual.Introduced);
+        Assert.Equal(kokoro.Gender, FirstOfficerCasting.GenderOfVoice(multilingual.EngineVoice));
+
+        var (again, changedAgain) = roster.Ensure("flight-1", config, null, null, [], [], MultilingualVoices.All);
+        Assert.False(changedAgain);
+        Assert.Equal(multilingual, again);
+
+        // Feste Supertonic-Stimme gleichen Geschlechts
+        var fixedKey = kokoro.Gender == VoiceGender.Female ? "supertonic:F1" : "supertonic:M2";
+        var (fixedVoice, changedFixed) = roster.Ensure("flight-1", config, fixedKey, null, [], [], MultilingualVoices.All);
+        Assert.True(changedFixed);
+        Assert.Equal(kokoro.Name, fixedVoice!.Name);
+        Assert.True(fixedVoice.FixedVoice);
+        Assert.Equal(fixedKey, fixedVoice.EngineVoice);
+
+        // Smalltalk aus (automatisch, nur Kokoro): wieder Kokoro, Name bleibt
+        var (back, changedBack) = roster.Ensure("flight-1", config, null, null, [], []);
+        Assert.True(changedBack);
+        Assert.Equal(kokoro.Name, back!.Name);
+        Assert.Null(back.EngineVoice);
+        Assert.False(back.FixedVoice);
+    }
+
+    [Fact]
+    public void Alte_Sicherung_ohne_mehrsprachige_Stimme_bleibt_gueltig()
+    {
+        var path = Path.Combine(TempDirectory(), FirstOfficerStore.FileName);
+        var store = new FirstOfficerStore(path);
+        var roster = new FirstOfficerRoster(store, null, new Random(5));
+        var (first, _) = roster.Ensure("flight-1", new FirstOfficerConfig(), null, null, [], []);
+
+        // So schrieb 0.10.0-beta.2 die Datei: ohne engineVoice
+        var json = File.ReadAllText(path);
+        Assert.Contains("\"engineVoice\"", json);
+        File.WriteAllText(path, System.Text.RegularExpressions.Regex.Replace(json, @",\s*""engineVoice""\s*:\s*null", ""));
+        Assert.DoesNotContain("engineVoice", File.ReadAllText(path));
+
+        var restarted = new FirstOfficerRoster(store, null, new Random(77));
+        var (restored, changed) = restarted.Ensure("flight-1", new FirstOfficerConfig(), null, null, [], []);
+
+        Assert.False(changed);
+        Assert.Equal(first!.Name, restored!.Name);
+        Assert.Null(restored.EngineVoice);
     }
 
     // ------------------------------------------------------------------ Engine: Zustand und Prüfsumme
@@ -281,7 +383,7 @@ public sealed class SupertonicTests
     }
 
     [Fact]
-    public async Task Falsche_Pruefsumme_wird_geloescht_und_Piper_uebernimmt()
+    public async Task Falsche_Pruefsumme_wird_geloescht_und_Kokoro_uebernimmt()
     {
         // Groß genug für die Größenprüfung der ersten Datei (duration_predictor.onnx), aber nicht die erwarteten Bytes
         var body = new byte[4 * 1024 * 1024];
@@ -297,9 +399,11 @@ public sealed class SupertonicTests
         Assert.Contains("SHA-256", engine.Error);
         Assert.False(File.Exists(Path.Combine(engine.Root, "onnx", "duration_predictor.onnx")));
 
-        var choice = SmalltalkVoices.Choose("de", VoiceGender.Male, "Sam", [engine, Piper(TtsState.Ready)]);
-        Assert.Equal("de", choice.Language);
-        Assert.Equal(PiperSpeechEngine.EngineId, choice.Voice!.Engine);
+        // Der First Officer spricht dann mit seiner Kokoro-Stimme, der Smalltalk auf Englisch
+        var choice = SmalltalkVoices.Choose("de", "supertonic:M1", [engine, Piper(TtsState.Ready)]);
+        Assert.Equal("en", choice.Language);
+        Assert.Equal("failed", choice.Reason);
+        Assert.Null(choice.Voice);
 
         // Bis zum Neustart kein neuer Versuch
         await engine.PrepareAsync(voice, CancellationToken.None);

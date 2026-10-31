@@ -50,6 +50,12 @@ public sealed record VoiceOutputOptions
     /// <summary>Kokoro-Stimme für Duopilo (Callouts und Antworten). Leer = Stimme aus dem Dashboard.</summary>
     public string? KopilotVoice { get; init; }
 
+    /// <summary>
+    /// Mehrsprachige Stimme des First Officers ("supertonic:M1"): spricht Callouts und Antworten, sobald sie geladen ist – derselbe
+    /// Sprecher wie im Smalltalk. Bis dahin spricht <see cref="KopilotVoice"/>. Leer = nur Kokoro.
+    /// </summary>
+    public string? KopilotEngineVoice { get; init; }
+
     /// <summary>Faktor auf die Lautstärke für Duopilo (0–1).</summary>
     public double KopilotVolume { get; init; } = 1;
 
@@ -76,6 +82,7 @@ public sealed record VoiceOutputOptions
     public VoiceOutputOptions Normalized() => this with
     {
         KopilotVoice = KokoroSpeechEngine.IsEnglishVoice(KopilotVoice?.Trim()) ? KopilotVoice!.Trim() : null,
+        KopilotEngineVoice = MultilingualVoices.Normalize(KopilotEngineVoice),
         KopilotVolume = Math.Clamp(double.IsFinite(KopilotVolume) ? KopilotVolume : 1, 0, 1),
         AtcVolume = Math.Clamp(double.IsFinite(AtcVolume) ? AtcVolume : 1, 0, 1),
         ActiveRules = Clean(ActiveRules ?? ["*"]) is { Count: > 0 } active ? active : ["*"],

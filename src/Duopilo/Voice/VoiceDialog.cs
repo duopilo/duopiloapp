@@ -49,7 +49,7 @@ public sealed record VoiceReply(string Text, string Spoken)
     /// <summary>Sprache des Smalltalks ("de"); null = Englisch.</summary>
     public string? Language { get; init; }
 
-    /// <summary>Stimme für den Smalltalk in einer anderen Sprache ("piper:de_DE-thorsten-medium"); null = die Stimme des Kopiloten.</summary>
+    /// <summary>Mehrsprachige Stimme für den Smalltalk ("supertonic:M1"); null = die Kokoro-Stimme des Kopiloten.</summary>
     public string? Voice { get; init; }
 
     public static VoiceReply Of(string text) => new(text, Duopilo.Speech.Pronunciation.ForSpeech(text));

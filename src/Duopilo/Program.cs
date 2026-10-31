@@ -118,8 +118,8 @@ else
     // Sprachausgabe nur in dieser (Tray-)Instanz – die stdio-Instanz von Claude Desktop würde sonst doppelt sprechen
     builder.Services.AddSingleton<Duopilo.Speech.KokoroSpeechEngine>();
 
-    // Smalltalk in Sprachen ohne Kokoro-Stimme (Deutsch): Supertonic zuerst, Piper als Rückfall – beide laden erst bei Bedarf.
-    // Die Reihenfolge der Registrierung ist die Reihenfolge der Wahl (SmalltalkVoices.Choose).
+    // Mehrsprachige Stimmen für den First Officer (Supertonic: Callouts auf Englisch, Smalltalk z. B. auf Deutsch – derselbe Sprecher),
+    // lädt erst bei Bedarf. Piper bleibt registriert, wird für den Smalltalk aber nicht mehr gewählt (kann kein Englisch).
     builder.Services.AddSingleton<Duopilo.Speech.SupertonicSpeechEngine>();
     if ((builder.Configuration.GetSection(DuopiloOptions.Section).Get<DuopiloOptions>() ?? new DuopiloOptions()).Smalltalk.Supertonic)
     {

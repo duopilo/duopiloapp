@@ -9,12 +9,13 @@ namespace Duopilo.Speech;
 public sealed record SupertonicFile(string Path, long Bytes, string Sha256);
 
 /// <summary>
-/// Supertonic 3 (Supertone, Modell OpenRAIL-M) als deutsche Stimme für den Smalltalk – vor Piper, das als Rückfall bleibt.
+/// Supertonic 3 (Supertone, Modell OpenRAIL-M) als mehrsprachige Stimme des First Officers: Callouts und Antworten auf Englisch,
+/// Smalltalk in der Oberflächensprache – derselbe Sprecher (<see cref="MultilingualVoices"/>).
 /// Läuft im Prozess über die ONNX Runtime (CPU), die Duopilo für Kokoro und Silero VAD schon mitbringt; liest Zeichen statt
 /// Phonemen, braucht also kein espeak. Gemessen auf 2 vCPU: ~1,3 s für einen kurzen Satz, ~0,33 CPU-s je Sekunde Sprache, Whisper
 /// versteht es so gut wie Piper Thorsten (docs/research/messung-supertonic.md). Modell (~400 MB) und Stimmen lädt Duopilo erst, wenn
-/// deutscher Smalltalk gebraucht wird, nach %LOCALAPPDATA%\Duopilo\models\supertonic-3 – aus einer festen Revision, jede Datei mit
-/// SHA-256 geprüft. Callouts und Funk bleiben Englisch (Kokoro).
+/// der First Officer eine Supertonic-Stimme hat, nach %LOCALAPPDATA%\Duopilo\models\supertonic-3 – aus einer festen Revision, jede
+/// Datei mit SHA-256 geprüft. Die festen Callouts rechnet Duopilo danach vorab. Funk bleibt Kokoro.
 /// </summary>
 public sealed class SupertonicSpeechEngine : ITtsEngine, IDisposable
 {
@@ -52,8 +53,8 @@ public sealed class SupertonicSpeechEngine : ITtsEngine, IDisposable
     };
 
     /// <summary>
-    /// Stimmen, die Duopilo nutzt. Das Modell spricht alle 31 Sprachen mit jeder Stimme; eingetragen ist bisher nur Deutsch – für
-    /// eine weitere Sprache hier eine Zeile je Stimme ergänzen (Sprachcode wie in <see cref="SupertonicText.Languages"/>).
+    /// Stimmen, die Duopilo nutzt. Das Modell spricht alle 31 Sprachen mit jeder Stimme (<see cref="SupertonicText.Languages"/>,
+    /// <see cref="MultilingualVoices.Speaks"/>); die Sprache je Satz kommt über <c>voice with { Language = … }</c>.
     /// </summary>
     public static readonly IReadOnlyList<TtsVoice> Catalog =
     [

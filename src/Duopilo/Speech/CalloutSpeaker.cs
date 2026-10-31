@@ -21,6 +21,10 @@ namespace Duopilo.Speech;
 /// ihrer eigenen Kokoro-Stimme; dafür wird Kokoro auch dann geladen, wenn die Callouts die Windows-Stimme nehmen.
 /// Eine Warning unterbricht alles, ein unterbrochener Funkspruch kommt danach einmal erneut.
 /// </para>
+/// <para>
+/// Hat der First Officer eine mehrsprachige Stimme (Supertonic, <see cref="VoiceOutputOptions.KopilotEngineVoice"/>), spricht sie,
+/// sobald sie geladen ist, alles von Duopilo – Callouts, Antworten und Smalltalk: derselbe Sprecher. Bis dahin seine Kokoro-Stimme.
+/// </para>
 /// Läuft nur im HTTP-Modus (Tray-Instanz), damit die stdio-Instanz von Claude Desktop nicht doppelt spricht.
 /// </summary>
 public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOutput, IAtcRadio
@@ -53,6 +57,9 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
     private readonly Dictionary<string, SpeechClip> _cache = new(StringComparer.Ordinal);
     private readonly Queue<string> _cacheOrder = new();
     private readonly Queue<string> _prewarm = new();
+
+    // Stimme, für die die festen Callouts gerade vorab gerechnet werden (Kokoro oder mehrsprachig) – unter _cacheLock
+    private string? _prewarmVoice;
 
     private WindowsSpeech? _speech;
     private volatile SpeechSettings _settings;
@@ -228,7 +235,7 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
         var old = _voice;
         var normalized = options.Normalized();
         _voice = normalized;
-        if (old.KopilotVoice != normalized.KopilotVoice)
+        if (old.KopilotVoice != normalized.KopilotVoice || old.KopilotEngineVoice != normalized.KopilotEngineVoice)
         {
             ClearCache();
             SchedulePrewarm();
@@ -256,6 +263,7 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
             OnSpoken = request.OnSpoken,
             Tone = request.Tone,
             Plain = request.Plain,
+            Language = string.IsNullOrWhiteSpace(request.Language) ? null : request.Language.Trim().ToLowerInvariant(),
         };
 
         var (accepted, preempt) = _queue.Offer(item, now, _current?.Priority);
@@ -353,10 +361,11 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
     }
 
     /// <summary>
-    /// Eine Kokoro-Stimme probehören (Dashboard, Auswahl der Stimme des First Officers): sofort, an der Warteschlange vorbei wie der
-    /// Test-Knopf. Rückgabe: Fehler in der eingestellten Sprache oder null. Lädt Kokoro bei Bedarf (dann erst beim nächsten Mal).
+    /// Eine Stimme des First Officers probehören (Dashboard): Kokoro oder mehrsprachig (dann in <paramref name="language"/>) – sofort,
+    /// an der Warteschlange vorbei wie der Test-Knopf. Rückgabe: Fehler in der eingestellten Sprache oder null. Lädt die Stimme bei
+    /// Bedarf (dann erst beim nächsten Mal).
     /// </summary>
-    public async Task<string?> PreviewVoiceAsync(string voice, string text, CancellationToken ct)
+    public async Task<string?> PreviewVoiceAsync(string voice, string text, string language, CancellationToken ct)
     {
         var speech = _speech;
         if (speech is null)
@@ -364,12 +373,30 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
             return Loc.T("speech.playbackUnavailable");
         }
 
-        if (!KokoroSpeechEngine.IsEnglishVoice(voice))
+        (ITtsEngine Engine, TtsVoice Voice)? other = null;
+        if (MultilingualVoices.Normalize(voice) is { } key)
+        {
+            if (_engines?.Find(key) is not { } found)
+            {
+                return Loc.T("speech.preview.unknownVoice", voice);
+            }
+
+            switch (found.Engine.StateOf(found.Voice))
+            {
+                case TtsState.Failed:
+                    return Loc.T("speech.preview.voiceFailed", found.Voice.Id, found.Engine.Error ?? "?");
+                case TtsState.Idle or TtsState.Downloading:
+                    _ = found.Engine.PrepareAsync(found.Voice, _stopping);
+                    return Loc.T("speech.preview.voiceLoading", found.Voice.Id);
+            }
+
+            other = (found.Engine, found.Voice with { Language = MultilingualVoices.Speaks(found.Voice, language) ? language : SmalltalkVoices.English });
+        }
+        else if (!KokoroSpeechEngine.IsEnglishVoice(voice))
         {
             return Loc.T("speech.preview.unknownVoice", voice);
         }
-
-        if (_kokoroState != KokoroState.Ready)
+        else if (_kokoroState != KokoroState.Ready)
         {
             _previewWantsKokoro = true;
             EnsureKokoroIfNeeded();
@@ -380,7 +407,9 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
         try
         {
             var settings = _settings;
-            var clip = await Task.Run(() => _kokoro.Synthesize(text, voice, settings.Rate), ct);
+            var clip = other is { } o
+                ? await o.Engine.SynthesizeAsync(text, o.Voice, settings.Rate, ct)
+                : await Task.Run(() => _kokoro.Synthesize(text, voice, settings.Rate), ct);
             if (clip.Samples.Length == 0)
             {
                 return null;
@@ -546,6 +575,54 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
         return clip;
     }
 
+    /// <summary>Wie <see cref="KokoroClipAsync"/> für eine Stimme einer anderen Engine (die mehrsprachige des First Officers).</summary>
+    private async Task<SpeechClip> EngineClipAsync(ITtsEngine engine, TtsVoice voice, string text, CancellationToken ct)
+    {
+        var settings = _settings;
+        var key = $"{voice.Key}@{voice.Language}|{settings.Rate:0.00}|{text}";
+        lock (_cacheLock)
+        {
+            if (_cache.TryGetValue(key, out var hit))
+            {
+                return hit;
+            }
+        }
+
+        var watch = Stopwatch.StartNew();
+        var clip = await engine.SynthesizeAsync(text, voice, settings.Rate, ct);
+        _lastSynthesisMs = (int)watch.ElapsedMilliseconds;
+        _log.LogDebug(Loc.Log("log.speech.engineSynthesis"), voice.Key, voice.Language, text, _lastSynthesisMs);
+
+        lock (_cacheLock)
+        {
+            if (_cache.TryAdd(key, clip))
+            {
+                _cacheOrder.Enqueue(key);
+                while (_cache.Count > CacheLimit && _cacheOrder.TryDequeue(out var oldest))
+                {
+                    _cache.Remove(oldest);
+                }
+            }
+        }
+
+        return clip;
+    }
+
+    /// <summary>
+    /// Mehrsprachige Stimme des First Officers in <paramref name="language"/>, wenn sie geladen ist und die Sprache spricht – sonst null
+    /// (dann spricht seine Kokoro-Stimme bzw. die Windows-Stimme).
+    /// </summary>
+    private (ITtsEngine Engine, TtsVoice Voice)? FirstOfficerEngineVoice(string language = SmalltalkVoices.English)
+    {
+        if (_voice.KopilotEngineVoice is not { } key || _engines?.Find(key) is not { } found
+            || found.Engine.StateOf(found.Voice) != TtsState.Ready || !MultilingualVoices.Speaks(found.Voice, language))
+        {
+            return null;
+        }
+
+        return (found.Engine, found.Voice with { Language = language });
+    }
+
     /// <summary>Stimme für eine Ansage: eigene Stimme der Ansage (ATC), sonst die Duopilo-Stimme, sonst die aus dem Dashboard.</summary>
     private string VoiceFor(SpeechItem? item)
     {
@@ -568,7 +645,11 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
 
     private async Task PrewarmOneAsync(CancellationToken ct)
     {
-        if (_kokoroState != KokoroState.Ready || ActiveEngine != SpeechEngines.Kokoro)
+        // Für die Stimme, die die Callouts gerade spricht: die mehrsprachige des First Officers, sonst Kokoro
+        var engineVoice = FirstOfficerEngineVoice();
+        var target = engineVoice?.Voice.Key
+            ?? (_kokoroState == KokoroState.Ready && ActiveEngine == SpeechEngines.Kokoro ? VoiceFor(null) : null);
+        if (target is null)
         {
             return;
         }
@@ -576,6 +657,17 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
         string? text;
         lock (_cacheLock)
         {
+            if (target != _prewarmVoice)
+            {
+                // Andere Stimme (z. B. Supertonic gerade fertig geladen): die festen Callouts für sie vorab rechnen
+                _prewarmVoice = target;
+                _prewarm.Clear();
+                foreach (var common in CalloutText.Common)
+                {
+                    _prewarm.Enqueue(common);
+                }
+            }
+
             _prewarm.TryDequeue(out text);
         }
 
@@ -586,7 +678,15 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
 
         try
         {
-            await KokoroClipAsync(Pronunciation.ForSpeech(text), VoiceFor(null), ct);
+            var spoken = Pronunciation.ForSpeech(text);
+            if (engineVoice is { } e)
+            {
+                await EngineClipAsync(e.Engine, e.Voice, spoken, ct);
+            }
+            else
+            {
+                await KokoroClipAsync(spoken, target, ct);
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -687,12 +787,27 @@ public sealed class CalloutSpeaker : BackgroundService, ISpeechOutput, IVoiceOut
             return;
         }
 
-        if (item.Plain && _engines?.Find(item.Voice) is { } other)
+        // Stimme einer anderen Engine: für den Smalltalk ausdrücklich gewählt, sonst die mehrsprachige Stimme des First Officers
+        // (Supertonic), sobald sie geladen ist – dann spricht sie auch Callouts und Antworten, derselbe Sprecher wie im Smalltalk
+        var language = item.Language ?? SmalltalkVoices.English;
+        (ITtsEngine Engine, TtsVoice Voice)? other = null;
+        if (item.Plain && _engines?.Find(item.Voice) is { } chosen)
         {
-            // Andere Sprache (z. B. Deutsch mit Piper): gleiche Wiedergabe wie Kokoro
-            var foreign = await other.Engine.SynthesizeAsync(text, other.Voice, _settings.Rate, ct);
+            other = (chosen.Engine, MultilingualVoices.IsMultilingual(chosen.Voice.Key) ? chosen.Voice with { Language = language } : chosen.Voice);
+        }
+        else if (item.Voice is null)
+        {
+            other = FirstOfficerEngineVoice(language);
+        }
+
+        if (other is { } o)
+        {
+            // Smalltalk nicht zwischenspeichern – er verdrängte sonst die vorab gerechneten Callouts
+            var clip = item.Plain
+                ? await o.Engine.SynthesizeAsync(text, o.Voice, _settings.Rate, ct)
+                : await EngineClipAsync(o.Engine, o.Voice, text, ct);
             ct.ThrowIfCancellationRequested();
-            await PlayClipAsync(speech, foreign, item, ct);
+            await PlayClipAsync(speech, clip, item, ct);
             return;
         }
 

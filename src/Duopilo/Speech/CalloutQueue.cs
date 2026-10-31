@@ -55,9 +55,12 @@ public sealed record SpeechRequest(string Text, SpeechPriority Priority)
 
     /// <summary>
     /// Freier Text (Smalltalk): so sprechen, wie er ist – ohne die Funk-Aussprache (Ziffern einzeln, NATO-Alphabet) und ohne
-    /// Zwischenspeicher. <see cref="Voice"/> darf dann auch eine Stimme einer anderen Engine sein ("piper:de_DE-thorsten-medium").
+    /// Zwischenspeicher. <see cref="Voice"/> darf dann auch eine Stimme einer anderen Engine sein ("supertonic:M1").
     /// </summary>
     public bool Plain { get; init; }
+
+    /// <summary>Sprache des Texts für eine mehrsprachige Stimme ("de"); null = Englisch.</summary>
+    public string? Language { get; init; }
 }
 
 /// <summary>Eine Ansage in der Warteschlange.</summary>
@@ -103,6 +106,9 @@ public sealed record SpeechItem
 
     /// <summary>Siehe <see cref="SpeechRequest.Plain"/>.</summary>
     public bool Plain { get; init; }
+
+    /// <summary>Siehe <see cref="SpeechRequest.Language"/>.</summary>
+    public string? Language { get; init; }
 
     public bool IsAlert => Priority >= SpeechPriority.Callout;
 }

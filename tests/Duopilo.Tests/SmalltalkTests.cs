@@ -555,63 +555,44 @@ public sealed class SmalltalkTests
     [Fact]
     public void Englisch_spricht_Kokoro()
     {
-        var choice = SmalltalkVoices.Choose("en", VoiceGender.Female, "Emma", [new FakeEngine(TtsState.Ready)]);
+        var choice = SmalltalkVoices.Choose("en", null, [new FakeEngine(TtsState.Ready)]);
 
         Assert.Equal("en", choice.Language);
         Assert.Null(choice.Voice);
         Assert.False(choice.FellBack);
     }
 
-    [Theory]
-    [InlineData(VoiceGender.Male)]
-    [InlineData(VoiceGender.Female)]
-    public void Deutsch_spricht_Piper_passend_zum_Geschlecht(VoiceGender gender)
-    {
-        foreach (var name in FirstOfficerNames.For(gender))
-        {
-            var choice = SmalltalkVoices.Choose("de", gender, name, [new FakeEngine(TtsState.Ready)]);
-
-            Assert.Equal("de", choice.Language);
-            Assert.False(choice.FellBack);
-            Assert.Equal(gender, choice.Voice!.Gender);
-            Assert.Equal("de", choice.Voice.Language);
-            Assert.StartsWith("piper:de_DE-", choice.Voice.Key);
-        }
-    }
-
     [Fact]
-    public void Gleicher_Name_gleiche_Piper_Stimme()
+    public void Kokoro_Stimme_heisst_Smalltalk_auf_Englisch_derselbe_Sprecher()
     {
-        var a = SmalltalkVoices.Choose("de", VoiceGender.Female, "Lena", [new FakeEngine(TtsState.Ready)]);
-        var b = SmalltalkVoices.Choose("de", VoiceGender.Female, "Lena", [new FakeEngine(TtsState.Ready)]);
-
-        Assert.Equal(a.Voice, b.Voice);
-    }
-
-    [Theory]
-    [InlineData(TtsState.Idle, "downloading")]
-    [InlineData(TtsState.Downloading, "downloading")]
-    [InlineData(TtsState.Failed, "failed")]
-    public void Piper_noch_nicht_da_heisst_Englisch(TtsState state, string reason)
-    {
-        var choice = SmalltalkVoices.Choose("de", VoiceGender.Male, "Sam", [new FakeEngine(state)]);
+        // Kokoro kann kein Deutsch: lieber Englisch mit der Stimme der Callouts als ein anderer Sprecher
+        var choice = SmalltalkVoices.Choose("de", null, [new FakeEngine(TtsState.Ready)]);
 
         Assert.Equal("en", choice.Language);
         Assert.Equal("de", choice.Wanted);
-        Assert.Equal(reason, choice.Reason);
-        Assert.NotNull(choice.Voice);
+        Assert.Equal("englishVoice", choice.Reason);
+        Assert.Null(choice.Voice);
     }
 
     [Fact]
-    public void Sprache_ohne_Stimme_heisst_Englisch()
+    public void Piper_ist_keine_Stimme_fuer_den_First_Officer()
     {
-        var none = SmalltalkVoices.Choose("fr", VoiceGender.Male, "Sam", [new FakeEngine(TtsState.Ready)]);
-        var noEngine = SmalltalkVoices.Choose("de", VoiceGender.Male, "Sam", []);
+        // Piper spricht kein Englisch – als Stimme des First Officers taugt es nicht, also wie Kokoro
+        var choice = SmalltalkVoices.Choose("de", "piper:de_DE-thorsten-medium", [new FakeEngine(TtsState.Ready)]);
 
-        Assert.Equal("en", none.Language);
-        Assert.Equal("noVoice", none.Reason);
-        Assert.Null(none.Voice);
+        Assert.Equal("en", choice.Language);
+        Assert.Equal("englishVoice", choice.Reason);
+        Assert.Null(choice.Voice);
+    }
+
+    [Fact]
+    public void Mehrsprachige_Stimme_ohne_Engine_heisst_Englisch()
+    {
+        var noEngine = SmalltalkVoices.Choose("de", "supertonic:M1", []);
+
+        Assert.Equal("en", noEngine.Language);
         Assert.Equal("noVoice", noEngine.Reason);
+        Assert.Null(noEngine.Voice);
     }
 
     [Fact]
@@ -716,7 +697,7 @@ public sealed class SmalltalkTests
     }
 
     [Fact]
-    public async Task Piper_Zip_mit_falscher_Pruefsumme_wird_nie_entpackt_und_Smalltalk_bleibt_Englisch()
+    public async Task Piper_Zip_mit_falscher_Pruefsumme_wird_nie_entpackt()
     {
         // Ein echtes Zip mit piper/piper.exe – nur eben nicht das erwartete (≥ 5 MB, damit die Größenprüfung durchgeht)
         using var buffer = new MemoryStream();
@@ -743,10 +724,6 @@ public sealed class SmalltalkTests
         Assert.False(File.Exists(Path.Combine(data, "piper", "piper", "piper.exe")));
         Assert.False(File.Exists(Path.Combine(data, "piper", "piper_windows_amd64.zip")));
         Assert.Contains("SHA-256", engine.Error);
-
-        var choice = SmalltalkVoices.Choose("de", VoiceGender.Male, "Sam", [engine]);
-        Assert.Equal("en", choice.Language);
-        Assert.True(choice.FellBack);
 
         // Bis zum Neustart kein neuer Versuch
         await engine.PrepareAsync(voice, CancellationToken.None);

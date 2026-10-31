@@ -123,8 +123,8 @@ public sealed record VoiceStatus
 }
 
 /// <summary>Der First Officer für Dashboard und Status.</summary>
-/// <param name="Voice">Kokoro-Stimme (Callouts, Antworten, englischer Smalltalk).</param>
-/// <param name="SmalltalkVoice">Stimme für den Smalltalk in einer anderen Sprache ("piper:de_DE-thorsten-medium"), null = <paramref name="Voice"/>.</param>
+/// <param name="Voice">Seine Stimme: mehrsprachig ("supertonic:M1", spricht alles) oder Kokoro ("bf_emma", spricht alles auf Englisch).</param>
+/// <param name="SmalltalkVoice">Mehrsprachige Stimme, die gerade den Smalltalk spricht; null = die Kokoro-Stimme (noch nicht geladen oder Kokoro).</param>
 public sealed record FirstOfficerStatus(string Name, string Gender, string Voice, string? SmalltalkVoice, bool Introduced, bool FixedName, string Flight);
 
 /// <summary>Liefert den Zustand der Sprachschleife. In der stdio-Instanz (Claude Desktop) gibt es keine: <see cref="NoVoiceLoop"/>.</summary>
