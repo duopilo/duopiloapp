@@ -1,0 +1,56 @@
+[English](Traffic) | **Deutsch**
+
+# Verkehr
+
+`get_traffic` listet Flugzeuge und Hubschrauber in der Nähe – KI-Verkehr, Live-Traffic und Multiplayer, soweit im Sim eingeschaltet. Das eigene Flugzeug ist ausgeschlossen. Die Sprachschleife beantwortet „Traffic check“ genauso.
+
+## Parameter
+
+| Parameter | Standard | Bedeutung |
+|---|---|---|
+| `radiusNm` | 40 | Suchradius, höchstens 108 NM (Grenze von SimConnect) |
+| `limit` | 10 | höchstens so viele Ziele, nächstes zuerst (1–50) |
+| `airborneOnly` | false | Flugzeuge am Boden weglassen |
+
+## Pro Ziel
+
+`ident`/`callsign`, `atcId`, `type`, `distanceNm`, `clock`, `relativeBearingDeg`, `bearingTrueDeg`, `altitudeFt`, `altitudeDiffFt` (+ = darüber), `verticalTrend`, `groundSpeedKt` mit `groundSpeedSource`, `headingTrueDeg`/`headingMagDeg`, `onGround`. Das nächste Ziel hat `closest: true` und einen `callout`:
+
+```
+Traffic, 2 o'clock, 5 miles, 1000 feet above, descending
+```
+
+## Wie die Werte entstehen
+
+| Wert | Hinweise |
+|---|---|
+| **Rufzeichen** | Airline + Flugnummer, wenn beide gesetzt sind (`Lufthansa 123`), sonst die Registrierung. Interne Live-Traffic-Nummern wie `1432126` gelten nicht als Rufzeichen |
+| **Typ** | Lokalisierungsschlüssel (`ATCCOM.AC MODEL C441.0.tts`) werden zu `C441` bereinigt |
+| **Uhrzeit** | relativ zu deinem Steuerkurs, je 30° |
+| **Abstand** | horizontal (Großkreis) |
+| **Höhendifferenz** | wie TCAS: gegen deine **Druckhöhe** (1013,25 hPa), weil Live-Traffic Flugflächen meldet. `"AltitudeReference": "True"` schaltet auf die wahre Höhe um |
+| **Groundspeed** | aus der Positionsänderung berechnet (5–120 s auseinander), weil die SimVar beim Live-Traffic unbrauchbar ist; bis dahin die SimVar mit `groundSpeedSource: "simvar"` |
+| **Trend** | aus der Vertikalgeschwindigkeit (±500 ft/min); meldet ein Ziel 0, aus der Höhenänderung abgeleitet |
+
+Kein anderes Flugzeug → `status: "no_traffic"` (KI-Verkehr oder Multiplayer ist im Sim meist aus). MSFS antwortet nicht → `no_response`.
+
+## Verkehrswarnung `TRAFFIC_PROXIMITY`
+
+Solange das Flugzeug fliegt, sucht Duopilo alle 3 s im Umkreis von 6 NM. Ein Ziel in der Luft, das näher als 3 NM und innerhalb ±1000 ft ist, löst eine Caution mit Callout aus; danach 60 s Ruhe. Unter 500 ft AGL, am Boden und in der Pause ruht die Warnung.
+
+```jsonc
+"Duopilo": { "Monitoring": { "Traffic": {
+  "ProximityRangeNm": 3, "ProximityAltitudeFt": 1000, "ProximityCooldownSec": 60, "ScanIntervalSec": 3,
+  "AltitudeReference": "Pressure", "MessageLog": true
+} } }
+```
+
+Abschalten: `"DisabledRules": [ "TRAFFIC_PROXIMITY" ]`.
+
+> Das ist **kein TCAS**: keine Ausweichempfehlung, keine Vorhersage des Annäherungspunkts – nur Abstand und Höhe im Moment. Echte TCAS RAs aus der FMA des Flugzeugs werden getrennt angesagt (`TCAS_RA`).
+
+## Eigene SimConnect-Verbindung
+
+Der Verkehr nutzt eine eigene SimConnect-Verbindung direkt über die native `SimConnect.dll` und liest nur, was jede Nachricht tatsächlich enthält (`dwSize`). Nach Abstürzen in Testflügen hat das für den Verkehr die verwaltete Bibliothek abgelöst. Der Hintergrundscan fragt nur Zahlen ab; Rufzeichen und Typ sind bekannt, wenn `get_traffic` das Ziel in den letzten 15 Minuten gesehen hat.
+
+Jede Antwort wird in `%LOCALAPPDATA%\Duopilo\logs\traffic-messages.csv` protokolliert (~250 KB pro Flugstunde, bei 10 MB rotiert); `get_traffic` → `messageCheck` fasst Auffälligkeiten zusammen. Abschalten: `"MessageLog": false`.

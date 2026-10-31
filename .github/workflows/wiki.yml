@@ -1,0 +1,59 @@
+# Wiki: veröffentlicht den Ordner wiki/ im GitHub-Wiki des Repos (https://github.com/duopilo/duopiloapp/wiki).
+#
+# Quelle ist wiki/ im Repo – Änderungen per Pull Request dort, nicht direkt im Wiki (werden beim nächsten Lauf
+# überschrieben). Dateiname = Seitenname (Quick-Start.md → „Quick Start“), _Sidebar.md und _Footer.md sind die
+# Seitenleiste und Fußzeile.
+#
+# Läuft bei Pushes auf main, die wiki/ ändern, und von Hand (Actions → Wiki → Run workflow).
+#
+# Einmalig vorher: Das Wiki-Repository entsteht erst mit der ersten Seite. Auf GitHub unter „Wiki“ einmal
+# „Create the first page“ → „Save page“ klicken (Inhalt egal, wird überschrieben), danach diesen Workflow starten.
+name: Wiki
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "wiki/**"
+      - ".github/workflows/wiki.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wiki
+  cancel-in-progress: false
+
+jobs:
+  veroeffentlichen:
+    name: Wiki veröffentlichen
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Wiki-Repository holen
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! git clone --depth 1 "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git" wiki-repo; then
+            echo "::error title=Wiki::Das Wiki-Repository gibt es noch nicht. Auf GitHub unter „Wiki“ einmal die erste Seite anlegen (Create the first page → Save page), dann den Workflow erneut starten."
+            exit 1
+          fi
+
+      - name: Seiten übernehmen
+        run: rsync -a --delete --exclude .git wiki/ wiki-repo/
+
+      - name: Committen und pushen
+        working-directory: wiki-repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "::notice title=Wiki::Keine Änderungen."
+            exit 0
+          fi
+          git commit -m "Wiki aus ${GITHUB_REPOSITORY}@${GITHUB_SHA::7}"
+          git push
+          echo "::notice title=Wiki::Veröffentlicht: https://github.com/${GITHUB_REPOSITORY}/wiki"
