@@ -128,6 +128,9 @@ das grob 100.000 Linienflüge am Tag, als Wochenfahrplan einige MB.
 - Sim-Verkehr muss aus. Das widerspricht der Empfehlung in [Sim-ATC](sim-atc.md) („Verkehr an lassen“), die dann angepasst
   wird. `get_traffic` und `TRAFFIC_PROXIMITY` sehen den eigenen Verkehr weiter, weil `RequestDataOnSimObjectType` alle
   Flugzeuge liefert.
+- **Fahrwerk:** Braucht die Landung ein früh ausgefahrenes Fahrwerk (siehe Issue #289), fährt Duopilo es früher aus als
+  realistisch, notfalls schon beim Spawn außer Sicht. Aus dem Cockpit fällt das kaum auf. Die Doku erklärt, dass es technisch
+  nicht anders geht (Entscheidung 31.10.2026).
 - Offen: Lizenz der Fahrplandaten, Leistung bei vielen Flugzeugen, Verhalten der KI in der Luft (Speed).
 
 ## Erster Schritt: Testlinie
@@ -142,11 +145,15 @@ auf ausdrückliche Anforderung. Alle erzeugten Objekte entfernt es beim Beenden 
 
 0. **Modelle:** `EnumerateSimObjectsAndLiveries` listet die installierten Modelle. Getestet wird mit dem FSLTL-A320 und
    einem MSFS-2024-Standardmodell.
-1. **Stufe A – Endanflug** (wie Issue #289): Spawn 5 NM vor einer Bahn am Flughafen des Piloten (z. B. EDDL 23L), Fahrwerk
-   unten, Wegpunkte auf dem 3°-Gleitpfad, Aufsetzpunkt rund 300 m hinter der Schwelle, Ausroll-Wegpunkte mit `ON_GROUND` und
-   fallender Geschwindigkeit bis zum Abrollweg, ein Wegpunkt hinter der Haltelinie.
+1. **Stufe A – Endanflug:**
+   - **A1** (wie Issue #289): Spawn 5 NM vor einer Bahn am Flughafen des Piloten (z. B. EDDL 23L), Fahrwerk unten,
+     Wegpunkte auf dem 3°-Gleitpfad, Aufsetzpunkt rund 300 m hinter der Schwelle, Ausroll-Wegpunkte mit `ON_GROUND` und
+     fallender Geschwindigkeit bis zum Abrollweg, ein Wegpunkt hinter der Haltelinie.
+   - **A2 – Fahrwerk erst im Flug:** Spawn 15 NM vor der Bahn mit Fahrwerk oben, Fahrwerk bei 10 NM ausfahren (`GEAR_DOWN`
+     an das KI-Objekt), Rest wie A1. Klärt, ob Ankünfte einen normalen Flug hinter sich haben können.
 2. **Stufe B – Platzrunde:** Spawn auf der Bahn, Start über `ON_GROUND`-Wegpunkte, Steigflug auf 1.500 ft AGL, Gegenanflug,
-   Queranflug, Landung wie in Stufe A.
+   Queranflug, Landung wie in Stufe A. Dabei beobachten: Fährt die KI das Fahrwerk nach dem Start selbst ein, und klappt das
+   Ausfahren im Gegenanflug?
 3. **Stufe C – Testlinie DUO01 EDDL–EDDK:** Pushback (`REVERSE` am ersten Wegpunkt), Rollen über die Rollwege aus der
    Facilities-API, Start, direkt nach EDDK in 5.000 ft, Anflug, Landung, Rollen zur Parkposition, dann `AIRemoveObject`.
 
