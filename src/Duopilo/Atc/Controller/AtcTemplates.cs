@@ -256,6 +256,24 @@ public sealed class AtcRules
 
     /// <summary>… höchstens so oft insgesamt.</summary>
     public int DeviationMaxCalls { get; set; } = 3;
+
+    /// <summary>Departure, Center und Approach melden Verkehr von sich aus ("traffic 2 o'clock, 6 miles, opposite direction, …").</summary>
+    public bool TrafficInfo { get; set; } = true;
+
+    /// <summary>Für eine Traffic-Info kommt Verkehr bis zu dieser Entfernung in Frage …</summary>
+    public double TrafficInfoRangeNm { get; set; } = 15;
+
+    /// <summary>… mit höchstens so viel Höhenunterschied …</summary>
+    public int TrafficInfoAltitudeFt { get; set; } = 1500;
+
+    /// <summary>… wenn die Annäherung in den nächsten drei Minuten auf diesen horizontalen Abstand oder weniger führt.</summary>
+    public double TrafficInfoMissNm { get; set; } = 5;
+
+    /// <summary>
+    /// Ist beim Erstanruf beim Tower jemand vor einem im Endanflug, nennt der Tower die Reihenfolge ("number two, follow the A320
+    /// on 5 miles final") und gibt die Landefreigabe erst, wenn der Vorausfliegende gelandet ist.
+    /// </summary>
+    public bool TrafficSequencing { get; set; } = true;
 }
 
 public sealed class AtcMessageTemplate
@@ -501,6 +519,7 @@ public static class AtcMessageIds
     public const string TowerLandingContact = "tower.landingContact";
     public const string TowerLanding = "tower.landing";
     public const string TowerVacate = "tower.vacate";
+    public const string TowerSequence = "tower.sequence";
 
     public const string GroundArrivalContact = "ground.arrivalContact";
     public const string GroundTaxiToGate = "ground.taxiToGate";
@@ -512,6 +531,8 @@ public static class AtcMessageIds
     public const string CommonCheckSquawk = "common.checkSquawk";
     public const string CommonCheckFrequency = "common.checkFrequency";
     public const string CommonWrongStation = "common.wrongStation";
+    public const string CommonTrafficInfo = "common.trafficInfo";
+    public const string CommonNoTraffic = "common.noTraffic";
 
     public const string EmergencyMayday = "emergency.mayday";
     public const string EmergencyPanPan = "emergency.panPan";
@@ -537,9 +558,10 @@ public static class AtcMessageIds
         CenterLevelRequest, CenterLevelChange, CenterLevelChangeQnh, CenterLevelWhenReady, CenterLevelUnable,
         OceanicRequest, OceanicClearance, OceanicReadbackCorrect, OceanicPosition, OceanicRoger, OceanicHandoff,
         ApproachContact, ApproachDescend, ApproachCleared, ApproachHandoff,
-        TowerLandingContact, TowerLanding, TowerVacate,
+        TowerLandingContact, TowerLanding, TowerVacate, TowerSequence,
         GroundArrivalContact, GroundTaxiToGate,
         CommonNegative, CommonRoger, CommonSayAgain, CommonRadioCheck, CommonCheckSquawk, CommonCheckFrequency, CommonWrongStation,
+        CommonTrafficInfo, CommonNoTraffic,
         EmergencyMayday, EmergencyPanPan, EmergencyDetails, EmergencyRoger, EmergencyDirect, EmergencyLevel, EmergencyLevelDiscretion,
         EmergencyLanding, EmergencyConfirmSquawk, EmergencyConfirmed, EmergencySquawkNormal, EmergencyCancelled,
     ];
@@ -558,6 +580,8 @@ public static class AtcVariables
         "requested", "minutes",
         // Notfall: 7700, Art ("Mayday"/"Pan Pan"), Squawk vor dem Notfall, Ziel und Bahn der Notfreigaben
         "emergencySquawk", "emergency", "previousSquawk", "emergencyTarget", "emergencyRunway",
+        // Verkehr: Uhrzeit, Entfernung, Richtung, Typ, Höhenunterschied, Vertikaltrend; Endanflug: Entfernung zum Platz, Reihenfolge
+        "trafficClock", "trafficDistance", "trafficDirection", "trafficType", "trafficLevel", "trafficTrend", "trafficFinal", "sequence",
     };
 
     /// <summary>Variablen, die als Readback-Punkt geprüft werden können.</summary>

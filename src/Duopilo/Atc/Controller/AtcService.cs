@@ -4,6 +4,7 @@ using Duopilo.FlightPlan;
 using Duopilo.Localization;
 using Duopilo.Monitoring;
 using Duopilo.Sim;
+using Duopilo.Traffic;
 using Microsoft.Extensions.Options;
 
 namespace Duopilo.Atc;
@@ -67,6 +68,19 @@ public sealed class AtcService : BackgroundService
     private bool _autoRestoreDone;
     private DateTimeOffset? _restoredFromUtc;
     private readonly HashSet<string> _raisedAlerts = new(StringComparer.Ordinal);
+
+    /// <summary>Verkehr für die Sitzung: so oft abgefragt (in der Luft, bei Departure, Center, Approach und Tower) …</summary>
+    private static readonly TimeSpan TrafficScanInterval = TimeSpan.FromSeconds(10);
+
+    /// <summary>… und so lange gültig – ältere Lagen bekommt die Sitzung nicht (z. B. nach einer Pause).</summary>
+    private static readonly TimeSpan TrafficMaxAge = TimeSpan.FromSeconds(30);
+
+    private const double TrafficScanRadiusNm = 25;
+
+    // Unter _lock: letzte Verkehrslage und wann sie abgefragt wurde
+    private AtcTrafficPicture? _traffic;
+    private DateTimeOffset _trafficUtc;
+    private int _trafficScanRunning;
 
     public AtcService(IOptions<DuopiloOptions> options, SimConnectClient sim, SimBriefService simBrief, IServiceProvider services, ILogger<AtcService> log)
     {
@@ -258,6 +272,12 @@ public sealed class AtcService : BackgroundService
             return new AtcTransmitResult(false, error, []);
         }
 
+        // Rückfrage nach Verkehr: mit frischer Lage beantworten
+        if (AtcTrafficQuery.Parse(HeardText.Parse(text)) is not null)
+        {
+            await RefreshTrafficAsync(force: true, ct);
+        }
+
         IReadOnlyList<AtcTransmission> responses;
         IReadOnlyList<AtcDeviationEvent> deviations;
         lock (_lock)
@@ -368,6 +388,7 @@ public sealed class AtcService : BackgroundService
             {
                 _clock.Update(SimGate.Read(_sim) == SimActivityState.Running);
                 await AutoRestoreAsync(stoppingToken);
+                _ = RefreshTrafficAsync(force: false, stoppingToken);
                 Tick();
                 SaveSession(force: false);
                 _ = PrefetchFrequenciesAsync(stoppingToken);
@@ -773,6 +794,75 @@ public sealed class AtcService : BackgroundService
         }
     }
 
+    /// <summary>
+    /// Verkehr für die Sitzung abfragen (mit Typ und Rufzeichen): etwa alle 10 s, solange das Flugzeug fliegt und eine Station mit
+    /// Radar zuständig ist (Departure, Center, Approach, Tower im Anflug) und die Regeln Traffic-Infos oder die Reihenfolge im
+    /// Endanflug vorsehen. <paramref name="force"/>: jetzt, in jeder Phase in der Luft (Rückfrage des Piloten). Eine Abfrage zur Zeit.
+    /// </summary>
+    private async Task RefreshTrafficAsync(bool force, CancellationToken ct)
+    {
+        if (_services.GetService<TrafficService>() is not { } traffic || !_sim.Connection.IsConnected
+            || SimGate.Read(_sim) != SimActivityState.Running)
+        {
+            return;
+        }
+
+        lock (_lock)
+        {
+            if (_session is not { } session || _templates is not { } templates || !TrafficWanted(session.Phase, templates.Rules, force)
+                || DateTimeOffset.UtcNow - _trafficUtc < (force ? TimeSpan.FromSeconds(2) : TrafficScanInterval))
+            {
+                return;
+            }
+        }
+
+        // Am Boden gibt es keine Traffic-Info
+        if (_sim.Bool("onGround") != false)
+        {
+            return;
+        }
+
+        if (Interlocked.Exchange(ref _trafficScanRunning, 1) == 1)
+        {
+            return;
+        }
+
+        try
+        {
+            var result = await traffic.ScanAsync(TrafficScanRadiusNm, ct);
+            var picture = result.Error is null ? AtcTrafficPicture.From(result.Picture) : null;
+            lock (_lock)
+            {
+                _traffic = picture;
+                _trafficUtc = DateTimeOffset.UtcNow;
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            lock (_lock)
+            {
+                _traffic = null;
+                _trafficUtc = DateTimeOffset.UtcNow;
+            }
+
+            _log.LogDebug(ex, Loc.Log("log.traffic.scanFailed"));
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _trafficScanRunning, 0);
+        }
+    }
+
+    private static bool TrafficWanted(AtcPhase phase, AtcRules rules, bool force) =>
+        force
+            ? phase is not (AtcPhase.Inactive or AtcPhase.Done)
+            : (rules.TrafficInfo && phase is AtcPhase.Departure or AtcPhase.Center or AtcPhase.Approach)
+              || (rules.TrafficSequencing && phase == AtcPhase.TowerArrival);
+
+    /// <summary>Letzte Verkehrslage, solange sie nicht zu alt ist (unter <see cref="_lock"/>).</summary>
+    private AtcTrafficPicture? CurrentTraffic() =>
+        _traffic is { } picture && DateTimeOffset.UtcNow - _trafficUtc <= TrafficMaxAge ? picture : null;
+
     /// <summary>Frequenzen von Start und Ziel über die Facilities-API holen (je Flughafen einmal, nach Fehlern frühestens nach 2 Minuten erneut).</summary>
     private async Task PrefetchFrequenciesAsync(CancellationToken ct)
     {
@@ -834,6 +924,7 @@ public sealed class AtcService : BackgroundService
         AssignedRunway = _sim.Connection.IsConnected ? AtcReader.AssignedRunway(_sim, _simBrief.Current)?.Ident : null,
         TransponderCode = Duopilo.Tools.Fmt.Squawk(_sim.Num("xpdrCode")),
         Com1ActiveMhz = _sim.Num("com1Active"),
+        Traffic = CurrentTraffic(),
     };
 
     private string? SimCallsign()

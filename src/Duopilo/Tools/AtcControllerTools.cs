@@ -30,7 +30,10 @@ public static class AtcControllerTools
         "'cleared to Berlin, MARUN seven golf departure, runway two five center, climb five thousand feet, squawk two two zero five'. " +
         "Readbacks are checked (SID, altitude, squawk, runway, frequency …); a wrong value gets 'negative' with the correct one. " +
         "Level requests in cruise ('request climb flight level three four zero', 'request descent', 'request higher') get 'climb and maintain …' " +
-        "with readback; the cleared altitude follows. A call addressed to another station gets 'this is …, say again' (or the old station repeats " +
+        "with readback; the cleared altitude follows. Traffic questions ('request traffic information', 'confirm traffic 12 o'clock') get the " +
+        "matching aircraft from the traffic scan ('traffic 12 o'clock, 5 miles, opposite direction, A320, 1000 feet above') or 'no reported traffic'; " +
+        "departure, center and approach also call traffic on their own, and the tower gives the landing sequence ('number two, follow the A320 " +
+        "on 5 miles final'). A call addressed to another station gets 'this is …, say again' (or the old station repeats " +
         "the handoff). 'say again' repeats the last transmission. Duopilo speaks the reply itself with the station's voice – do not read it aloud " +
         "again unless the pilot asks. Starts the ATC session on the first call; after a Duopilo restart the saved session of the same " +
         "SimBrief flight continues (station, cleared altitude, transcript).")]

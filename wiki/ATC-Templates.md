@@ -46,7 +46,7 @@ Then run `atc_control` with `reload` (or restart Duopilo). An older full copy ke
 | `firs` | unit name per FIR, `frequency` for FIRs without sector data, `"oceanic": true`, `oceanicFir` for split FIRs (Gander `CZQX` → `CZQO`), `members` (units whose sectors count within the FIR) |
 | `firSuffixes` | ICAO prefix → station type for FIRs without an entry (`"K": "Center"`, `"ED": "Radar"`, `"": "Control"`) – longest prefix wins |
 | `stationTypes` | names of station types, placeholder frequencies |
-| `rules` | thresholds of the state machine: altitudes, distances, times, `sectorMinNm`, step climbs and level requests, squawk/COM1 checks |
+| `rules` | thresholds of the state machine: altitudes, distances, times, `sectorMinNm`, step climbs and level requests, squawk/COM1 checks, traffic |
 | `words` | what `{levelVerb}` says |
 | `voices` | `pool` of station voices, fixed `stations` voices |
 
@@ -55,6 +55,8 @@ Then run `atc_control` with `reload` (or restart Duopilo). An older full copy ke
 `{callsign}` `{station}` `{dest}` `{sid}` `{star}` `{approach}` `{runway}` `{initialAlt}` `{squawk}` `{freq}` `{taxiRoute}` `{holdingPoint}` `{gate}` `{level}` `{speedKt}` `{entryFix}` `{heading}` `{wind}` `{qnh}` `{fix}` `{eta}` `{nextFix}` `{direction}` `{altitude}` `{nextCenter}` `{route}` `{time}` `{corrections}` `{levelVerb}` `{requested}` `{minutes}`
 
 Emergencies: `{emergencySquawk}` `{emergency}` `{previousSquawk}` `{emergencyTarget}` `{emergencyRunway}`
+
+Traffic: `{trafficClock}` `{trafficDistance}` `{trafficDirection}` `{trafficType}` `{trafficLevel}` `{trafficTrend}`; sequence on final: `{sequence}` `{trafficFinal}`
 
 ## Validation
 
@@ -70,6 +72,8 @@ On load Duopilo checks for missing transmissions, unknown variables, readback it
 | `deviationSeconds`, `frequencyGraceSeconds`, `deviationRepeatSeconds`, `deviationMaxCalls` | timing of those checks |
 | `centerDescentFt` | descent clearance without a STAR (default FL110) |
 | `sectorMinNm` | sectors touched for less than this (20 nm) get no own handoff |
+| `trafficInfo`, `trafficInfoRangeNm`, `trafficInfoAltitudeFt`, `trafficInfoMissNm` | traffic information from Departure, Center and Approach on their own (default: within 15 nm and 1500 ft, passing within 5 nm in the next three minutes) |
+| `trafficSequencing` | tower gives the sequence on final ("number two, follow …") and clears to land once the aircraft ahead has landed |
 
 ## Airspace and airline data
 

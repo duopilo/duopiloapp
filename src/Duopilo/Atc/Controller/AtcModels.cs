@@ -53,6 +53,9 @@ public enum AtcStep
     ApproachEstablished,
 
     LandingContact,
+
+    /// <summary>Jemand ist vor einem im Endanflug ("number two, follow …"): Landefreigabe, sobald er gelandet ist.</summary>
+    LandingSequenced,
     LandingReadback,
     Landing,
 
@@ -129,6 +132,12 @@ public sealed record AtcInput
 
     /// <summary>Aktive Frequenz von COM1 (COM ACTIVE FREQUENCY:1, MHz), null = unbekannt.</summary>
     public double? Com1ActiveMhz { get; init; }
+
+    /// <summary>
+    /// Verkehr um das eigene Flugzeug (für Traffic-Infos, Rückfragen und die Reihenfolge im Endanflug), null = keine aktuelle
+    /// Lage (Verkehr im Sim aus, am Boden, Abfrage fehlgeschlagen oder zu alt).
+    /// </summary>
+    public AtcTrafficPicture? Traffic { get; init; }
 }
 
 /// <summary>Was Duopilo überwacht: Transpondercode oder COM1-Frequenz.</summary>
