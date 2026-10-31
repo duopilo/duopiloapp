@@ -110,7 +110,12 @@ public sealed class TrafficTestTests
         var air = plan.Waypoints.TakeWhile(w => w.Name != "touchdown").ToList();
         Assert.All(air, w => Assert.False(w.Waypoint.Flags.HasFlag(AiWaypointFlags.OnGround)));
         Assert.Equal(air.Select(w => w.Waypoint.AltitudeFt).OrderByDescending(a => a), air.Select(w => w.Waypoint.AltitudeFt));
-        Assert.Equal(end.ElevationFt + 50, plan.Waypoints.Single(w => w.Name == "threshold").Waypoint.AltitudeFt, 3);
+
+        // Letzte Meile tiefer gelegt (Standard 100 ft), gemessen wird weiter am Gleitpfad
+        var threshold = plan.Waypoints.Single(w => w.Name == "threshold");
+        Assert.Equal(TrafficTestPlan.DefaultFinalLowFt, plan.FinalLowFt);
+        Assert.Equal(end.ElevationFt + 50, threshold.GlidePathAltitudeFt, 3);
+        Assert.Equal(end.ElevationFt + 50 - 100, threshold.Waypoint.AltitudeFt, 3);
 
         var ground = plan.Waypoints.SkipWhile(w => w.Name != "touchdown").ToList();
         Assert.All(ground, w => Assert.True(w.Waypoint.Flags.HasFlag(AiWaypointFlags.OnGround)));
@@ -184,7 +189,94 @@ public sealed class TrafficTestTests
         Assert.InRange(summary.MeanSpeedDeviationKt!.Value, 9, 11);
         Assert.Contains(summary.Gates, g => g.Name == "2nm" && g.IndicatedKt == 150 && g.TargetKt == 140);
         Assert.Contains(summary.Gates, g => g.Name == "threshold");
+        // Auf dem Pfad, obwohl die Wegpunkte der letzten Meile tiefer liegen (an der Schwelle 20 ft statt 50 ft: 30 ft zu tief)
+        Assert.All(summary.Gates.Where(g => g.Name != "threshold"), g => Assert.InRange(g.AltitudeDeviationFt, -1, 1));
+        Assert.Equal(-30, summary.Gates.Single(g => g.Name == "threshold").AltitudeDeviationFt);
         Assert.Equal(["SIMPLE_LANDING"], summary.AiStates);
+    }
+
+    [Fact]
+    public void Letzte_Meile_tiefer_ein_Viertel_60_Prozent_voll()
+    {
+        var end = End("23L");
+        var plan = TrafficTestPlan.Build(end, TrafficTestVariant.A1, finalLowFt: 200);
+
+        double Drop(string name)
+        {
+            var w = plan.Waypoints.Single(x => x.Name == name);
+            return w.GlidePathAltitudeFt - w.Waypoint.AltitudeFt;
+        }
+
+        Assert.Equal(0, Drop("2nm"), 3);
+        Assert.Null(plan.Waypoints.Single(w => w.Name == "2nm").PathAltitudeFt);
+        Assert.Equal(50, Drop("1nm"), 3);
+        Assert.Equal(120, Drop("0.5nm"), 3);
+        Assert.Equal(200, Drop("threshold"), 3);
+
+        var exact = TrafficTestPlan.Build(end, TrafficTestVariant.A1, finalLowFt: 0);
+        Assert.All(exact.Waypoints, w => Assert.Null(w.PathAltitudeFt));
+        Assert.Equal(end.ElevationFt + 50, exact.Waypoints.Single(w => w.Name == "threshold").Waypoint.AltitudeFt, 3);
+
+        Assert.Equal(TrafficTestPlan.MaxFinalLowFt, TrafficTestPlan.Build(end, TrafficTestVariant.A1, finalLowFt: 999).FinalLowFt);
+        Assert.Equal(0, TrafficTestPlan.Build(end, TrafficTestVariant.A1, finalLowFt: -5).FinalLowFt);
+    }
+
+    [Fact]
+    public void Auswertung_Abfangen_aus_der_Laengsneigung()
+    {
+        var end = End("23L");
+        var plan = TrafficTestPlan.Build(end, TrafficTestVariant.A1);
+        var start = DateTimeOffset.UtcNow;
+        var analysis = new TrafficTestAnalysis(plan, start);
+        var t = 0;
+
+        // Anflug mit 2,5° Nase hoch und 1,5° Querneigung, auf den letzten Sekunden Nase auf 6° (Abfangen)
+        for (var nm = 3.0; nm > 0; nm -= 0.1)
+        {
+            var bank = nm < 1.5 ? -4 : 1.5;
+            Add(analysis, end, start, t++, -nm * RunwayEnd.MetersPerNm, TrafficTestPlan.GlidePathFt(end, nm), ias: 140, gs: 140, onGround: false, agl: 100, pitch: 2.5, bank: bank);
+        }
+
+        Add(analysis, end, start, t++, 150, end.ElevationFt + 15, ias: 135, gs: 135, onGround: false, agl: 15, vs: -400, pitch: 5);
+        Add(analysis, end, start, t++, 250, end.ElevationFt + 5, ias: 132, gs: 132, onGround: false, agl: 5, vs: -200, pitch: 6);
+        Add(analysis, end, start, t++, 320, end.ElevationFt, ias: 130, gs: 130, onGround: true, agl: 0, pitch: 4);
+
+        var summary = analysis.Summary();
+        Assert.Equal(2.5, summary.ApproachPitchDeg);
+        Assert.Equal(6, summary.Touchdown!.PitchDeg);
+        Assert.Equal(3.5, summary.Touchdown.FlarePitchGainDeg);
+        Assert.Equal(200, summary.Touchdown.SinkRateFpm);
+        Assert.Equal(4, summary.MaxFinalBankDeg);
+        Assert.Contains(summary.Gates, g => g.Name == "1nm" && g.PitchDeg == 2.5);
+    }
+
+    [Fact]
+    public void Abfrage_Struktur_passt_zu_den_SimVars()
+    {
+        var doubles = typeof(AiProbeData).GetFields().Count(f => f.FieldType == typeof(double));
+        Assert.Equal(AiProbeVariables.Numeric.Count, doubles);
+        Assert.Contains(AiProbeVariables.Numeric, v => v.Name == "PLANE PITCH DEGREES");
+        Assert.Contains(AiProbeVariables.Numeric, v => v.Name == "PLANE BANK DEGREES");
+    }
+
+    [Theory]
+    [InlineData(null, true)]
+    [InlineData("", true)]
+    [InlineData("23L", true)]
+    [InlineData("rwy 23l", true)]
+    [InlineData("EDDL 23L", true)]
+    [InlineData("eddl", true)]
+    [InlineData("05R", false)]
+    [InlineData("EDDF 23L", false)]
+    [InlineData("EDDF", false)]
+    public void Bahnfilter_fuer_Status_und_Stop(string? filter, bool expected) =>
+        Assert.Equal(expected, TrafficTestService.Matches(End("23L"), filter));
+
+    [Fact]
+    public void Kennzeichen_DUO01_bis_DUO04()
+    {
+        Assert.Equal(TrafficTestService.TailNumber, TrafficTestService.Tail(0));
+        Assert.Equal("DUO04", TrafficTestService.Tail(TrafficTestService.MaxConcurrent - 1));
     }
 
     [Fact]
@@ -275,7 +367,8 @@ public sealed class TrafficTestTests
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
             Assert.False(json.RootElement.GetProperty("enabled").GetBoolean());
-            Assert.Equal("idle", json.RootElement.GetProperty("status").GetProperty("state").GetString());
+            Assert.Equal(0, json.RootElement.GetProperty("running").GetInt32());
+            Assert.Equal(0, json.RootElement.GetProperty("tests").GetArrayLength());
 
             var tests = app.App.Services.GetRequiredService<TrafficTestService>();
             var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -303,9 +396,15 @@ public sealed class TrafficTestTests
         bool onGround,
         double agl,
         double vs = -700,
-        double gear = 100)
+        double gear = 100,
+        double pitch = 0,
+        double bank = 0)
     {
         var (lat, lon) = end.Point(alongM);
-        return analysis.Add(new AiProbeSample(1, start.AddSeconds(seconds), lat, lon, altitudeFt, agl, ias, gs, vs, end.HeadingTrueDeg, onGround, gear > 0, gear, 0, 0, 0, "SIMPLE_LANDING"));
+        return analysis.Add(new AiProbeSample(1, start.AddSeconds(seconds), lat, lon, altitudeFt, agl, ias, gs, vs, end.HeadingTrueDeg, onGround, gear > 0, gear, 0, 0, 0, "SIMPLE_LANDING")
+        {
+            PitchDeg = pitch,
+            BankDeg = bank,
+        });
     }
 }

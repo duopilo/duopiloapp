@@ -57,9 +57,9 @@ Up to version 0.9.x Duopilo was called **Kopilot**. Most things carry over by th
 | `get_progress` | Progress against the plan: next fix (on the A32NX the active FMS waypoint, e.g. after DIR TO), distance/ETA, TOD, cross-track, fuel vs. plan, history of the automatic fuel checks (`fuelCheck`). ETA from the navlog times (planned winds), corrected by the deviation at the last fix passed; without navlog times from the ground speed (`etaSource`) |
 | `get_atc` | In-game ATC: callsign, clearances, assigned runway (incl. L/C/R from SimBrief) |
 | `get_traffic` | Traffic nearby (AI and multiplayer): callsign, type, distance, clock bearing, altitude difference, trend, GS, callout for the closest target |
-| `traffic_test_start` | Developer test, off by default: spawns an AI aircraft (`DUO01`) that flies a final approach by waypoints and lands – variant A1 or A2 (see [Traffic test](#traffic-test-developer)) |
-| `traffic_test_status` | State and evaluation of the traffic test: touchdown, floating, speed against request, stop point, CSV file |
-| `traffic_test_stop` | Ends the traffic test and removes the aircraft |
+| `traffic_test_start` | Developer test, off by default: spawns an AI aircraft (`DUO01`–`DUO04`) that flies a final approach by waypoints and lands – variant A1 or A2, up to 4 at once, one per runway (see [Traffic test](#traffic-test-developer)) |
+| `traffic_test_status` | State and evaluation of the traffic tests: touchdown, flare, floating, speed against request, stop point, CSV file |
+| `traffic_test_stop` | Ends the traffic tests (or the one on a runway) and removes the aircraft |
 | `traffic_test_models` | Installed aircraft models (title, livery) for the traffic test |
 | `get_navigation` | The sim's GPS flight plan variables (usually empty with airliner FMSs – use `get_progress` then) |
 | `get_environment` | Wind, OAT, QNH, altimeter setting, visibility, UTC/local time |
@@ -208,20 +208,22 @@ This is not TCAS: no resolution advisory, no prediction of the closest point of 
 
 ### Traffic test (developer)
 
-First step towards Duopilo's own traffic (research: [docs/research/eigener-verkehr.md](docs/research/eigener-verkehr.md)): one AI aircraft without ATC control flies a final approach by waypoints, lands and stops on the runway. Off by default because it creates objects in the sim – switch it on in `appsettings.Local.json` and restart Duopilo:
+First step towards Duopilo's own traffic (research: [docs/research/eigener-verkehr.md](docs/research/eigener-verkehr.md)): AI aircraft without ATC control fly a final approach by waypoints, land and stop on the runway. Off by default because it creates objects in the sim – switch it on in `appsettings.Local.json` and restart Duopilo:
 
 ```json
 { "Duopilo": { "TrafficTest": { "Enabled": true } } }
 ```
 
 - **Start:** `traffic_test_start` with airport and runway end (`EDDL`, `23L`), at most 80 NM from your aircraft. Pick a runway you are not using.
+  - **Several at once:** up to 4 tests, one per runway – e.g. a parallel approach with one call for `05L` and one for `05R`. A new test on a runway that already has one replaces it.
   - **A1:** spawn 5 NM out with the gear already down – without it, AI aircraft tend to float above the runway (see the research).
   - **A2:** spawn 15 NM out with the gear up, gear down at 10 NM – does a later gear extension work too?
-- **Aircraft:** without `title` Duopilo takes an FSLTL A320 if installed, otherwise any A320; `traffic_test_models` lists the installed models with liveries. Tail number `DUO01`, so `get_traffic` shows it as well. A full flyable aircraft (e.g. the A320neo) ignores the gear command as AI and only lowers the gear on the runway – simple AI models (FSLTL) are the better choice.
+- **Aircraft:** without `title` Duopilo takes an FSLTL A320 if installed, otherwise any A320; `traffic_test_models` lists the installed models with liveries. Tail numbers `DUO01` to `DUO04`, so `get_traffic` shows them as well. Full flyable aircraft (e.g. the A320neo) ignore the gear command as AI and only lower the gear themselves shortly before touchdown – simple AI models (FSLTL) are the better choice.
 - **Gear:** `gear` chooses the command – `all` (default: event `GEAR_DOWN`, event `GEAR_SET` 1 and the simvar `GEAR HANDLE POSITION`), `down`, `set` or `handle`. If the gear doesn't extend in the air, Duopilo sends it up to three more times. The CSV logs total, nose and both main gear positions, because not every model keeps all of them up to date.
 - **Path:** 3° glide path to 50 ft over the threshold, touchdown 300 m behind it, rollout with decreasing speed and stop on the runway. One waypoint lies 60 m past the stop point, because the AI stops short of the last one.
-- **Evaluation:** `traffic_test_status` (browser: `/traffic-test`, models: `/traffic-test/models?filter=A320`) – verdict `stopped`, `landed`, `floated` (hovers above the runway) or `airborne`, speed against request, values at the gates, touchdown point and speed, float seconds, stop point. Samples once a second in `%LOCALAPPDATA%\Duopilo\traffic-tests\` (CSV), the evaluation as JSON next to it.
-- **End:** `traffic_test_stop` removes the aircraft; it is also removed after `MaxMinutes` (default 15) and when Duopilo exits.
+- **Last mile lower:** the AI levels off on short final and crossed the threshold 170–190 ft high in the first tests. That's why the waypoints of the last mile lie below the glide path: the threshold by `finalLowFt` (default 100 ft), 0.5 NM by 60 %, 1 NM by a quarter. `finalLowFt: 0` flies exactly on the glide path; the evaluation always measures against the glide path.
+- **Evaluation:** `traffic_test_status` (browser: `/traffic-test`, models: `/traffic-test/models?filter=A320`) – verdict `stopped`, `landed`, `floated` (hovers above the runway) or `airborne`, speed against request, values at the gates (deviation from the glide path, pitch), touchdown point, speed, sink rate and pitch, flare (how far the nose came up before touchdown), max bank on final, float seconds, stop point. With `runway` only that test. Samples once a second in `%LOCALAPPDATA%\Duopilo\traffic-tests\` (CSV), the evaluation as JSON next to it.
+- **End:** `traffic_test_stop` removes the aircraft (with `runway` only that one); they are also removed after `MaxMinutes` (default 15) and when Duopilo exits.
 
 ## Speech output
 

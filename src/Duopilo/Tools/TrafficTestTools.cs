@@ -16,12 +16,13 @@ public static class TrafficTestTools
 
     [McpServerTool(Name = "traffic_test_start", ReadOnly = false, Destructive = false, Idempotent = false)]
     [Description(
-        "Developer test tool (off by default, Duopilo:TrafficTest:Enabled): spawns one AI aircraft (tail DUO01, no ATC control) that flies a " +
-        "final approach to a runway by waypoints, lands and stops on the runway – to find out whether Duopilo can run its own traffic. " +
+        "Developer test tool (off by default, Duopilo:TrafficTest:Enabled): spawns an AI aircraft (tail DUO01–DUO04, no ATC control) that " +
+        "flies a final approach to a runway by waypoints, lands and stops on the runway – to find out whether Duopilo can run its own traffic. " +
         "Variant A1: spawn 5 NM out on the extended centerline with the gear already down. Variant A2: spawn 15 NM out with the gear up, gear " +
-        "down at 10 NM. Only one test at a time; starting a new one ends the previous. Pick a runway the pilot is not using right now. " +
-        "Samples (1 per second) go to a CSV in the data folder (traffic-tests). Follow with traffic_test_status, end with traffic_test_stop " +
-        "(the aircraft is removed; after MaxMinutes, default 15, also without stop).")]
+        "down at 10 NM. Up to 4 tests at the same time, one per runway (e.g. a parallel approach: one call for 05L, one for 05R); starting a " +
+        "test on a runway that already has one replaces it. Pick runways the pilot is not using right now. Samples (1 per second) go to one CSV " +
+        "per test in the data folder (traffic-tests). Follow with traffic_test_status, end with traffic_test_stop (the aircraft is removed; " +
+        "after MaxMinutes, default 15, also without stop).")]
     public static async Task<string> Start(
         TrafficTestService tests,
         [Description("ICAO code of the airport, e.g. EDDL. Must be within 80 NM of the pilot's aircraft.")] string airport,
@@ -33,6 +34,11 @@ public static class TrafficTestTools
         [Description(
             "How the gear is lowered: 'all' (default: event GEAR_DOWN, event GEAR_SET 1 and the simvar GEAR HANDLE POSITION together), " +
             "'down' (only GEAR_DOWN), 'set' (only GEAR_SET 1) or 'handle' (only GEAR HANDLE POSITION) – to find out which one the model obeys.")] string gear = "all",
+        [Description(
+            "How far the waypoints of the last mile lie below the 3° glide path, in ft (0–300): the threshold waypoint by the full value, " +
+            "0.5 NM by 60 %, 1 NM by a quarter. The AI levels off on short final and crossed the threshold 170–190 ft high in the first " +
+            "tests; aiming lower should bring it down on the glide path. The evaluation still measures against the glide path. " +
+            "0 = exactly on the glide path, empty = 100.")] double? finalLowFt = null,
         CancellationToken cancellationToken = default)
     {
         if (!Enum.TryParse<TrafficTestVariant>(variant?.Trim(), ignoreCase: true, out var parsed) || !Enum.IsDefined(parsed))
@@ -47,7 +53,7 @@ public static class TrafficTestTools
 
         try
         {
-            var status = await tests.StartTestAsync(new TrafficTestRequest(airport, runway, parsed, title, livery, spawnNm, gearMethod), cancellationToken);
+            var status = await tests.StartTestAsync(new TrafficTestRequest(airport, runway, parsed, title, livery, spawnNm, gearMethod, finalLowFt), cancellationToken);
             return Json.Serialize(new { ok = true, status });
         }
         catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or TimeoutException or ArgumentException)
@@ -58,21 +64,33 @@ public static class TrafficTestTools
 
     [McpServerTool(Name = "traffic_test_status", ReadOnly = true)]
     [Description(
-        "State of the traffic test (traffic_test_start): running/ended, last sample (altitude, IAS against the requested speed, ground speed, " +
-        "vertical speed, gear, distance to the threshold, position relative to the centerline, AI state), events (spawn, gear, touchdown, " +
-        "stopped …) and the evaluation: verdict (stopped, landed, floated = hovered above the runway without touching down, airborne), " +
-        "speed deviation, values at the approach gates, touchdown point and speed, float seconds, stop point. Paths of the CSV and summary files.")]
-    public static string Status(TrafficTestService tests) =>
-        Json.Serialize(new { ok = true, enabled = tests.Enabled, status = tests.Status() });
+        "State of the traffic tests (traffic_test_start), one entry per test in 'tests' (running ones and the last ended ones): running/ended, " +
+        "tail, last sample (altitude, IAS against the requested speed, ground speed, vertical speed, pitch – nose up positive –, bank, gear, " +
+        "distance to the threshold, position relative to the centerline, AI state), events (spawn, gear, touchdown, stopped …) and the " +
+        "evaluation: verdict (stopped, landed, floated = hovered above the runway without touching down, airborne), speed deviation, values " +
+        "at the approach gates (altitude deviation from the glide path, pitch), approach pitch, touchdown point, speed, sink rate, pitch and " +
+        "flare (pitch gain before touchdown), max bank on final, float seconds, stop point. Paths of the CSV and summary files.")]
+    public static string Status(
+        TrafficTestService tests,
+        [Description("Only the test on this runway, e.g. 05L or 'EDDL 05L'. Empty = all tests.")] string? runway = null)
+    {
+        var all = tests.Status(runway);
+        return Json.Serialize(new { ok = true, enabled = tests.Enabled, running = all.Count(t => t.State == "running"), tests = all });
+    }
 
     [McpServerTool(Name = "traffic_test_stop", ReadOnly = false, Destructive = false, Idempotent = true)]
-    [Description("Ends the traffic test: removes the test aircraft from the sim and writes the evaluation next to the CSV. Returns the final status.")]
-    public static async Task<string> Stop(TrafficTestService tests, CancellationToken cancellationToken = default)
+    [Description(
+        "Ends traffic tests: removes the test aircraft from the sim and writes the evaluation next to the CSV. Without runway all tests " +
+        "end. Returns the final state of all tests.")]
+    public static async Task<string> Stop(
+        TrafficTestService tests,
+        [Description("Only the test on this runway, e.g. 05L or 'EDDL 05L'. Empty = all tests.")] string? runway = null,
+        CancellationToken cancellationToken = default)
     {
         try
         {
-            var status = await tests.StopTestAsync("stopped", cancellationToken);
-            return Json.Serialize(new { ok = true, status });
+            var all = await tests.StopTestAsync("stopped", cancellationToken, runway);
+            return Json.Serialize(new { ok = true, running = all.Count(t => t.State == "running"), tests = all });
         }
         catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
         {

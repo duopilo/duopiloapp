@@ -213,8 +213,33 @@ installiert war. Drei Läufe A1, einer A2.
   10 kt keine Werte mehr – Ursache offen (Objekt entfernt oder Abfrage beendet).
 - **KI-Zustände:** STATE_SIMPLE_FLIGHT → STATE_SIMPLE_LANDING → STATE_SIMPLE_TAXI → STATE_SLEEP (nach dem Halt).
 
-Nächste Schritte: dieselben Läufe mit einem FSLTL-Modell und den einzelnen `gear`-Methoden, Speed über den Schub
-(`THROTTLE_REQUESTED`), danach Stufe B.
+**Weitere Modelle (31.10./1.11.2026, beta.9, A1, EDDL 05L):**
+
+| Modell | Aufsetzen hinter der Schwelle | IAS, Sinkrate | Speed im Anflug | Schwelle über Gleitpfad |
+|---|---|---|---|---|
+| A330 BelugaXL | 897 m | 129 kt, 1415 ft/min | 169 kt | +191 ft |
+| F/A-18E | 1808 m | 125 kt, 1196 ft/min | 167 kt | +190 ft |
+| B737-800 (Asobo PassiveAircraft, SunExpress) | 1144 m | 129 kt, 1413 ft/min | 169 kt | +188 ft |
+| A380X (FlyByWire) | 837 m | 121 kt, 1345 ft/min | 160 kt | +168 ft |
+
+Dazu A321 (iniBuilds), A330-900 (Headwind), A330-300 und A310 (iniBuilds) sowie die 747 (Asobo): Aufsetzen ebenfalls rund
+880–1090 m hinter der Schwelle.
+
+- **Muster:** Bis 1 NM halten alle den Gleitpfad mit etwa +50 ft, dann fängt die KI ab und kreuzt die Schwelle 170–190 ft zu
+  hoch. Danach drückt sie steil auf die Bahn – spät und hart, über 1000 ft/min.
+- **Optisch:** Die Modelle der A32NX-Familie (A32NX, A330-900 von Headwind, A380X) landen unschön, die anderen sehen besser aus,
+  auch wenn sie hinter der Schwelle aufsetzen. Vermutlich arbeitet die KI gegen die eigene Fly-by-Wire-Steuerung dieser Modelle.
+  Die FBW-Modelle fliegen auch genau 160 kt, die anderen 166–181 kt.
+- **Fahrwerk:** Beim Aufsetzen war es laut Beobachtung immer ganz draußen; die KI fährt es 10–20 s vorher selbst aus. Die
+  Gear-Variablen blieben bei allen Modellen bei 1 %, auch am Boden – das Ausfahren ist nur im Sim zu sehen.
+- **Auch das leichte Verkehrsmodell** (Asobo PassiveAircraft) verhält sich wie die vollen Flugzeuge.
+
+**Ab beta.10:** Die Wegpunkte der letzten Meile liegen tiefer (`finalLowFt`, Standard 100 ft an der Schwelle), die Auswertung
+misst weiter gegen den Gleitpfad. Pitch und Bank werden aufgezeichnet, das Abfangen ist so messbar (Nase vor dem Aufsetzen gegenüber
+2–1 NM). Bis zu 4 Tests gleichzeitig, je Bahn einer (Parallelanflug 05L/05R).
+
+Nächste Schritte: Nachtests in EDDL 05L (gleiche Umgebung wie oben), dann der Parallelanflug A330-300 auf 05R und A330-900 auf
+05L. Sieht es dann immer noch komisch aus, in Frankfurt testen. Danach Speed über den Schub (`THROTTLE_REQUESTED`) und Stufe B.
 
 **Entscheidung danach:**
 

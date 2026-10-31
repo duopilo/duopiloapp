@@ -57,10 +57,11 @@ Jede Antwort wird in `%LOCALAPPDATA%\Duopilo\logs\traffic-messages.csv` protokol
 
 ## Verkehrstest (Entwicklung)
 
-Erster Schritt zu eigenem Verkehr in Duopilo: `traffic_test_start` erzeugt ein KI-Flugzeug (`DUO01`), das über Wegpunkte einen Endanflug fliegt, landet und auf der Bahn hält. Standardmäßig aus – einschalten mit `"TrafficTest": { "Enabled": true }` in `appsettings.Local.json`.
+Erster Schritt zu eigenem Verkehr in Duopilo: `traffic_test_start` erzeugt ein KI-Flugzeug (`DUO01`–`DUO04`), das über Wegpunkte einen Endanflug fliegt, landet und auf der Bahn hält – bis zu 4 gleichzeitig, je Bahn eins (z. B. Parallelanflug auf 05L und 05R). Standardmäßig aus – einschalten mit `"TrafficTest": { "Enabled": true }` in `appsettings.Local.json`.
 
 - **A1:** Spawn 5 NM vor der Bahn mit Fahrwerk unten. **A2:** Spawn 15 NM vor der Bahn, Fahrwerk bei 10 NM.
-- `traffic_test_status` zeigt die Auswertung (Aufsetzen, Schweben, Speed, Haltepunkt), die Messpunkte liegen unter `%LOCALAPPDATA%\Duopilo\traffic-tests\`.
-- `traffic_test_stop` entfernt das Flugzeug (auch nach 15 Minuten und beim Beenden von Duopilo).
+- Die Wegpunkte der letzten Meile liegen bis zu 100 ft unter dem Gleitpfad (`finalLowFt`), weil die KI im kurzen Endanflug abfängt.
+- `traffic_test_status` zeigt die Auswertung (Aufsetzen, Abfangen, Schweben, Speed, Haltepunkt), die Messpunkte liegen unter `%LOCALAPPDATA%\Duopilo\traffic-tests\`.
+- `traffic_test_stop` entfernt die Flugzeuge, mit `runway` nur das eine (auch nach 15 Minuten und beim Beenden von Duopilo).
 
 Hintergrund und Plan: [Recherche zu eigenem Verkehr](https://github.com/duopilo/duopiloapp/blob/main/docs/research/eigener-verkehr.md).

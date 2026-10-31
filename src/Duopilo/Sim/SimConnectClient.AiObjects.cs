@@ -317,7 +317,12 @@ public sealed partial class SimConnectClient
                 d.GearCenterPercent,
                 d.GearLeftPercent,
                 d.GearRightPercent,
-                string.IsNullOrWhiteSpace(state) ? null : state);
+                string.IsNullOrWhiteSpace(state) ? null : state)
+            {
+                // Der Sim zählt Nase hoch negativ
+                PitchDeg = -d.PitchDeg,
+                BankDeg = d.BankDeg,
+            };
             try
             {
                 probe.OnSample(sample);
@@ -605,6 +610,12 @@ public sealed record AiProbeSample(
     /// A320neo blieb GEAR TOTAL PCT EXTENDED im Test bei etwa 1 %, obwohl das Fahrwerk auf der Bahn sichtbar draußen war.
     /// </summary>
     public double GearExtendedPercent => Math.Max(Math.Max(GearTotalPercent, GearCenterPercent), Math.Max(GearLeftPercent, GearRightPercent));
+
+    /// <summary>Längsneigung in Grad, Nase hoch positiv (PLANE PITCH DEGREES mit umgedrehtem Vorzeichen) – zeigt, ob die KI abfängt.</summary>
+    public double PitchDeg { get; init; }
+
+    /// <summary>Querneigung in Grad (PLANE BANK DEGREES, Vorzeichen wie im Sim).</summary>
+    public double BankDeg { get; init; }
 }
 
 /// <summary>SimVars der KI-Abfrage, in dieser Reihenfolge in der Data Definition (siehe <see cref="AiProbeData"/>).</summary>
@@ -626,13 +637,15 @@ public static class AiProbeVariables
         ("GEAR CENTER POSITION", "percent"),
         ("GEAR LEFT POSITION", "percent"),
         ("GEAR RIGHT POSITION", "percent"),
+        ("PLANE PITCH DEGREES", "degrees"),
+        ("PLANE BANK DEGREES", "degrees"),
     ];
 
     /// <summary>Zustand der KI (z. B. „SIMPLE_LANDING“), als STRING64 hinter den Zahlen.</summary>
     public const string State = "AI TRAFFIC STATE";
 }
 
-/// <summary>Struktur zu <see cref="AiProbeVariables"/>: vierzehn FLOAT64, dann STRING64.</summary>
+/// <summary>Struktur zu <see cref="AiProbeVariables"/>: sechzehn FLOAT64, dann STRING64.</summary>
 [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
 public struct AiProbeData
 {
@@ -663,6 +676,10 @@ public struct AiProbeData
     public double GearLeftPercent;
 
     public double GearRightPercent;
+
+    public double PitchDeg;
+
+    public double BankDeg;
 
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
     public string State;

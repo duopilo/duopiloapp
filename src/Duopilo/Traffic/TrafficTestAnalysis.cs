@@ -18,13 +18,27 @@ public sealed record TrafficTestPoint(
     IReadOnlyList<string> Events);
 
 /// <summary>Werte beim Überfliegen eines Wegpunkts im Anflug.</summary>
-/// <param name="AltitudeDeviationFt">Höhe minus geplante Höhe (positiv = zu hoch).</param>
-public sealed record TrafficTestGate(string Name, double IndicatedKt, double TargetKt, double AltitudeDeviationFt, double CrossM);
+/// <param name="AltitudeDeviationFt">Höhe minus Gleitpfad (positiv = zu hoch) – auch bei tiefer gelegten Wegpunkten gegen den Pfad.</param>
+/// <param name="PitchDeg">Längsneigung, Nase hoch positiv.</param>
+public sealed record TrafficTestGate(string Name, double IndicatedKt, double TargetKt, double AltitudeDeviationFt, double CrossM, double PitchDeg);
 
 /// <summary>Erster Bodenkontakt nach dem Anflug.</summary>
 /// <param name="AlongM">Hinter der Schwelle (geplant: <see cref="TrafficTestPlan.TouchdownM"/>).</param>
 /// <param name="SinkRateFpm">Sinkrate des letzten Messpunkts in der Luft (positiv = sinkend).</param>
-public sealed record TrafficTestTouchdown(double Seconds, double AlongM, double CrossM, double IndicatedKt, double GroundSpeedKt, double SinkRateFpm);
+/// <param name="PitchDeg">Längsneigung des letzten Messpunkts in der Luft, Nase hoch positiv.</param>
+/// <param name="FlarePitchGainDeg">
+/// Wie weit die Nase in den letzten <see cref="TrafficTestAnalysis.FlareWindowSeconds"/> s vor dem Aufsetzen über die mittlere Neigung
+/// zwischen 2 und 1 NM ging – ab etwa 2° hat die KI abgefangen, um 0 ist sie ohne Abfangen aufgesetzt. Null ohne Messpunkte dort.
+/// </param>
+public sealed record TrafficTestTouchdown(
+    double Seconds,
+    double AlongM,
+    double CrossM,
+    double IndicatedKt,
+    double GroundSpeedKt,
+    double SinkRateFpm,
+    double PitchDeg,
+    double? FlarePitchGainDeg);
 
 /// <summary>Auswertung eines Testanflugs.</summary>
 /// <param name="Verdict">stopped (gelandet und angehalten), landed, floated (schwebt über der Bahn), airborne, no_data.</param>
@@ -32,6 +46,8 @@ public sealed record TrafficTestTouchdown(double Seconds, double AlongM, double 
 /// <param name="GearExtendedAtNm">Entfernung zur Schwelle, als das Fahrwerk ganz draußen war (0 = erst hinter der Schwelle).</param>
 /// <param name="FloatSeconds">Sekunden unter 30 ft über Grund in der Luft, weiter als 300 m hinter dem geplanten Aufsetzpunkt.</param>
 /// <param name="StopShortOfLastWaypointM">Wie weit die KI vor dem letzten Rollwegpunkt angehalten hat.</param>
+/// <param name="ApproachPitchDeg">Mittlere Längsneigung zwischen 2 und 1 NM (Nase hoch positiv).</param>
+/// <param name="MaxFinalBankDeg">Größte Querneigung (Betrag) in der Luft auf den letzten 2 NM bis zum Aufsetzen.</param>
 public sealed record TrafficTestSummary(
     string Verdict,
     int Samples,
@@ -47,6 +63,8 @@ public sealed record TrafficTestSummary(
     double? MaxRolloutCrossM,
     double? StopAlongM,
     double? StopShortOfLastWaypointM,
+    double? ApproachPitchDeg,
+    double? MaxFinalBankDeg,
     IReadOnlyList<string> AiStates);
 
 /// <summary>
@@ -55,6 +73,9 @@ public sealed record TrafficTestSummary(
 /// </summary>
 public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spawnUtc)
 {
+    /// <summary>Zeitfenster vor dem Aufsetzen, in dem die Auswertung das Abfangen sucht.</summary>
+    public const double FlareWindowSeconds = 10;
+
     private const double FloatAglFt = 30;
 
     private const double FloatMarginM = 300;
@@ -63,6 +84,11 @@ public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spa
 
     private readonly List<TrafficTestGate> _gates = [];
     private readonly List<string> _states = [];
+    private readonly Queue<(double Seconds, double PitchDeg)> _recentPitch = new();
+    private double _approachPitchSum;
+    private int _approachPitchCount;
+    private double? _maxFinalBank;
+    private double _lastAirbornePitch;
     private double _speedDeviationSum;
     private int _speedDeviationCount;
     private double? _maxSpeedDeviation;
@@ -108,6 +134,27 @@ public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spa
         {
             _wasAirborne = true;
             _lastAirborneVs = s.VerticalSpeedFpm;
+            _lastAirbornePitch = s.PitchDeg;
+
+            if (_touchdown is null)
+            {
+                _recentPitch.Enqueue((seconds, s.PitchDeg));
+                while (_recentPitch.Count > 0 && _recentPitch.Peek().Seconds < seconds - FlareWindowSeconds)
+                {
+                    _recentPitch.Dequeue();
+                }
+
+                if (along >= -2 * RunwayEnd.MetersPerNm)
+                {
+                    _maxFinalBank = Math.Max(_maxFinalBank ?? 0, Math.Abs(s.BankDeg));
+                }
+            }
+
+            if (along >= -2 * RunwayEnd.MetersPerNm && along <= -1 * RunwayEnd.MetersPerNm)
+            {
+                _approachPitchSum += s.PitchDeg;
+                _approachPitchCount++;
+            }
 
             if (along < 0)
             {
@@ -142,13 +189,18 @@ public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spa
         {
             if (_wasAirborne && _touchdown is null)
             {
+                double? flareGain = _approachPitchCount > 0 && _recentPitch.Count > 0
+                    ? Math.Round(_recentPitch.Max(p => p.PitchDeg) - (_approachPitchSum / _approachPitchCount), 1)
+                    : null;
                 _touchdown = new TrafficTestTouchdown(
                     Math.Round(seconds, 1),
                     Math.Round(along),
                     Math.Round(cross, 1),
                     Math.Round(s.IndicatedKt),
                     Math.Round(s.GroundSpeedKt),
-                    Math.Round(-_lastAirborneVs));
+                    Math.Round(-_lastAirborneVs),
+                    Math.Round(_lastAirbornePitch, 1),
+                    flareGain);
                 events.Add("touchdown");
             }
 
@@ -197,6 +249,8 @@ public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spa
             _maxRolloutCross is { } r ? Math.Round(r, 1) : null,
             _stopAlong is { } a ? Math.Round(a) : null,
             _stopAlong is { } stop ? Math.Round(lastWaypoint - stop) : null,
+            _approachPitchCount > 0 ? Math.Round(_approachPitchSum / _approachPitchCount, 1) : null,
+            _maxFinalBank is { } bank ? Math.Round(bank, 1) : null,
             [.. _states]);
     }
 
@@ -215,14 +269,17 @@ public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spa
                 continue;
             }
 
-            if (previous < gate.AlongM && along >= gate.AlongM)
+            // Halber Meter Toleranz, damit ein Messpunkt genau auf dem Wegpunkt nicht an Rundung scheitert
+            var at = gate.AlongM - 0.5;
+            if (previous < at && along >= at)
             {
                 _gates.Add(new TrafficTestGate(
                     gate.Name,
                     Math.Round(s.IndicatedKt),
                     gate.Waypoint.SpeedKt,
-                    Math.Round(s.AltitudeFt - gate.Waypoint.AltitudeFt),
-                    Math.Round(cross, 1)));
+                    Math.Round(s.AltitudeFt - gate.GlidePathAltitudeFt),
+                    Math.Round(cross, 1),
+                    Math.Round(s.PitchDeg, 1)));
             }
         }
     }
