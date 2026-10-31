@@ -220,6 +220,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+      actions: write # Pages-Workflow anstoßen, wenn Setup und ZIP am veröffentlichten Release hängen
     steps:
       - name: Repo holen (ganze Geschichte für den Changelog)
         uses: actions/checkout@v7
@@ -293,3 +294,18 @@ jobs:
             gh release create "$TAG" pakete/* --title "$TITEL" --notes-file notes.md --verify-tag "${extra[@]}"
           fi
           echo "Release (Entwurf: $(gh release view "$TAG" --json isDraft --jq .isDraft)): $(gh release view "$TAG" --json url --jq .url)"
+
+      - name: Webseite aktualisieren
+        # Wurde das Release auf GitHub direkt veröffentlicht (Tag beim Veröffentlichen angelegt), kommen Setup und ZIP erst jetzt
+        # dazu. Das Hochladen mit GITHUB_TOKEN löst kein Release-Ereignis aus – deshalb den Pages-Workflow hier selbst starten,
+        # damit der Download-Button auf duopilo.app die neue Version zeigt. Entwürfe ändern an der Seite nichts.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [ "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = "false" ]; then
+            gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref main
+            echo "::notice title=Webseite::$TAG ist veröffentlicht – Pages-Lauf auf main gestartet."
+          else
+            echo "Entwurf – Webseite bleibt unverändert."
+          fi
