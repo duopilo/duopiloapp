@@ -137,7 +137,11 @@ public sealed record RecognitionSettings
 /// <summary>Stimmen und Lautstärke.</summary>
 public sealed record VoicesSettings
 {
-    /// <summary>Feste Kokoro-Stimme des Kopiloten (Callouts und Antworten; Schlüssel "kopilot" = die Rolle, bleibt so). Leer = Stimme des First Officers, ist er aus: die aus dem Dashboard.</summary>
+    /// <summary>
+    /// Feste Stimme des Kopiloten (Schlüssel "kopilot" = die Rolle, bleibt so): eine Kokoro-Stimme ("bf_emma", spricht nur Englisch)
+    /// oder eine mehrsprachige ("supertonic:M1", spricht Callouts auf Englisch und Smalltalk in der Oberflächensprache). Leer = Stimme
+    /// des First Officers, ist er aus: die aus dem Dashboard.
+    /// </summary>
     public string Kopilot { get; init; } = "";
 
     /// <summary>Lautstärke des Kopiloten (Faktor auf die Lautstärke im Dashboard).</summary>
@@ -148,7 +152,7 @@ public sealed record VoicesSettings
 
     public VoicesSettings Normalized() => this with
     {
-        Kopilot = KokoroSpeechEngine.IsEnglishVoice(Kopilot?.Trim()) ? Kopilot!.Trim() : "",
+        Kopilot = FirstOfficerCasting.NormalizeVoice(Kopilot) ?? "",
         KopilotVolume = VoiceSettings.Clamp(KopilotVolume, 0, 1, 1),
         AtcVolume = VoiceSettings.Clamp(AtcVolume, 0, 1, 1),
     };

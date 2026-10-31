@@ -136,7 +136,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
             var acks = _dialog.Acknowledgments;
             var persona = s.Enabled ? _roster.Current : null;
             var config = _smalltalk.Config;
-            var choice = config.Enabled ? SmalltalkChoice(persona) : null;
+            var choice = config.Enabled ? SmalltalkChoice(persona, Loc.Language) : null;
             var gated = _simGated && s.State is "listening" or "muted";
             return _diag.Apply(
                 s with
@@ -153,7 +153,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
                         : new FirstOfficerStatus(
                             persona.Name,
                             persona.GenderText,
-                            persona.Voice,
+                            persona.SpeakingVoice,
                             choice is null ? null : VoiceKey(choice),
                             persona.Introduced,
                             persona.FixedName,
@@ -362,7 +362,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
             _whisperName = recognizer.Name;
             hotkey = RegisterHotkey(settings.Hotkeys.Mute);
             UpdatePersona();
-            PrepareSmalltalkVoice();
+            PrepareFirstOfficerVoice();
             UpdateSimGate();
 
             var runtime = recognizer.Runtime;
@@ -445,7 +445,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
             MutedRules = s.Callouts.Muted,
         };
         _output.ConfigureVoice(WithPersona(_outputOptions));
-        _appliedPersonaVoice = _roster.Current?.Voice;
+        _appliedPersonaVoice = PersonaVoices(_roster.Current);
 
         var taxi = s.Callouts.TaxiSpeed;
         _monitoring.ConfigureTaxiSpeed(taxi.Enabled, taxi.ThresholdKt, taxi.CooldownSec);
@@ -929,7 +929,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
                         break;
                     case VoiceEvent.SettingsChanged _:
                         UpdatePersona();
-                        PrepareSmalltalkVoice();
+                        PrepareFirstOfficerVoice();
                         break;
                     case VoiceEvent.FixedVoice fixedVoice:
                         _settings = _settings with { Voices = _settings.Voices with { Kopilot = fixedVoice.Voice } };
@@ -939,7 +939,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
                         }
 
                         UpdatePersona();
-                        PrepareSmalltalkVoice();
+                        PrepareFirstOfficerVoice();
                         break;
                 }
             }
@@ -1069,6 +1069,7 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
             Source = reply.Smalltalk ? "kopilot:smalltalk" : "kopilot",
             Plain = reply.Smalltalk,
             Voice = reply.Voice,
+            Language = reply.Language,
 
             // Erst wenn der Readback ganz gesprochen ist, zählt "Confirm" (Rückmeldung kommt auf dem Sprach-Thread)
             OnSpoken = end => _events.Writer.TryWrite(new VoiceEvent.ReplySpoken(reply, end)),
@@ -1266,10 +1267,11 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
             (persona, changed) = _roster.Ensure(
                 FirstOfficerRoster.FlightKeyOf(_simBrief.Current),
                 _smalltalk.FirstOfficer,
-                _settings.Voices.Kopilot.Length > 0 ? _settings.Voices.Kopilot : null,
+                FixedPersonaVoice(),
                 _output.EngineVoiceGender,
                 InstalledVoices(),
-                avoid);
+                avoid,
+                AutoEngineVoices());
         }
         catch (Exception ex)
         {
@@ -1286,15 +1288,18 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
             }
             else
             {
-                _log.LogInformation(Loc.Log("log.voice.firstOfficer.assigned"), persona.FlightKey, persona.Name, persona.GenderText, persona.Voice);
+                _log.LogInformation(Loc.Log("log.voice.firstOfficer.assigned"), persona.FlightKey, persona.Name, persona.GenderText, persona.SpeakingVoice);
             }
         }
 
-        if (_outputConfigured && persona?.Voice != _appliedPersonaVoice)
+        if (_outputConfigured && PersonaVoices(persona) != _appliedPersonaVoice)
         {
-            _appliedPersonaVoice = persona?.Voice;
+            _appliedPersonaVoice = PersonaVoices(persona);
             _output.ConfigureVoice(WithPersona(_outputOptions));
         }
+
+        // Neuer Flug, andere mehrsprachige Stimme: deren Stil laden (das Modell teilen sich alle Stimmen)
+        PrepareFirstOfficerVoice();
 
         // Name in den Wortschatz-Hinweis von Whisper, damit er richtig geschrieben wird ("Erik" statt "Eric")
         // (einmal je Name versuchen – schlägt das Neubauen fehl, bleibt der bisherige Hinweis)
@@ -1314,56 +1319,73 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
     }
 
     private VoiceOutputOptions WithPersona(VoiceOutputOptions options) =>
-        _roster.Current is { } persona ? options with { KopilotVoice = persona.Voice } : options;
+        _roster.Current is { } persona ? options with { KopilotVoice = persona.Voice, KopilotEngineVoice = persona.EngineVoice } : options;
+
+    /// <summary>Beide Stimmen des First Officers als ein Wert (geändert → an die Sprachausgabe geben).</summary>
+    private static string? PersonaVoices(FirstOfficerPersona? persona) => persona is null ? null : persona.Voice + "|" + persona.EngineVoice;
+
+    /// <summary>
+    /// Feste Stimme aus voice-settings.json (voices.kopilot): Kokoro oder mehrsprachig. Eine mehrsprachige Stimme, deren Engine
+    /// ausgeschaltet ist (Smalltalk:Supertonic: false), gilt als „automatisch“.
+    /// </summary>
+    private string? FixedPersonaVoice()
+    {
+        var voice = FirstOfficerCasting.NormalizeVoice(_settings.Voices.Kopilot);
+        return voice is null || KokoroSpeechEngine.IsEnglishVoice(voice) || _engines.Find(voice) is not null ? voice : null;
+    }
+
+    /// <summary>
+    /// Automatische Stimme: Läuft der Smalltalk in einer anderen Sprache als Englisch, bekommt der First Officer eine mehrsprachige
+    /// Stimme (Supertonic) – sie spricht Callouts und Smalltalk mit demselben Sprecher. Sonst Kokoro (leer).
+    /// </summary>
+    private IReadOnlyList<TtsVoice> AutoEngineVoices()
+    {
+        var language = Loc.Language.Trim().ToLowerInvariant();
+        if (!_smalltalk.Config.Enabled || language == SmalltalkVoices.English)
+        {
+            return [];
+        }
+
+        return MultilingualVoices.All.Where(v => _engines.Find(v.Key) is not null && MultilingualVoices.Speaks(v, language)).ToList();
+    }
 
     private IReadOnlyCollection<string> InstalledVoices() =>
         _installedVoices ??= KokoroSpeechEngine.ListVoices(Path.Combine(AppContext.BaseDirectory, "voices"));
 
-    /// <summary>Sprache und Stimme des Smalltalks: Oberflächensprache, Geschlecht passend zum First Officer.</summary>
-    private SmalltalkVoiceChoice SmalltalkChoice(FirstOfficerPersona? persona) =>
-        SmalltalkVoices.Choose(Loc.Language, persona?.Gender ?? VoiceGender.Male, persona?.Name ?? "kopilot", _engines.Engines);
+    /// <summary>Sprache und Stimme des Smalltalks: <paramref name="language"/>, wenn die Stimme des First Officers sie spricht.</summary>
+    private SmalltalkVoiceChoice SmalltalkChoice(FirstOfficerPersona? persona, string language) =>
+        SmalltalkVoices.Choose(language, persona?.EngineVoice, _engines.Engines);
 
-    /// <summary>Stimme einer anderen Engine nur, wenn der Smalltalk wirklich in der gewünschten Sprache läuft.</summary>
-    private static string? VoiceKey(SmalltalkVoiceChoice choice) =>
-        choice.FellBack || choice.Language == SmalltalkVoices.English ? null : choice.Voice?.Key;
+    /// <summary>Mehrsprachige Stimme, die den Smalltalk spricht (null = die Kokoro-Stimme des First Officers).</summary>
+    private static string? VoiceKey(SmalltalkVoiceChoice choice) => choice.Voice?.Key;
 
     /// <summary>Hinweis im Dashboard, wenn der Smalltalk auf Englisch zurückfällt.</summary>
     private string? SmalltalkNote(SmalltalkVoiceChoice choice)
     {
         var language = Loc.Available.FirstOrDefault(l => l.Code == choice.Wanted)?.Name ?? choice.Wanted;
-        if (choice.Prepare is not null && !choice.FellBack)
-        {
-            // Bevorzugte Stimme lädt noch, solange spricht der Rückfall in der richtigen Sprache
-            return Loc.T("voice.smalltalk.betterVoiceLoading", language);
-        }
-
         return choice.Reason switch
         {
+            "englishVoice" => Loc.T("voice.smalltalk.englishVoice", language),
             "noVoice" => Loc.T("voice.smalltalk.noVoice", language),
             "downloading" => Loc.T("voice.smalltalk.voiceLoading", language),
-            "failed" => Loc.T("voice.smalltalk.voiceFailed", language, _engines.Engine(choice.Voice?.Engine)?.Error ?? "?"),
+            "failed" => Loc.T("voice.smalltalk.voiceFailed", language, _engines.Find(_roster.Current?.EngineVoice)?.Engine.Error ?? "?"),
             _ => null,
         };
     }
 
     /// <summary>
-    /// Stimme für den Smalltalk in der Oberflächensprache im Hintergrund laden (Supertonic, sonst Piper), wenn sie gebraucht wird –
-    /// auch, wenn solange ein Rückfall spricht.
+    /// Mehrsprachige Stimme des First Officers (Supertonic) im Hintergrund laden, sobald er sie hat – auch ohne Smalltalk, sie spricht
+    /// ja auch die Callouts. Solange spricht seine Kokoro-Stimme.
     /// </summary>
-    private void PrepareSmalltalkVoice()
+    private void PrepareFirstOfficerVoice()
     {
-        if (!_smalltalk.Config.Enabled)
+        if (_roster.Current?.EngineVoice is not { } key || _engines.Find(key) is not { } found || found.Engine.StateOf(found.Voice) != TtsState.Idle)
         {
             return;
         }
 
-        var choice = SmalltalkChoice(_roster.Current);
-        var target = choice.Prepare ?? (choice.Reason == "downloading" ? choice.Voice : null);
-        if (target is { } voice && _engines.Engine(voice.Engine) is { } engine && engine.StateOf(voice) == TtsState.Idle)
-        {
-            _log.LogInformation(Loc.Log("log.voice.smalltalk.preparingVoice"), voice.Key, choice.Wanted);
-            _ = engine.PrepareAsync(voice, _stoppingToken);
-        }
+        _log.LogInformation(Loc.Log("log.voice.firstOfficer.preparingVoice"), key);
+        _ = found.Engine.PrepareAsync(found.Voice, _stoppingToken);
     }
 
     /// <summary>
@@ -1373,8 +1395,8 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
     private void StartChat(string text)
     {
         var persona = _roster.Current;
-        var choice = SmalltalkChoice(persona);
-        PrepareSmalltalkVoice();
+        var choice = SmalltalkChoice(persona, Loc.Language);
+        PrepareFirstOfficerVoice();
         var question = new SmalltalkQuestion(text, choice.Language, persona?.Name, ReadContext());
         _log.LogInformation(Loc.Log("log.voice.smalltalk.asked"), SmalltalkProviders.DisplayName(_smalltalk.Config.Provider), choice.Language);
         CancelChat();
@@ -1480,11 +1502,12 @@ public sealed class VoiceLoop : BackgroundService, IVoiceStatusSource
             return null;
         }
 
-        var choice = _smalltalk.Config.Enabled ? SmalltalkChoice(persona) : null;
-        var language = choice?.Language ?? SmalltalkVoices.English;
+        // Ohne Smalltalk auf Englisch – aber immer mit seiner Stimme (mehrsprachig, sobald sie geladen ist)
+        var choice = SmalltalkChoice(persona, _smalltalk.Config.Enabled ? Loc.Language : SmalltalkVoices.English);
+        var language = choice.Language;
         _roster.MarkIntroduced();
         _log.LogInformation(Loc.Log("log.voice.firstOfficer.introduced"), persona.Name, language);
-        return VoiceReply.Chat(FirstOfficerCasting.Introduction(persona.Name, language), language, choice is null ? null : VoiceKey(choice));
+        return VoiceReply.Chat(FirstOfficerCasting.Introduction(persona.Name, language), language, VoiceKey(choice));
     }
 
     /// <summary>

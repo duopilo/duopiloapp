@@ -9,12 +9,19 @@ using Duopilo.Speech;
 
 namespace Duopilo.Voice;
 
-/// <summary>Der First Officer eines Flugs: Name, Geschlecht und Kokoro-Stimme. Bleibt während des Flugs gleich.</summary>
+/// <summary>Der First Officer eines Flugs: Name, Geschlecht und Stimme. Bleibt während des Flugs gleich.</summary>
 /// <param name="FlightKey">Flug (SimBrief-Request-ID; <see cref="FirstOfficerRoster.Unplanned"/> ohne Plan).</param>
-/// <param name="Voice">Kokoro-Stimme für Callouts, Antworten und englischen Smalltalk ("bf_emma").</param>
+/// <param name="Voice">
+/// Kokoro-Stimme ("bf_emma"): spricht Callouts, Antworten und englischen Smalltalk – mit <paramref name="EngineVoice"/> nur, solange
+/// die noch lädt. ATC-Stationen bekommen sie nie.
+/// </param>
 /// <param name="FixedName">Name aus den Einstellungen (sonst zufällig).</param>
 /// <param name="FixedVoice">Stimme aus voice-settings.json (voices.kopilot).</param>
 /// <param name="Introduced">Hat sich in diesem Flug schon vorgestellt.</param>
+/// <param name="EngineVoice">
+/// Mehrsprachige Stimme ("supertonic:M1", <see cref="MultilingualVoices"/>): spricht dann alles – Callouts und Antworten auf Englisch,
+/// Smalltalk in der Oberflächensprache. null = <paramref name="Voice"/> spricht alles (nur Englisch).
+/// </param>
 public sealed record FirstOfficerPersona(
     string FlightKey,
     string Name,
@@ -23,8 +30,13 @@ public sealed record FirstOfficerPersona(
     DateTimeOffset CreatedUtc,
     bool FixedName = false,
     bool FixedVoice = false,
-    bool Introduced = false)
+    bool Introduced = false,
+    string? EngineVoice = null)
 {
+    /// <summary>Die Stimme, mit der er spricht (für Dashboard und Log): die mehrsprachige, sonst die Kokoro-Stimme.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string SpeakingVoice => EngineVoice ?? Voice;
+
     /// <summary>Anrede in normalisierter Form (erstes Wort des Namens, z. B. "sam") – null, wenn der Name keine taugliche Anrede ist.</summary>
     public string? AddressWord => FirstOfficerNames.AddressWord(Name);
 
@@ -230,7 +242,8 @@ public static partial class FirstOfficerNames
 
 /// <summary>
 /// Besetzung pro Flug (rein rechnend, damit testbar): Name zufällig aus der Liste oder fest aus den Einstellungen, Stimme
-/// passend zum Geschlecht (Kokoro: af_/bf_ weiblich, am_/bm_ männlich) und nie die Stimme einer ATC-Station.
+/// passend zum Geschlecht (Kokoro: af_/bf_ weiblich, am_/bm_ männlich) und nie die Stimme einer ATC-Station. Dazu auf Wunsch eine
+/// mehrsprachige Stimme (Supertonic), die dann alles spricht – Callouts und Smalltalk mit demselben Sprecher.
 /// </summary>
 public static class FirstOfficerCasting
 {
@@ -256,16 +269,31 @@ public static class FirstOfficerCasting
         "am_michael", "am_fenrir", "am_puck", "bm_george", "bm_fable", "bm_lewis", "bm_daniel", "am_adam", "am_eric", "am_liam",
     ];
 
-    /// <summary>Geschlecht einer Kokoro-Stimme: zweiter Buchstabe f/m ("bf_emma" → weiblich).</summary>
+    /// <summary>
+    /// Geschlecht einer Stimme: Kokoro am zweiten Buchstaben f/m ("bf_emma" → weiblich), eine mehrsprachige laut Katalog
+    /// ("supertonic:F1" → weiblich). null = keine Stimme für den First Officer.
+    /// </summary>
     public static VoiceGender? GenderOfVoice(string? voice) =>
-        KokoroSpeechEngine.IsEnglishVoice(voice) ? voice![1] == 'f' ? VoiceGender.Female : VoiceGender.Male : null;
+        KokoroSpeechEngine.IsEnglishVoice(voice)
+            ? voice![1] == 'f' ? VoiceGender.Female : VoiceGender.Male
+            : MultilingualVoices.Find(voice)?.Gender;
+
+    /// <summary>Taugt als Stimme des First Officers: Kokoro oder mehrsprachig. Rückgabe in der Schreibweise des Katalogs, sonst null.</summary>
+    public static string? NormalizeVoice(string? voice)
+    {
+        var trimmed = voice?.Trim();
+        return KokoroSpeechEngine.IsEnglishVoice(trimmed) ? trimmed : MultilingualVoices.Normalize(trimmed);
+    }
 
     /// <param name="flightKey">Flug.</param>
     /// <param name="config">Einstellungen (fester Name, Geschlecht).</param>
-    /// <param name="fixedVoice">Feste Kokoro-Stimme aus voice-settings.json (null = frei).</param>
+    /// <param name="fixedVoice">Feste Stimme aus voice-settings.json: Kokoro oder mehrsprachig (null = frei).</param>
     /// <param name="engineGender">Geschlecht der Windows-Stimme, wenn sie statt Kokoro spricht (dann passt der Name zu ihr).</param>
     /// <param name="installed">Vorhandene Kokoro-Stimmen (leer = <see cref="DefaultVoices"/>).</param>
     /// <param name="avoid">Stimmen der ATC-Stationen – der First Officer bekommt keine davon.</param>
+    /// <param name="engineVoices">
+    /// Ohne feste Stimme: mehrsprachige Stimmen, aus denen er eine passend zum Geschlecht bekommt (leer = nur Kokoro).
+    /// </param>
     public static FirstOfficerPersona Create(
         string flightKey,
         FirstOfficerConfig config,
@@ -274,8 +302,10 @@ public static class FirstOfficerCasting
         IReadOnlyCollection<string> installed,
         IReadOnlyCollection<string> avoid,
         Random random,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        IReadOnlyList<TtsVoice>? engineVoices = null)
     {
+        fixedVoice = NormalizeVoice(fixedVoice);
         var voiceGender = GenderOfVoice(fixedVoice);
         var hasFixedName = config.Name.Length > 0;
         VoiceGender gender;
@@ -296,13 +326,42 @@ public static class FirstOfficerCasting
         }
         else
         {
-            gender = engineGender ?? (random.Next(2) == 0 ? VoiceGender.Female : VoiceGender.Male);
+            // Spricht eine mehrsprachige Stimme, zählt die Windows-Stimme nicht
+            var windows = engineVoices is { Count: > 0 } ? null : engineGender;
+            gender = windows ?? (random.Next(2) == 0 ? VoiceGender.Female : VoiceGender.Male);
         }
 
         var names = FirstOfficerNames.For(gender);
         var name = hasFixedName ? config.Name : names[random.Next(names.Count)];
-        var voice = voiceGender is not null ? fixedVoice! : PickVoice(gender, installed, avoid, random);
-        return new FirstOfficerPersona(flightKey, name, gender, voice, now, hasFixedName, voiceGender is not null);
+        var (voice, engineVoice) = CastVoice(gender, voiceGender is not null ? fixedVoice : null, engineVoices, installed, avoid, random);
+        return new FirstOfficerPersona(flightKey, name, gender, voice, now, hasFixedName, voiceGender is not null, EngineVoice: engineVoice);
+    }
+
+    /// <summary>
+    /// Stimmen des First Officers: immer eine Kokoro-Stimme (feste oder <see cref="PickVoice"/>; spricht, solange die mehrsprachige
+    /// lädt) und die mehrsprachige – die feste oder, ohne feste Stimme, eine zufällige passende aus <paramref name="engineVoices"/>.
+    /// </summary>
+    public static (string Voice, string? EngineVoice) CastVoice(
+        VoiceGender gender,
+        string? fixedVoice,
+        IReadOnlyList<TtsVoice>? engineVoices,
+        IReadOnlyCollection<string> installed,
+        IReadOnlyCollection<string> avoid,
+        Random random)
+    {
+        if (KokoroSpeechEngine.IsEnglishVoice(fixedVoice))
+        {
+            return (fixedVoice!, null);
+        }
+
+        var kokoro = PickVoice(gender, installed, avoid, random);
+        if (MultilingualVoices.Normalize(fixedVoice) is { } fixedEngine)
+        {
+            return (kokoro, fixedEngine);
+        }
+
+        var pool = engineVoices?.Where(v => v.Gender == gender).ToList();
+        return pool is { Count: > 0 } ? (kokoro, pool[random.Next(pool.Count)].Key) : (kokoro, null);
     }
 
     /// <summary>
@@ -404,13 +463,18 @@ public sealed class FirstOfficerRoster(FirstOfficerStore? store = null, TimeProv
     /// <summary>
     /// Den First Officer für diesen Flug sicherstellen. Rückgabe: der aktuelle (null = ausgeschaltet) und ob er neu ist.
     /// </summary>
+    /// <param name="fixedVoice">Feste Stimme (Kokoro oder mehrsprachig), null = automatisch.</param>
+    /// <param name="engineVoices">
+    /// Automatisch: mehrsprachige Stimmen, aus denen er eine bekommt (Smalltalk in einer anderen Sprache als Englisch) – leer = Kokoro.
+    /// </param>
     public (FirstOfficerPersona? Persona, bool Changed) Ensure(
         string flightKey,
         FirstOfficerConfig config,
         string? fixedVoice,
         VoiceGender? engineGender,
         IReadOnlyCollection<string> installed,
-        IReadOnlyCollection<string> avoid)
+        IReadOnlyCollection<string> avoid,
+        IReadOnlyList<TtsVoice>? engineVoices = null)
     {
         if (!config.Enabled)
         {
@@ -419,19 +483,20 @@ public sealed class FirstOfficerRoster(FirstOfficerStore? store = null, TimeProv
             return (null, had);
         }
 
-        fixedVoice = KokoroSpeechEngine.IsEnglishVoice(fixedVoice) ? fixedVoice : null;
+        fixedVoice = FirstOfficerCasting.NormalizeVoice(fixedVoice);
+        IReadOnlyList<TtsVoice> pool = fixedVoice is null ? engineVoices ?? [] : [];
         var now = _time.GetUtcNow();
         if (Current is null && !_loaded)
         {
             _loaded = true;
-            if (store?.Load() is { } saved && now - saved.CreatedUtc < MaxAge && Matches(saved, config, fixedVoice)
+            if (store?.Load() is { } saved && now - saved.CreatedUtc < MaxAge && Matches(saved, config, fixedVoice, pool)
                 && (saved.FlightKey == flightKey || saved.FlightKey == Unplanned || flightKey == Unplanned))
             {
                 Current = saved;
             }
         }
 
-        if (Current is { } current && Matches(current, config, fixedVoice))
+        if (Current is { } current && Matches(current, config, fixedVoice, pool))
         {
             if (current.FlightKey == flightKey || flightKey == Unplanned)
             {
@@ -447,18 +512,25 @@ public sealed class FirstOfficerRoster(FirstOfficerStore? store = null, TimeProv
             }
         }
 
-        // Nur die Stimme geändert (andere feste Stimme gleichen Geschlechts, fest ↔ automatisch): Name und Vorstellung bleiben
+        // Nur die Stimme geändert (andere feste Stimme gleichen Geschlechts, fest ↔ automatisch, Kokoro ↔ mehrsprachig):
+        // Name und Vorstellung bleiben
         if (Current is { } same && (same.FlightKey == flightKey || flightKey == Unplanned || same.FlightKey == Unplanned)
             && NameMatches(same, config) && GenderMatches(same, config, fixedVoice) && same.Name.Length > 0
             && (fixedVoice is null || FirstOfficerCasting.GenderOfVoice(fixedVoice) == same.Gender))
         {
-            var voice = fixedVoice ?? FirstOfficerCasting.PickVoice(same.Gender, installed, avoid, _random);
-            Current = same with { Voice = voice, FixedVoice = fixedVoice is not null, FlightKey = flightKey == Unplanned ? same.FlightKey : flightKey };
+            var (voice, engineVoice) = FirstOfficerCasting.CastVoice(same.Gender, fixedVoice, pool, installed, avoid, _random);
+            Current = same with
+            {
+                Voice = voice,
+                EngineVoice = engineVoice,
+                FixedVoice = fixedVoice is not null,
+                FlightKey = flightKey == Unplanned ? same.FlightKey : flightKey,
+            };
             store?.Save(Current);
             return (Current, true);
         }
 
-        Current = FirstOfficerCasting.Create(flightKey, config, fixedVoice, engineGender, installed, avoid, _random, now);
+        Current = FirstOfficerCasting.Create(flightKey, config, fixedVoice, engineGender, installed, avoid, _random, now, pool);
         store?.Save(Current);
         return (Current, true);
     }
@@ -473,10 +545,28 @@ public sealed class FirstOfficerRoster(FirstOfficerStore? store = null, TimeProv
         }
     }
 
-    /// <summary>Passt der gespeicherte First Officer noch zu den Einstellungen (fester Name, Geschlecht, feste Stimme)?</summary>
-    private static bool Matches(FirstOfficerPersona p, FirstOfficerConfig config, string? fixedVoice)
+    /// <summary>
+    /// Passt der gespeicherte First Officer noch zu den Einstellungen (fester Name, Geschlecht, feste Stimme – automatisch: mehrsprachig
+    /// aus <paramref name="pool"/> bzw. nur Kokoro)?
+    /// </summary>
+    private static bool Matches(FirstOfficerPersona p, FirstOfficerConfig config, string? fixedVoice, IReadOnlyList<TtsVoice> pool)
     {
-        var voiceOk = fixedVoice is not null ? p.FixedVoice && p.Voice == fixedVoice : !p.FixedVoice;
+        bool voiceOk;
+        if (fixedVoice is null)
+        {
+            // Keine mehrsprachige Stimme seines Geschlechts im Angebot: dann Kokoro (sonst würde er bei jedem Takt neu besetzt)
+            var candidates = pool.Where(v => v.Gender == p.Gender).ToList();
+            voiceOk = !p.FixedVoice && (candidates.Count > 0 ? candidates.Any(v => v.Key == p.EngineVoice) : p.EngineVoice is null);
+        }
+        else if (KokoroSpeechEngine.IsEnglishVoice(fixedVoice))
+        {
+            voiceOk = p.FixedVoice && p.Voice == fixedVoice && p.EngineVoice is null;
+        }
+        else
+        {
+            voiceOk = p.FixedVoice && p.EngineVoice == fixedVoice;
+        }
+
         return NameMatches(p, config) && voiceOk && GenderMatches(p, config, fixedVoice) && KokoroSpeechEngine.IsEnglishVoice(p.Voice) && p.Name.Length > 0;
     }
 
