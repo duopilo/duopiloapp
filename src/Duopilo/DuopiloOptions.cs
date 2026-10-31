@@ -71,6 +71,9 @@ public sealed class DuopiloOptions
     /// <summary>Der First Officer der Sprachschleife: Name und Stimme pro Flug, Vorstellung beim Briefing.</summary>
     public FirstOfficerOptions FirstOfficer { get; set; } = new();
 
+    /// <summary>Update-Prüfung: neue Versionen aus den GitHub-Releases melden und auf Wunsch installieren.</summary>
+    public UpdateOptions Updates { get; set; } = new();
+
     /// <summary>
     /// Datenordner (Logs, Modelle, Caches, Dashboard-Einstellungen). Leer = %LOCALAPPDATA%\Duopilo – beim ersten Start
     /// übernommen aus %LOCALAPPDATA%\Kopilot (<see cref="DataDirectoryMigration"/>).
@@ -133,9 +136,6 @@ public sealed class MonitoringOptions
 
     /// <summary>Fuel Check im Reiseflug: Regeln FUEL_CHECK und FUEL_WARNING (abschalten über <see cref="DisabledRules"/>).</summary>
     public FuelCheckOptions FuelCheck { get; set; } = new();
-
-    /// <summary>Update-Prüfung: neue Versionen aus den GitHub-Releases melden und auf Wunsch installieren.</summary>
-    public UpdateOptions Updates { get; set; } = new();
 }
 
 /// <summary>
