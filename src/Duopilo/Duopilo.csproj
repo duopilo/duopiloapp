@@ -57,6 +57,9 @@
     <None Update="Dashboard\fonts\OFL.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Link="licenses\B612-OFL.txt" />
     <!-- Supertonic-Inferenz (Speech\SupertonicModel.cs) folgt dem MIT-lizenzierten Beispiel von Supertone; die Gewichte (OpenRAIL-M) lädt Duopilo bei Bedarf -->
     <None Update="Speech\Supertonic-MIT.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Link="licenses\Supertonic-MIT.txt" />
+    <!-- Lizenz von Duopilo (MIT) und Hinweise zu Drittkomponenten gehören in jede Weitergabe (Installer, ZIP) -->
+    <None Include="..\..\LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Link="LICENSE.txt" Visible="false" />
+    <None Include="..\..\THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Link="THIRD-PARTY-NOTICES.md" Visible="false" />
   </ItemGroup>
 
   <!--
