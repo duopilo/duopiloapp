@@ -6,12 +6,16 @@
 #    Die Version im Programm kommt aus dem Tag. Tags mit Zusatz („-beta.1“, „-rc.1“) werden als Pre-release markiert.
 #    Veröffentlichen bewusst von Hand: auf GitHub im Entwurf „Publish release“ oder gh release edit v0.9.1 --draft=false.
 #  - von Hand: Actions → Release → Run workflow (Version angeben) – nur bauen, Ergebnis unter „Artifacts“.
+#    Mit Häkchen „Release anlegen“ (nur auf main): nach erfolgreichem Build Tag v<Version> setzen und Release wie oben.
+#  - per Release-PR: Ein gemergter PR mit Label „release“ und Version im Titel setzt den Tag und startet diesen
+#    Workflow auf dem Tag (release-pr.yml). Text über der ersten Linie „---“ im PR kommt oben in die Release-Beschreibung.
 #  - bei Pull Requests, die diesen Workflow oder installer/ ändern – nur bauen, zum Testen.
 #
 # Auslösen:
 #   git switch main && git pull
 #   git tag v0.9.1
 #   git push origin v0.9.1
+#   – oder Run workflow mit Häkchen, oder Release-PR.
 #
 # SimConnect: Auf GitHub-Runnern gibt es das MSFS-2024-SDK nicht. Der Workflow nimmt die DLLs aus lib/ im Repo oder
 # aus den Secrets SIMCONNECT_ZIP_1…6 (einmal anlegen mit: pwsh installer/simconnect-secret.ps1) – nur zum Bauen: Ins Paket
@@ -33,9 +37,13 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version für den Testbuild (nur Artifacts, kein Release), z. B. 0.9.1-test"
+        description: "Version, z. B. 0.10.0-beta.3 (ohne Häkchen nur Testbuild unter Artifacts)"
         type: string
         default: "0.0.0-test"
+      release:
+        description: "Release anlegen (nur auf main): Tag v<Version> setzen und Release als Entwurf"
+        type: boolean
+        default: false
 
 concurrency:
   group: release-${{ github.ref }}
@@ -59,6 +67,8 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       prerelease: ${{ steps.version.outputs.prerelease }}
       paket: ${{ steps.version.outputs.paket }}
+      release: ${{ steps.version.outputs.release }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - name: Repo holen
         uses: actions/checkout@v7
@@ -73,28 +83,46 @@ jobs:
         env:
           EREIGNIS: ${{ github.event_name }}
           REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
           EINGABE: ${{ inputs.version }}
+          RELEASE_HAKEN: ${{ inputs.release }}
           PR: ${{ github.event.pull_request.number }}
         run: |
           $props = (dotnet msbuild src/Duopilo/Duopilo.csproj -getProperty:Product -getProperty:AssemblyName | Out-String | ConvertFrom-Json).Properties
           if (-not $props.Product -or -not $props.AssemblyName) { Write-Output "::error::Product/AssemblyName ließen sich nicht aus dem Projekt lesen."; exit 1 }
-          if ($env:EREIGNIS -eq 'push') {
+          # Release, wenn der Lauf auf einem Tag steht (Tag gepusht oder Start auf dem Tag, z. B. aus release-pr.yml)
+          # oder von Hand mit Häkchen „Release anlegen“ gestartet wurde. Sonst nur Testbuild.
+          $release = 'false'
+          if ($env:REF_TYPE -eq 'tag' -and $env:EREIGNIS -in @('push', 'workflow_dispatch')) {
             if ($env:REF_NAME -notmatch '^v') { Write-Output "::error::Tag '$env:REF_NAME' beginnt nicht mit v."; exit 1 }
             $version = $env:REF_NAME.Substring(1)
+            $release = 'true'
           } elseif ($env:EREIGNIS -eq 'pull_request') {
             $version = "0.0.0-pr$env:PR"
           } else {
             $version = $env:EINGABE.Trim()
+            if ($env:RELEASE_HAKEN -eq 'true') {
+              if ($env:REF_NAME -ne 'main') { Write-Output "::error::Releases nur von main – der Lauf steht auf '$env:REF_NAME'."; exit 1 }
+              if ($version -eq '0.0.0-test') { Write-Output "::error::Für ein Release die Version angeben, z. B. 0.10.0-beta.3."; exit 1 }
+              $release = 'true'
+            }
           }
           if ($version -notmatch '^(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z][0-9A-Za-z.-]*)?$') {
             Write-Output "::error::Version '$version' passt nicht zu 1.2.3 oder 1.2.3-beta.1 (Tag also v1.2.3)."
             exit 1
           }
+          $tag = "v$version"
+          if ($release -eq 'true' -and $env:REF_TYPE -ne 'tag') {
+            # Vor dem langen Build prüfen, damit ein vorhandener Tag nicht erst am Ende auffällt
+            git ls-remote --exit-code --tags origin "refs/tags/$tag" | Out-Null
+            if ($LASTEXITCODE -eq 0) { Write-Output "::error::Tag $tag gibt es schon."; exit 1 }
+            $global:LASTEXITCODE = 0
+          }
           $numerisch = "$($Matches[1]).$($Matches[2]).$($Matches[3])"
           $name = $props.Product
           $exe = "$($props.AssemblyName).exe"
           $prerelease = if ($version.Contains('-')) { 'true' } else { 'false' }
-          @("name=$name", "exe=$exe", "version=$version", "prerelease=$prerelease", "paket=$name-$version") |
+          @("name=$name", "exe=$exe", "version=$version", "prerelease=$prerelease", "paket=$name-$version", "release=$release", "tag=$tag") |
             Out-File -Append -FilePath $env:GITHUB_OUTPUT -Encoding utf8
           @("APP_NAME=$name", "APP_EXE=$exe", "VERSION=$version", "VERSION_NUM=$numerisch") |
             Out-File -Append -FilePath $env:GITHUB_ENV -Encoding utf8
@@ -104,7 +132,7 @@ jobs:
         id: simconnect
         shell: pwsh
         env:
-          RELEASE: ${{ github.event_name == 'push' }}
+          RELEASE: ${{ steps.version.outputs.release }}
           SIMCONNECT_ZIP_1: ${{ secrets.SIMCONNECT_ZIP_1 }}
           SIMCONNECT_ZIP_2: ${{ secrets.SIMCONNECT_ZIP_2 }}
           SIMCONNECT_ZIP_3: ${{ secrets.SIMCONNECT_ZIP_3 }}
@@ -216,16 +244,32 @@ jobs:
   veroeffentlichen:
     name: GitHub Release
     needs: bauen
-    if: github.event_name == 'push' && github.ref_type == 'tag'
+    if: needs.bauen.outputs.release == 'true'
     runs-on: ubuntu-24.04
     permissions:
-      contents: write
+      contents: write # Tag setzen (Start von Hand), Release anlegen
       actions: write # Pages-Workflow anstoßen, wenn Setup und ZIP am veröffentlichten Release hängen
+      pull-requests: read # Release-PR zum Commit finden
     steps:
       - name: Repo holen (ganze Geschichte für den Changelog)
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      - name: Tag setzen (Start von Hand mit „Release anlegen“)
+        # Erst nach erfolgreichem Build. Ein mit GITHUB_TOKEN gepushter Tag startet keinen weiteren Release-Lauf.
+        if: github.ref_type != 'tag'
+        env:
+          TAG: ${{ needs.bauen.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+            echo "::error::Tag $TAG gibt es schon."
+            exit 1
+          fi
+          git tag "$TAG" "$GITHUB_SHA"
+          git push origin "refs/tags/$TAG"
+          echo "::notice title=Tag::$TAG auf $GITHUB_SHA gesetzt."
 
       - name: Pakete aus dem Build holen
         uses: actions/download-artifact@v8
@@ -235,7 +279,8 @@ jobs:
 
       - name: Changelog aus den Commits seit dem letzten Tag
         env:
-          TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.bauen.outputs.tag }}
           NAME: ${{ needs.bauen.outputs.name }}
           EXE: ${{ needs.bauen.outputs.exe }}
           VERSION: ${{ needs.bauen.outputs.version }}
@@ -252,7 +297,20 @@ jobs:
           if [ -n "$vorher" ]; then bereich="$vorher..$TAG"; else bereich="$TAG"; fi
           liste=$(git log --no-merges --pretty='tformat:- %s (%h)' "$bereich")
           anzahl=$(printf '%s\n' "$liste" | grep -c '^- ' || true)
+          # Release-PR (Label „release“), der diesen Commit gebracht hat: Text über der ersten Linie „---“ kommt nach oben
+          nummer=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" \
+            --jq '[.[] | select(any(.labels[]; .name == "release"))][0].number // empty' 2>/dev/null || true)
+          : > pr-text.md
+          if [ -n "$nummer" ]; then
+            { gh api "repos/$GITHUB_REPOSITORY/pulls/$nummer" --jq '.body // ""' || true; } | tr -d '\r' \
+              | awk '/^---[[:space:]]*$/ { exit } { print }' > pr-text.md
+            echo "Release-Text aus PR #$nummer."
+          fi
           {
+            if grep -q '[^[:space:]]' pr-text.md; then
+              cat pr-text.md
+              echo
+            fi
             if [ -n "$vorher" ]; then echo "## Änderungen seit $vorher"; else echo "## Änderungen"; fi
             echo
             if [ "$anzahl" -eq 0 ]; then
@@ -278,7 +336,7 @@ jobs:
       - name: Release anlegen
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ needs.bauen.outputs.tag }}
           TITEL: ${{ needs.bauen.outputs.name }} ${{ needs.bauen.outputs.version }}
           PRERELEASE: ${{ needs.bauen.outputs.prerelease }}
         run: |
@@ -301,7 +359,7 @@ jobs:
         # damit der Download-Button auf duopilo.app die neue Version zeigt. Entwürfe ändern an der Seite nichts.
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ needs.bauen.outputs.tag }}
         run: |
           if [ "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = "false" ]; then
             gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref main

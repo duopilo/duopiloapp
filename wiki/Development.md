@@ -90,10 +90,12 @@ git tag v0.9.1
 git push origin v0.9.1
 ```
 
+Without Git: **Actions → Release → Run workflow** on `main` with the version and the box "Release anlegen" ticked (sets the tag after a successful build), or a **release PR** – label `release`, version in the title ("Release v0.10.0-beta.3"); after the merge `release-pr.yml` sets the tag and starts the release. Text above the first `---` line in the PR description goes at the top of the release notes.
+
 Publish deliberately: "Publish release" on GitHub or `gh release edit v0.9.1 --draft=false`.
 
 - **Once beforehand:** `pwsh installer/simconnect-secret.ps1` on a PC with the MSFS SDK stores the SimConnect DLLs as secrets `SIMCONNECT_ZIP_*`. Without them a release aborts instead of building against the stub.
-- **Test build without a release:** Actions → Release → Run workflow; setup and ZIP appear under *Artifacts* for 14 days.
+- **Test build without a release:** Actions → Release → Run workflow without the box ticked; setup and ZIP appear under *Artifacts* for 14 days.
 - The product name is set centrally as `<Product>` in `Directory.Build.props`; program name, data folder and config section in `src/Duopilo/Hosting/AppNames.cs`.
 
 ## Wiki

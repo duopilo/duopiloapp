@@ -574,9 +574,14 @@ git tag v0.9.1
 git push origin v0.9.1
 ```
 
+Ohne Git geht es auf zwei Wegen, das Release entsteht ebenfalls als Entwurf:
+
+- **Von Hand:** Actions → Release → Run workflow auf `main`, Version eintragen (z. B. `0.10.0-beta.3`) und „Release anlegen“ anhaken. Nach erfolgreichem Build setzt der Workflow den Tag `v0.10.0-beta.3` auf den gebauten Commit und legt das Release an. Gibt es den Tag schon, bricht er vor dem Build ab.
+- **Release-PR:** ein PR gegen `main` mit dem Label `release` und der Version im Titel („Release v0.10.0-beta.3“). Nach dem Merge setzt `.github/workflows/release-pr.yml` den Tag auf den Merge-Commit und startet den Workflow „Release“ auf dem Tag. Text über der ersten Linie `---` in der PR-Beschreibung steht oben in der Release-Beschreibung, darunter der Changelog.
+
 **Einmalig vorher:** SimConnect für GitHub hinterlegen – auf dem PC mit dem MSFS-2024-SDK im Repo-Ordner `pwsh installer/simconnect-secret.ps1` (braucht die GitHub CLI). Das legt die DLLs als Secrets `SIMCONNECT_ZIP_*` ab; ohne sie bricht ein Release ab, statt gegen den Stub zu bauen. Sie dienen nur zum Kompilieren – der Workflow prüft, dass Setup und ZIP keine der beiden DLLs enthalten.
 
-**Testen ohne Release:** Actions → Release → Run workflow (Version angeben). Setup und ZIP liegen dann 14 Tage unter „Artifacts“.
+**Testen ohne Release:** Actions → Release → Run workflow (Version angeben, ohne Häkchen). Setup und ZIP liegen dann 14 Tage unter „Artifacts“.
 
 **Der Installer** installiert nach `C:\Program Files\Duopilo` (oder ohne Adminrechte nur für den eigenen Benutzer), legt einen Startmenü-Eintrag an und auf Wunsch den Autostart (derselbe Eintrag wie „Mit Windows starten“ im Tray-Menü). Bei Updates bleibt `appsettings.Local.json` unangetastet; mitgelieferte Profile, `atc-templates.json` und `appsettings.json` werden erneuert, eigene Änderungen daran vorher nach `backup\<Datum>\` gesichert. Die Deinstallation entfernt Programm, Startmenü-Eintrag und Autostart und fragt, ob auch Einstellungen und `%LOCALAPPDATA%\Duopilo` (und ein altes `%LOCALAPPDATA%\Kopilot`) weg sollen.
 

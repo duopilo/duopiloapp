@@ -574,9 +574,14 @@ git tag v0.9.1
 git push origin v0.9.1
 ```
 
+Without Git there are two ways; the release is created as a draft as well:
+
+- **Manually:** Actions → Release → Run workflow on `main`, enter the version (e.g. `0.10.0-beta.3`) and tick "Release anlegen". After a successful build the workflow sets the tag `v0.10.0-beta.3` on the built commit and creates the release. If the tag already exists, it stops before building.
+- **Release PR:** a PR against `main` with the label `release` and the version in the title ("Release v0.10.0-beta.3"). After the merge, `.github/workflows/release-pr.yml` sets the tag on the merge commit and starts the "Release" workflow on the tag. Text above the first `---` line in the PR description goes at the top of the release description, followed by the changelog.
+
 **Once, beforehand:** make SimConnect available to GitHub – on the PC with the MSFS 2024 SDK, run `pwsh installer/simconnect-secret.ps1` in the repo folder (needs the GitHub CLI). This stores the DLLs as secrets `SIMCONNECT_ZIP_*`; without them a release aborts instead of building against the stub. They are only used for compiling – the workflow checks that setup and ZIP contain neither DLL.
 
-**Testing without a release:** Actions → Release → Run workflow (enter a version). Setup and ZIP are then available under "Artifacts" for 14 days.
+**Testing without a release:** Actions → Release → Run workflow (enter a version, leave the box unticked). Setup and ZIP are then available under "Artifacts" for 14 days.
 
 **The installer** installs to `C:\Program Files\Duopilo` (or, without admin rights, for your own user only), creates a Start menu entry and optionally autostart (the same entry as "Start with Windows" in the tray menu). On updates `appsettings.Local.json` stays untouched; bundled profiles, `atc-templates.json` and `appsettings.json` are renewed, with your own changes to them backed up to `backup\<date>\` first. Uninstalling removes the program, Start menu entry and autostart and asks whether settings and `%LOCALAPPDATA%\Duopilo` (and an old `%LOCALAPPDATA%\Kopilot`) should be removed as well.
 
