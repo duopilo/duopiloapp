@@ -21,7 +21,7 @@ Transitions come from your transmissions and from the flight state.
 | **Center** | climb to cruise, level requests, step climbs from the OFP, descent clearance at TOD, QNH below transition | at every FIR boundary and sector boundary |
 | **Oceanic** | clearance ~30 min before the entry point, position reports at every oceanic fix | at the exit point to the domestic unit |
 | **Approach** | descent, STAR, expected approach and runway, QNH; approach clearance from 20 nm | from 12 nm: "contact Tower" |
-| **Tower** | landing clearance with wind (at the latest 4 nm out) | below 40 kt after landing: "vacate via next exit, contact Ground" |
+| **Tower** | landing clearance with wind (at the latest 4 nm out); with traffic ahead on final first the sequence ("number two, follow …") | below 40 kt after landing: "vacate via next exit, contact Ground" |
 | **Ground** | taxi to the gate | ends when stopped with the parking brake set |
 
 - Short routes without oceanic fixes skip Oceanic.
@@ -57,6 +57,19 @@ Departure, Center and Oceanic handle level requests:
 ## Descent
 
 At top of descent Center clears "descend via ANJLL4 arrival" if the OFP has a STAR (cleared down to the lowest planned STAR altitude), otherwise "descend FL110". If the clearance ends below the destination's transition altitude, the QNH comes with it and is part of the readback.
+
+## Traffic
+
+Duopilo ATC mentions traffic the way real controllers do. The traffic picture comes from the same scan as `get_traffic` (AI traffic, live traffic and multiplayer), refreshed about every 10 s in the air.
+
+- **Traffic information:** Departure, Center and Approach call traffic on their own once you have checked in, when an aircraft within 15 nm and 1500 ft will pass within 5 nm in the next three minutes – each aircraft once, at most one call a minute, never into an open readback:
+  > "Lufthansa four alpha bravo, traffic twelve o'clock, twelve miles, opposite direction, Airbus three twenty, one thousand feet above"
+- **Asking:** "request traffic information", "any traffic for us?", "confirm traffic twelve o'clock", "traffic below?" → the matching aircraft (clock position ± 1 hour, above/below), otherwise "no reported traffic". The flow doesn't move on – asking at the holding point gets no takeoff clearance, and an open readback stays open.
+- **Sequence on final:** if someone is ahead of you on final when you call the tower, the tower says "number two, follow the A320 on 3 miles final" and clears you to land once that aircraft has landed (at the latest 2 nm out).
+- "looking out", "traffic in sight", "negative contact" are acknowledgements and get no answer.
+- Oceanic has no radar and gives no traffic information.
+
+Traffic in MSFS isn't really separated – ATC reports what the scan shows, including conflicts a real controller would have resolved long ago. Rules: `trafficInfo`, `trafficInfoRangeNm`, `trafficInfoAltitudeFt`, `trafficInfoMissNm`, `trafficSequencing` (see [Customizing](#customizing)).
 
 ## Squawk and frequency checks
 

@@ -13,7 +13,8 @@ namespace Duopilo.Sim;
 /// in .NET nicht abfangbar). Hier liest <see cref="TrafficMessageParser"/> nur, was laut dwSize zur Nachricht gehört.
 /// Die Hauptverbindung stellt keine BYTYPE-Anfragen mehr.
 ///
-/// Der Hintergrundscan der Verkehrswarnung fragt nur Zahlen ab; Texte (ATC ID, Airline, Flugnummer, Typ) nur get_traffic.
+/// Der Hintergrundscan der Verkehrswarnung fragt nur Zahlen ab; Texte (ATC ID, Airline, Flugnummer, Typ) nur get_traffic, die
+/// Sprachschleife und der Duopilo-ATC (Traffic-Infos, etwa alle 10 s in der Luft).
 /// Alle Aufrufe laufen nacheinander (eine Abfrage zur Zeit). Jede BYTYPE-Nachricht wird gezählt und, wenn eingeschaltet,
 /// in logs\traffic-messages.csv geschrieben (<see cref="TrafficMessageLog"/>).
 /// </summary>
@@ -88,7 +89,7 @@ public sealed class TrafficConnection : IDisposable
     /// Fragt alle Flugzeuge (auf Wunsch auch Hubschrauber) im Umkreis einmalig ab, das eigene Flugzeug eingeschlossen.
     /// Bleibt eine Antwort aus, kommt nach dem Timeout zurück, was bis dahin da ist (<see cref="AircraftScan.Complete"/> = false).
     /// </summary>
-    /// <param name="withText">Auch ATC ID, Airline, Flugnummer und Typ (nur für get_traffic).</param>
+    /// <param name="withText">Auch ATC ID, Airline, Flugnummer und Typ (get_traffic, Sprachschleife, Duopilo-ATC).</param>
     public async Task<AircraftScan> ScanAsync(uint radiusMeters, bool includeHelicopters, bool withText, CancellationToken ct)
     {
         if (!_sim.Connection.IsConnected)

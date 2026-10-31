@@ -65,7 +65,7 @@ public sealed class TrafficService : BackgroundService
     /// <summary>Pfad von traffic-messages.csv, null wenn aus.</summary>
     public string? MessageLogPath => _connection.MessageLogPath;
 
-    /// <summary>Abfrage für get_traffic – mit Callsign, Airline, Flugnummer und Typ.</summary>
+    /// <summary>Abfrage mit Callsign, Airline, Flugnummer und Typ – für get_traffic, die Sprachschleife und den Duopilo-ATC.</summary>
     public Task<TrafficScanResult> ScanAsync(double radiusNm, CancellationToken ct) => ScanAsync(radiusNm, withText: true, ct);
 
     private async Task<TrafficScanResult> ScanAsync(double radiusNm, bool withText, CancellationToken ct)

@@ -21,7 +21,7 @@ Die Übergänge kommen aus deinen Funksprüchen und aus dem Flugzustand.
 | **Center** | Steigflug auf Reiseflughöhe, Höhenanfragen, Stufensteigflüge aus dem OFP, Sinkflugfreigabe am TOD, QNH unter der Übergangshöhe | an jeder FIR-Grenze und Sektorgrenze |
 | **Oceanic** | Freigabe ca. 30 min vor dem Eintrittspunkt, Positionsmeldungen an jedem Oceanic-Fix | am Austrittspunkt an die Domestic-Stelle |
 | **Approach** | Sinkflug, STAR, erwarteter Anflug und Bahn, QNH; Anflugfreigabe ab 20 nm | ab 12 nm: „contact Tower“ |
-| **Tower** | Landefreigabe mit Wind (spätestens 4 nm vorher) | nach der Landung unter 40 kt: „vacate via next exit, contact Ground“ |
+| **Tower** | Landefreigabe mit Wind (spätestens 4 nm vorher); mit Verkehr vor einem im Endanflug erst die Reihenfolge („number two, follow …“) | nach der Landung unter 40 kt: „vacate via next exit, contact Ground“ |
 | **Ground** | Rollen zum Gate | Ende, wenn das Flugzeug mit gesetzter Parkbremse steht |
 
 - Kurzstrecken ohne Oceanic-Fixe überspringen Oceanic.
@@ -57,6 +57,19 @@ Departure, Center und Oceanic beantworten Höhenanfragen:
 ## Sinkflug
 
 Am Top of Descent gibt Center „descend via ANJLL4 arrival“ frei, wenn das OFP eine STAR hat (freigegeben bis zur niedrigsten geplanten Höhe der STAR), sonst „descend FL110“. Endet die Freigabe unter der Übergangshöhe des Ziels, kommt das QNH dazu und gehört zum Readback.
+
+## Verkehr
+
+Der Duopilo-ATC erwähnt Verkehr wie echte Lotsen. Die Lage kommt aus derselben Abfrage wie `get_traffic` (KI-Verkehr, Live-Traffic und Multiplayer), in der Luft etwa alle 10 s erneuert.
+
+- **Traffic-Info:** Departure, Center und Approach melden Verkehr von sich aus, sobald du dich gemeldet hast – wenn ein Flugzeug innerhalb von 15 nm und 1500 ft in den nächsten drei Minuten auf 5 nm oder weniger herankommt. Jedes Flugzeug einmal, höchstens eine Meldung pro Minute, nie in ein offenes Readback:
+  > „Lufthansa four alpha bravo, traffic twelve o'clock, twelve miles, opposite direction, Airbus three twenty, one thousand feet above“
+- **Nachfragen:** „request traffic information“, „any traffic for us?“, „confirm traffic twelve o'clock“, „traffic below?“ → das passende Flugzeug (Uhrzeit ± 1 Stunde, darüber/darunter), sonst „no reported traffic“. Der Ablauf schaltet dabei nicht weiter – am Rollhalt gibt es dafür keine Startfreigabe, ein offenes Readback bleibt offen.
+- **Reihenfolge im Endanflug:** Ist beim Anruf beim Tower jemand vor dir im Endanflug, sagt der Tower „number two, follow the A320 on 3 miles final“ und gibt die Landefreigabe, sobald dieses Flugzeug gelandet ist (spätestens 2 nm vor dem Platz).
+- „looking out“, „traffic in sight“, „negative contact“ sind Quittungen und bekommen keine Antwort.
+- Oceanic hat kein Radar und meldet keinen Verkehr.
+
+Der Verkehr in MSFS wird nicht wirklich gestaffelt – ATC meldet, was die Abfrage zeigt, auch Konflikte, die ein echter Lotse längst aufgelöst hätte. Regeln: `trafficInfo`, `trafficInfoRangeNm`, `trafficInfoAltitudeFt`, `trafficInfoMissNm`, `trafficSequencing` (siehe [Anpassen](#anpassen)).
 
 ## Squawk- und Frequenzprüfung
 

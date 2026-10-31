@@ -177,6 +177,7 @@ public sealed partial class AtcSession
         TickLevels(input, output);
         CheckSquawk(input, output);
         CheckFrequency(input, output);
+        TickTrafficInfo(input, output);
         UpdateOceanicClearance(input);
         return output;
     }
@@ -264,6 +265,18 @@ public sealed partial class AtcSession
             return output;
         }
 
+        // Rückfrage nach Verkehr ("request traffic information", "confirm traffic 12 o'clock"): Antwort, ohne den Ablauf
+        // weiterzuschalten (auch nicht bei offenem Readback). Der Erstanruf bei einer neuen Station wird zuerst normal beantwortet.
+        var trafficQuery = AtcTrafficQuery.Parse(heard);
+        if (trafficQuery is not null && !IsContactStep(Step))
+        {
+            StationContacted(input.TimeUtc);
+            _ackFrequency = null;
+            _ackPending = false;
+            AnswerTrafficQuery(trafficQuery, input, output);
+            return output;
+        }
+
         if (PendingReadback is { } pending)
         {
             StationContacted(input.TimeUtc);
@@ -285,12 +298,17 @@ public sealed partial class AtcSession
         // Neuer Anruf bei der aktuellen Station: ab jetzt muss COM1 auf ihrer Frequenz stehen
         StationContacted(input.TimeUtc);
         _ackFrequency = null;
-        if (HandleLevelRequest(heard, input, output))
+        if (!HandleLevelRequest(heard, input, output))
         {
-            return output;
+            HandleCall(heard, input, output);
         }
 
-        HandleCall(heard, input, output);
+        // Erstanruf mit Rückfrage nach Verkehr: nach der Antwort auf den Erstanruf (die Reihenfolge im Endanflug nennt ihn schon)
+        if (trafficQuery is not null && !output.Any(t => t.MessageId == AtcMessageIds.TowerSequence))
+        {
+            AnswerTrafficQuery(trafficQuery, input, output);
+        }
+
         return output;
     }
 
@@ -619,7 +637,17 @@ public sealed partial class AtcSession
             _airborneInPhase = true;
         }
 
-        if (!_landingCleared && input.OnGround == false && DistanceToDest(input) is { } d && d <= Rules.LandingClearanceFallbackNm)
+        if (Step == AtcStep.LandingSequenced && !_landingCleared && input.OnGround == false && PrecedingLanded(input))
+        {
+            IssueLanding(output, now);
+            return;
+        }
+
+        // Ohne Anruf (oder wenn der Vorausfliegende nicht landet) kommt die Landefreigabe spätestens hier
+        var fallbackNm = Step == AtcStep.LandingSequenced
+            ? Math.Min(Rules.LandingClearanceFallbackNm, SequencedLandingFallbackNm)
+            : Rules.LandingClearanceFallbackNm;
+        if (!_landingCleared && input.OnGround == false && DistanceToDest(input) is { } d && d <= fallbackNm)
         {
             IssueLanding(output, now);
             return;
@@ -757,7 +785,12 @@ public sealed partial class AtcSession
                 break;
 
             case AtcStep.LandingContact:
-                IssueLanding(output, now);
+                // Jemand vor einem im Endanflug: erst die Reihenfolge, die Landefreigabe folgt nach seiner Landung
+                if (!TrySequence(input, output, now))
+                {
+                    IssueLanding(output, now);
+                }
+
                 break;
 
             case AtcStep.ArrivalContact:
@@ -1168,6 +1201,7 @@ public sealed partial class AtcSession
         // Funkverlauf in echter Uhrzeit (die Sprachschleife vergleicht sie mit ihren Ansagen), Fristen in Sim-Zeit
         var t = new AtcTransmission(++_nextId, _input.WallUtc ?? _input.TimeUtc, from, station.Key, station.Name, station.Frequency.Written, from == "atc" ? station.Voice : "", messageId, text, spoken);
         _transcript.Add(t);
+        _lastRadioAt = _input.TimeUtc;
         if (_transcript.Count > TranscriptLimit)
         {
             _transcript.RemoveRange(0, _transcript.Count - TranscriptLimit);

@@ -46,7 +46,7 @@ Danach `atc_control` mit `reload` aufrufen (oder Duopilo neu starten). Eine ält
 | `firs` | Name der Kontrollstelle je FIR, `frequency` für FIRs ohne Sektordaten, `"oceanic": true`, `oceanicFir` für geteilte FIRs (Gander `CZQX` → `CZQO`), `members` (Stellen, deren Sektoren in der FIR mitzählen) |
 | `firSuffixes` | ICAO-Präfix → Stationsart für FIRs ohne Eintrag (`"K": "Center"`, `"ED": "Radar"`, `"": "Control"`) – der längste Präfix gewinnt |
 | `stationTypes` | Namen der Stationsarten, Platzhalter-Frequenzen |
-| `rules` | Schwellwerte der Zustandsmaschine: Höhen, Entfernungen, Zeiten, `sectorMinNm`, Stufensteigflüge und Höhenanfragen, Squawk-/COM1-Prüfung |
+| `rules` | Schwellwerte der Zustandsmaschine: Höhen, Entfernungen, Zeiten, `sectorMinNm`, Stufensteigflüge und Höhenanfragen, Squawk-/COM1-Prüfung, Verkehr |
 | `words` | was `{levelVerb}` sagt |
 | `voices` | `pool` der Stationsstimmen, feste Stimmen unter `stations` |
 
@@ -55,6 +55,8 @@ Danach `atc_control` mit `reload` aufrufen (oder Duopilo neu starten). Eine ält
 `{callsign}` `{station}` `{dest}` `{sid}` `{star}` `{approach}` `{runway}` `{initialAlt}` `{squawk}` `{freq}` `{taxiRoute}` `{holdingPoint}` `{gate}` `{level}` `{speedKt}` `{entryFix}` `{heading}` `{wind}` `{qnh}` `{fix}` `{eta}` `{nextFix}` `{direction}` `{altitude}` `{nextCenter}` `{route}` `{time}` `{corrections}` `{levelVerb}` `{requested}` `{minutes}`
 
 Notfälle: `{emergencySquawk}` `{emergency}` `{previousSquawk}` `{emergencyTarget}` `{emergencyRunway}`
+
+Verkehr: `{trafficClock}` `{trafficDistance}` `{trafficDirection}` `{trafficType}` `{trafficLevel}` `{trafficTrend}`; Reihenfolge im Endanflug: `{sequence}` `{trafficFinal}`
 
 ## Prüfung
 
@@ -70,6 +72,8 @@ Beim Laden prüft Duopilo auf fehlende Funksprüche, unbekannte Variablen, Readb
 | `deviationSeconds`, `frequencyGraceSeconds`, `deviationRepeatSeconds`, `deviationMaxCalls` | Timing dieser Prüfungen |
 | `centerDescentFt` | Sinkflugfreigabe ohne STAR (Standard FL110) |
 | `sectorMinNm` | Sektoren, die die Route kürzer als dieser Wert (20 nm) berührt, bekommen keine eigene Übergabe |
+| `trafficInfo`, `trafficInfoRangeNm`, `trafficInfoAltitudeFt`, `trafficInfoMissNm` | Traffic-Info von Departure, Center und Approach von sich aus (Standard: innerhalb von 15 nm und 1500 ft, Annäherung auf 5 nm oder weniger in den nächsten drei Minuten) |
+| `trafficSequencing` | Tower nennt die Reihenfolge im Endanflug („number two, follow …“) und gibt frei, sobald der Vorausfliegende gelandet ist |
 
 ## Luftraum- und Airline-Daten
 
