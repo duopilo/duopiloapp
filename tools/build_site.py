@@ -46,7 +46,9 @@ def fetch_release(token: str | None) -> dict | None:
         req.add_header("Authorization", f"Bearer {token}")
     with urllib.request.urlopen(req, timeout=30) as resp:
         releases = json.load(resp)
-    published = [r for r in releases if not r.get("draft")]
+    # Nur Releases mit Installer: Ein gerade veröffentlichtes Release bekommt Setup und ZIP erst vom Release-Workflow
+    # (ca. 15 min später) – bis dahin zeigt der Download-Button auf die vorige Version statt ins Leere.
+    published = [r for r in releases if not r.get("draft") and asset_url(r, "-Setup.exe")]
     stable = [r for r in published if not r.get("prerelease")]
     return (stable or published or [None])[0]
 
