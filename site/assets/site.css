@@ -162,6 +162,7 @@ html:not(.is-prerelease) .if-prerelease { display: none !important; }
 .download li + li { margin-top: 6px; }
 .download li::marker { color: var(--cyan); }
 .note { margin-top: 36px; max-width: 46em; font-size: 0.95rem; color: var(--dim); }
+.note + .note { margin-top: 12px; }
 
 /* Open source */
 .links { display: flex; flex-wrap: wrap; gap: 12px 28px; margin: 28px 0 0; padding: 0; list-style: none; }
