@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en" class="%%RELEASE_STATE%%">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Duopilo – your first officer for Microsoft Flight Simulator 2024</title>
+<meta name="description" content="Duopilo reads your aircraft through SimConnect and takes the Pilot Monitoring seat: callouts, voice loop without push-to-talk, ATC and traffic. Free and open source.">
+<link rel="canonical" href="https://duopilo.app/">
+<link rel="alternate" hreflang="en" href="https://duopilo.app/">
+<link rel="alternate" hreflang="de" href="https://duopilo.app/de/">
+<link rel="alternate" hreflang="x-default" href="https://duopilo.app/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Duopilo – your first officer for MSFS 2024">
+<meta property="og:description" content="Callouts, voice loop without push-to-talk, ATC and traffic – locally on your PC. Free and open source.">
+<meta property="og:url" content="https://duopilo.app/">
+<meta property="og:image" content="https://duopilo.app/icon-512.png">
+<meta name="theme-color" content="#161c22">
+<link rel="icon" href="favicon.ico" sizes="48x48">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="wrap top">
+  <a class="brand" href="./"><img src="assets/brand/duopilo-logo.svg" alt="Duopilo" width="164" height="34"></a>
+  <nav aria-label="Main">
+    <ul>
+      <li><a href="#flight">A flight</a></li>
+      <li><a href="#modes">Two ways</a></li>
+      <li><a href="#download">Download</a></li>
+      <li><a href="https://github.com/duopilo/duopiloapp/wiki">Docs</a></li>
+      <li><a href="https://github.com/duopilo/duopiloapp">GitHub</a></li>
+      <li class="lang"><a href="de/" hreflang="de" lang="de">Deutsch</a></li>
+    </ul>
+  </nav>
+</header>
+
+<main id="main">
+
+<section class="wrap hero">
+  <h1>Your first officer for Microsoft Flight Simulator&nbsp;2024</h1>
+  <div class="hero-text">
+    <p class="lead">Duopilo reads your aircraft through SimConnect and takes the <strong>Pilot Monitoring</strong> seat. It calls out, watches the limits, works the radio and listens to you – locally on your PC, without push-to-talk. You keep flying.</p>
+    <div class="actions">
+      <a class="btn btn-primary if-release" href="%%SETUP_URL%%">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="M7 10.5l5 5 5-5"/><path d="M5 20h14"/></svg>
+        Download for Windows
+      </a>
+      <a class="btn btn-primary if-no-release" href="https://github.com/duopilo/duopiloapp">View on GitHub</a>
+      <a class="btn btn-outline" href="https://github.com/duopilo/duopiloapp/wiki">Read the documentation</a>
+    </div>
+    <p class="meta if-release">Version %%VERSION%%<span class="if-prerelease"> (beta)</span>, free and open source under the MIT license. For Windows 10/11 and MSFS 2024.</p>
+    <p class="meta if-no-release">Free and open source under the MIT license. The first public release is coming soon.</p>
+  </div>
+
+  <figure class="transcript">
+    <div class="seats">
+      <div class="heads" aria-hidden="true"><span>Pilot Flying – you</span><span>Pilot Monitoring – Duopilo</span></div>
+      <ol>
+        <li class="pm"><q><span class="sr">Duopilo: </span>One hundred knots</q></li>
+        <li class="pm"><q><span class="sr">Duopilo: </span>V1</q></li>
+        <li class="pm"><q><span class="sr">Duopilo: </span>Rotate</q></li>
+        <li class="pm"><q><span class="sr">Duopilo: </span>Positive climb</q></li>
+        <li class="pf"><q><span class="sr">You: </span>Gear up</q></li>
+        <li class="pm"><q><span class="sr">Duopilo: </span>Gear up</q></li>
+        <li class="pf"><q><span class="sr">You: </span>Speed two five zero</q></li>
+        <li class="pm"><q><span class="sr">Duopilo: </span>Speed two five zero set</q></li>
+      </ol>
+    </div>
+    <figcaption>A takeoff with Duopilo. It speaks the callouts, you give commands by voice.</figcaption>
+  </figure>
+</section>
+
+<section class="section" id="flight" aria-labelledby="flight-title">
+  <div class="wrap">
+    <h2 id="flight-title">A flight with Duopilo</h2>
+    <p class="intro">From the first checklist to the runway exit, Duopilo does what the second pilot does.</p>
+    <ol class="phases">
+      <li>
+        <h3>Before departure</h3>
+        <p>Load your SimBrief plan and Duopilo knows the route, fuel figures and top of descent. Your first officer gets a name and a voice for the flight, and you run the checklists by voice, challenge and response.</p>
+        <p class="say pf"><svg viewBox="8 26 84 47" aria-hidden="true"><path d="M46 29 L46 70 L15 70 Q10.5 70 11.1 65.5 L15.4 38.6 Q16.1 34.6 20.1 33.9 Z" fill="#e9eef1"/><path d="M54 29 L54 70 L85 70 Q89.5 70 88.9 65.5 L84.6 38.6 Q83.9 34.6 79.9 33.9 Z" fill="none" stroke="#5c6b78" stroke-width="5"/></svg><q><span class="sr">You: </span>Before start checklist</q></p>
+      </li>
+      <li>
+        <h3>Clearance and taxi</h3>
+        <p>Call Delivery, Ground and Tower on Duopilo's own ATC, with a readback check and a voice for each station. On the ground it tells you when you taxi too fast.</p>
+        <p class="say pm"><svg viewBox="8 26 84 47" aria-hidden="true"><path d="M46 29 L46 70 L15 70 Q10.5 70 11.1 65.5 L15.4 38.6 Q16.1 34.6 20.1 33.9 Z" fill="none" stroke="#5c6b78" stroke-width="5"/><path d="M54 29 L54 70 L85 70 Q89.5 70 88.9 65.5 L84.6 38.6 Q83.9 34.6 79.9 33.9 Z" fill="#31c6ee"/></svg><q><span class="sr">Duopilo: </span>Taxi speed</q></p>
+      </li>
+      <li>
+        <h3>Takeoff and climb</h3>
+        <p>The callouts a real Pilot Monitoring makes: one hundred knots, V1, rotate, positive climb, flaps with a speed check, ten thousand, transition altitude.</p>
+        <p class="say pm"><svg viewBox="8 26 84 47" aria-hidden="true"><path d="M46 29 L46 70 L15 70 Q10.5 70 11.1 65.5 L15.4 38.6 Q16.1 34.6 20.1 33.9 Z" fill="none" stroke="#5c6b78" stroke-width="5"/><path d="M54 29 L54 70 L85 70 Q89.5 70 88.9 65.5 L84.6 38.6 Q83.9 34.6 79.9 33.9 Z" fill="#31c6ee"/></svg><q><span class="sr">Duopilo: </span>Ten thousand</q></p>
+      </li>
+      <li>
+        <h3>Cruise</h3>
+        <p>At every waypoint of the plan Duopilo compares your fuel with the plan. ATC hands you from sector to sector, oceanic included, and traffic comes with clock position and distance. Small talk with your first officer is optional.</p>
+        <p class="say pm"><svg viewBox="8 26 84 47" aria-hidden="true"><path d="M46 29 L46 70 L15 70 Q10.5 70 11.1 65.5 L15.4 38.6 Q16.1 34.6 20.1 33.9 Z" fill="none" stroke="#5c6b78" stroke-width="5"/><path d="M54 29 L54 70 L85 70 Q89.5 70 88.9 65.5 L84.6 38.6 Q83.9 34.6 79.9 33.9 Z" fill="#31c6ee"/></svg><q><span class="sr">Duopilo: </span>HENDY, fuel 34.1, 2.2 below plan</q></p>
+      </li>
+      <li>
+        <h3>Descent and approach</h3>
+        <p>Top of descent, sink rate, bank angle and – with an aircraft profile – localizer and glideslope deviation. At 2000 feet it checks gear, landing flaps and spoilers for you.</p>
+        <p class="say pm"><svg viewBox="8 26 84 47" aria-hidden="true"><path d="M46 29 L46 70 L15 70 Q10.5 70 11.1 65.5 L15.4 38.6 Q16.1 34.6 20.1 33.9 Z" fill="none" stroke="#5c6b78" stroke-width="5"/><path d="M54 29 L54 70 L85 70 Q89.5 70 88.9 65.5 L84.6 38.6 Q83.9 34.6 79.9 33.9 Z" fill="#31c6ee"/></svg><q><span class="sr">Duopilo: </span>Landing checklist complete</q></p>
+      </li>
+      <li>
+        <h3>Landing</h3>
+        <p>Spoilers, reverse green, decel, seventy knots – then the after landing checklist.</p>
+        <p class="say pm"><svg viewBox="8 26 84 47" aria-hidden="true"><path d="M46 29 L46 70 L15 70 Q10.5 70 11.1 65.5 L15.4 38.6 Q16.1 34.6 20.1 33.9 Z" fill="none" stroke="#5c6b78" stroke-width="5"/><path d="M54 29 L54 70 L85 70 Q89.5 70 88.9 65.5 L84.6 38.6 Q83.9 34.6 79.9 33.9 Z" fill="#31c6ee"/></svg><q><span class="sr">Duopilo: </span>Reverse green</q></p>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<section class="section" id="modes" aria-labelledby="modes-title">
+  <div class="wrap">
+    <h2 id="modes-title">Two ways to fly with it</h2>
+    <p class="intro">Use Duopilo on its own, connect Claude, or both at once.</p>
+    <div class="modes">
+      <div class="mode mode-own">
+        <h3>On its own</h3>
+        <p>Everything runs on your PC. No account, no language model, no push-to-talk – made for VR as well.</p>
+        <ul>
+          <li>Callouts and monitoring, spoken by Duopilo</li>
+          <li>Voice loop: commands, queries and checklists in English or German</li>
+          <li>ATC from Delivery to Ground, oceanic included</li>
+          <li>Inputs on your call for FCU, EFIS, lights, gear and flaps – locked until you enable them</li>
+        </ul>
+      </div>
+      <div class="mode-claude-frame">
+        <div class="mode mode-claude">
+          <h3>With Claude</h3>
+          <p>Duopilo is also an MCP server. Claude reads altitude, speed, configuration, navigation, weather and ATC itself instead of you reading them out, and can reason about them.</p>
+          <ul>
+            <li>Claude Desktop on the sim PC</li>
+            <li>claude.ai and the Claude app through a remote connector</li>
+            <li>Claude Code and other MCP clients</li>
+          </ul>
+          <p class="more">Needs a Claude plan. <a href="https://github.com/duopilo/duopiloapp/wiki/Connecting-Claude">How to connect Claude</a></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" aria-labelledby="rules-title">
+  <div class="wrap">
+    <h2 id="rules-title">How Duopilo behaves</h2>
+    <div class="principles">
+      <div>
+        <h3>The pilot decides</h3>
+        <p>Duopilo reads everything but operates switches only on your call, with hard interlocks. Engines, thrust, fuel, fire and hydraulics are off limits.</p>
+      </div>
+      <div>
+        <h3>Crew language is English</h3>
+        <p>Callouts, checklists, warnings and radio are always English, like in a real cockpit. Commands work in English and German, and the dashboard speaks both.</p>
+      </div>
+      <div>
+        <h3>The simulator comes first</h3>
+        <p>Speech recognition and voices run on the CPU with few threads, and only after you have spoken. There is no local language model competing with MSFS.</p>
+      </div>
+      <div>
+        <h3>No guessing</h3>
+        <p>If an aircraft doesn't expose a value, the related callout stays off instead of being wrong.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section download" id="download" aria-labelledby="download-title">
+  <div class="wrap">
+    <h2 id="download-title">Download</h2>
+    <div class="download-grid">
+      <div>
+        <div class="if-release">
+          <p class="release-name">Duopilo %%VERSION%% <span class="badge if-prerelease">Beta</span></p>
+          <div class="actions">
+            <a class="btn btn-primary" href="%%SETUP_URL%%">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="M7 10.5l5 5 5-5"/><path d="M5 20h14"/></svg>
+              Download installer
+            </a>
+            <a class="btn btn-outline" href="%%ZIP_URL%%">ZIP without installer</a>
+          </div>
+          <p class="small">Release notes and checksums are on <a href="%%RELEASE_URL%%">GitHub</a>. Updates install over the old version and keep your settings.</p>
+        </div>
+        <div class="if-no-release">
+          <p class="release-name">The first public release is coming soon</p>
+          <p class="small">Until then you can build Duopilo from source.</p>
+          <div class="actions">
+            <a class="btn btn-primary" href="https://github.com/duopilo/duopiloapp/wiki/Installation#option-b--build-from-source">Build instructions</a>
+            <a class="btn btn-outline" href="https://github.com/duopilo/duopiloapp">View on GitHub</a>
+          </div>
+        </div>
+      </div>
+      <div>
+        <h3>What you need</h3>
+        <ul>
+          <li>Windows 10 or 11, 64-bit</li>
+          <li>Microsoft Flight Simulator 2024</li>
+          <li>Optional: a microphone for the voice loop, a SimBrief account, a Claude plan</li>
+        </ul>
+        <h3 style="margin-top: 28px">Aircraft</h3>
+        <p>The basics work with any aircraft. Airliner details such as FMA, ECAM and inputs come with the bundled profiles for the FlyByWire A32NX and A380X, Headwind A330-900neo and iniBuilds A321LR. <a href="https://github.com/duopilo/duopiloapp/wiki/Aircraft-Profiles">Aircraft profiles</a></p>
+      </div>
+    </div>
+    <p class="note">SimConnect is part of Microsoft's MSFS 2024 SDK and isn't included in the download. If it's missing, Duopilo offers to download Microsoft's SDK installer straight from Microsoft, checks its signature and starts it.</p>
+  </div>
+</section>
+
+<section class="section" aria-labelledby="oss-title">
+  <div class="wrap">
+    <h2 id="oss-title">Free and open source</h2>
+    <p class="intro">Duopilo is free and released under the MIT license. Found wrong data, a missing callout or a bug? The dashboard's <em>Report a problem</em> button prepares an issue with everything needed. Translations are welcome too.</p>
+    <ul class="links">
+      <li><a href="https://github.com/duopilo/duopiloapp">Source code on GitHub</a></li>
+      <li><a href="https://github.com/duopilo/duopiloapp/wiki">Documentation</a></li>
+      <li><a href="https://github.com/duopilo/duopiloapp/issues">Issues</a></li>
+      <li><a href="https://github.com/duopilo/duopiloapp/wiki/Development#translations">Translating Duopilo</a></li>
+    </ul>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <div>
+      <img src="assets/brand/duopilo-logo.svg" alt="Duopilo" width="116" height="24">
+      <p>Duopilo is an independent project and not affiliated with Microsoft, Asobo Studio or Anthropic.</p>
+    </div>
+    <ul>
+      <li><a href="impressum.html" hreflang="de">Legal notice (German)</a></li>
+      <li><a href="datenschutz.html" hreflang="de">Privacy policy (German)</a></li>
+      <li><a href="https://github.com/duopilo/duopiloapp">GitHub</a></li>
+    </ul>
+  </div>
+</footer>
+</body>
+</html>
