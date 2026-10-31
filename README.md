@@ -4,7 +4,9 @@
 
 Duopilo connects **Microsoft Flight Simulator 2024** to **Claude** via SimConnect. It runs as an MCP server on the sim PC. With it, Claude reads altitude, speed, configuration, navigation and weather itself instead of you reading them out. That makes Claude the **Pilot Monitoring**, while you stay Pilot Flying.
 
-> Duopilo only reads. It doesn't operate anything in the aircraft.
+Callouts, monitoring, ATC and the [voice loop](#voice-loop) also work on their own, without Claude.
+
+> Duopilo reads everything, but it only operates switches on the pilot's call: locked by default, with readback and confirmation, and never engines, thrust, fuel, fire or hydraulics (see [Input module](#input-module)).
 
 Website: <https://duopilo.app> · Repository: <https://github.com/duopilo/duopiloapp>
 
@@ -876,3 +878,7 @@ Every variable has its own SimConnect data definition. If a name is unknown in M
 - [ ] WASimCommander integration (list L: variables, events)
 - [x] Remote operation: Streamable HTTP with bearer token and OAuth, Cloudflare Tunnel
 - [ ] Test voice mode with the remote connector
+
+## License
+
+Duopilo is licensed under the [MIT License](LICENSE). Bundled data (VAT-Spy, VATSIM sectors – non-commercial only, OpenFlights), libraries, fonts and the models Duopilo downloads keep their own licenses – see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). The SimConnect DLLs belong to the Microsoft Flight Simulator SDK and are not covered by the MIT License.
