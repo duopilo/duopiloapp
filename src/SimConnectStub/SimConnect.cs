@@ -238,6 +238,34 @@ namespace Microsoft.FlightSimulator.SimConnect
         public string Value;
     }
 
+    public struct SIMCONNECT_DATA_INITPOSITION
+    {
+        public double Latitude;
+        public double Longitude;
+        public double Altitude;
+        public double Pitch;
+        public double Bank;
+        public double Heading;
+        public uint OnGround;
+        public uint Airspeed;
+    }
+
+    public struct SIMCONNECT_DATA_WAYPOINT
+    {
+        public double Latitude;
+        public double Longitude;
+        public double Altitude;
+        public uint Flags;
+        public double ktsSpeed;
+        public double percentThrottle;
+    }
+
+    public class SIMCONNECT_RECV_ASSIGNED_OBJECT_ID : SIMCONNECT_RECV
+    {
+        public uint dwRequestID;
+        public uint dwObjectID;
+    }
+
     public class SimConnect : IDisposable
     {
         public const uint SIMCONNECT_OBJECT_ID_USER = 0;
@@ -269,6 +297,8 @@ namespace Microsoft.FlightSimulator.SimConnect
         public delegate void RecvGetInputEventEventHandler(SimConnect sender, SIMCONNECT_RECV_GET_INPUT_EVENT data);
 
         public delegate void RecvEnumerateInputEventParamsEventHandler(SimConnect sender, SIMCONNECT_RECV_ENUMERATE_INPUT_EVENT_PARAMS data);
+
+        public delegate void RecvAssignedObjectIdEventHandler(SimConnect sender, SIMCONNECT_RECV_ASSIGNED_OBJECT_ID data);
 
         public SimConnect(string szName, IntPtr hWnd, uint UserEventWin32, WaitHandle hEventHandle, uint ConfigIndex)
         {
@@ -302,6 +332,20 @@ namespace Microsoft.FlightSimulator.SimConnect
         public event RecvGetInputEventEventHandler OnRecvGetInputEvent;
 
         public event RecvEnumerateInputEventParamsEventHandler OnRecvEnumerateInputEventParams;
+
+        public event RecvAssignedObjectIdEventHandler OnRecvAssignedObjectId;
+
+        public void AICreateNonATCAircraft(string szContainerTitle, string szTailNumber, SIMCONNECT_DATA_INITPOSITION InitPos, Enum RequestID)
+        {
+        }
+
+        public void AICreateNonATCAircraft_EX1(string szContainerTitle, string szLivery, string szTailNumber, SIMCONNECT_DATA_INITPOSITION InitPos, Enum RequestID)
+        {
+        }
+
+        public void AIRemoveObject(uint ObjectID, Enum RequestID)
+        {
+        }
 
         public void RegisterStruct<RECV, T>(Enum dwID)
             where RECV : SIMCONNECT_RECV

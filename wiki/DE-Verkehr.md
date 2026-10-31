@@ -54,3 +54,13 @@ Abschalten: `"DisabledRules": [ "TRAFFIC_PROXIMITY" ]`.
 Der Verkehr nutzt eine eigene SimConnect-Verbindung direkt über die native `SimConnect.dll` und liest nur, was jede Nachricht tatsächlich enthält (`dwSize`). Nach Abstürzen in Testflügen hat das für den Verkehr die verwaltete Bibliothek abgelöst. Der Hintergrundscan fragt nur Zahlen ab; Rufzeichen und Typ sind bekannt, wenn `get_traffic` das Ziel in den letzten 15 Minuten gesehen hat.
 
 Jede Antwort wird in `%LOCALAPPDATA%\Duopilo\logs\traffic-messages.csv` protokolliert (~250 KB pro Flugstunde, bei 10 MB rotiert); `get_traffic` → `messageCheck` fasst Auffälligkeiten zusammen. Abschalten: `"MessageLog": false`.
+
+## Verkehrstest (Entwicklung)
+
+Erster Schritt zu eigenem Verkehr in Duopilo: `traffic_test_start` erzeugt ein KI-Flugzeug (`DUO01`), das über Wegpunkte einen Endanflug fliegt, landet und auf der Bahn hält. Standardmäßig aus – einschalten mit `"TrafficTest": { "Enabled": true }` in `appsettings.Local.json`.
+
+- **A1:** Spawn 5 NM vor der Bahn mit Fahrwerk unten. **A2:** Spawn 15 NM vor der Bahn, Fahrwerk bei 10 NM.
+- `traffic_test_status` zeigt die Auswertung (Aufsetzen, Schweben, Speed, Haltepunkt), die Messpunkte liegen unter `%LOCALAPPDATA%\Duopilo\traffic-tests\`.
+- `traffic_test_stop` entfernt das Flugzeug (auch nach 15 Minuten und beim Beenden von Duopilo).
+
+Hintergrund und Plan: [Recherche zu eigenem Verkehr](https://github.com/duopilo/duopiloapp/blob/main/docs/research/eigener-verkehr.md).

@@ -232,6 +232,10 @@
   "sim.read.noResponse": "Keine Antwort von MSFS – Variablenname oder Einheit vermutlich ungültig.",
   "sim.command.timeout": "MSFS hat den Befehl nicht rechtzeitig angenommen.",
   "sim.facilities.timeout": "Keine Facility-Daten für {icao}.",
+  "sim.ai.modelsUnsupported": "Die geladene SimConnect-Bibliothek kann keine Flugzeugmodelle auflisten (EnumerateSimObjectsAndLiveries, MSFS-2024-SDK nötig). Den Titel bitte selbst angeben.",
+  "sim.ai.createNoAnswer": "MSFS hat das Flugzeug nicht erzeugt (keine Objekt-ID nach 10 s). Titel mit traffic_test_models prüfen; die Bahn muss im Bereich um das eigene Flugzeug liegen.",
+  "sim.ai.createFailed": "MSFS hat das Flugzeug nicht erzeugt: {exception}. Titel und Livery mit traffic_test_models prüfen; die Bahn muss im Bereich um das eigene Flugzeug liegen.",
+  "sim.ai.createUnsupported": "Die geladene SimConnect-Bibliothek kann keine KI-Flugzeuge erzeugen.",
   "sim.aircraft.unknownTitle": "unbekannt",
   "sim.aircraft.unknownPath": "Pfad unbekannt",
   "traffic.connection.retryLater": "Verkehrsverbindung zu MSFS gerade nicht verfügbar – neuer Versuch in wenigen Sekunden.",
@@ -1166,5 +1170,15 @@
   "dashboard.settings.simconnect.missing": "Nicht gefunden",
   "tools.inputEvents.none": "MSFS hat für dieses Flugzeug keine Input Events geliefert. Manche Sim-Versionen geben sie nur im Entwicklermodus heraus – Entwicklermodus in MSFS einschalten und das Flugzeug neu laden.",
   "tools.inputEvents.baseline": "Für dieses Flugzeug gibt es noch keine früheren Werte – dieser Aufruf ist die Ausgangslage. Im Cockpit einen Schalter betätigen und mit changesOnly erneut abfragen.",
-  "tools.inputEvents.unsupported": "Die geladene SimConnect-Bibliothek kennt keine Input Events (MSFS-2024-SDK nötig)."
+  "tools.inputEvents.unsupported": "Die geladene SimConnect-Bibliothek kennt keine Input Events (MSFS-2024-SDK nötig).",
+  "tools.trafficTest.disabled": "Der Verkehrstest ist aus. Einschalten in appsettings.Local.json neben Duopilo.exe: {{ \"Duopilo\": {{ \"TrafficTest\": {{ \"Enabled\": true }} }} }} – danach Duopilo neu starten.",
+  "tools.trafficTest.noFlight": "Kein Flug geladen (Hauptmenü oder Ladebildschirm) – das Testflugzeug braucht einen laufenden Flug.",
+  "tools.trafficTest.airportUnknown": "MSFS kennt für {airport} keine Bahnen.",
+  "tools.trafficTest.runwayUnknown": "Bahn {runway} gibt es in {airport} nicht. Vorhanden: {runways}.",
+  "tools.trafficTest.runwayTooShort": "Bahn {runway} ist nur {lengthM:0} m lang – zu kurz für Aufsetzen und Ausrollen des Testflugzeugs.",
+  "tools.trafficTest.tooFar": "Die Bahn ist {distanceNm:0} NM entfernt – höchstens {maxNm:0} NM, sonst erzeugt MSFS das Flugzeug nicht.",
+  "tools.trafficTest.noModel": "Unter den installierten Modellen ist kein A320. Mit traffic_test_models einen Titel aussuchen und als title übergeben.",
+  "tools.trafficTest.titleRequired": "Die installierten Modelle lassen sich mit dieser SimConnect-Bibliothek nicht auflisten – bitte den Flugzeugtitel angeben (title).",
+  "tools.trafficTest.noData": "Seit {seconds} s keine Werte vom Testflugzeug – MSFS hat es vielleicht entfernt. Mit traffic_test_stop beenden und neu starten.",
+  "tools.trafficTest.variantUnknown": "Unbekannte Variante „{variant}“ – A1 (Fahrwerk ab Spawn) oder A2 (Fahrwerk bei 10 NM)."
 }

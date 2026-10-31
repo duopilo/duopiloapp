@@ -364,6 +364,7 @@ public sealed partial class SimConnectClient : BackgroundService
             sc.OnRecvFacilityData += OnFacilityData;
             sc.OnRecvFacilityDataEnd += OnFacilityDataEnd;
             TryRegisterInputEventHandlers(sc);
+            TryRegisterAiHandlers(sc);
             _sc = sc;
             _lastConnectError = null;
             return true;
@@ -437,6 +438,7 @@ public sealed partial class SimConnectClient : BackgroundService
 
         ResetFacilities();
         ResetInputEvents();
+        ResetAiObjects();
     }
 
     private void Enqueue(SimCommand command)
@@ -618,6 +620,7 @@ public sealed partial class SimConnectClient : BackgroundService
 
     private void OnException(SimConnect sender, SIMCONNECT_RECV_EXCEPTION data)
     {
+        RememberException((SIMCONNECT_EXCEPTION)data.dwException);
         _log.LogWarning(
             Loc.Log("log.sim.exception"),
             (SIMCONNECT_EXCEPTION)data.dwException,
@@ -685,6 +688,11 @@ public sealed partial class SimConnectClient : BackgroundService
 
     private void OnData(SimConnect sender, SIMCONNECT_RECV_SIMOBJECT_DATA data)
     {
+        if (TryHandleAiProbeData(data))
+        {
+            return;
+        }
+
         var raw = data.dwData is { Length: > 0 } ? data.dwData[0] : null;
         object? value = raw switch
         {
