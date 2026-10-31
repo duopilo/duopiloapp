@@ -214,7 +214,7 @@ public sealed partial class SmalltalkService
                 config.EffectiveModel,
                 ex.MaxTokens ?? request.MaxTokens,
                 config.Reasoning,
-                config.ReasoningEffort ?? "-");
+                config.ReasoningEffort ?? config.ClaudeThinking?.Effort ?? config.ClaudeThinking?.Thinking ?? "-");
             return Fail(question, config, $"empty answer: token limit of {ex.MaxTokens ?? request.MaxTokens} reached (finish_reason length)", ms: elapsed, log: false)
                 with { Warning = ex.Message };
         }

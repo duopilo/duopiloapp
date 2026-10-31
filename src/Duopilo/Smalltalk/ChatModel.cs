@@ -58,12 +58,19 @@ public sealed class HttpChatModel(HttpClient? http = null) : IChatModel
 
     public async Task<string> CompleteAsync(SmalltalkConfig config, ChatRequest request, CancellationToken ct)
     {
-        using var message = Build(config, request);
-        using var response = await _http.SendAsync(message, HttpCompletionOption.ResponseContentRead, ct);
-        var body = await response.Content.ReadAsStringAsync(ct);
-        if (!response.IsSuccessStatusCode)
+        var (status, body) = await SendAsync(config, request, plain: false, ct);
+
+        // Claude lehnt die Einstellung zum Denken ab (anderes Modell als erwartet): einmal ohne, mit Spielraum für die Denk-Tokens
+        if (status == 400 && config.ClaudeThinking is not null && (body.Contains("thinking", StringComparison.OrdinalIgnoreCase)
+            || body.Contains("effort", StringComparison.OrdinalIgnoreCase)))
         {
-            throw new ChatModelException(Loc.T("smalltalk.http.status", (int)response.StatusCode, ErrorText(body, config.ApiKey)));
+            request = request with { MaxTokens = request.MaxTokens + SmalltalkReasoning.Headroom(SmalltalkReasoning.Medium) };
+            (status, body) = await SendAsync(config, request, plain: true, ct);
+        }
+
+        if (status is < 200 or >= 300)
+        {
+            throw new ChatModelException(Loc.T("smalltalk.http.status", status, ErrorText(body, config.ApiKey)));
         }
 
         ChatCompletion completion;
@@ -85,8 +92,16 @@ public sealed class HttpChatModel(HttpClient? http = null) : IChatModel
         return completion.Text;
     }
 
+    private async Task<(int Status, string Body)> SendAsync(SmalltalkConfig config, ChatRequest request, bool plain, CancellationToken ct)
+    {
+        using var message = Build(config, request, plain);
+        using var response = await _http.SendAsync(message, HttpCompletionOption.ResponseContentRead, ct);
+        return ((int)response.StatusCode, await response.Content.ReadAsStringAsync(ct));
+    }
+
     /// <summary>Die HTTP-Anfrage für den Anbieter (öffentlich für Tests).</summary>
-    public static HttpRequestMessage Build(SmalltalkConfig config, ChatRequest request)
+    /// <param name="plain">Claude ohne Einstellung zum Denken (Wiederholung, wenn das Modell sie ablehnt).</param>
+    public static HttpRequestMessage Build(SmalltalkConfig config, ChatRequest request, bool plain = false)
     {
         var baseUrl = config.EffectiveUrl.TrimEnd('/');
         JsonObject body;
@@ -101,6 +116,21 @@ public sealed class HttpChatModel(HttpClient? http = null) : IChatModel
                     ["system"] = request.System,
                     ["messages"] = Messages(request.Messages, null),
                 };
+
+                // Claude 5 denkt von selbst, und das zählt zu max_tokens: für ein paar Sätze abschalten bzw. wenig Aufwand
+                if (!plain && config.ClaudeThinking is { } thinking)
+                {
+                    if (thinking.Thinking is { } thinkingType)
+                    {
+                        body["thinking"] = new JsonObject { ["type"] = thinkingType };
+                    }
+
+                    if (thinking.Effort is { } claudeEffort)
+                    {
+                        body["output_config"] = new JsonObject { ["effort"] = claudeEffort };
+                    }
+                }
+
                 message = new HttpRequestMessage(HttpMethod.Post, baseUrl + "/v1/messages");
                 message.Headers.TryAddWithoutValidation("x-api-key", config.ApiKey);
                 message.Headers.TryAddWithoutValidation("anthropic-version", AnthropicVersion);

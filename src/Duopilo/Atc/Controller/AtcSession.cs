@@ -127,6 +127,14 @@ public sealed partial class AtcSession
         }
 
         _input = input;
+
+        // Anrede ohne Rest: kam nichts mehr, gilt sie allein (wie früher sofort)
+        if (_heldAddress is { } held && input.TimeUtc - held.AtUtc > HeldAddressMax)
+        {
+            _heldAddress = null;
+            output.AddRange(Transmission(held.Text, input, hold: false));
+        }
+
         UpdateRoute(input);
         UpdateMotion(input);
 
@@ -173,8 +181,13 @@ public sealed partial class AtcSession
         return output;
     }
 
-    /// <summary>Funkspruch des Piloten (Text, wie gesprochen). Antwortet mit den ATC-Sprüchen, die darauf folgen.</summary>
-    public IReadOnlyList<AtcTransmission> PilotTransmission(string text, AtcInput input)
+    /// <summary>
+    /// Funkspruch des Piloten (Text, wie gesprochen). Antwortet mit den ATC-Sprüchen, die darauf folgen. Nur eine Anrede
+    /// ("Frankfurt Tower,") wartet bis <see cref="HeldAddressMax"/> auf den Rest und gilt dann mit ihm als ein Funkspruch.
+    /// </summary>
+    public IReadOnlyList<AtcTransmission> PilotTransmission(string text, AtcInput input) => Transmission(text, input, hold: true);
+
+    private List<AtcTransmission> Transmission(string text, AtcInput input, bool hold)
     {
         var output = new List<AtcTransmission>();
         _input = input;
@@ -185,7 +198,24 @@ public sealed partial class AtcSession
             UpdateOceanicClearance(input);
         }
 
+        if (_heldAddress is { } held)
+        {
+            _heldAddress = null;
+            if (input.TimeUtc - held.AtUtc <= HeldAddressMax)
+            {
+                text = held.Text.Trim().TrimEnd(',', '.', '?', '!') + ", " + text.Trim();
+            }
+        }
+
         var heard = HeardText.Parse(text);
+        if (hold && PendingReadback is null && IsAddressOnly(heard))
+        {
+            // Anrede allein (VAD hat nach "Frankfurt Tower," getrennt): auf den Rest warten statt schon zu antworten.
+            // Nicht bei offenem Readback – der soll nicht warten.
+            _heldAddress = (text, input.TimeUtc);
+            return output;
+        }
+
         var forOceanic = IsForOceanic(heard);
         var target = forOceanic ? OceanicStation() : Station;
         Record(output, "pilot", target, "pilot", text.Trim(), text.Trim(), addToOutput: false);
@@ -209,6 +239,14 @@ public sealed partial class AtcSession
             return output;
         }
 
+        // Anruf an eine andere Station ("Gander, Condor 2205, …" bei Montreal): Hinweis statt Antwort – auch beim Radio Check
+        // ("Frankfurt Tower, …, radio check" in Düsseldorf). Nicht bei offenem Readback – Readbacks enden mit dem Rufzeichen und
+        // nennen keine Station.
+        if (!forOceanic && PendingReadback is null && HandleWrongStation(heard, input, output))
+        {
+            return output;
+        }
+
         if (IsRadioCheck(heard))
         {
             // Nur die Lesbarkeit – kein Readback, keine Anfrage, der Ablauf bleibt, wo er ist. Ohne Vorlage (alte eigene Kopie): "roger".
@@ -223,13 +261,6 @@ public sealed partial class AtcSession
         if (forOceanic)
         {
             HandleOceanicClearance(heard, input, output);
-            return output;
-        }
-
-        // Anruf an eine andere Station ("Gander, Condor 2205, …" bei Montreal): Hinweis statt Antwort. Nicht bei offenem
-        // Readback – Readbacks enden mit dem Rufzeichen und nennen keine Station.
-        if (PendingReadback is null && HandleWrongStation(heard, input, output))
-        {
             return output;
         }
 

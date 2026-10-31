@@ -61,6 +61,12 @@ public sealed partial class AtcSession
 
     private readonly List<AtcDeviationEvent> _deviationEvents = [];
 
+    // Nur die Anrede einer Station ("Frankfurt Tower,"): Der Rest kommt nach einer Pause als eigener Funkspruch
+    private (string Text, DateTimeOffset AtUtc)? _heldAddress;
+
+    /// <summary>So lange wartet eine Anrede ohne Rest auf den Rest, danach gilt sie allein.</summary>
+    public static readonly TimeSpan HeldAddressMax = TimeSpan.FromSeconds(6);
+
     /// <summary>Herkunft des Squawks: "duopilo" (pro Flug fest) oder "sim" (aus dem Transponder übernommen, SquawkFromSim).</summary>
     public string SquawkSource { get; private set; } = SquawkSourceOwn;
 
@@ -355,6 +361,23 @@ public sealed partial class AtcSession
             && lead.Take(unit).All(w => addressed.Contains(w) && !ProcedureWords.Contains(w))
             ? addressed
             : null;
+    }
+
+    /// <summary>
+    /// Nur die Anrede einer Station ("Frankfurt Tower", "Cologne Approach") – kein Rufzeichen, keine Zahl, sonst nichts. So bleibt
+    /// ein Funkspruch übrig, wenn der Pilot nach der Anrede kurz absetzt und die Spracherkennung zwei daraus macht.
+    /// </summary>
+    private bool IsAddressOnly(HeardText heard)
+    {
+        var tokens = heard.Tokens;
+        if (tokens.Count is < 2 or > 4 || tokens.Any(t => t.Kind != HeardKind.Word) || !StationUnitWords.Contains(tokens[^1].Text))
+        {
+            return false;
+        }
+
+        var own = OwnCallsignWords();
+        return tokens.Take(tokens.Count - 1).All(t => t.Text.Length >= 3 && !own.Contains(t.Text) && !ProcedureWords.Contains(t.Text)
+            && !StationUnitWords.Contains(t.Text));
     }
 
     /// <summary>Stationsarten, nach denen ein Name als Station gilt (Strecke und Flughafen, englisch und deutsch).</summary>

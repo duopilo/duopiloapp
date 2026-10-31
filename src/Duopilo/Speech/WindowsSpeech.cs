@@ -17,6 +17,7 @@ internal sealed class WindowsSpeech : IDisposable
     private readonly SpeechSynthesizer _synth = new();
     private MediaPlayer _player = CreatePlayer();
     private string? _deviceId;
+    private int _disposed;
 
     public string? ActiveVoice => _synth.Voice?.DisplayName;
 
@@ -119,10 +120,26 @@ internal sealed class WindowsSpeech : IDisposable
         }
     }
 
+    /// <summary>
+    /// Nur einmal: Ein zweites Dispose wirft bei den WinRT-Objekten ObjectDisposedException – beim Beenden brachte das Duopilo
+    /// zum Absturz (Testflug 31.10., crash.log).
+    /// </summary>
     public void Dispose()
     {
-        _player.Dispose();
-        _synth.Dispose();
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
+        try
+        {
+            _player.Dispose();
+            _synth.Dispose();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Schon weg (WinRT räumt beim Beenden teils selbst auf)
+        }
     }
 
     private static MediaPlayer CreatePlayer() => new()
