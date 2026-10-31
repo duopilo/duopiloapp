@@ -1,0 +1,1 @@
+[duopilo.app](https://duopilo.app) · [Repository](https://github.com/duopilo/duopiloapp) · [Report an issue](https://github.com/duopilo/duopiloapp/issues) · This wiki is generated from [`wiki/`](https://github.com/duopilo/duopiloapp/tree/main/wiki) in the repository – edit it there via pull request.
