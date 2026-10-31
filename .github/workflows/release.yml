@@ -14,9 +14,10 @@
 #   git push origin v0.9.1
 #
 # SimConnect: Auf GitHub-Runnern gibt es das MSFS-2024-SDK nicht. Der Workflow nimmt die DLLs aus lib/ im Repo oder
-# aus den Secrets SIMCONNECT_ZIP_1…6 (einmal anlegen mit: pwsh installer/simconnect-secret.ps1). Ohne echtes
-# SimConnect bricht ein Release ab – ein Build gegen den Stub könnte sich nicht mit MSFS verbinden. Testbuilds laufen
-# dann mit Warnung gegen den Stub.
+# aus den Secrets SIMCONNECT_ZIP_1…6 (einmal anlegen mit: pwsh installer/simconnect-secret.ps1) – nur zum Bauen: Ins Paket
+# kommen sie nicht (BundleSimConnect=false), Duopilo lädt sie zur Laufzeit aus dem installierten SDK und bietet sonst an,
+# das SDK von Microsoft zu installieren. Ohne echtes SimConnect bricht ein Release ab – ein Build gegen den Stub könnte sich
+# nicht mit MSFS verbinden. Testbuilds laufen dann mit Warnung gegen den Stub.
 #
 # Der Produktname steht zentral als <Product> in Directory.Build.props (Duopilo, bis 0.9.x Kopilot), die Programmdatei
 # als <AssemblyName> im Projekt. Der Installer übernimmt eine vorhandene Kopilot-Installation (installer/setup.iss).
@@ -142,8 +143,9 @@ jobs:
           ECHT: ${{ steps.simconnect.outputs.echt }}
         run: |
           $stub = if ($env:ECHT -eq 'true') { 'false' } else { 'true' }
+          # Gegen das echte SimConnect bauen, die DLLs aber nicht ausliefern (MSFS-SDK) – Duopilo lädt sie aus dem installierten SDK
           dotnet publish src/Duopilo/Duopilo.csproj -c Release -r win-x64 --self-contained true `
-            "-p:Version=$env:VERSION" "-p:UseSimConnectStub=$stub" -p:ContinuousIntegrationBuild=true `
+            "-p:Version=$env:VERSION" "-p:UseSimConnectStub=$stub" -p:ContinuousIntegrationBuild=true -p:BundleSimConnect=false `
             -o "out/$env:APP_NAME"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -158,14 +160,16 @@ jobs:
           if ($ist -ne $env:VERSION_NUM) { Write-Output "::error::$dll meldet Version $ist statt $env:VERSION_NUM."; exit 1 }
           Write-Output "Version im Programm: $ist"
           if ($env:ECHT -eq 'true') {
+            # Die SimConnect-DLLs gehören zum MSFS-SDK und kommen nicht ins Paket (auch nicht der Stub)
             foreach ($datei in 'Microsoft.FlightSimulator.SimConnect.dll', 'SimConnect.dll') {
-              $pfad = Join-Path $ordner $datei
-              if (-not (Test-Path $pfad) -or (Get-FileHash $pfad).Hash -ne (Get-FileHash "lib/$datei").Hash) {
-                Write-Output "::error::$datei im Programm ist nicht die aus dem SDK (Build gegen den Stub?)."
+              if (Test-Path (Join-Path $ordner $datei)) {
+                Write-Output "::error::$datei liegt im Paket – Release-Pakete dürfen SimConnect nicht enthalten (BundleSimConnect=false)."
                 exit 1
               }
             }
-            Write-Output "SimConnect im Programm: aus dem SDK."
+            $deps = Get-Content (Join-Path $ordner ([IO.Path]::ChangeExtension($env:APP_EXE, '.deps.json'))) -Raw
+            if ($deps -match 'SimConnectStub') { Write-Output "::error::Gebaut gegen den SimConnect-Stub."; exit 1 }
+            Write-Output "SimConnect: gegen das SDK gebaut, nicht im Paket – kommt zur Laufzeit aus dem installierten SDK."
           }
 
       - name: Tests
@@ -261,6 +265,7 @@ jobs:
             echo "- **$NAME-$VERSION-Setup.exe**: Installer (Programme-Ordner, Startmenü, auf Wunsch Autostart). Updates einfach darüber installieren, eigene Einstellungen bleiben erhalten."
             echo "- **$NAME-$VERSION-win-x64.zip**: ohne Installation, entpacken und $EXE starten."
             echo "- .NET muss nicht installiert sein. Die Dateien sind nicht signiert, Windows SmartScreen kann deshalb warnen (Weitere Informationen → Trotzdem ausführen). Prüfsummen: SHA256SUMS.txt."
+            echo "- **SimConnect** kommt aus dem MSFS-2024-SDK (gehört Microsoft, nicht im Paket). Fehlt es, bietet Duopilo an, das SDK (Core) direkt von Microsoft zu laden und zu installieren."
           } > notes.md
           cat notes.md
 
@@ -277,7 +282,7 @@ jobs:
             gh release upload "$TAG" pakete/* --clobber
             gh release edit "$TAG" --title "$TITEL" --notes-file notes.md
           else
-            # Immer als Entwurf: Veröffentlichen ist ein eigener, bewusster Schritt (Lizenz der mitgelieferten SimConnect-DLLs).
+            # Immer als Entwurf: Veröffentlichen ist ein eigener, bewusster Schritt. SimConnect ist nicht im Paket (MSFS-SDK).
             extra=(--draft)
             if [ "$PRERELEASE" = "true" ]; then extra+=(--prerelease); fi
             gh release create "$TAG" pakete/* --title "$TITEL" --notes-file notes.md --verify-tag "${extra[@]}"

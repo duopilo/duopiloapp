@@ -403,6 +403,46 @@ public sealed class SettingsTests : IAsyncLifetime
         Assert.NotNull(store.LastWriteUtc);
     }
 
+    /// <summary>SimConnect-Karte: nur lokal, Installieren nur in der Tray-Instanz, SDK-Ordner nur, wenn SimConnect darin liegt.</summary>
+    [Fact]
+    public async Task SimConnect_SDK_Ordner_einstellen()
+    {
+        using (var remote = await _app.Remote().GetAsync("/api/simconnect"))
+        {
+            Assert.Equal(HttpStatusCode.NotFound, remote.StatusCode);
+        }
+
+        using (var state = JsonDocument.Parse(await _app.Local().GetStringAsync("/api/simconnect")))
+        {
+            Assert.Equal("1.8.1", state.RootElement.GetProperty("simconnect").GetProperty("sdkVersion").GetString());
+        }
+
+        using (var without = await _app.Local().PostAsync("/api/simconnect/path", Json("""{"path":""}""")))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, without.StatusCode);
+        }
+
+        var install = await PostAsync("/api/simconnect/install", "{}");
+        Assert.False(install.GetProperty("ok").GetBoolean());
+        Assert.Equal(Loc.T("simconnect.sdk.trayOnly"), install.GetProperty("error").GetString());
+
+        var sdk = Path.Combine(_directory, "MSFS 2024 SDK");
+        var wrong = await PostAsync("/api/simconnect/path", JsonSerializer.Serialize(new { path = sdk }));
+        Assert.False(wrong.GetProperty("ok").GetBoolean());
+        Assert.Null(Load()["Duopilo:SimConnectSdkPath"]);
+
+        Directory.CreateDirectory(Path.GetDirectoryName(Duopilo.Sim.SimConnectLocator.ManagedIn(sdk))!);
+        File.WriteAllText(Duopilo.Sim.SimConnectLocator.ManagedIn(sdk), "x");
+        File.WriteAllText(Duopilo.Sim.SimConnectLocator.NativeIn(sdk), "x");
+        var saved = await PostAsync("/api/simconnect/path", JsonSerializer.Serialize(new { path = $"\"{sdk}\"" }));
+        Assert.True(saved.GetProperty("ok").GetBoolean());
+        Assert.Equal(sdk, Load()["Duopilo:SimConnectSdkPath"]);
+
+        var auto = await PostAsync("/api/simconnect/path", """{"path":"  "}""");
+        Assert.True(auto.GetProperty("ok").GetBoolean());
+        Assert.Equal("", Load()["Duopilo:SimConnectSdkPath"]);
+    }
+
     private async Task<JsonElement> PostAsync(string url, string body)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = Json(body) };

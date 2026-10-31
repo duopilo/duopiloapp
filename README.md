@@ -516,7 +516,7 @@ Duopilo always converts weights and fuel to kg. The plan is also used to add L/C
 
 - Windows 10/11 (x64) with MSFS 2024
 - [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0), e.g. `winget install Microsoft.DotNet.SDK.10`
-- **MSFS 2024 SDK** (for SimConnect), see below
+- **MSFS 2024 SDK** (for SimConnect), see below – Duopilo offers to install it
 
 ### SimConnect SDK
 
@@ -527,13 +527,22 @@ Duopilo needs two files from the MSFS 2024 SDK:
 
 You get the SDK through the **Developer Mode** of MSFS 2024: enable Developer Mode in the options, then start the SDK installer from the Help menu in the developer toolbar.
 
+**Not in the release packages:** setup and ZIP don't contain the two DLLs – they belong to Microsoft, and whether they may be passed on isn't settled. Duopilo loads them at startup from the installed SDK, in this order:
+
+1. next to `Duopilo.exe` (self-built, or copied in by hand)
+2. the SDK folder from the dashboard (**Settings → SimConnect**, `Duopilo:SimConnectSdkPath`)
+3. environment variable `MSFS2024_SDK` (process, user or system)
+4. `C:\MSFS 2024 SDK\`
+
+If none of them has SimConnect, the dashboard shows a banner and the tray icon a notification: **Install MSFS SDK** downloads the SDK Core installer (version 1.8.1) directly from Microsoft (`sdk.flightsimulator.com`), checks that Microsoft signed it and starts it – you accept Microsoft's license there, Windows asks for administrator rights. Once SimConnect is found, **Restart Duopilo** is enough. **Choose SDK folder** is for an SDK installed somewhere else. The log shows where SimConnect came from (`SimConnect: loaded from sdk (…)`).
+
 The build looks for the DLLs in this order:
 
 1. `lib\` in the repo (just copy the DLLs in)
 2. Environment variable `MSFS2024_SDK`
 3. `C:\MSFS 2024 SDK\`
 
-If it finds nothing, it builds against a **stub**. That is only meant for GitHub Actions; a connection to MSFS isn't possible with it. The build log then shows a warning. A proper build shows `Duopilo: SimConnect aus …` (German for "SimConnect from …").
+If it finds nothing, it builds against a **stub**. That is only meant for GitHub Actions; a connection to MSFS isn't possible with it. The build log then shows a warning. A proper build shows `Duopilo: SimConnect aus …` (German for "SimConnect from …"). A self-built Duopilo copies the DLLs next to `Duopilo.exe`; with `-p:BundleSimConnect=false` it leaves them out and loads them from the SDK like the release packages.
 
 ## Building
 
@@ -557,7 +566,7 @@ git tag v0.9.1
 git push origin v0.9.1
 ```
 
-**Once, beforehand:** make SimConnect available to GitHub – on the PC with the MSFS 2024 SDK, run `pwsh installer/simconnect-secret.ps1` in the repo folder (needs the GitHub CLI). This stores the DLLs as secrets `SIMCONNECT_ZIP_*`; without them a release aborts instead of building against the stub.
+**Once, beforehand:** make SimConnect available to GitHub – on the PC with the MSFS 2024 SDK, run `pwsh installer/simconnect-secret.ps1` in the repo folder (needs the GitHub CLI). This stores the DLLs as secrets `SIMCONNECT_ZIP_*`; without them a release aborts instead of building against the stub. They are only used for compiling – the workflow checks that setup and ZIP contain neither DLL.
 
 **Testing without a release:** Actions → Release → Run workflow (enter a version). Setup and ZIP are then available under "Artifacts" for 14 days.
 
@@ -601,6 +610,7 @@ The "Brightness" slider only dims the displays – for night flights.
 | **Modules** | Monitoring, Input (click twice), ATC, Voice loop | Monitoring/ATC after restart, otherwise immediately |
 | **First officer and small talk** | fixed name and gender, introduction, small talk provider (Claude, OpenAI-compatible, Ollama), model, address, API key, answer length, requests per minute, test | immediately |
 | **Language** | dashboard, tool messages, tray menu, problem reports (see [Language](#language)); logs stay English | immediately |
+| **SimConnect** | where SimConnect was loaded from, SDK folder (empty = find automatically), install the MSFS SDK from Microsoft (see [SimConnect SDK](#simconnect-sdk)) | after restart |
 
 The page writes to the existing files: `appsettings.Local.json` next to `Duopilo.exe` (comments and order are preserved; a backup goes to `%LOCALAPPDATA%\Duopilo\appsettings.Local.backup.json` first), and input and voice loop as before to `input.json` and `voice-settings.json`. Anything that is only read at startup is marked "applies after restart" on the page – the **Restart Duopilo** button restarts the tray instance (the ATC session comes back from its saved state). Password and token are never sent back to the browser; a newly generated token is shown exactly once for copying. If an environment variable (`Duopilo__…`) sets the same value, the page points this out – the variable takes precedence over the file.
 

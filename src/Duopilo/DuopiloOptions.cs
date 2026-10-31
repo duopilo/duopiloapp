@@ -29,6 +29,18 @@ public sealed class DuopiloOptions
     /// <summary>Wartezeit zwischen Verbindungsversuchen, solange MSFS nicht läuft.</summary>
     public int ReconnectSeconds { get; set; } = 5;
 
+    /// <summary>
+    /// Ordner des MSFS-2024-SDK, aus dem Duopilo SimConnect lädt. Leer = automatisch: neben Duopilo.exe, dann die
+    /// Umgebungsvariable MSFS2024_SDK, dann C:\MSFS 2024 SDK (<see cref="Duopilo.Sim.SimConnectLocator"/>). Gilt nach einem Neustart.
+    /// </summary>
+    public string SimConnectSdkPath { get; set; } = "";
+
+    /// <summary>
+    /// Download des MSFS-2024-SDK (Core) von Microsoft, den Duopilo anbietet, wenn SimConnect fehlt. Leer = die eingebaute Adresse
+    /// (<see cref="Duopilo.Sim.SdkInstaller.DefaultUrl"/>).
+    /// </summary>
+    public string SimConnectSdkInstallerUrl { get; set; } = "";
+
     /// <summary>Schnelle Werte: Anzahl übersprungener Sim-Frames zwischen zwei Updates (4 ≈ 10 Hz bei 50 fps).</summary>
     public int FastIntervalFrames { get; set; } = 4;
 

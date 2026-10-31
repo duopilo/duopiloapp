@@ -43,6 +43,9 @@ if (transport == DuopiloTransport.Stdio)
     });
     DuopiloConfiguration.AddLocalSettings(builder.Configuration, AppContext.BaseDirectory, DuopiloConfiguration.FilterSwitches(args));
 
+    // SimConnect aus dem MSFS-SDK laden, falls es nicht neben Duopilo.exe liegt – vor der ersten Verwendung
+    Duopilo.Sim.SimConnectLocator.Prepare(builder.Configuration.GetSection(DuopiloOptions.Section).Get<DuopiloOptions>()?.SimConnectSdkPath);
+
     // Im stdio-Modus gehört stdout exklusiv dem MCP-Protokoll – alle Logs gehen nach stderr und in die Logdatei.
     builder.Logging.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
     AddFileLog(builder.Logging, builder.Configuration, builder.Services, "stdio");
@@ -86,6 +89,9 @@ else
     }
 
     var builder = HttpHost.CreateBuilder(args);
+
+    // SimConnect aus dem MSFS-SDK laden, falls es nicht neben Duopilo.exe liegt – vor der ersten Verwendung
+    Duopilo.Sim.SimConnectLocator.Prepare(builder.Configuration.GetSection(DuopiloOptions.Section).Get<DuopiloOptions>()?.SimConnectSdkPath);
     var logFile = AddFileLog(builder.Logging, builder.Configuration, builder.Services, "http");
     var logDirectory = LogDirectory(builder.Configuration);
     CrashReporter.InstallHandlers(logDirectory, "http");
@@ -134,6 +140,9 @@ else
     builder.Services.AddSingleton<Duopilo.Atc.IAtcRadio>(sp => sp.GetRequiredService<Duopilo.Speech.CalloutSpeaker>());
     builder.Services.AddHostedService(sp => sp.GetRequiredService<Duopilo.Speech.CalloutSpeaker>());
 
+    // SDK-Installation anbieten, wenn SimConnect fehlt – nur hier
+    builder.Services.AddSingleton<Duopilo.Sim.SdkInstaller>();
+
     // Update-Prüfung (GitHub-Releases) – nur hier, nicht in der stdio-Instanz von Claude Desktop
     builder.Services.AddSingleton<Duopilo.Updates.UpdateService>();
     builder.Services.AddHostedService(sp => sp.GetRequiredService<Duopilo.Updates.UpdateService>());
@@ -166,6 +175,8 @@ else
         app.Logger.LogWarning(Loc.Log("log.program.restartedAfterCrash"));
     }
 
+    LogSimConnect(app.Logger);
+
     // Absturz-Journal (nur Tray-Instanz – es gibt nur eine) und Neustart durch Windows nach einem Absturz
     var journal = CrashReporter.StartJournal(logDirectory, "http", app.Logger);
     app.Lifetime.ApplicationStopped.Register(() => journal?.MarkClean());
@@ -182,6 +193,19 @@ else
     {
         journal?.MarkClean();
         journal?.Dispose();
+    }
+}
+
+// Woher SimConnect kommt (oder dass es fehlt) – einmal beim Start ins Log
+static void LogSimConnect(ILogger log)
+{
+    if (Duopilo.Sim.SimConnectLocator.Current is { } files)
+    {
+        log.LogInformation(Loc.Log("log.simconnect.found"), files.Source, Path.GetDirectoryName(files.Managed));
+    }
+    else
+    {
+        log.LogWarning(Loc.Log("log.simconnect.missing"), Duopilo.Sim.SimConnectLocator.LoadError ?? "-", Duopilo.Sim.SimConnectLocator.DefaultSdkRoot);
     }
 }
 

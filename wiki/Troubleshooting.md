@@ -21,7 +21,7 @@ Logs are always English, so you can attach them to issues as they are.
 
 - Tray dot stays **gray**: MSFS isn't running or no flight is loaded yet – Duopilo reconnects every 5 s.
 - Self-built and never connects: the build may have used the **SimConnect stub**. The build log shows a warning; a proper build logs `Duopilo: SimConnect aus …`. Copy the two SDK DLLs into `lib\` and rebuild – see [Installation](Installation#1-get-the-simconnect-sdk).
-- `Duopilo.exe` folder must contain `Microsoft.FlightSimulator.SimConnect.dll` and `SimConnect.dll`.
+- Banner **SimConnect missing** / log `SimConnect not found`: the MSFS 2024 SDK isn't installed or is somewhere else. Use **Install MSFS SDK** in the dashboard or set its folder under **Settings → SimConnect**, then restart Duopilo. Self-built, the DLLs can also sit next to `Duopilo.exe`. The log line `SimConnect: loaded from …` shows where they came from.
 
 ### No speech
 

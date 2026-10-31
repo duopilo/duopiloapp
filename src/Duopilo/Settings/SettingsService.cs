@@ -107,6 +107,7 @@ public sealed class SettingsService
         public const string FirstOfficerGender = "FirstOfficer:Gender";
         public const string FirstOfficerIntroduce = "FirstOfficer:Introduce";
         public const string UpdatesCheck = "Updates:Check";
+        public const string SimConnectSdkPath = "SimConnectSdkPath";
         public const string UpdatesPrereleases = "Updates:Prereleases";
     }
 
@@ -238,6 +239,28 @@ public sealed class SettingsService
         Loc.SetLanguage(code);
         _log.LogInformation(Loc.Log("log.settings.languageChanged"), previous, code);
         return new SettingsResult(true, Loc.T("settings.language.saved", Loc.Available.FirstOrDefault(l => l.Code == code)?.Name ?? code));
+    }
+
+    /// <summary>
+    /// Ordner des MSFS-2024-SDK, aus dem Duopilo SimConnect lädt ("" = automatisch suchen). Gilt nach einem Neustart – SimConnect
+    /// wird nur beim Start geladen.
+    /// </summary>
+    public SettingsResult SaveSimConnectSdkPath(string? path)
+    {
+        var value = (path ?? "").Trim().Trim('"');
+        if (value.Length > 0 && !Duopilo.Sim.SimConnectLocator.IsSdkRoot(value))
+        {
+            return SettingsResult.Fail(Loc.T("settings.simconnect.notSdk", value, Path.Combine("SimConnect SDK", "lib", "managed", Duopilo.Sim.SimConnectLocator.ManagedFile)));
+        }
+
+        if (!Write([SettingValue.Of(KeyPath(Keys.SimConnectSdkPath), value)], out var error))
+        {
+            return SettingsResult.Fail(error);
+        }
+
+        _options.SimConnectSdkPath = value;
+        _log.LogInformation(Loc.Log("log.settings.simconnectPath"), value.Length > 0 ? value : "auto");
+        return new SettingsResult(true, Loc.T("settings.simconnect.saved", value.Length > 0 ? value : Loc.T("settings.simconnect.auto")));
     }
 
     /// <summary>Update-Prüfung ein/aus und Vorabversionen ("auto", "on", "off") – gilt sofort. null = unverändert.</summary>

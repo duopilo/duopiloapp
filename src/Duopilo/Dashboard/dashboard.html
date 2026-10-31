@@ -304,6 +304,7 @@ select.btn { padding: 4px 6px; max-width: 190px; }
 .hbtn:hover { border-color: var(--cyan); color: var(--white); }
 .hbtn[aria-current="page"] { border-color: var(--cyan); color: var(--cyan); }
 .hbtn.update { border-color: var(--green); color: var(--green); }
+.banner .btn { margin: 6px 8px 0 0; }
 .route a, .hero a { color: var(--cyan); }
 
 /* ------------------------------------------------------------------ Einstellungen (auf dem Panel, keine Displays) */
@@ -757,6 +758,22 @@ dialog.report::backdrop { background: rgba(5, 8, 11, .7); }
       <p class="state-line" id="chatState"></p>
     </section>
 
+    <section class="card" id="scCard" aria-labelledby="hSimConnect">
+      <h2 id="hSimConnect">SimConnect</h2>
+      <p class="hint" data-i18n="dashboard.settings.simconnect.hint">Duopilo connects to MSFS through SimConnect from the Microsoft Flight Simulator 2024 SDK. It isn't part of Duopilo (it belongs to Microsoft): Duopilo finds an installed SDK by itself or downloads it directly from Microsoft. Changes apply after a restart.</p>
+      <p class="state-line" id="scState"></p>
+      <form id="scForm" autocomplete="off">
+        <label class="field"><span data-i18n="dashboard.settings.simconnect.path">SDK folder (empty = find automatically)</span>
+          <input id="scPath" spellcheck="false" placeholder="C:\MSFS 2024 SDK">
+        </label>
+        <div class="row">
+          <button class="btn primary" type="submit" data-i18n="dashboard.common.save">Save</button>
+          <button class="btn" id="scInstall" type="button" hidden></button>
+          <span class="msg" id="scMsg" role="status"></span>
+        </div>
+      </form>
+    </section>
+
     <section class="card" id="updCard" aria-labelledby="hUpdates">
       <h2 id="hUpdates" data-i18n="dashboard.settings.updates.title">Updates</h2>
       <p class="hint" data-i18n="dashboard.settings.updates.hint">Duopilo looks for new versions in the GitHub releases. Install downloads the installer, checks it (SHA-256) and installs it silently – Duopilo closes for that (the Claude Desktop instance too) and starts again afterwards.</p>
@@ -949,15 +966,18 @@ function renderHeader(d) {
   }
 
   const banner = $("banner");
-  let text = null;
-  if (!d.connected) {
+  let text = simconnectBanner(d.simconnect);
+  if (text) {
+    // SimConnect fehlt: ohne geht nichts – das steht vor allem anderen
+  } else if (!d.connected) {
     text = `<strong>${esc(t("dashboard.banner.waitingTitle"))}</strong> ${esc(t("dashboard.banner.waitingText"))}`
       + (d.lastError ? `<br><span class="a">${esc(d.lastError)}</span>` : "");
   } else if (d.flightLoaded === false) {
     text = `<strong>${esc(t("dashboard.banner.noFlightTitle"))}</strong> ${esc(t("dashboard.banner.noFlightText"))}`;
   }
   banner.hidden = !text;
-  if (text) banner.innerHTML = text;
+  // Nur bei Änderung neu setzen – sonst gehen Klicks auf die Knöpfe im Banner verloren
+  if (text && banner._html !== text) { banner.innerHTML = text; banner._html = text; }
 
   // Master Warning/Caution: blinken, bis sie im Dashboard quittiert werden oder ausgehen
   const w = !!(d.sim && d.sim.warnings.master);
@@ -1732,6 +1752,98 @@ async function copyText(text, button) {
 }
 const clockZ = (iso) => (iso ? new Date(iso).toISOString().slice(11, 19) + "Z" : "");
 
+/* ------------------------------------------------------------------ SimConnect (Banner, Karte in den Einstellungen) */
+const scUi = { filled: false, busy: false };
+function simconnectBanner(sc) {
+  if (!sc || sc.found) return null;
+  const pct = Math.round((sc.progress || 0) * 100);
+  let html = `<strong>${esc(t("dashboard.simconnect.missingTitle"))}</strong> `;
+  if (sc.foundNow && !sc.loadError) {
+    html += esc(t("dashboard.simconnect.foundNow", { path: sc.foundNowRoot || sc.defaultSdkRoot }))
+      + `<br><button class="btn primary" type="button" data-sc="restart">${esc(t("dashboard.simconnect.restart"))}</button>`;
+  } else if (sc.state === "downloading") {
+    html += esc(t("dashboard.simconnect.downloading", { percent: pct }));
+  } else if (sc.state === "extracting" || sc.state === "verifying") {
+    html += esc(t("dashboard.simconnect.preparing"));
+  } else if (sc.state === "installing") {
+    html += esc(t("dashboard.simconnect.installing"));
+  } else {
+    html += esc(t("dashboard.simconnect.missingText", { path: sc.defaultSdkRoot }));
+    if (sc.error) html += `<br><span class="a">${esc(sc.error)}</span>`;
+    if (sc.loadError) html += `<br><span class="a">${esc(sc.loadError)}</span>`;
+    html += "<br>";
+    if (sc.canInstall) html += `<button class="btn primary" type="button" data-sc="install">${esc(t("dashboard.simconnect.install", { version: sc.sdkVersion }))}</button>`;
+    html += `<button class="btn" type="button" data-sc="path">${esc(t("dashboard.simconnect.choosePath"))}</button>`;
+  }
+  return html;
+}
+async function simconnectAction(action) {
+  if (scUi.busy) return;
+  scUi.busy = true;
+  try {
+    if (action === "install") {
+      if (!confirm(t("dashboard.simconnect.confirm"))) return;
+      const j = await postJson("/api/simconnect/install");
+      if (j.error) alert(j.error);
+      renderSimConnect(j.simconnect);
+    } else if (action === "path") {
+      const path = prompt(t("dashboard.simconnect.pathPrompt"), scPathGuess());
+      if (path === null) return;
+      const j = await postJson("/api/simconnect/path", { path });
+      if (j.error) { alert(j.error); return; }
+      renderSimConnect(j.simconnect);
+      if (j.simconnect && j.simconnect.foundNow) requestRestart();
+    } else if (action === "restart") {
+      requestRestart();
+    }
+  } catch { alert(t("dashboard.common.noResponse")); }
+  finally { scUi.busy = false; }
+}
+function scPathGuess() { return (scUi.data && (scUi.data.configuredPath || scUi.data.foundNowRoot)) || ""; }
+$("banner").addEventListener("click", (e) => {
+  const action = e.target && e.target.dataset ? e.target.dataset.sc : null;
+  if (action) simconnectAction(action);
+});
+async function loadSimConnect() {
+  try { renderSimConnect((await (await fetch("/api/simconnect", { cache: "no-store" })).json()).simconnect); } catch { /* nächster Versuch */ }
+}
+function renderSimConnect(sc) {
+  if (!sc) return;
+  scUi.data = sc;
+  if (!scUi.filled) { $("scPath").value = sc.configuredPath || ""; scUi.filled = true; }
+  const parts = [];
+  if (sc.found) parts.push(sc.source === "sdk" ? t("dashboard.settings.simconnect.fromSdk", { path: sc.sdkRoot }) : t("dashboard.settings.simconnect.fromApp"));
+  else parts.push(t("dashboard.settings.simconnect.missing"));
+  if (!sc.found && sc.foundNow && !sc.loadError) parts.push(t("dashboard.simconnect.foundNow", { path: sc.foundNowRoot || sc.defaultSdkRoot }));
+  if (sc.loadError) parts.push(sc.loadError);
+  if (sc.error) parts.push(sc.error);
+  $("scState").textContent = parts.join(" · ");
+  const install = $("scInstall");
+  install.hidden = sc.found || sc.foundNow || !sc.canInstall;
+  install.textContent = t("dashboard.simconnect.install", { version: sc.sdkVersion });
+}
+$("scInstall").addEventListener("click", () => simconnectAction("install"));
+$("scForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try {
+    const j = await postJson("/api/simconnect/path", { path: $("scPath").value });
+    renderSimConnect(j.simconnect);
+    showMsg("scMsg", j.error || j.message, !!j.error);
+  } catch { showMsg("scMsg", t("dashboard.common.noResponse"), true); }
+});
+/* Neustart anfordern (wie der Knopf in den Einstellungen) – das Dashboard verbindet sich danach von selbst wieder */
+async function requestRestart() {
+  try {
+    const j = await postJson("/api/restart");
+    if (!j.ok) { alert(j.error || t("dashboard.common.noResponse")); return; }
+  } catch { return; }
+  restartUi.active = true;
+  restartUi.sawOffline = false;
+  showOffline();
+  clearTimeout(restartUi.timer);
+  restartUi.timer = setTimeout(() => { restartUi.active = false; }, 120000);
+}
+
 /* ------------------------------------------------------------------ Updates (Karte in den Einstellungen) */
 const updateUi = { data: null, timer: null, filled: false };
 async function loadUpdate() {
@@ -1804,7 +1916,7 @@ function route() {
   document.querySelector(".setup").hidden = show;
   if (show) { $("settingsLink").setAttribute("aria-current", "page"); } else { $("settingsLink").removeAttribute("aria-current"); }
   clearTimeout(settingsUi.timer);
-  if (show) { settingsUi.filled = false; updateUi.filled = false; loadSettings(); loadMic(); loadUpdate(); window.scrollTo(0, 0); }
+  if (show) { settingsUi.filled = false; updateUi.filled = false; scUi.filled = false; loadSettings(); loadMic(); loadUpdate(); loadSimConnect(); window.scrollTo(0, 0); }
 }
 window.addEventListener("hashchange", route);
 
@@ -2182,7 +2294,7 @@ function restartFinished() {
   restartUi.active = false;
   clearTimeout(restartUi.timer);
   $("restartBtn").disabled = false;
-  if (!$("settings").hidden) { settingsUi.filled = false; loadSettings(); loadMic(); showMsg("modMsg", t("dashboard.settings.restarted")); }
+  if (!$("settings").hidden) { settingsUi.filled = false; scUi.filled = false; loadSettings(); loadMic(); loadSimConnect(); showMsg("modMsg", t("dashboard.settings.restarted")); }
   loadServerSpeech();
 }
 
