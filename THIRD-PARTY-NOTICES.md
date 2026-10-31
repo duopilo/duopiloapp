@@ -12,7 +12,7 @@ Duopilo's own source code is licensed under the [MIT License](LICENSE). It uses,
 | [ONNX Runtime](https://github.com/microsoft/onnxruntime) (via KokoroSharp) | Kokoro, Silero VAD, Supertonic | MIT |
 | [Whisper.net](https://github.com/sandrohanea/whisper.net) incl. [whisper.cpp](https://github.com/ggml-org/whisper.cpp) runtimes | speech recognition | MIT |
 | [NAudio](https://github.com/naudio/NAudio) (`NAudio.WinMM`, `NAudio.Wasapi`) | microphone, audio devices | MIT |
-| [B612 font](https://github.com/polarsys/b612) | dashboard | SIL Open Font License 1.1 (`licenses/B612-OFL.txt`) |
+| [B612 font](https://github.com/polarsys/b612) | dashboard, wordmark in `branding/` (as paths) | SIL Open Font License 1.1 (`licenses/B612-OFL.txt`) |
 | Supertonic inference code, adapted from Supertone's example | Supertonic speech output | MIT (`licenses/Supertonic-MIT.txt`) |
 
 Each package also comes with its own license and notice files; the table names what Duopilo uses directly.
