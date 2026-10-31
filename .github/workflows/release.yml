@@ -172,6 +172,11 @@ jobs:
             Write-Output "SimConnect: gegen das SDK gebaut, nicht im Paket – kommt zur Laufzeit aus dem installierten SDK."
           }
 
+      - name: Start ohne SimConnect prüfen
+        # Paket ohne SimConnect, Runner ohne MSFS-SDK = Benutzer ohne SDK: Duopilo muss starten und das melden, nicht abstürzen
+        shell: pwsh
+        run: pwsh installer/smoke-test.ps1 -Exe "out/$env:APP_NAME/$env:APP_EXE"
+
       - name: Tests
         run: dotnet test Duopilo.slnx -c Release -p:UseSimConnectStub=true --logger "console;verbosity=minimal"
 
