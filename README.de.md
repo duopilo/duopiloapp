@@ -57,9 +57,9 @@ Bis Version 0.9.x hieß Duopilo **Kopilot**. Das meiste wird von selbst übernom
 | `get_progress` | Fortschritt gegen den Plan: nächster Fix (beim A32NX der aktive FMS-Wegpunkt, z. B. nach DIR TO), Distanz/ETA, TOD, Querablage, Fuel gegen Plan, Verlauf der automatischen Fuel Checks (`fuelCheck`). ETA aus den Navlog-Zeiten (geplante Winde), korrigiert um die Abweichung am letzten überflogenen Fix; ohne Navlog-Zeiten aus der Groundspeed (`etaSource`) |
 | `get_atc` | Ingame-ATC: Callsign, Freigaben, zugewiesene Bahn (inkl. L/C/R aus SimBrief) |
 | `get_traffic` | Verkehr im Umkreis (KI und Multiplayer): Callsign, Typ, Abstand, Uhrzeit-Peilung, Höhendifferenz, Trend, GS, Callout fürs nächste Ziel |
-| `traffic_test_start` | Entwicklertest, standardmäßig aus: erzeugt ein KI-Flugzeug (`DUO01`), das über Wegpunkte einen Endanflug fliegt und landet – Variante A1 oder A2 (siehe [Verkehrstest](#verkehrstest-entwicklung)) |
-| `traffic_test_status` | Stand und Auswertung des Verkehrstests: Aufsetzen, Schweben, Speed gegenüber dem Wunsch, Haltepunkt, CSV-Datei |
-| `traffic_test_stop` | Beendet den Verkehrstest und entfernt das Flugzeug |
+| `traffic_test_start` | Entwicklertest, standardmäßig aus: erzeugt ein KI-Flugzeug (`DUO01`–`DUO04`), das über Wegpunkte einen Endanflug fliegt und landet – Variante A1 oder A2, bis zu 4 gleichzeitig, je Bahn eins (siehe [Verkehrstest](#verkehrstest-entwicklung)) |
+| `traffic_test_status` | Stand und Auswertung der Verkehrstests: Aufsetzen, Abfangen, Schweben, Speed gegenüber dem Wunsch, Haltepunkt, CSV-Datei |
+| `traffic_test_stop` | Beendet die Verkehrstests (oder den auf einer Bahn) und entfernt die Flugzeuge |
 | `traffic_test_models` | Installierte Flugzeugmodelle (Titel, Livery) für den Verkehrstest |
 | `get_navigation` | GPS-Flugplanvariablen des Sims (bei Airliner-FMS meist leer – dann `get_progress`) |
 | `get_environment` | Wind, OAT, QNH, eingestellter Höhenmesser, Sicht, UTC-/Ortszeit |
@@ -208,19 +208,22 @@ Das ist kein TCAS: keine Ausweichempfehlung, keine Vorhersage des Annäherungspu
 
 ### Verkehrstest (Entwicklung)
 
-Erster Schritt zu eigenem Verkehr in Duopilo (Recherche: [docs/research/eigener-verkehr.md](docs/research/eigener-verkehr.md)): Ein KI-Flugzeug ohne ATC-Kontrolle fliegt über Wegpunkte einen Endanflug, landet und hält auf der Bahn. Standardmäßig aus, weil es Objekte im Sim erzeugt – einschalten in `appsettings.Local.json` und Duopilo neu starten:
+Erster Schritt zu eigenem Verkehr in Duopilo (Recherche: [docs/research/eigener-verkehr.md](docs/research/eigener-verkehr.md)): KI-Flugzeuge ohne ATC-Kontrolle fliegen über Wegpunkte einen Endanflug, landen und halten auf der Bahn. Standardmäßig aus, weil es Objekte im Sim erzeugt – einschalten in `appsettings.Local.json` und Duopilo neu starten:
 
 ```json
 { "Duopilo": { "TrafficTest": { "Enabled": true } } }
 ```
 
 - **Start:** `traffic_test_start` mit Flughafen und Bahnende (`EDDL`, `23L`), höchstens 80 NM vom eigenen Flugzeug. Eine Bahn wählen, die man gerade nicht selbst benutzt.
+  - **Mehrere gleichzeitig:** bis zu 4 Tests, je Bahn einer – z. B. ein Parallelanflug mit einem Aufruf für `05L` und einem für `05R`. Ein neuer Test auf einer Bahn mit laufendem Test ersetzt ihn.
   - **A1:** Spawn 5 NM vor der Bahn mit ausgefahrenem Fahrwerk – ohne schwebt die KI gern über die Bahn (siehe Recherche).
   - **A2:** Spawn 15 NM vor der Bahn mit Fahrwerk oben, Fahrwerk bei 10 NM – klappt auch das spätere Ausfahren?
-- **Flugzeug:** Ohne `title` nimmt Duopilo einen FSLTL-A320, wenn installiert, sonst irgendeinen A320; `traffic_test_models` listet die installierten Modelle mit Liveries. Kennzeichen `DUO01`, damit zeigt es auch `get_traffic`.
+- **Flugzeug:** Ohne `title` nimmt Duopilo einen FSLTL-A320, wenn installiert, sonst irgendeinen A320; `traffic_test_models` listet die installierten Modelle mit Liveries. Kennzeichen `DUO01` bis `DUO04`, damit zeigt sie auch `get_traffic`. Volle, flugfähige Flugzeuge (z. B. der A320neo) ignorieren als KI den Fahrwerksbefehl und fahren das Fahrwerk erst kurz vor dem Aufsetzen selbst aus – einfache KI-Modelle (FSLTL) sind die bessere Wahl.
+- **Fahrwerk:** `gear` wählt den Befehl – `all` (Standard: Event `GEAR_DOWN`, Event `GEAR_SET` 1 und die SimVar `GEAR HANDLE POSITION`), `down`, `set` oder `handle`. Fährt das Fahrwerk in der Luft nicht aus, schickt Duopilo den Befehl bis zu dreimal nach. Das CSV protokolliert Gesamtwert, Bug- und beide Hauptfahrwerke, weil nicht jedes Modell alle davon pflegt.
 - **Strecke:** 3°-Gleitpfad bis 50 ft über der Schwelle, Aufsetzen 300 m dahinter, Ausrollen mit fallender Geschwindigkeit und Halt auf der Bahn. Ein Wegpunkt liegt 60 m hinter dem Haltepunkt, weil die KI vor dem letzten stehen bleibt.
-- **Auswertung:** `traffic_test_status` (Browser: `/traffic-test`, Modelle: `/traffic-test/models?filter=A320`) – Ergebnis `stopped`, `landed`, `floated` (schwebt über der Bahn) oder `airborne`, Speed gegenüber dem Wunsch, Werte an den Wegpunkten, Aufsetzpunkt und -speed, Schwebesekunden, Haltepunkt. Messpunkte einmal pro Sekunde in `%LOCALAPPDATA%\Duopilo\traffic-tests\` (CSV), die Auswertung als JSON daneben.
-- **Ende:** `traffic_test_stop` entfernt das Flugzeug; nach `MaxMinutes` (Standard 15) und beim Beenden von Duopilo wird es ebenfalls entfernt.
+- **Letzte Meile tiefer:** Die KI fängt im kurzen Endanflug ab und kreuzte die Schwelle in den ersten Tests 170–190 ft zu hoch. Deshalb liegen die Wegpunkte der letzten Meile unter dem Gleitpfad: die Schwelle um `finalLowFt` (Standard 100 ft), 0,5 NM um 60 %, 1 NM um ein Viertel. `finalLowFt: 0` fliegt genau auf dem Gleitpfad; die Auswertung misst immer gegen den Gleitpfad.
+- **Auswertung:** `traffic_test_status` (Browser: `/traffic-test`, Modelle: `/traffic-test/models?filter=A320`) – Ergebnis `stopped`, `landed`, `floated` (schwebt über der Bahn) oder `airborne`, Speed gegenüber dem Wunsch, Werte an den Wegpunkten (Abweichung vom Gleitpfad, Längsneigung), Aufsetzpunkt, -speed, Sinkrate und Längsneigung, Abfangen (wie weit die Nase vor dem Aufsetzen hochkam), größte Querneigung im Endanflug, Schwebesekunden, Haltepunkt. Mit `runway` nur dieser Test. Messpunkte einmal pro Sekunde in `%LOCALAPPDATA%\Duopilo\traffic-tests\` (CSV), die Auswertung als JSON daneben.
+- **Ende:** `traffic_test_stop` entfernt die Flugzeuge (mit `runway` nur dieses); nach `MaxMinutes` (Standard 15) und beim Beenden von Duopilo werden sie ebenfalls entfernt.
 
 ## Sprachausgabe
 

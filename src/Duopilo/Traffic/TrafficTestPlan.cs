@@ -91,13 +91,23 @@ public sealed record RunwayEnd(
 
 /// <summary>Wegpunkt der Testlinie mit Name und Lage auf der Mittellinie (für Log und Auswertung).</summary>
 /// <param name="AlongM">Entfernung zur Schwelle in Metern, davor negativ.</param>
-public sealed record TrafficTestWaypoint(string Name, double AlongM, AiWaypoint Waypoint);
+/// <param name="PathAltitudeFt">Höhe auf dem 3°-Gleitpfad, wenn der Wegpunkt tiefer gelegt ist (<see cref="TrafficTestPlan.FinalLowFt"/>); sonst null.</param>
+public sealed record TrafficTestWaypoint(string Name, double AlongM, AiWaypoint Waypoint, double? PathAltitudeFt = null)
+{
+    /// <summary>Höhe, an der die Auswertung den Anflug misst: der Gleitpfad, nicht der tiefer gelegte Wegpunkt.</summary>
+    public double GlidePathAltitudeFt => PathAltitudeFt ?? Waypoint.AltitudeFt;
+}
 
 /// <summary>
 /// Plan eines Testanflugs: Spawn auf der verlängerten Mittellinie, 3°-Gleitpfad bis 50 ft über der Schwelle, Aufsetzen rund 300 m
 /// dahinter, Ausrollen mit fallender Geschwindigkeit bis zum Halt auf der Bahn. Ein Wegpunkt liegt 60 m hinter dem Haltepunkt, weil
 /// die KI laut mrlm-net/simconnect #289 etwa 46 m vor dem letzten Rollwegpunkt stehen bleibt.
+///
+/// Die Wegpunkte der letzten Meile liegen um <see cref="FinalLowFt"/> tiefer als der Gleitpfad (1 NM ein Viertel, 0,5 NM 60 %, Schwelle
+/// voll): In den ersten Tests (EDDL 05L, 31.10.2026) blieb die KI bis 1 NM rund 50 ft über dem Pfad, fing danach ab und kreuzte die
+/// Schwelle 170–190 ft zu hoch – Aufsetzen 840–1800 m dahinter mit 1200–1400 fpm.
 /// </summary>
+/// <param name="FinalLowFt">Wie weit der Schwellen-Wegpunkt unter dem Gleitpfad liegt (0 = genau auf dem Pfad).</param>
 public sealed record TrafficTestPlan(
     TrafficTestVariant Variant,
     RunwayEnd Runway,
@@ -107,9 +117,13 @@ public sealed record TrafficTestPlan(
     double? GearDownNm,
     double TouchdownM,
     double StopM,
+    double FinalLowFt,
     IReadOnlyList<TrafficTestWaypoint> Waypoints,
     IReadOnlyList<string> Warnings)
 {
+    public const double DefaultFinalLowFt = 100;
+
+    public const double MaxFinalLowFt = 300;
     public const double GlideSlopeDeg = 3.0;
 
     public const double ThresholdCrossingFt = 50;
@@ -144,7 +158,21 @@ public sealed record TrafficTestPlan(
         runway.ElevationFt + ThresholdCrossingFt
         + (distanceNm * RunwayEnd.MetersPerNm * Math.Tan(GlideSlopeDeg * Math.PI / 180) * RunwayEnd.FeetPerMeter);
 
-    public static TrafficTestPlan Build(RunwayEnd runway, TrafficTestVariant variant, double? spawnNm = null, double touchdownM = DefaultTouchdownM)
+    /// <summary>Anteil von <see cref="FinalLowFt"/>, um den ein Wegpunkt <paramref name="distanceNm"/> vor der Schwelle tiefer liegt.</summary>
+    public static double FinalLowShare(double distanceNm) => distanceNm switch
+    {
+        <= 0 => 1.0,
+        <= 0.5 => 0.6,
+        <= 1 => 0.25,
+        _ => 0,
+    };
+
+    public static TrafficTestPlan Build(
+        RunwayEnd runway,
+        TrafficTestVariant variant,
+        double? spawnNm = null,
+        double touchdownM = DefaultTouchdownM,
+        double? finalLowFt = null)
     {
         if (runway.LengthM < MinRunwayM)
         {
@@ -162,19 +190,21 @@ public sealed record TrafficTestPlan(
         var touchdown = Math.Clamp(touchdownM, 150, runway.LengthM / 3);
         var stop = Math.Max(touchdown + 400, Math.Min(touchdown + StopRollM, runway.LengthM - StopMarginM));
         var beyond = Math.Min(stop + BeyondStopM, runway.LengthM - 100);
+        var low = Math.Clamp(finalLowFt ?? DefaultFinalLowFt, 0, MaxFinalLowFt);
 
         var waypoints = new List<TrafficTestWaypoint>();
         var air = AiWaypointFlags.SpeedRequested | AiWaypointFlags.ComputeVerticalSpeed;
-        foreach (var gate in Gates.Where(g => g < spawn - 0.5))
+        foreach (var gate in Gates.Where(g => g < spawn - 0.5).Append(0))
         {
             var (lat, lon) = runway.Point(-gate * RunwayEnd.MetersPerNm);
-            var speed = gate >= 6 ? IntermediateKt : ApproachKt;
-            var name = gate.ToString("0.#", CultureInfo.InvariantCulture) + "nm";
-            waypoints.Add(new(name, -gate * RunwayEnd.MetersPerNm, new AiWaypoint(lat, lon, GlidePathFt(runway, gate), speed, air)));
+            var speed = gate == 0 ? ThresholdKt : gate >= 6 ? IntermediateKt : ApproachKt;
+            var name = gate == 0 ? "threshold" : gate.ToString("0.#", CultureInfo.InvariantCulture) + "nm";
+            var path = GlidePathFt(runway, gate);
+            var drop = low * FinalLowShare(gate);
+            waypoints.Add(new(name, -gate * RunwayEnd.MetersPerNm, new AiWaypoint(lat, lon, path - drop, speed, air), drop > 0 ? path : null));
         }
 
         var ground = AiWaypointFlags.SpeedRequested | AiWaypointFlags.OnGround;
-        Add(waypoints, runway, "threshold", 0, runway.ElevationFt + ThresholdCrossingFt, ThresholdKt, air);
         Add(waypoints, runway, "touchdown", touchdown, runway.ElevationFt, TouchdownKt, ground);
         Add(waypoints, runway, "rollout1", touchdown + ((stop - touchdown) * 0.45), runway.ElevationFt, 60, ground);
         Add(waypoints, runway, "rollout2", touchdown + ((stop - touchdown) * 0.85), runway.ElevationFt, 25, ground);
@@ -190,7 +220,7 @@ public sealed record TrafficTestPlan(
             OnGround: false,
             AirspeedKt: (uint)(spawn >= 6 ? IntermediateKt : ApproachKt));
 
-        return new TrafficTestPlan(variant, runway, initial, spawn, variant == TrafficTestVariant.A1, gearDownNm, touchdown, stop, waypoints, warnings);
+        return new TrafficTestPlan(variant, runway, initial, spawn, variant == TrafficTestVariant.A1, gearDownNm, touchdown, stop, low, waypoints, warnings);
     }
 
     /// <summary>Der nächste Wegpunkt vor einer Position (entlang der Mittellinie), am Ende der letzte.</summary>
