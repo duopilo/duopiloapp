@@ -1,0 +1,67 @@
+# Webseite duopilo.app: baut site/ mit tools/build_site.py und veröffentlicht sie über GitHub Pages.
+#
+# Läuft bei Änderungen an der Seite auf main, wenn ein Release veröffentlicht, geändert oder gelöscht wird (der
+# Download-Button zeigt dann auf die neue Version) und von Hand. Bei Pull Requests wird nur gebaut – das Ergebnis
+# liegt als Artefakt „github-pages“ am Lauf, veröffentlicht wird nichts.
+#
+# Einmalig vorher: Settings → Pages → Source „GitHub Actions“, Custom domain duopilo.app (Schritte in site/README.md).
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "branding/**"
+      - "tools/build_site.py"
+      - "src/Duopilo/Dashboard/fonts/**"
+      - ".github/workflows/pages.yml"
+  pull_request:
+    paths:
+      - "site/**"
+      - "branding/**"
+      - "tools/build_site.py"
+      - ".github/workflows/pages.yml"
+  release:
+    types: [published, edited, deleted, unpublished]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.event_name == 'pull_request' && github.ref || 'deploy' }}
+  cancel-in-progress: false
+
+jobs:
+  bauen:
+    name: Webseite bauen
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Seite zusammenstellen
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # In Pull Requests darf das Impressum noch offen sein, auf main nicht.
+          ALLOW_TODO: ${{ github.event_name == 'pull_request' && '--allow-todo' || '' }}
+        run: python3 tools/build_site.py --out _site $ALLOW_TODO
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+  veroeffentlichen:
+    name: Veröffentlichen
+    if: github.event_name != 'pull_request'
+    needs: bauen
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
