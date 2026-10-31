@@ -44,7 +44,7 @@ public sealed class SdkInstaller(IOptions<DuopiloOptions> options, ILogger<SdkIn
     /// SHA-256 des ZIP von <see cref="DefaultUrl"/> – Rückfall, falls Windows die Signatur des Installers nicht bestätigen kann.
     /// null = nur die Signatur zählt.
     /// </summary>
-    public const string? DefaultSha256 = null;
+    public static readonly string? DefaultSha256 = null; // kein const: sonst warnt der Compiler bei den Abfragen auf null
 
     /// <summary>Kleiner ist das ZIP sicher nicht (Schutz gegen abgebrochene Downloads und Fehlerseiten).</summary>
     public const long MinBytes = 50L * 1024 * 1024;
