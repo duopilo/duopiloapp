@@ -1,5 +1,12 @@
 [English](README.md) | **Deutsch**
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="branding/duopilo-logo.svg">
+    <img src="branding/duopilo-logo-light.svg" alt="Duopilo" width="360">
+  </picture>
+</p>
+
 # Duopilo
 
 Duopilo verbindet **Microsoft Flight Simulator 2024** über SimConnect mit **Claude**. Das Programm läuft als MCP-Server auf dem Sim-PC. Claude kann damit Höhe, Geschwindigkeit, Konfiguration, Navigation und Wetter selbst ablesen, statt dass du sie vorlesen musst. Claude ist so der **Pilot Monitoring**, du bleibst Pilot Flying.
