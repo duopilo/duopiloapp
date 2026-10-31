@@ -262,7 +262,8 @@ A2 schickt den Fahrwerksbefehl bei 3000 ft über der Bahn, die Auswertung meldet
 2500 ft geklappt hat.
 
 **Rückfallebene:** Klappt das weiterhin nicht, die Modelle von FlyByWire und Headwind aus dem Verkehr nehmen, damit das Fahrwerk
-zumindest sicher vor dem Aufsetzen draußen ist – auch wenn dabei mal etwas leicht im Boden steckt.
+zumindest sicher vor dem Aufsetzen draußen ist – auch wenn dabei mal etwas leicht im Boden steckt. Dazu kommt: Bei diesen Modellen
+drehen als KI die Triebwerke nicht (ihre Systeme laufen offenbar nur, wenn man sie selbst fliegt).
 
 Nächste Schritte: Nachtests in EDDL 05L/05R (gleiche Umgebung wie oben) mit A2. Sieht es dann immer noch komisch aus, in Frankfurt
 testen. Danach Speed über den Schub (`THROTTLE_REQUESTED`) und Stufe B.
