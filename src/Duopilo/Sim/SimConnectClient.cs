@@ -31,7 +31,7 @@ public sealed partial class SimConnectClient : BackgroundService
 
     private readonly AutoResetEvent _messageEvent = new(false);
     private readonly AutoResetEvent _commandEvent = new(false);
-    private readonly ConcurrentQueue<Action<SimConnect>> _commands = new();
+    private readonly ConcurrentQueue<SimCommand> _commands = new();
 
     // Werte für andere Threads
     private readonly ConcurrentDictionary<string, SimValue> _values = new(StringComparer.OrdinalIgnoreCase);
@@ -57,6 +57,14 @@ public sealed partial class SimConnectClient : BackgroundService
 
     private volatile ConnectionInfo _connection = ConnectionInfo.Disconnected;
     private volatile AircraftProfile? _activeProfile;
+
+    /// <summary>
+    /// Befehl für den SimConnect-Thread. Bewusst ein eigener, nicht generischer Delegat statt Action&lt;SimConnect&gt;: Eine generische
+    /// Instanz über SimConnect (z. B. ConcurrentQueue&lt;Action&lt;SimConnect&gt;&gt; als Feld) lädt die SimConnect-Bibliothek schon im
+    /// Konstruktor – fehlt sie (Release-Paket ohne installiertes MSFS-SDK), stürzte Duopilo beim Start ab, statt das Banner zum
+    /// Installieren zu zeigen. So wird SimConnect erst in <see cref="Run"/> gebraucht, und dort fängt <see cref="RunGuarded"/> den Fehler ab.
+    /// </summary>
+    private delegate void SimCommand(SimConnect sc);
 
     public SimConnectClient(IOptions<DuopiloOptions> options, ProfileStore profiles, ILogger<SimConnectClient> log)
     {
@@ -216,7 +224,7 @@ public sealed partial class SimConnectClient : BackgroundService
     /// Führt einen Befehl auf dem SimConnect-Thread aus. Läuft die Zeit ab oder wird abgebrochen, bevor der Befehl dran war,
     /// wird er verworfen – er darf nicht später noch ausgeführt werden (sonst schaltet ein Taster bei Wiederholung doppelt).
     /// </summary>
-    private async Task RunOnSimThreadAsync(Action<SimConnect> action, CancellationToken ct)
+    private async Task RunOnSimThreadAsync(SimCommand action, CancellationToken ct)
     {
         if (!_connection.IsConnected)
         {
@@ -429,7 +437,7 @@ public sealed partial class SimConnectClient : BackgroundService
         ResetFacilities();
     }
 
-    private void Enqueue(Action<SimConnect> command)
+    private void Enqueue(SimCommand command)
     {
         _commands.Enqueue(command);
         _commandEvent.Set();
