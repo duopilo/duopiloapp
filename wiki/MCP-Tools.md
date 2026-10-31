@@ -17,6 +17,7 @@ Tool messages (`message`/`note` fields) follow the [language setting](Dashboard-
 | `get_environment` | wind, OAT, QNH, altimeter setting, visibility, UTC/local time |
 | `get_navigation` | the sim's GPS flight plan variables (usually empty with airliner FMSs – use `get_progress`) |
 | `read_simvar` | reads any SimVar or `L:` variable once (text variables with `unit: "string"`) |
+| `list_input_events` | input events (cockpit controls, `B:` variables) of the loaded aircraft with values; `changesOnly` shows what moved since the last call |
 
 ## Monitoring
 

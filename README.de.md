@@ -61,6 +61,7 @@ Bis Version 0.9.x hieß Duopilo **Kopilot**. Das meiste wird von selbst übernom
 | `get_environment` | Wind, OAT, QNH, eingestellter Höhenmesser, Sicht, UTC-/Ortszeit |
 | `get_aircraft_profile` | Bindings des Profils mit Rohwert, Klartext und „geprüft“-Status, Zusatzvariablen, Grenzwerte |
 | `read_simvar` | Liest eine beliebige SimVar oder L:-Variable einmalig (Text-Variablen mit `unit: "string"`) |
+| `list_input_events` | Listet die Input Events (Bedienelemente, B-Variablen) des geladenen Flugzeugs mit Werten; `changesOnly` zeigt, was sich seit dem letzten Aufruf bewegt hat – zum Erstellen von Profilen |
 | `reload_profiles` | Lädt die Profildateien neu |
 | `list_actions` | Eingabe-Modul: welche Schalter Duopilo im aktuellen Flugzeug bedienen darf, und ob Eingaben freigegeben sind |
 | `prepare_action` | Eingabe vorbereiten: prüft Wert und Sperren, liefert den Readback – im Cockpit ändert sich noch nichts |
@@ -834,6 +835,8 @@ So findest du neue L:-Variablen:
 4. Ins Profil eintragen (`"verified": true`, wenn geprüft), dann `reload_profiles` aufrufen.
 
 Wichtig: Eine L:-Variable, die es nicht gibt, liest SimConnect als `0`. Eine 0 beweist also nicht, dass der Name stimmt. Deshalb immer mit einer Zustandsänderung gegenprüfen.
+
+**Input Events (MSFS-2024-Flugzeuge):** Viele neuere Flugzeuge (z. B. der iniBuilds A321LR) bedienen das Cockpit über *Input Events* (`B:`-Variablen) statt klassischer Events. `list_input_events` (oder im Browser `/input-events?filter=FCU`) listet alle mit ihren aktuellen Werten und speichert die vollständige Liste unter `%LOCALAPPDATA%\Duopilo\aircraft-dumps\<Flugzeug>.input-events.json`. So findest du ein Bedienelement: einmal abfragen (Ausgangslage), den Schalter im Cockpit betätigen, dann mit `changesOnly: true` (Browser: `&changes=1`) noch einmal – die Antwort zeigt, welches Input Event sich auf welchen Wert bewegt hat. Bleibt die Liste leer, den Entwicklermodus in MSFS einschalten und das Flugzeug neu laden. L:-Variablen kann SimConnect nicht auflisten; die kommen weiter aus dem Behaviors-Fenster.
 
 ## Aufbau
 

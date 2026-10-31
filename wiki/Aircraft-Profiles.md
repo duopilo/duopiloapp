@@ -76,6 +76,16 @@ Put your profile into the `profiles` folder of the program (under `C:\Program Fi
 
 > SimConnect reads an `L:` variable that doesn't exist as **0**. A 0 doesn't prove the name is right – always cross-check with a state change.
 
+## Finding input events (MSFS 2024 aircraft)
+
+Newer aircraft (e.g. the iniBuilds A321LR) operate many controls through input events (`B:` variables). `list_input_events` – or `http://127.0.0.1:5155/input-events?filter=FCU` – lists them with current values and saves the full list to `%LOCALAPPDATA%\Duopilo\aircraft-dumps\`.
+
+1. Call it once – that's the baseline.
+2. Operate one switch or knob in the cockpit.
+3. Call again with `changesOnly: true` (browser: `&changes=1`): you see which input event moved and to which value.
+
+Empty list? Enable developer mode in MSFS and reload the aircraft.
+
 Every variable has its own SimConnect data definition: an unknown name only loses that one value.
 
 ## ECAM plain text

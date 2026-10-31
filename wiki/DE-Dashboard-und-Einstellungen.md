@@ -74,6 +74,7 @@ Die Sprachschleife versteht deutsche und englische Befehle, egal was hier einges
 | `/state` | Flugzustand |
 | `/systems`, `/nav`, `/env`, `/profile`, `/warnings`, `/alerts`, `/monitoring`, `/atc`, `/plan`, `/progress` | dieselben Daten, die die Tools liefern |
 | `/read?name=INDICATED ALTITUDE&unit=feet` | eine einzelne SimVar oder `L:`-Variable |
+| `/input-events?filter=FCU&changes=1` | Input Events des Flugzeugs mit Werten; `changes=1` nur die, die sich seit dem letzten Aufruf geändert haben |
 | `/atc/controller` | Zustand des Duopilo-ATC |
 | `/voice` | Status der Sprachschleife |
 

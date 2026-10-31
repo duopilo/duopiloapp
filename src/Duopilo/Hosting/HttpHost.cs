@@ -99,6 +99,10 @@ public static class HttpHost
             JsonText(await DuopiloTools.ReadSimVar(sim, name, unit ?? "number", ct))).LocalOnly();
         app.MapGet("/voice", (Duopilo.Voice.IVoiceStatusSource voice) => JsonText(Json.Serialize(DuopiloTools.VoiceView(voice.Status)))).LocalOnly();
 
+        // Input Events des geladenen Flugzeugs (wie list_input_events): /input-events?filter=FCU&changes=1
+        app.MapGet("/input-events", async (Duopilo.Sim.InputEventExplorer explorer, string? filter, bool? values, bool? parameters, bool? changes, int? limit, CancellationToken ct) =>
+            JsonText(await DuopiloTools.ListInputEvents(explorer, filter, values ?? true, parameters ?? false, changes ?? false, limit ?? Duopilo.Sim.InputEventExplorer.DefaultLimit, ct))).LocalOnly();
+
         if (remote.OAuthEnabled)
         {
             app.MapOAuth();

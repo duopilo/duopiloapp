@@ -199,6 +199,45 @@ namespace Microsoft.FlightSimulator.SimConnect
         public uint RequestId;
     }
 
+    public enum SIMCONNECT_INPUT_EVENT_TYPE : uint
+    {
+        DOUBLE,
+        STRING,
+    }
+
+    public class SIMCONNECT_RECV_LIST_TEMPLATE : SIMCONNECT_RECV
+    {
+        public uint dwRequestID;
+        public uint dwArraySize;
+        public uint dwEntryNumber;
+        public uint dwOutOf;
+    }
+
+    public struct SIMCONNECT_INPUT_EVENT_DESCRIPTOR
+    {
+        public string Name;
+        public ulong Hash;
+        public SIMCONNECT_INPUT_EVENT_TYPE eType;
+    }
+
+    public class SIMCONNECT_RECV_ENUMERATE_INPUT_EVENTS : SIMCONNECT_RECV_LIST_TEMPLATE
+    {
+        public object[] rgData;
+    }
+
+    public class SIMCONNECT_RECV_GET_INPUT_EVENT : SIMCONNECT_RECV
+    {
+        public uint dwRequestID;
+        public SIMCONNECT_INPUT_EVENT_TYPE eType;
+        public object[] Value;
+    }
+
+    public class SIMCONNECT_RECV_ENUMERATE_INPUT_EVENT_PARAMS : SIMCONNECT_RECV
+    {
+        public ulong Hash;
+        public string Value;
+    }
+
     public class SimConnect : IDisposable
     {
         public const uint SIMCONNECT_OBJECT_ID_USER = 0;
@@ -224,6 +263,12 @@ namespace Microsoft.FlightSimulator.SimConnect
         public delegate void RecvFacilityDataEventHandler(SimConnect sender, SIMCONNECT_RECV_FACILITY_DATA data);
 
         public delegate void RecvFacilityDataEndEventHandler(SimConnect sender, SIMCONNECT_RECV_FACILITY_DATA_END data);
+
+        public delegate void RecvEnumerateInputEventsEventHandler(SimConnect sender, SIMCONNECT_RECV_ENUMERATE_INPUT_EVENTS data);
+
+        public delegate void RecvGetInputEventEventHandler(SimConnect sender, SIMCONNECT_RECV_GET_INPUT_EVENT data);
+
+        public delegate void RecvEnumerateInputEventParamsEventHandler(SimConnect sender, SIMCONNECT_RECV_ENUMERATE_INPUT_EVENT_PARAMS data);
 
         public SimConnect(string szName, IntPtr hWnd, uint UserEventWin32, WaitHandle hEventHandle, uint ConfigIndex)
         {
@@ -251,6 +296,33 @@ namespace Microsoft.FlightSimulator.SimConnect
         public event RecvFacilityDataEventHandler OnRecvFacilityData;
 
         public event RecvFacilityDataEndEventHandler OnRecvFacilityDataEnd;
+
+        public event RecvEnumerateInputEventsEventHandler OnRecvEnumerateInputEvents;
+
+        public event RecvGetInputEventEventHandler OnRecvGetInputEvent;
+
+        public event RecvEnumerateInputEventParamsEventHandler OnRecvEnumerateInputEventParams;
+
+        public void RegisterStruct<RECV, T>(Enum dwID)
+            where RECV : SIMCONNECT_RECV
+        {
+        }
+
+        public void EnumerateInputEvents(Enum RequestID)
+        {
+        }
+
+        public void GetInputEvent(Enum RequestID, ulong Hash)
+        {
+        }
+
+        public void SetInputEvent(ulong Hash, object Value)
+        {
+        }
+
+        public void EnumerateInputEventParams(ulong Hash)
+        {
+        }
 
         public void SubscribeToSystemEvent(Enum EventID, string SystemEventName)
         {
