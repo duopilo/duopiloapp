@@ -126,10 +126,13 @@ das grob 100.000 Linienflüge am Tag, als Wochenfahrplan einige MB.
 Vorrang haben, was der Pilot sieht und hört (Entscheidung 31.10.2026):
 
 1. Verkehr um das eigene Flugzeug, im Reiseflug wie im Anflug.
-2. Flüge, die kurz vor und nach dem Piloten landen. Duopilo-ATC staffelt sie so, dass beim Abrollen zum Beispiel gerade eine
-   Maschine auf der Bahn oder der Parallelbahn landet.
-3. Abflüge am Startflughafen und Rollverkehr.
+2. Flüge, die kurz vor und nach dem Piloten landen oder starten.
+3. Abflüge, Landungen und Rollverkehr am Start- und Zielflughafen.
 4. Geparkte Flugzeuge an den Gates.
+
+Ziel ist ein Flughafen, der lebt, statt ein paar abgestellter Flugzeuge: Beim Rollen zur Bahn startet gerade jemand, beim
+Abrollen zum Gate landet eine Maschine oder eine andere hebt ab. Das soll natürlich vorkommen können, nicht bei jedem Flug
+gleich ablaufen.
 
 Ein Flug nach New York existiert in Frankfurt also höchstens als Zeile im Fahrplan, nie als Flugzeug.
 
