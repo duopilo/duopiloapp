@@ -20,7 +20,7 @@ python -m http.server -d _site 8000          # http://localhost:8000
 
 ## Publishing
 
-[`.github/workflows/pages.yml`](../.github/workflows/pages.yml) builds and deploys on pushes to `main` that touch the site, branding or fonts, whenever a release is published, edited or deleted, and by hand. Pull requests only build. The build fails on `main` while a page still contains `TODO:` – that's the legal notice.
+[`.github/workflows/pages.yml`](../.github/workflows/pages.yml) builds and deploys on pushes to `main` that touch the site, branding or fonts, whenever a release is published, edited or deleted, and by hand. Pull requests only build. A release run doesn't deploy itself – it runs on the tag, and the `github-pages` environment only accepts `main` – so it starts the workflow again on `main`. The build fails on `main` while a page still contains `TODO:` – that's the legal notice.
 
 ### Once beforehand
 

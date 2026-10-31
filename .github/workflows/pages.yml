@@ -4,6 +4,10 @@
 # Download-Button zeigt dann auf die neue Version) und von Hand. Bei Pull Requests wird nur gebaut – das Ergebnis
 # liegt als Artefakt „github-pages“ am Lauf, veröffentlicht wird nichts.
 #
+# Releases: Ein Release-Lauf läuft auf dem Tag, die Umgebung github-pages nimmt Deploys aber nur von main an. Deshalb
+# baut ein Release-Lauf nichts selbst, sondern startet diesen Workflow auf main neu (workflow_dispatch – das ist das
+# einzige Ereignis, das GITHUB_TOKEN auslösen darf).
+#
 # Einmalig vorher: Settings → Pages → Source „GitHub Actions“, Custom domain duopilo.app (Schritte in site/README.md).
 name: Pages
 
@@ -34,8 +38,23 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  anstossen:
+    name: Auf main neu bauen
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Pages-Workflow auf main starten
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref main
+          echo "::notice title=Webseite::Release ${{ github.event.release.tag_name }} ${{ github.event.action }} – Pages-Lauf auf main gestartet."
+
   bauen:
     name: Webseite bauen
+    if: github.event_name != 'release'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -53,7 +72,7 @@ jobs:
 
   veroeffentlichen:
     name: Veröffentlichen
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     needs: bauen
     runs-on: ubuntu-latest
     permissions:
