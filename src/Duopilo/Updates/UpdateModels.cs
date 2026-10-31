@@ -46,7 +46,7 @@ public sealed record SemVersion(int Major, int Minor, int Patch, string Prerelea
             }
         }
 
-        if (pre.Split('.').Any(p => p.Length == 0 || !p.All(c => char.IsAsciiLetterOrDigit(c) || c == '-')))
+        if (pre.Length > 0 && pre.Split('.').Any(p => p.Length == 0 || !p.All(c => char.IsAsciiLetterOrDigit(c) || c == '-')))
         {
             return null;
         }
