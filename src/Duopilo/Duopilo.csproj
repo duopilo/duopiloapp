@@ -136,4 +136,15 @@
     <Warning Condition="'$(SimConnectManagedDll)' != '' and !Exists('$(SimConnectNativeDll)')" Text="Duopilo: Native SimConnect.dll nicht gefunden unter $(SimConnectNativeDll). Bitte manuell neben Duopilo.exe kopieren." />
   </Target>
 
+  <!--
+    Von der Release-Pipeline gebaut (ContinuousIntegrationBuild, .github/workflows/release.yml): nur diese Stände sehen in den
+    GitHub-Releases nach Updates (Updates/UpdateService.cs). Selbst gebaute (update.cmd) aktualisiert update.cmd.
+  -->
+  <ItemGroup Condition="'$(ContinuousIntegrationBuild)' == 'true'">
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>DuopiloReleaseBuild</_Parameter1>
+      <_Parameter2>true</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
 </Project>

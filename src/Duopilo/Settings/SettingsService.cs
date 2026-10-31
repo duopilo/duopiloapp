@@ -106,6 +106,8 @@ public sealed class SettingsService
         public const string FirstOfficerName = "FirstOfficer:Name";
         public const string FirstOfficerGender = "FirstOfficer:Gender";
         public const string FirstOfficerIntroduce = "FirstOfficer:Introduce";
+        public const string UpdatesCheck = "Updates:Check";
+        public const string UpdatesPrereleases = "Updates:Prereleases";
     }
 
     /// <summary>Was erst nach einem Neustart gilt (Anzeigenamen). Leer = alles ist wirksam.</summary>
@@ -236,6 +238,41 @@ public sealed class SettingsService
         Loc.SetLanguage(code);
         _log.LogInformation(Loc.Log("log.settings.languageChanged"), previous, code);
         return new SettingsResult(true, Loc.T("settings.language.saved", Loc.Available.FirstOrDefault(l => l.Code == code)?.Name ?? code));
+    }
+
+    /// <summary>Update-Prüfung ein/aus und Vorabversionen ("auto", "on", "off") – gilt sofort. null = unverändert.</summary>
+    public SettingsResult SaveUpdates(bool? check, string? prereleases)
+    {
+        var updates = _services.GetService<Duopilo.Updates.UpdateService>();
+        var current = updates?.Status;
+        var values = new List<SettingValue>();
+        if (check is { } c)
+        {
+            values.Add(SettingValue.Of(KeyPath(Keys.UpdatesCheck), c));
+        }
+
+        string? normalized = null;
+        if (prereleases is not null)
+        {
+            normalized = Duopilo.Updates.UpdateLogic.NormalizePrereleases(prereleases);
+            values.Add(SettingValue.Of(KeyPath(Keys.UpdatesPrereleases), normalized));
+        }
+
+        if (values.Count == 0)
+        {
+            return new SettingsResult(true, Loc.T("settings.nothingChanged"));
+        }
+
+        if (!Write(values, out var error))
+        {
+            return SettingsResult.Fail(error);
+        }
+
+        var newCheck = check ?? current?.CheckEnabled ?? _options.Updates.Check;
+        var newPrereleases = normalized ?? current?.Prereleases ?? _options.Updates.Prereleases;
+        updates?.Configure(newCheck, newPrereleases);
+        _log.LogInformation(Loc.Log("log.settings.updatesChanged"), newCheck, newPrereleases);
+        return new SettingsResult(true, newCheck ? Loc.T("settings.updates.savedOn") : Loc.T("settings.updates.savedOff"));
     }
 
     /// <summary>

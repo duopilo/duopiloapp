@@ -25,8 +25,12 @@ public sealed class DashboardData(
     LogBuffer logs,
     InputService? input = null,
     ISpeechOutput? speech = null,
-    Duopilo.Voice.IVoiceStatusSource? voice = null)
+    Duopilo.Voice.IVoiceStatusSource? voice = null,
+    Duopilo.Updates.UpdateService? updates = null)
 {
+    /// <summary>Volle Version ("0.10.0-beta.4") für die Kopfzeile.</summary>
+    private static readonly string AppVersion = Duopilo.Updates.UpdateLogic.CurrentVersion(typeof(DashboardData).Assembly).ToString();
+
     /// <summary>So lange bleibt eine einmalige Ansage groß stehen.</summary>
     public static readonly TimeSpan HeadlineWindow = TimeSpan.FromSeconds(60);
 
@@ -47,7 +51,10 @@ public sealed class DashboardData(
 
         return new
         {
-            version = typeof(DashboardData).Assembly.GetName().Version?.ToString(3),
+            version = AppVersion,
+            update = updates?.Status is { Available: true } u
+                ? new { version = u.Latest, state = u.State, installable = u.Installable, progress = u.Progress, pageUrl = u.PageUrl }
+                : null,
             connected = connection.IsConnected,
             simulator = connection.Application,
             simVersion = connection.Version,

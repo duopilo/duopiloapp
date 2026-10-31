@@ -134,6 +134,10 @@ else
     builder.Services.AddSingleton<Duopilo.Atc.IAtcRadio>(sp => sp.GetRequiredService<Duopilo.Speech.CalloutSpeaker>());
     builder.Services.AddHostedService(sp => sp.GetRequiredService<Duopilo.Speech.CalloutSpeaker>());
 
+    // Update-Prüfung (GitHub-Releases) – nur hier, nicht in der stdio-Instanz von Claude Desktop
+    builder.Services.AddSingleton<Duopilo.Updates.UpdateService>();
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<Duopilo.Updates.UpdateService>());
+
     // Sprachschleife (Mikrofon → Whisper → Duopilo/ATC → Sprachausgabe), aus voice-settings.json – standardmäßig aus
     Duopilo.Voice.VoiceServiceCollectionExtensions.AddDuopiloVoice(builder.Services);
 
@@ -156,7 +160,7 @@ else
         return;
     }
 
-    app.Logger.LogInformation(Loc.Log("log.program.httpStarted"), typeof(DuopiloOptions).Assembly.GetName().Version?.ToString(3), dashboardUrl, url.TrimEnd('/') + "/mcp");
+    app.Logger.LogInformation(Loc.Log("log.program.httpStarted"), Duopilo.Updates.UpdateLogic.CurrentVersion(typeof(DuopiloOptions).Assembly).ToString(), dashboardUrl, url.TrimEnd('/') + "/mcp");
     if (Has(args, "--restarted"))
     {
         app.Logger.LogWarning(Loc.Log("log.program.restartedAfterCrash"));

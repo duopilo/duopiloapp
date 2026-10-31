@@ -303,6 +303,7 @@ select.btn { padding: 4px 6px; max-width: 190px; }
 }
 .hbtn:hover { border-color: var(--cyan); color: var(--white); }
 .hbtn[aria-current="page"] { border-color: var(--cyan); color: var(--cyan); }
+.hbtn.update { border-color: var(--green); color: var(--green); }
 .route a, .hero a { color: var(--cyan); }
 
 /* ------------------------------------------------------------------ Einstellungen (auf dem Panel, keine Displays) */
@@ -438,6 +439,7 @@ dialog.report::backdrop { background: rgba(5, 8, 11, .7); }
   <span class="paused-pill" id="paused" data-i18n="dashboard.header.paused" hidden>Sim paused</span>
   <span class="spacer"></span>
   <nav class="hnav" aria-label="Duopilo">
+    <a class="hbtn update" id="updatePill" href="#einstellungen" hidden></a>
     <button class="hbtn" id="reportOpen" type="button" title="Captures position, altitude, ATC station, frequencies and the latest transmissions right now – then describe the problem and report it as a GitHub issue" data-i18n-title="dashboard.header.reportTitle" data-i18n="dashboard.report.title">Report a problem</button>
     <a class="hbtn" id="settingsLink" href="#einstellungen" data-i18n="dashboard.settings.title">Settings</a>
   </nav>
@@ -755,6 +757,26 @@ dialog.report::backdrop { background: rgba(5, 8, 11, .7); }
       <p class="state-line" id="chatState"></p>
     </section>
 
+    <section class="card" id="updCard" aria-labelledby="hUpdates">
+      <h2 id="hUpdates" data-i18n="dashboard.settings.updates.title">Updates</h2>
+      <p class="hint" data-i18n="dashboard.settings.updates.hint">Duopilo looks for new versions in the GitHub releases. Install downloads the installer, checks it (SHA-256) and installs it silently – Duopilo closes for that (the Claude Desktop instance too) and starts again afterwards.</p>
+      <p class="state-line" id="updState"></p>
+      <div class="row">
+        <button class="btn" id="updCheck" type="button" data-i18n="dashboard.settings.updates.checkNow">Check now</button>
+        <button class="btn primary" id="updInstall" type="button" hidden></button>
+        <a class="btn" id="updPage" target="_blank" rel="noopener" hidden data-i18n="dashboard.settings.updates.whatsNew">What's new</a>
+      </div>
+      <label class="check"><input type="checkbox" id="updAuto"> <span data-i18n="dashboard.settings.updates.auto">Check for updates automatically</span></label>
+      <label class="field"><span data-i18n="dashboard.settings.updates.prereleases">Pre-releases (beta, RC)</span>
+        <select id="updPre">
+          <option value="auto" data-i18n="dashboard.settings.updates.preAuto">Automatic (only if this version is one)</option>
+          <option value="on" data-i18n="dashboard.settings.updates.preOn">Always offer</option>
+          <option value="off" data-i18n="dashboard.settings.updates.preOff">Never</option>
+        </select>
+      </label>
+      <p class="msg" id="updMsg" role="status"></p>
+    </section>
+
     <section class="card" id="langCard" aria-labelledby="hLanguage">
       <h2 id="hLanguage" data-i18n="dashboard.settings.language.title">Language</h2>
       <p class="hint" data-i18n="dashboard.settings.language.hint">The dashboard, tool messages and tray follow this setting. Callouts, checklists, FMA calls, warnings and radio stay in English – like a real crew (SOP) – and so do the logs. Applies immediately.</p>
@@ -896,6 +918,13 @@ const timeOf = (iso) => (iso || "").replace("Z", "");
 /* ------------------------------------------------------------------ Kopfzeile */
 function renderHeader(d) {
   $("version").textContent = d.version ? "v" + d.version : "";
+  const up = d.update;
+  $("updatePill").hidden = !up;
+  if (up) {
+    setText("updatePill", up.state === "downloading" ? t("dashboard.header.updateDownloading", { percent: Math.round((up.progress || 0) * 100) })
+      : up.state === "installing" ? t("dashboard.header.updateInstalling")
+      : t("dashboard.header.update", { version: up.version }));
+  }
   const lamp = $("lamp");
   if (!d.connected) {
     lamp.className = "lamp wait";
@@ -1703,6 +1732,68 @@ async function copyText(text, button) {
 }
 const clockZ = (iso) => (iso ? new Date(iso).toISOString().slice(11, 19) + "Z" : "");
 
+/* ------------------------------------------------------------------ Updates (Karte in den Einstellungen) */
+const updateUi = { data: null, timer: null, filled: false };
+async function loadUpdate() {
+  try { renderUpdate(await (await fetch("/api/update", { cache: "no-store" })).json()); } catch { /* nächster Versuch */ }
+}
+function renderUpdate(u) {
+  if (!u) return;
+  updateUi.data = u;
+  const card = $("updCard");
+  card.hidden = !u.available;
+  if (!u.available) return;
+  const selfBuilt = u.state === "selfBuilt";
+  if (!updateUi.filled) {
+    $("updAuto").checked = !!u.check;
+    $("updPre").value = u.prereleases || "auto";
+    updateUi.filled = true;
+  }
+  $("updAuto").disabled = selfBuilt;
+  $("updPre").disabled = selfBuilt;
+  $("updCheck").disabled = selfBuilt || u.state === "checking" || u.state === "downloading" || u.state === "installing";
+  const parts = [t("dashboard.settings.updates.installed", { version: u.current })];
+  const states = {
+    selfBuilt: t("dashboard.settings.updates.selfBuilt"),
+    off: t("dashboard.settings.updates.off"),
+    idle: t("dashboard.settings.updates.idle"),
+    checking: t("dashboard.settings.updates.checking"),
+    upToDate: t("dashboard.settings.updates.upToDate"),
+    available: t("dashboard.settings.updates.availableState", { version: u.latest }),
+    downloading: t("dashboard.settings.updates.downloading", { percent: Math.round((u.progress || 0) * 100) }),
+    installing: t("dashboard.settings.updates.installing"),
+    failed: t("dashboard.settings.updates.failed", { error: u.error || "?" }),
+  };
+  parts.push(states[u.state] || u.state);
+  if (u.lastCheckUtc && !selfBuilt) parts.push(t("dashboard.settings.updates.lastCheck", { time: new Date(u.lastCheckUtc).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }));
+  if (u.updateAvailable && !u.installable) parts.push(u.installedBySetup ? t("dashboard.settings.updates.noInstaller") : t("dashboard.settings.updates.notInstalled"));
+  $("updState").textContent = parts.join(" · ");
+  const install = $("updInstall");
+  install.hidden = !(u.updateAvailable && u.installable);
+  install.disabled = u.state === "downloading" || u.state === "installing";
+  install.textContent = t("dashboard.settings.updates.install", { version: u.latest || "" });
+  const page = $("updPage");
+  page.hidden = !(u.updateAvailable && u.pageUrl);
+  if (u.pageUrl) page.href = u.pageUrl;
+  clearTimeout(updateUi.timer);
+  if (!$("settings").hidden && (u.state === "checking" || u.state === "downloading" || u.state === "installing")) updateUi.timer = setTimeout(loadUpdate, 1000);
+}
+async function updateAction(url, body) {
+  try {
+    const j = await postJson(url, body);
+    renderUpdate(j.update);
+    showMsg("updMsg", j.error || j.message, !!j.error);
+  } catch { showMsg("updMsg", t("dashboard.common.noResponse"), true); }
+}
+$("updatePill").addEventListener("click", () => setTimeout(() => $("updCard").scrollIntoView({ block: "start" }), 150));
+$("updCheck").addEventListener("click", () => { showMsg("updMsg", t("dashboard.settings.updates.checking")); updateAction("/api/update/check"); });
+$("updInstall").addEventListener("click", () => {
+  if (!confirm(t("dashboard.settings.updates.confirm", { version: updateUi.data?.latest || "" }))) return;
+  updateAction("/api/update/install");
+});
+$("updAuto").addEventListener("change", (e) => updateAction("/api/update/settings", { check: e.target.checked }));
+$("updPre").addEventListener("change", (e) => updateAction("/api/update/settings", { prereleases: e.target.value }));
+
 /* ------------------------------------------------------------------ Einstellungen (#einstellungen) */
 const settingsUi = { data: null, timer: null, inputArm: 0, filled: false };
 
@@ -1713,7 +1804,7 @@ function route() {
   document.querySelector(".setup").hidden = show;
   if (show) { $("settingsLink").setAttribute("aria-current", "page"); } else { $("settingsLink").removeAttribute("aria-current"); }
   clearTimeout(settingsUi.timer);
-  if (show) { settingsUi.filled = false; loadSettings(); loadMic(); window.scrollTo(0, 0); }
+  if (show) { settingsUi.filled = false; updateUi.filled = false; loadSettings(); loadMic(); loadUpdate(); window.scrollTo(0, 0); }
 }
 window.addEventListener("hashchange", route);
 
