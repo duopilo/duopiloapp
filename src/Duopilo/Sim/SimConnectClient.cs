@@ -363,6 +363,7 @@ public sealed partial class SimConnectClient : BackgroundService
             sc.OnRecvSystemState += OnSystemState;
             sc.OnRecvFacilityData += OnFacilityData;
             sc.OnRecvFacilityDataEnd += OnFacilityDataEnd;
+            TryRegisterInputEventHandlers(sc);
             _sc = sc;
             _lastConnectError = null;
             return true;
@@ -435,6 +436,7 @@ public sealed partial class SimConnectClient : BackgroundService
         }
 
         ResetFacilities();
+        ResetInputEvents();
     }
 
     private void Enqueue(SimCommand command)

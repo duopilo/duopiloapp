@@ -61,6 +61,7 @@ Up to version 0.9.x Duopilo was called **Kopilot**. Most things carry over by th
 | `get_environment` | Wind, OAT, QNH, altimeter setting, visibility, UTC/local time |
 | `get_aircraft_profile` | Profile bindings with raw value, plain text and "verified" status, extra variables, limits |
 | `read_simvar` | Reads any SimVar or L: variable once (text variables with `unit: "string"`) |
+| `list_input_events` | Lists the input events (cockpit controls, B: variables) of the loaded aircraft with values; `changesOnly` shows what moved since the last call – for building profiles |
 | `reload_profiles` | Reloads the profile files |
 | `list_actions` | Input module: which switches Duopilo may operate in the current aircraft, and whether input is unlocked |
 | `prepare_action` | Prepare an input: checks value and interlocks, returns the readback – nothing changes in the cockpit yet |
@@ -834,6 +835,8 @@ How to find new L: variables:
 4. Add it to the profile (`"verified": true` once checked), then call `reload_profiles`.
 
 Important: SimConnect reads an L: variable that doesn't exist as `0`. So a 0 doesn't prove the name is right. Always cross-check with a state change.
+
+**Input events (MSFS 2024 aircraft):** many newer aircraft (e.g. the iniBuilds A321LR) work their cockpit controls through *input events* (`B:` variables) instead of classic events. `list_input_events` (or in the browser `/input-events?filter=FCU`) lists them all with their current values and saves the complete list to `%LOCALAPPDATA%\Duopilo\aircraft-dumps\<aircraft>.input-events.json`. To find a control: call it once (baseline), operate the switch in the cockpit, then call it again with `changesOnly: true` (browser: `&changes=1`) – the answer shows which input event moved and to which value. If the list stays empty, enable developer mode in MSFS and reload the aircraft. SimConnect can't list L: variables; those still come from the Behaviors window.
 
 ## Project structure
 

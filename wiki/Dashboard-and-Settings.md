@@ -74,6 +74,7 @@ The voice loop understands German and English commands regardless of this settin
 | `/state` | flight state |
 | `/systems`, `/nav`, `/env`, `/profile`, `/warnings`, `/alerts`, `/monitoring`, `/atc`, `/plan`, `/progress` | the same data the tools return |
 | `/read?name=INDICATED ALTITUDE&unit=feet` | a single SimVar or `L:` variable |
+| `/input-events?filter=FCU&changes=1` | the aircraft's input events with values; `changes=1` only those that changed since the last call |
 | `/atc/controller` | state of the Duopilo ATC |
 | `/voice` | voice loop status |
 

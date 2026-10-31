@@ -1398,5 +1398,11 @@
   "log.simconnect.sdkInstalling": "MSFS SDK: starting installer {Path} (signer {Signer}).",
   "log.simconnect.sdkInstallExit": "MSFS SDK: installer exit code {ExitCode} → {Outcome}, SimConnect in {SdkRoot}.",
   "log.simconnect.sdkFailed": "MSFS SDK not installed: {Error}",
-  "log.settings.simconnectPath": "Settings (dashboard): SimConnect SDK folder {Path} – applies after restart."
+  "log.settings.simconnectPath": "Settings (dashboard): SimConnect SDK folder {Path} – applies after restart.",
+  "tools.inputEvents.none": "MSFS returned no input events for this aircraft. Some sim versions only hand them out in developer mode – enable developer mode in MSFS and reload the aircraft.",
+  "tools.inputEvents.baseline": "No earlier values for this aircraft yet – this call is the baseline. Operate a switch in the cockpit and call again with changesOnly.",
+  "tools.inputEvents.unsupported": "The loaded SimConnect library doesn't support input events (MSFS 2024 SDK needed).",
+  "log.sim.inputEvents": "Input events: {Total} in total, {Matched} matched for {Aircraft}, changed {Changed}, saved to {File}.",
+  "log.sim.inputEventsUnavailable": "SimConnect: input events not available ({Error}) – list_input_events stays off.",
+  "log.sim.inputEventsSaveFailed": "Input events: list not saved ({Error})."
 }

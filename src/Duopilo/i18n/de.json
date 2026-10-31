@@ -1163,5 +1163,8 @@
   "dashboard.settings.simconnect.path": "SDK-Ordner (leer = automatisch suchen)",
   "dashboard.settings.simconnect.fromSdk": "Aus dem SDK in {path} geladen",
   "dashboard.settings.simconnect.fromApp": "Aus dem Duopilo-Ordner geladen",
-  "dashboard.settings.simconnect.missing": "Nicht gefunden"
+  "dashboard.settings.simconnect.missing": "Nicht gefunden",
+  "tools.inputEvents.none": "MSFS hat für dieses Flugzeug keine Input Events geliefert. Manche Sim-Versionen geben sie nur im Entwicklermodus heraus – Entwicklermodus in MSFS einschalten und das Flugzeug neu laden.",
+  "tools.inputEvents.baseline": "Für dieses Flugzeug gibt es noch keine früheren Werte – dieser Aufruf ist die Ausgangslage. Im Cockpit einen Schalter betätigen und mit changesOnly erneut abfragen.",
+  "tools.inputEvents.unsupported": "Die geladene SimConnect-Bibliothek kennt keine Input Events (MSFS-2024-SDK nötig)."
 }

@@ -550,6 +550,46 @@ public static class DuopiloTools
         };
     }
 
+    [McpServerTool(Name = "list_input_events", ReadOnly = true)]
+    [Description(
+        "Lists the input events of the loaded aircraft (the cockpit controls of MSFS 2024 aircraft, i.e. their B: variables) with current values – " +
+        "for building profiles of aircraft without documentation. Typical use: call once (baseline), operate one switch or knob in the cockpit, " +
+        "then call again with changesOnly=true to see which input event moved and to which value. The complete list is saved as JSON in the " +
+        "data folder (aircraft-dumps, path in 'file'). L: variables can't be listed through SimConnect – use read_simvar for those. " +
+        "If the list is empty, MSFS isn't handing out input events: enable developer mode in MSFS and reload the aircraft.")]
+    public static async Task<string> ListInputEvents(
+        InputEventExplorer explorer,
+        [Description("Part of the name, case-insensitive; several words must all match, e.g. 'FCU SPD' or 'LIGHTING STROBE'. Empty = all.")] string? filter = null,
+        [Description("Read the current value of each matching event (needed for changesOnly). Default true.")] bool values = true,
+        [Description("Also ask MSFS for the parameter description of each event (slower).")] bool parameters = false,
+        [Description("Only events whose value changed since the previous call for this aircraft (the first call is the baseline).")] bool changesOnly = false,
+        [Description("Maximum number of events in the answer (the file always has all). Default 200.")] int limit = InputEventExplorer.DefaultLimit,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var report = await explorer.ExploreAsync(filter, values, parameters, changesOnly, limit, cancellationToken);
+            return Json.Serialize(new
+            {
+                ok = true,
+                aircraft = report.Aircraft,
+                aircraftPath = report.AircraftPath,
+                total = report.Total,
+                matched = report.Matched,
+                changed = report.Changed,
+                baseline = report.Baseline,
+                file = report.File,
+                hint = report.Hint,
+                truncated = report.Truncated,
+                events = report.Events.Select(e => new { name = e.Name, type = e.Type, value = e.Value, previous = e.Previous, @params = e.Params }),
+            });
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException)
+        {
+            return Json.Serialize(new { ok = false, error = ex.Message });
+        }
+    }
+
     [McpServerTool(Name = "reload_profiles", ReadOnly = false, Idempotent = true)]
     [Description("Reloads the aircraft profile files (*.json) from disk and re-applies the matching profile. Use after a profile file was edited.")]
     public static string ReloadProfiles(SimConnectClient sim, ProfileStore profiles)

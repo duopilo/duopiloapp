@@ -23,6 +23,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ProfileStore>();
         services.AddSingleton<SimConnectClient>();
         services.AddHostedService(sp => sp.GetRequiredService<SimConnectClient>());
+        services.AddSingleton<InputEventExplorer>();
 
         services.AddSingleton<EcamCatalog>();
         services.AddSingleton<SimBriefService>();
