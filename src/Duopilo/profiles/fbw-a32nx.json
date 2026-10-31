@@ -147,7 +147,7 @@
   "variables": [
     { "key": "fireButtonEng1", "name": "L:A32NX_FIRE_BUTTON_ENG1", "unit": "number", "description": "ENG 1 Fire Pushbutton (1 = released)", "values": { "0": "IN", "1": "RELEASED" } },
     { "key": "fireGuardEng1", "name": "L:A32NX_FIRE_GUARD_ENG1", "unit": "number", "description": "ENG 1 Fire Guard" },
-    { "key": "wingAntiIcePressed", "name": "L:XMLVAR_MOMENTARY_PUSH_OVHD_ANTIICE_WING_PRESSED", "unit": "number", "description": "Wing Anti-Ice Pushbutton" },
+    { "key": "wingAntiIcePressed", "name": "L:A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION", "unit": "number", "description": "Wing Anti-Ice Pushbutton (1 = ON)" },
     { "key": "vapp", "name": "L:A32NX_SPEEDS_VAPP", "unit": "number", "description": "VAPP from the FMS (kt)" },
     { "key": "greenDot", "name": "L:A32NX_SPEEDS_GD", "unit": "number", "description": "Green Dot (kt)" },
     { "key": "fmgcPhase", "name": "L:A32NX_FMGC_FLIGHT_PHASE", "unit": "number", "description": "FMGC flight phase",
@@ -224,7 +224,8 @@
         { "event": "A32NX.FCU_HDG_PUSH" }
       ],
       "readback": "Heading managed",
-      "check": { "variable": "L:A32NX_FCU_AFS_DISPLAY_HDG_TRK_MANAGED", "expect": 1 },
+      "description": "Pushes the HDG knob. NAV can take a few seconds to engage – so the check waits up to 10 s.",
+      "check": { "variable": "L:A32NX_FCU_AFS_DISPLAY_HDG_TRK_MANAGED", "expect": 1, "timeoutMs": 10000 },
       "verified": false
     },
     {
@@ -739,21 +740,28 @@
       "id": "brakes.autobrake",
       "area": "Brakes",
       "label": "Autobrake",
+      // Eigene Events statt A32NX.AUTOBRAKE_SET: Laut WASM (a320_systems_wasm/src/autobrakes.rs) geht der Parameter 1:1 auf
+      // AUTOBRAKES_ARMED_MODE_SET (0 aus, 1 LO, 2 MED, 3 MAX) – nicht 1–4 wie in a320-events.md. MAX nur am Boden
+      // (Rust-Test autobrakes_max_wont_arm_in_flight).
+      "description": "Autobrake LO, MED or MAX, or off. The aircraft only accepts MAX on the ground (takeoff).",
       "parameter": {
         "type": "choice",
-        "options": { "off": 1, "lo": 2, "med": 3, "max": 4 },
+        "options": { "off": 0, "lo": 1, "med": 2, "max": 3 },
         "spoken": { "lo": "low", "med": "medium" }
       },
       "steps": [
-        {
-          "event": "A32NX.AUTOBRAKE_SET",
-          "value": "{value}"
-        }
+        { "event": "A32NX.AUTOBRAKE_SET_DISARM", "only": [ "off" ] },
+        { "event": "A32NX.AUTOBRAKE_SET_LO", "only": [ "lo" ] },
+        { "event": "A32NX.AUTOBRAKE_SET_MED", "only": [ "med" ] },
+        { "event": "A32NX.AUTOBRAKE_SET_MAX", "only": [ "max" ] }
       ],
       "readback": "Autobrake {value}",
+      "requires": [
+        { "variable": "SIM ON GROUND", "unit": "Bool", "equalTo": 1, "only": [ "max" ], "messageKey": "profile.requires.autobrakeMaxGroundOnly" }
+      ],
       "check": {
         "variable": "L:A32NX_AUTOBRAKES_ARMED_MODE",
-        "expect": { "off": 0, "lo": 1, "med": 2, "max": 3 }
+        "expect": "{value}"
       },
       "verified": false
     },
@@ -993,16 +1001,20 @@
         "type": "choice",
         "options": { "on": 0, "auto": 1, "off": 2 }
       },
+      // Lesen als Enum wie im FBW-FWC (PseudoFWC.ts) – beim A339 lieferte "number" immer 0
+      "description": "The switch position is read as Enum – the way the FWC reads it too.",
       "steps": [
         {
           "set": "L:XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position",
-          "value": "{value}"
+          "value": "{value}",
+          "skipIf": { "variable": "L:XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position", "equalTo": "{value}", "unit": "Enum" }
         }
       ],
       "readback": "No smoking {value}",
       "check": {
         "variable": "L:XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position",
-        "expect": "{value}"
+        "expect": "{value}",
+        "unit": "Enum"
       },
       "verified": false
     },
@@ -1290,16 +1302,26 @@
         "options": { "stby": 0, "ta": 1, "tara": 2 },
         "spoken": { "stby": "standby", "ta": "TA only", "tara": "TA RA" }
       },
+      // Wie beim A339 (dort im Sim geklärt): Das FBW-TCAS (fbw-a32nx/src/systems/tcas/.../TcasComputer.ts) geht nur mit Transponder
+      // AUTO/ON und ALT RPTG aus STBY – ohne das bliebe die Schalterstellung TA, der Rechner aber in STBY. Deshalb prüfen wir den Modus des Rechners.
+      "description": "TCAS switch STBY, TA or TA/RA. The check reads the mode of the TCAS computer (L:A32NX_TCAS_MODE), not just the switch position. TA and TA/RA need transponder AUTO/ON and ALT RPTG on.",
       "steps": [
         {
           "set": "L:A32NX_SWITCH_TCAS_Position",
+          "unit": "Enum",
           "value": "{value}"
         }
       ],
       "readback": "TCAS {value}",
+      "requires": [
+        { "variable": "TRANSPONDER STATE:1", "equalTo": 4, "tolerance": 1.1, "only": [ "ta", "tara" ], "messageKey": "profile.requires.xpdrStandby" },
+        { "variable": "L:A32NX_SWITCH_ATC_ALT", "equalTo": 1, "only": [ "ta", "tara" ], "messageKey": "profile.requires.altReportingOff" }
+      ],
       "check": {
-        "variable": "L:A32NX_SWITCH_TCAS_Position",
-        "expect": "{value}"
+        "variable": "L:A32NX_TCAS_MODE",
+        "unit": "Enum",
+        "expect": "{value}",
+        "timeoutMs": 4000
       },
       "verified": false
     },

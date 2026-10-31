@@ -4,8 +4,12 @@
   // Fix A339 (29.10.2026): Variablen und Events gegen den Headwind-Quellcode (headwindsim/aircraft, hdw-a339x: A330_NEO_INTERIOR.xml,
   //   aircraft_preset_procedures.xml, Systems-WASM) und die FBW-Basis geprüft; Lesewerte im Reiseflug mit read_simvar gegengelesen.
   //
-  // Bewusst NICHT übernommen (beim A330 anders oder nicht gefunden – ein unbekanntes L: liest 0 und würde Fehlalarme auslösen):
-  //   athrMode (L:A32NX_AUTOTHRUST_MODE bleibt 0), ALT CRZ (fmgcDiscreteWord1), speedTarget, machMode, groundSpoilersOut, decelLight.
+  // Bewusst NICHT übernommen: athrMode – L:A32NX_AUTOTHRUST_MODE schreibt Headwind nur bei A.FLOOR (Shim in fbw_a330/FlyByWireInterface.cpp).
+  //   Den A/THR-Modus liest Duopilo stattdessen wie das PFD aus L:A32NX_FCU_ATS_FMA_DISCRETE_WORD (athrFmaWord).
+  // Nachgetragen (31.10.2026, gegen headwindsim/aircraft 41eace7 und den FBW-Stand des Submoduls geprüft, im Sim noch ungeprüft):
+  //   ALT CRZ (fmgcDiscreteWord1 – der Shim setzt FMA_VERTICAL_MODE bei ALT CRZ auf 0), A/THR-Modus (athrFmaWord, athrDiscreteWord),
+  //   fmAltitudeConstraint, speedTarget, machMode (vorher wurde ein Mach-Ziel als kt gelesen), flexTemp, decelLight,
+  //   groundSpoilersOut (SEC-Modell im fbw_a330-WASM), fmgcPhase, LOC/GS-Abweichung, aktiver FMS-Wegpunkt (FBW-GuidanceController).
   // Unbrauchbar (generisch): BRAKE PARKING POSITION/INDICATOR, EXTERNAL POWER ON:1, AUTOPILOT MASTER, generischer Fuel Flow/EGT, AUTO BRAKE SWITCH CB.
   "name": "Headwind A330-900neo",
   "match": [
@@ -13,7 +17,7 @@
     { "path": [ "headwind_a330neo" ] },
     { "title": [ "A330-900neo" ] }
   ],
-  "notes": "Based on FlyByWire. FCU values come from the older FBW variables (AUTOPILOT_SPEED_SELECTED, FCU_HEADING_SELECTED, ALTITUDE LOCK VAR:3). Thrust mode (THR CLB, SPEED) and ALT CRZ are still open. ECAM with the Headwind message table, electrics and fuel pumps in get_systems. Inputs as on the A32NX plus batteries and NAV & LOGO; FCU, lights, anti-ice, external power and APU tested in the sim, the rest unverified.",
+  "notes": "Based on FlyByWire. FCU values come from the older FBW variables (AUTOPILOT_SPEED_SELECTED, FCU_HEADING_SELECTED, ALTITUDE LOCK VAR:3). Thrust mode (THR CLB, SPEED) is read from the FCU ATS FMA word and ALT CRZ from FMGC discrete word 1 like on the PFD (not verified in the sim yet). ECAM with the Headwind message table, electrics and fuel pumps in get_systems. Inputs as on the A32NX plus batteries and NAV & LOGO; FCU, lights, anti-ice, external power and APU tested in the sim, the rest unverified.",
   "bindings": {
     "ap1": { "name": "L:A32NX_AUTOPILOT_1_ACTIVE", "type": "bool", "verified": true },
     "ap2": { "name": "L:A32NX_AUTOPILOT_2_ACTIVE", "type": "bool", "verified": true },
@@ -34,7 +38,7 @@
     },
     "fmaVertical": {
       "name": "L:A32NX_FMA_VERTICAL_MODE", "type": "enum", "verified": true,
-      "description": "ALT CRZ is not reported here (0) – still open",
+      "description": "ALT CRZ is not reported here (0) – Duopilo derives it from fmgcDiscreteWord1",
       "values": {
         "0": "", "10": "ALT", "11": "ALT*", "12": "OP CLB", "13": "OP DES", "14": "V/S", "15": "FPA",
         "20": "ALT CST", "21": "ALT CST*", "22": "CLB", "23": "DES", "24": "FINAL", "30": "G/S*", "31": "G/S",
@@ -45,6 +49,10 @@
       "name": "L:A32NX_FMA_VERTICAL_ARMED", "type": "bitmask", "verified": true,
       "values": { "0": "ALT", "1": "ALT CST", "2": "CLB", "3": "DES", "4": "G/S", "5": "FINAL", "6": "TCAS" }
     },
+    "fmgcDiscreteWord1": { "name": "L:A32NX_FMGC_1_DISCRETE_WORD_1", "type": "arinc429", "verified": false, "description": "FMGC 1 Discrete Word 1 (for ALT CRZ)" },
+    "fmAltitudeConstraint": { "name": "L:A32NX_FMGC_1_FM_ALTITUDE_CONSTRAINT", "type": "arinc429", "verified": false, "description": "Next altitude constraint (ft)" },
+    "athrFmaWord": { "name": "L:A32NX_FCU_ATS_FMA_DISCRETE_WORD", "type": "arinc429", "verified": false, "description": "FCU ATS FMA discrete word – A/THR mode as on the PFD (SPEED, MACH, THR CLB …)" },
+    "athrDiscreteWord": { "name": "L:A32NX_FCU_ATS_DISCRETE_WORD", "type": "arinc429", "verified": false, "description": "FCU ATS discrete word – A/THR engaged (bit 13) and active (bit 14)" },
     "autobrake": {
       "name": "L:A32NX_AUTOBRAKES_ARMED_MODE", "type": "enum", "verified": true,
       "values": { "0": "OFF", "1": "LO", "2": "MED", "3": "MAX" }
@@ -79,7 +87,22 @@
     "flaps": {
       "name": "L:A32NX_FLAPS_CONF_INDEX", "type": "enum", "verified": false,
       "values": { "0": "0", "1": "1", "2": "1+F", "3": "2", "4": "3", "5": "FULL" }
-    }
+    },
+    "speedTarget": { "name": "L:A32NX_SPEEDS_MANAGED_PFD", "unit": "knots", "type": "number", "verified": false, "description": "FMS managed speed (stored in m/s, read in kt), 0 = invalid" },
+    "machMode": { "name": "L:A32NX_FCU_AFS_DISPLAY_MACH_MODE", "type": "bool", "verified": false, "description": "FCU shows Mach – selectedSpeed is then a Mach number" },
+    "flexTemp": { "name": "L:A32NX_AIRLINER_TO_FLEX_TEMP", "type": "number", "verified": false, "description": "FLEX temperature (°C) from the MCDU" },
+    "decelLight": { "name": "L:A32NX_AUTOBRAKES_DECEL_LIGHT", "type": "bool", "verified": false, "description": "Autobrake DECEL" },
+    "groundSpoilersOut": { "name": "L:A32NX_SEC_1_GROUND_SPOILER_OUT", "type": "bool", "verified": false, "description": "Ground spoilers extended (SEC 1)" },
+    "fmsToWptDistance": { "name": "L:A32NX_EFIS_L_TO_WPT_DISTANCE", "type": "number", "verified": false, "description": "Distance to the active FMS waypoint (nm)" },
+    "fmsToWptBearing": { "name": "L:A32NX_EFIS_L_TO_WPT_BEARING", "type": "number", "verified": false, "description": "Bearing to the active FMS waypoint (°)" },
+    "fmgcPhase": {
+      "name": "L:A32NX_FMGC_FLIGHT_PHASE", "type": "enum", "verified": false, "description": "FMGC flight phase ('Approach phase not activated')",
+      "values": { "0": "PREFLIGHT", "1": "TAKEOFF", "2": "CLIMB", "3": "CRUISE", "4": "DESCENT", "5": "APPROACH", "6": "GO AROUND", "7": "DONE" }
+    },
+    "locDeviation": { "name": "L:A32NX_RADIO_RECEIVER_LOC_DEVIATION", "type": "number", "scale": 1.25, "verified": false, "description": "Localizer deviation (degrees → dots)" },
+    "locValid": { "name": "L:A32NX_RADIO_RECEIVER_LOC_IS_VALID", "type": "bool", "verified": false, "description": "Localizer signal valid" },
+    "gsDeviation": { "name": "L:A32NX_RADIO_RECEIVER_GS_DEVIATION", "type": "number", "scale": 2.5, "verified": false, "description": "Glideslope deviation (degrees → dots)" },
+    "gsValid": { "name": "L:A32NX_RADIO_RECEIVER_GS_IS_VALID", "type": "bool", "verified": false, "description": "Glideslope signal valid" }
   },
   "limits": {
     // A330-Werte (VFE je Stellung, VLO/VLE 250 kt) – für den -900neo bitte gegen das Headwind-Handbuch prüfen

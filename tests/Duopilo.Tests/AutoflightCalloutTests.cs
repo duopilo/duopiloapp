@@ -272,8 +272,12 @@ public sealed class AutoflightCalloutTests
         return new ProfileStore(options, NullLogger<ProfileStore>.Instance).All;
     }
 
+    /// <summary>
+    /// LOC/GS und Approach phase hat der A339 seit 31.10.2026 (aus dem Headwind-Quellcode) – im Sim noch nicht geprüft, also
+    /// "unverified", nicht "verified".
+    /// </summary>
     [Fact]
-    public void A339_LOC_GS_und_Approach_phase_fehlen_statt_geraten()
+    public void A339_LOC_GS_und_Approach_phase_sind_als_ungeprueft_markiert()
     {
         var a339 = RepoProfiles().Single(p => p.Name.Contains("A330", StringComparison.OrdinalIgnoreCase));
 
@@ -281,11 +285,12 @@ public sealed class AutoflightCalloutTests
         Assert.Equal(CalloutCoverage.Verified, CalloutCoverage.For(a339, Rules.AutothrustOff).Status);
         Assert.Equal(CalloutCoverage.Verified, CalloutCoverage.For(a339, Rules.FmaChange).Status);
 
-        var loc = CalloutCoverage.For(a339, Rules.LocDeviation);
-        Assert.Equal(CalloutCoverage.Missing, loc.Status);
-        Assert.Equal(new[] { BindingKeys.LocDeviation }, loc.Missing);
-        Assert.Equal(CalloutCoverage.Missing, CalloutCoverage.For(a339, Rules.GsDeviation).Status);
-        Assert.Equal(new[] { BindingKeys.FmgcPhase }, CalloutCoverage.For(a339, Rules.ApproachPhase).Missing);
+        foreach (var rule in new[] { Rules.LocDeviation, Rules.GsDeviation, Rules.ApproachPhase })
+        {
+            var support = CalloutCoverage.For(a339, rule);
+            Assert.Equal(CalloutCoverage.Unverified, support.Status);
+            Assert.Empty(support.Missing);
+        }
     }
 
     [Fact]

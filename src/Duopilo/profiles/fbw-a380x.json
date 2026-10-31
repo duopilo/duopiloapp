@@ -1,12 +1,16 @@
 {
   // FlyByWire A380X (MSFS 2024). Viele Systeme teilen sich die A32NX_-Variablen mit dem A32NX.
   // "verified": true = im Sim getestet (Testflug 28.10.2026), false = übernommen/angenommen, bitte mit read_simvar prüfen.
+  // Geprüft gegen den FBW-Quellcode (flybywiresim/aircraft master 66021c2, 31.10.2026): Die alten FMA- und A/THR-Variablen schreibt ein
+  //   Shim in fbw_a380/FlyByWireInterface.cpp aus den PRIM-Datenwörtern (A/THR-Modus vollständig). ALT CRZ kennt der Shim nicht –
+  //   das PFD nimmt L:A32NX_PRIM_n_FG_DISCRETE_WORD_3 (Bit 20 ALT, Bit 29 Reiseflughöhe); im Cruise meldet Duopilo deshalb "ALT".
+  //   speedManaged korrigiert: L:A32NX_FCU_AFS_DISPLAY_SPD_MACH_MANAGED gibt es beim A380X nicht, der Shim schreibt L:A32NX_FCU_SPD_MANAGED_DOT.
   "name": "FlyByWire A380X",
   "match": [
     { "path": [ "FlyByWire", "A380" ] },
     { "title": [ "A380X" ] }
   ],
-  "notes": "AUTOPILOT MASTER is wrong – AP status from A32NX_AUTOPILOT_1/2_ACTIVE. FMA/A-THR/fuel flow taken from the shared A32NX variables, not verified yet. ECAM lines of the A380X EWD are not wired up yet. Engine fire variables (A32NX_FIRE_TEST_ENG1, ENG ON FIRE) stay 0.",
+  "notes": "AUTOPILOT MASTER is wrong – AP status from A32NX_AUTOPILOT_1/2_ACTIVE. FMA/A-THR/fuel flow taken from the shared A32NX variables (written by a shim from the PRIM words), not verified yet. ALT CRZ shows as ALT. ECAM lines of the A380X EWD are not wired up yet. Engine fire variables (A32NX_FIRE_TEST_ENG1, ENG ON FIRE) stay 0.",
   "bindings": {
     "ap1": { "name": "L:A32NX_AUTOPILOT_1_ACTIVE", "type": "bool", "verified": true },
     "ap2": { "name": "L:A32NX_AUTOPILOT_2_ACTIVE", "type": "bool", "verified": false },
@@ -36,6 +40,14 @@
         "32": "LAND", "33": "FLARE", "34": "ROLL OUT", "40": "SRS", "41": "SRS GA", "50": "TCAS"
       }
     },
+    "fmaLateralArmed": {
+      "name": "L:A32NX_FMA_LATERAL_ARMED", "type": "bitmask", "verified": false,
+      "values": { "0": "NAV", "1": "LOC" }
+    },
+    "fmaVerticalArmed": {
+      "name": "L:A32NX_FMA_VERTICAL_ARMED", "type": "bitmask", "verified": false,
+      "values": { "0": "ALT", "2": "CLB", "3": "DES", "4": "G/S", "5": "FINAL", "6": "TCAS" }
+    },
     "masterWarning": { "name": "L:A32NX_MASTER_WARNING", "type": "bool", "verified": true },
     "masterCaution": { "name": "L:A32NX_MASTER_CAUTION", "type": "bool", "verified": false },
     "autobrake": {
@@ -43,11 +55,12 @@
       "values": { "0": "DISARM", "1": "BTV", "2": "LOW", "3": "L2", "4": "L3", "5": "HIGH", "6": "RTO" }
     },
     "speedTarget": { "name": "L:A32NX_SPEEDS_MANAGED_PFD", "unit": "knots", "type": "number", "verified": false, "description": "stored in m/s, read in kt" },
-    "speedManaged": { "name": "L:A32NX_FCU_AFS_DISPLAY_SPD_MACH_MANAGED", "type": "bool", "verified": false },
+    "speedManaged": { "name": "L:A32NX_FCU_SPD_MANAGED_DOT", "type": "bool", "verified": false, "description": "Managed speed (FCU shim)" },
     "selectedSpeed": { "name": "L:A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE", "type": "number", "verified": false },
     "machMode": { "name": "L:A32NX_FCU_AFS_DISPLAY_MACH_MODE", "type": "bool", "verified": false },
     "selectedAltitude": { "name": "L:A32NX_FCU_AFS_DISPLAY_ALT_VALUE", "type": "number", "verified": false },
-    "fuelFlowKgh": { "name": "L:A32NX_ENGINE_FF:{i}", "type": "number", "verified": false, "description": "Fuel flow per engine in kg/h" }
+    "fuelFlowKgh": { "name": "L:A32NX_ENGINE_FF:{i}", "type": "number", "verified": false, "description": "Fuel flow per engine in kg/h" },
+    "decelLight": { "name": "L:A32NX_AUTOBRAKES_DECEL_LIGHT", "type": "bool", "verified": false, "description": "Autobrake DECEL (Rust autobrake)" }
   },
   "limits": {
     // A380-800 – bitte prüfen

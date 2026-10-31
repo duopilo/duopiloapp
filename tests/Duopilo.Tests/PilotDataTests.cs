@@ -264,7 +264,10 @@ public sealed class PilotDataTests
         Assert.Equal("L:A32NX_AUTOPILOT_1_ACTIVE", profile.Bindings[BindingKeys.Ap1].Name);
         Assert.Equal("AUTOPILOT ALTITUDE LOCK VAR:3", profile.Bindings[BindingKeys.SelectedAltitude].Name);
         Assert.Equal("arinc429", profile.Bindings[BindingKeys.ApuN].Type);
-        Assert.False(profile.Bindings.ContainsKey(BindingKeys.AthrMode)); // bleibt beim A330 0 – lieber leer als falsch
+        Assert.False(profile.Bindings.ContainsKey(BindingKeys.AthrMode)); // schreibt Headwind nur bei A.FLOOR – lieber leer als falsch
+        Assert.Equal("L:A32NX_FCU_ATS_FMA_DISCRETE_WORD", profile.Bindings[BindingKeys.AthrFmaWord].Name); // A/THR-Modus wie das PFD
+        Assert.Equal("arinc429", profile.Bindings[BindingKeys.FmgcDiscreteWord1].Type); // ALT CRZ
+        Assert.Equal("knots", profile.Bindings[BindingKeys.SpeedTarget].Unit);
         Assert.Equal(180, profile.Limits.VfeFor(null, "FULL"));
         Assert.Contains(profile.Actions, a => a.Id == "apu.start");
         Assert.Contains(profile.Actions, a => a.Id == "signs.seatbelts");

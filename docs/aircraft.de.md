@@ -60,7 +60,7 @@ Abgeleitet aus `fbw-a32nx/docs/a320-events.md`, `a320-simvars.md`, den FBW-Prese
 | Fahrwerk | `GEAR_UP` / `GEAR_DOWN` | `L:A32NX_GEAR_HANDLE_POSITION` |
 | Klappen | `FLAPS_UP`, `FLAPS_1`…`FLAPS_3`, `FLAPS_DOWN` | `L:A32NX_FLAPS_HANDLE_INDEX` |
 | Speedbrake, Ground Spoiler | `SPOILERS_SET` (0/8192/16384), `SPOILERS_ARM_SET` | `L:A32NX_SPOILERS_HANDLE_POSITION`, `L:A32NX_SPOILERS_ARMED` |
-| Autobrake | `A32NX.AUTOBRAKE_SET` (1–4) | `L:A32NX_AUTOBRAKES_ARMED_MODE` |
+| Autobrake | `A32NX.AUTOBRAKE_SET_DISARM`/`_LO`/`_MED`/`_MAX` (korrigiert 31.10.2026: `A32NX.AUTOBRAKE_SET` nimmt laut WASM 0–3, nicht 1–4 wie in a320-events.md – „aus“ setzte LO). MAX nur am Boden | `L:A32NX_AUTOBRAKES_ARMED_MODE` |
 | Beacon, Wing | `BEACON_LIGHTS_SET`, `WING_LIGHTS_SET` | `LIGHT BEACON`, `LIGHT WING` |
 | Runway Turn-off | `ELECTRICAL_CIRCUIT_TOGGLE` 21/22 | `CIRCUIT SWITCH ON:21/22` |
 | Landing L/R | `L:LIGHTING_LANDING_2/3`, `L:LANDING_2/3_RETRACTED`, Stromkreis 18/19 | `L:LIGHTING_LANDING_2` |
@@ -88,6 +88,10 @@ Nicht dabei: NAV & LOGO (nur `B:A32NX_OVH_LIGHTS_NAV_LOGO_SW`). Bei Umschalttast
 | Fire-Test-Taste | `L:A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED` | geprüft |
 | AP 2, Master Caution, A/THR, FMA, Speeds, FCU-Anzeige, Autobrake | gemeinsame `A32NX_`-Variablen | Doku/angenommen |
 | Fuel Flow | `L:A32NX_ENGINE_FF:1..4` (laut A380X-SD-Quellcode) | Doku |
+| FMA/A-THR-Herkunft | Ein Shim im `fbw_a380`-WASM schreibt die alten `A32NX_FMA_*`/`A32NX_AUTOTHRUST_*`-Variablen aus den PRIM-Datenwörtern; A/THR-Modus vollständig, FMA armed neu (31.10.2026) | Code |
+| Managed Speed | `L:A32NX_FCU_SPD_MANAGED_DOT` (korrigiert 31.10.2026 – `FCU_AFS_DISPLAY_SPD_MACH_MANAGED` gibt es beim A380X nicht) | Code |
+| ALT CRZ | fehlt im Shim: Das PFD liest `L:A32NX_PRIM_n_FG_DISCRETE_WORD_3` (Bit 20 ALT, Bit 28 Beschränkung, Bit 29 Reiseflughöhe). Duopilo meldet im Cruise „ALT“ | offen |
+| DECEL | `L:A32NX_AUTOBRAKES_DECEL_LIGHT` (Rust-Autobrake) | neu, Code |
 
 Noch nicht eingebunden: **ECAM-Klartext.** Das A380X hat ein anderes Warnsystem (FWS mit eigener Meldungstabelle). Fire-Variablen (`A32NX_FIRE_TEST_ENG1`, `ENG ON FIRE`) bleiben 0.
 
@@ -119,8 +123,11 @@ Quellen für die Fixes: Headwind-Quellcode (`headwindsim/aircraft`, Ordner `hdw-
 | Master Warning / Caution | `L:A32NX_MASTER_WARNING`, `_CAUTION` | Warning geprüft, Caution 1 noch nicht |
 | Autobrake | `L:A32NX_AUTOBRAKES_ARMED_MODE` (1 = LO) | geprüft |
 | Fuel Flow / EGT | `L:A32NX_ENGINE_FF:n` (vermutlich kg/h), `L:A32NX_ENGINE_EGT:n` (°C) | geprüft |
-| Thrust-Modus | `L:A32NX_AUTOTHRUST_MODE`, `_MODE_MESSAGE` bleiben 0 | offen – nicht im Profil |
-| ALT CRZ | Vertical Mode 0, `L:A32NX_FMA_CRUISE_ALT_MODE` 0 | offen |
+| Thrust-Modus | `L:A32NX_FCU_ATS_FMA_DISCRETE_WORD`, decodiert wie im FBW-PFD (SPEED, MACH, THR CLB/IDLE/LVR, MAN TOGA/FLX/MCT, A.FLOOR, TOGA LK), engaged/active aus `L:A32NX_FCU_ATS_DISCRETE_WORD`. `L:A32NX_AUTOTHRUST_MODE` setzt Headwind nur bei A.FLOOR (Shim in `fbw_a330/FlyByWireInterface.cpp`) | neu, Code (31.10.2026) |
+| ALT CRZ | `L:A32NX_FMGC_1_DISCRETE_WORD_1` (Bit 26) wie beim A32NX – der Shim lässt den Vertikalmodus bei gesetztem Strich-Bit auf 0 | neu, Code (31.10.2026) |
+| Speed-Ziel, Mach-Modus, FLEX, Beschränkung | `L:A32NX_SPEEDS_MANAGED_PFD` (kt), `L:A32NX_FCU_AFS_DISPLAY_MACH_MODE` (die gewählte Geschwindigkeit ist dann eine Machzahl), `L:A32NX_AIRLINER_TO_FLEX_TEMP`, `L:A32NX_FMGC_1_FM_ALTITUDE_CONSTRAINT` | neu, Code (31.10.2026) |
+| DECEL, Ground Spoiler | `L:A32NX_AUTOBRAKES_DECEL_LIGHT` (Rust-Autobrake), `L:A32NX_SEC_1_GROUND_SPOILER_OUT` (SEC-Modell im WASM) – bei der Landung prüfen: bleibt es 0, sagt Duopilo „No spoilers“ | neu, Code (31.10.2026) |
+| Flugphase, LOC/GS, FMS-Wegpunkt | `L:A32NX_FMGC_FLIGHT_PHASE`, `L:A32NX_RADIO_RECEIVER_LOC/GS_*`, `L:A32NX_EFIS_L_TO_WPT_*` (FBW-GuidanceController, von Headwind nicht ersetzt) | neu, Code (31.10.2026) |
 | ECAM (EWD unten links/rechts) | `L:A32NX_EWD_LOWER_LEFT_LINE_1..7`, `RIGHT_LINE_1..7` (schreibt die Headwind-FWC), Klartext aus der Headwind-Tabelle `hdw-a339x/src/systems/shared/src/EwdMessages.ts` (Format `hdw-a339x`) | gelesen: Memos IGNITION, PRED W/S OFF |
 | Grenzwerte | VFE 240/215/196/186/180, VLO/VLE 250 kt (A330) | für den -900neo prüfen |
 

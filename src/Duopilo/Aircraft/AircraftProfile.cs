@@ -347,6 +347,15 @@ public static class BindingKeys
     public const string FlightDirector = "flightDirector";
     public const string AthrStatus = "athrStatus";
     public const string AthrMode = "athrMode";
+
+    /// <summary>
+    /// FCU ATS FMA Discrete Word (ARINC 429) – daraus den A/THR-Modus ableiten, wenn <see cref="AthrMode"/> fehlt oder leer ist
+    /// (Headwind A330: L:A32NX_AUTOTHRUST_MODE meldet nur A.FLOOR).
+    /// </summary>
+    public const string AthrFmaWord = "athrFmaWord";
+
+    /// <summary>FCU ATS Discrete Word (ARINC 429): Bit 13 A/THR engaged, Bit 14 active – unterscheidet z. B. MAN MCT von THR MCT.</summary>
+    public const string AthrDiscreteWord = "athrDiscreteWord";
     public const string FmaLateral = "fmaLateral";
     public const string FmaLateralArmed = "fmaLateralArmed";
     public const string FmaVertical = "fmaVertical";
@@ -408,8 +417,8 @@ public static class BindingKeys
     /// <summary>Alle bekannten Schlüssel (für get_aircraft_profile).</summary>
     public static readonly IReadOnlyList<string> All =
     [
-        Ap1, Ap2, FlightDirector, AthrStatus, AthrMode, FmaLateral, FmaLateralArmed, FmaVertical, FmaVerticalArmed, Autobrake,
-        MasterWarning, MasterCaution, SpeedTarget, SpeedManaged, SelectedSpeed, MachMode, SelectedAltitude, Vls, FuelFlowKgh,
+        Ap1, Ap2, FlightDirector, AthrStatus, AthrMode, AthrFmaWord, AthrDiscreteWord, FmaLateral, FmaLateralArmed, FmaVertical,
+        FmaVerticalArmed, Autobrake, MasterWarning, MasterCaution, SpeedTarget, SpeedManaged, SelectedSpeed, MachMode, SelectedAltitude, Vls, FuelFlowKgh,
         EgtC, ParkingBrake, SpoilersArmed, SelectedHeading, SelectedHeadingDashes, Flaps, V1, Vr, V2, FlexTemp, TdReached,
         FmgcDiscreteWord1, FmAltitudeConstraint, FmsToWptDistance, FmsToWptBearing, GroundSpoilersOut, DecelLight,
         TransitionAltitude, TransitionLevel, DecisionHeight, MinimumDescentAltitude,
@@ -421,7 +430,8 @@ public static class BindingKeys
     public static readonly HashSet<string> FastByDefault = new(StringComparer.OrdinalIgnoreCase)
     {
         Ap1, Ap2, AthrStatus, FmaLateral, FmaVertical, MasterWarning, MasterCaution, SpeedTarget, SpeedManaged,
-        SelectedSpeed, MachMode, SelectedAltitude, Vls, FmaLateralArmed, FmaVerticalArmed, AthrMode, Flaps, SpoilersArmed,
+        SelectedSpeed, MachMode, SelectedAltitude, Vls, FmaLateralArmed, FmaVerticalArmed, AthrMode, AthrFmaWord, AthrDiscreteWord,
+        Flaps, SpoilersArmed,
         FmgcDiscreteWord1, TdReached, GroundSpoilersOut, DecelLight, V1, Vr,
         FmgcPhase, LocDeviation, GsDeviation, LocValid, GsValid,
     };
