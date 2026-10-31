@@ -120,14 +120,14 @@ public sealed class HttpChatModel(HttpClient? http = null) : IChatModel
                 // Claude 5 denkt von selbst, und das zählt zu max_tokens: für ein paar Sätze abschalten bzw. wenig Aufwand
                 if (!plain && config.ClaudeThinking is { } thinking)
                 {
-                    if (thinking.Thinking is { } type)
+                    if (thinking.Thinking is { } thinkingType)
                     {
-                        body["thinking"] = new JsonObject { ["type"] = type };
+                        body["thinking"] = new JsonObject { ["type"] = thinkingType };
                     }
 
-                    if (thinking.Effort is { } effort)
+                    if (thinking.Effort is { } claudeEffort)
                     {
-                        body["output_config"] = new JsonObject { ["effort"] = effort };
+                        body["output_config"] = new JsonObject { ["effort"] = claudeEffort };
                     }
                 }
 
