@@ -29,7 +29,8 @@ public sealed record SimConnectStatus(
 
 /// <summary>
 /// Bietet an, das MSFS-2024-SDK (Core) zu installieren, wenn SimConnect fehlt: lädt das ZIP direkt von Microsoft, entpackt es,
-/// startet den Installer erst nach der Prüfung, dass Microsoft ihn signiert hat (oder das ZIP die eingetragene Prüfsumme hat),
+/// startet den Installer erst nach der Prüfung: von der eingebauten Adresse die eingetragene Prüfsumme des ZIP, von einer eigenen
+/// Adresse eine gültige Signatur von Microsoft oder dem MSFS-Team,
 /// und zeigt dabei Microsofts Lizenz und die Abfrage der Adminrechte. Danach sucht Duopilo SimConnect erneut; gefunden reicht ein
 /// Neustart. Duopilo selbst gibt so nichts von Microsoft weiter. Nur in der Tray-Instanz.
 /// </summary>
@@ -41,10 +42,11 @@ public sealed class SdkInstaller(IOptions<DuopiloOptions> options, ILogger<SdkIn
     public const string DefaultUrl = "https://sdk.flightsimulator.com/msfs2024/files/installers/" + Version + "/MSFS2024_SDK_Core_Installer_" + Version + ".zip";
 
     /// <summary>
-    /// SHA-256 des ZIP von <see cref="DefaultUrl"/> – Rückfall, falls Windows die Signatur des Installers nicht bestätigen kann.
-    /// null = nur die Signatur zählt.
+    /// SHA-256 des ZIP von <see cref="DefaultUrl"/> (1.8.1, 652.783.454 Bytes). Damit wird der Download geprüft; passt er, ist es
+    /// genau Microsofts Paket. Die Prüfsumme deckt auch die externen CAB-Dateien neben der MSI ab, die deren Signatur nicht
+    /// einschließt. Bei einer neuen SDK-Version mit <see cref="Version"/> und <see cref="DefaultUrl"/> zusammen ändern.
     /// </summary>
-    public static readonly string? DefaultSha256 = null; // kein const: sonst warnt der Compiler bei den Abfragen auf null
+    public const string DefaultSha256 = "7e7cd4774f3cb47e2942960e17b19b0a553499b2bab23da4851127a2363b8750";
 
     /// <summary>Kleiner ist das ZIP sicher nicht (Schutz gegen abgebrochene Downloads und Fehlerseiten).</summary>
     public const long MinBytes = 50L * 1024 * 1024;
@@ -112,7 +114,8 @@ public sealed class SdkInstaller(IOptions<DuopiloOptions> options, ILogger<SdkIn
             var url = Url;
             var zip = Path.Combine(directory, Path.GetFileName(new Uri(url).LocalPath));
             log.LogInformation(Loc.Log("log.simconnect.sdkDownloading"), url, zip);
-            await ModelDownloader.EnsureAsync(zip, url, MinBytes, p => Set("downloading", Math.Round(Math.Clamp(p, 0, 1), 2), null), ct, null, downloadHandler);
+            var expectedSha256 = ExpectedSha256(url);
+            await ModelDownloader.EnsureAsync(zip, url, MinBytes, p => Set("downloading", Math.Round(Math.Clamp(p, 0, 1), 2), null), ct, expectedSha256, downloadHandler);
 
             Set("extracting", null, null);
             var target = Path.Combine(directory, Path.GetFileNameWithoutExtension(zip));
@@ -134,8 +137,9 @@ public sealed class SdkInstaller(IOptions<DuopiloOptions> options, ILogger<SdkIn
             var msi = FindInstaller(target) ?? throw new InvalidOperationException(Loc.T("simconnect.sdk.noMsi", Path.GetFileName(zip)));
 
             Set("verifying", null, null);
-            var sha256 = DefaultSha256 is null || url != DefaultUrl ? null : await ModelDownloader.Sha256Async(zip, ct);
-            if (!IsTrustedInstaller(msi, sha256))
+            // Eingebaute Adresse: Die Prüfsumme hat EnsureAsync schon geprüft. Eigene Adresse: nur mit gültiger Signatur von Microsoft
+            // oder dem MSFS-Team
+            if (expectedSha256 is null && !Authenticode.IsMicrosoftSigned(msi))
             {
                 throw new InvalidOperationException(Loc.T("simconnect.sdk.untrusted", Path.GetFileName(msi), Authenticode.Signer(msi) ?? "-"));
             }
@@ -181,10 +185,8 @@ public sealed class SdkInstaller(IOptions<DuopiloOptions> options, ILogger<SdkIn
             .ThenBy(f => f.Length)
             .FirstOrDefault();
 
-    /// <summary>Microsoft-signiert – oder (Rückfall) das ZIP hatte die eingetragene Prüfsumme.</summary>
-    private static bool IsTrustedInstaller(string msi, string? zipSha256) =>
-        Authenticode.IsMicrosoftSigned(msi)
-        || (DefaultSha256 is { } expected && zipSha256 is not null && string.Equals(expected, zipSha256, StringComparison.OrdinalIgnoreCase));
+    /// <summary>Erwartete Prüfsumme des ZIP: die eingetragene für <see cref="DefaultUrl"/>, für eine eigene Adresse keine.</summary>
+    public static string? ExpectedSha256(string url) => url == DefaultUrl ? DefaultSha256 : null;
 
     /// <summary>
     /// Ergebnis des Installers: 0/3010 (Neustart empfohlen) = installiert, 1602 = abgebrochen, sonst Fehler. Ist SimConnect danach

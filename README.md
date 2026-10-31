@@ -541,7 +541,7 @@ You get the SDK through the **Developer Mode** of MSFS 2024: enable Developer Mo
 3. environment variable `MSFS2024_SDK` (process, user or system)
 4. `C:\MSFS 2024 SDK\`
 
-If none of them has SimConnect, the dashboard shows a banner and the tray icon a notification: **Install MSFS SDK** downloads the SDK Core installer (version 1.8.1) directly from Microsoft (`sdk.flightsimulator.com`), checks that Microsoft signed it and starts it – you accept Microsoft's license there, Windows asks for administrator rights. Once SimConnect is found, **Restart Duopilo** is enough. **Choose SDK folder** is for an SDK installed somewhere else. The log shows where SimConnect came from (`SimConnect: loaded from sdk (…)`).
+If none of them has SimConnect, the dashboard shows a banner and the tray icon a notification: **Install MSFS SDK** downloads the SDK Core installer (version 1.8.1) directly from Microsoft (`sdk.flightsimulator.com`), checks its SHA-256 checksum (fixed for 1.8.1) and starts it – you accept Microsoft's license there, Windows asks for administrator rights. Once SimConnect is found, **Restart Duopilo** is enough. **Choose SDK folder** is for an SDK installed somewhere else. The log shows where SimConnect came from (`SimConnect: loaded from sdk (…)`).
 
 The build looks for the DLLs in this order:
 
