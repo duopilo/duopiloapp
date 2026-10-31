@@ -326,7 +326,7 @@ jobs:
             echo
             echo "## Installation"
             echo
-            echo "- **$NAME-$VERSION-Setup.exe**: Installer (Programme-Ordner, Startmenü, auf Wunsch Autostart). Updates einfach darüber installieren, eigene Einstellungen bleiben erhalten."
+            echo "- **$NAME-$VERSION-Setup.exe**: Installer (Programme-Ordner, Startmenü, Desktop-Verknüpfung, auf Wunsch Autostart). Updates einfach darüber installieren, eigene Einstellungen bleiben erhalten."
             echo "- **$NAME-$VERSION-win-x64.zip**: ohne Installation, entpacken und $EXE starten."
             echo "- .NET muss nicht installiert sein. Die Dateien sind nicht signiert, Windows SmartScreen kann deshalb warnen (Weitere Informationen → Trotzdem ausführen). Prüfsummen: SHA256SUMS.txt."
             echo "- **SimConnect** kommt aus dem MSFS-2024-SDK (gehört Microsoft, nicht im Paket). Fehlt es, bietet Duopilo an, das SDK (Core) direkt von Microsoft zu laden und zu installieren."
