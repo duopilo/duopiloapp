@@ -99,3 +99,5 @@ Publish deliberately: "Publish release" on GitHub or `gh release edit v0.9.1 --d
 ## Wiki
 
 This wiki is maintained in the repository under [`wiki/`](https://github.com/duopilo/duopiloapp/tree/main/wiki) and published automatically when changes reach `main`. Edit pages there via pull request – edits made directly in the GitHub wiki are overwritten.
+
+German pages are named `DE-<Name>.md` (e.g. `DE-Sprachschleife.md`) and start with a language switch to their English counterpart. When you change an English page, please update the German one too – or mention it in the pull request.
