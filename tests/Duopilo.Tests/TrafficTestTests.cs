@@ -1150,10 +1150,11 @@ public sealed class TrafficTestTests
         Assert.Contains(rules.Check(Eddf("09", 1800), TrafficOperation.Departure, "B738", TrafficCategory.Airliner, 145), v => v.Code == "too_short");
         Assert.Empty(rules.Check(Eddf("09", 600, 18), TrafficOperation.Departure, "C172", TrafficCategory.GeneralAviation, 65));
 
-        // Militär: schwere Transporter ab 27 m (A400M in Wiesbaden auf 35 m), leichte ohne Prüfung
-        Assert.Empty(rules.Check(Eddf("25", 2100, 35), TrafficOperation.Arrival, "A400", TrafficCategory.Military, 120));
-        Assert.Contains(rules.Check(Eddf("25", 2100, 23), TrafficOperation.Arrival, "C17", TrafficCategory.Military, 125), v => v.Code == "too_narrow");
-        Assert.Empty(rules.Check(Eddf("25", 2100, 15), TrafficOperation.Arrival, "L39", TrafficCategory.Military, 100));
+        // Militär (auf einem Militärplatz): schwere Transporter ab 27 m (A400M in Wiesbaden auf 35 m), leichte ohne Prüfung
+        var military = new TrafficRules(directory: Airports);
+        Assert.Empty(military.Check(At("ETNW", "25", 2100, 35), TrafficOperation.Arrival, "A400", TrafficCategory.Military, 120));
+        Assert.Contains(military.Check(At("ETNW", "25", 2100, 23), TrafficOperation.Arrival, "C17", TrafficCategory.Military, 125), v => v.Code == "too_narrow");
+        Assert.Empty(military.Check(At("ETNW", "25", 2100, 15), TrafficOperation.Arrival, "L39", TrafficCategory.Military, 100));
 
         // Breite: Heavy und Super 45 m, sonst Verkehrsflugzeuge 30 m, Allgemeine Luftfahrt ohne Prüfung; 0 = unbekannt
         Assert.Contains(rules.Check(Eddf("09", 4000, 30), TrafficOperation.Arrival, "B77W", TrafficCategory.Airliner, 150), v => v.Code == "too_narrow");
