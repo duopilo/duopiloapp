@@ -564,6 +564,14 @@ seine Freigabe-Entfernung weg, wenn er bereit ist und die Landung davor die Bahn
 höchstens 8 NM weiter draußen als ohne Lücke, sonst landet sie zuerst (für DUO02 in beta.34 wären es 13,8 statt 12,8 NM gewesen).
 Rolltests laufen mindestens 30 min.
 
+**beta.35 in Düsseldorf (1.11.2026):** Durchstarten: DUO01 (A1 auf 05R) steht bei 1479 m auf der Bahn, DUO02 (A3 auf 23L)
+meldet bei 2 NM `landing_runway_busy 23L: DUO01 on the runway` und startet bei 0,4 NM in 173 ft durch – ohne weiter zu sinken,
+Fahrwerk nach 12 s rein, 2500 ft/min mit 15° Nase, Ende bei 2800 ft. Mischbetrieb mit Gegenverkehr: DUO01 (B2 von V41), DUO02 (B2
+von B8), DUO03 (A3 zu B6 über L5 M P2 T P4, entgegen DUO02), DUO04 (A3, `departure_gap for DUO01 (ready in 195 s)`, 13,7 NM).
+DUO03 landet, wartet auf L5 43 m neben dem Weg von DUO02 (`taxi_give_way DUO02 oncoming`) 91 s, bis DUO02 durch ist, und parkt an
+B6. DUO01 bekommt `runway_clear` 19 s nach dem Räumen durch DUO03 und startet in der Lücke (Liftoff 1692 m), DUO04 sieht bei 2 NM
+kurz „DUO01 on the runway“, 6 s später `landing_clear`, landet und rollt zu V40A; danach startet DUO02.
+
 **Fahrplan des eigenen Verkehrs (Stand 1.11.2026):**
 
 1. Anflug und Landung – erledigt bis beta.14 (Wegpunkte, Fahrwerk bis 2500 ft, Lichter, Freigabeliste, Geschwindigkeit).
