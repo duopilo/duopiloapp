@@ -530,6 +530,22 @@ final 23R 0.1 NM“, DUO01 reiht nicht auf, DUO03 wartet auf DUO01. Fix in beta.
 „climbed“. Das automatische Ende lief noch über `StopTestAsync(Bahn)` aus der Zeit mit einem Test pro Bahn. Fix in beta.33: ein Test,
 der von selbst fertig ist, endet allein; `traffic_test_stop` kann mit `tail` einen einzelnen Test der Warteschlange beenden.
 
+**beta.33 in Düsseldorf (1.11.2026):** drei B2 auf die 23R (DUO01 von A10, DUO02 von V38B, DUO03 von V42A) laufen durch: DUO01
+fädelt auf L2 hinter DUO03 ein, alle halten vor 05R/23L (DUO01 wartet 15 s auf „DUO03 on the runway“), am Haltepunkt der Reihe nach
+mit `line_up_wait … departing`, drei Starts nacheinander (Liftoff jeweils bei 1558 m mit 149 kt), jeder Test endet bei 2800 ft für sich.
+
+**Takt der Landungen und Mischbetrieb (beta.34):** Düsseldorf fliegt meist nur auf einer Bahn – Starts und Landungen müssen
+ineinander laufen. Landungen (A3) auf derselben Bahn stellen sich an: Ein neuer Anflug spawnt hinter dem letzten, der noch vor der
+Schwelle in der Luft ist, mit Abstand nach Wirbelschleppen (ICAO Doc 4444 vereinfacht: 3 NM Radarstaffelung, hinter Heavy 4–6 NM,
+hinter Super 4–8 NM, Light hinter Medium 5 NM). Wartet ein Abflug derselben Bahn, bekommt er eine Lücke von 8 NM: Die vordere
+Landung räumt die Bahn in gut einer Minute, danach braucht der Abflug noch seine Freigabe-Entfernung. Die rechnet der Test je
+Abflug aus Aufreihweg (10 kt, Kurven eingerechnet), 3 s aufgereiht, Startlauf bis Vr und Steigen auf 500 ft plus 20 s Reserve, mit
+145 kt der Landung (EDDL K: gut 5,5 NM, begrenzt auf 4–8 NM) – B2 reiht sich erst auf, wenn die nächste Landung weiter weg ist
+(`departure_release`). Rollt gerade ein Abflug auf die Bahn, spawnt eine neue Landung nicht näher. Eine Landung mit Kinematik
+prüft ab 2 NM, ob jemand auf der Bahn ist (die Landung davor beim Ausrollen, ein Abflug bis 500 ft); ist die Bahn bei 0,4 NM (um
+180 ft) noch belegt, startet sie durch (`go_around runway_occupied`, Kinematik wie nach dem Abheben, Steigflug auf 3000 ft, Ende bei
+2800 ft). Dafür spawnen Anflüge bis 30 NM vor der Schwelle und werden ab dort kinematisch geflogen.
+
 **Fahrplan des eigenen Verkehrs (Stand 1.11.2026):**
 
 1. Anflug und Landung – erledigt bis beta.14 (Wegpunkte, Fahrwerk bis 2500 ft, Lichter, Freigabeliste, Geschwindigkeit).
@@ -539,7 +555,7 @@ der von selbst fertig ist, endet allein; `traffic_test_stop` kann mit `tail` ein
 4. Überflüge in Reiseflughöhe – beta.18 (Variante C1, Wegpunkt-KI): Spawn 40 NM vor der Bahnmitte auf FL350 mit 450 kt TAS (ab
    beta.19 als TAS an die KI), geradeaus darüber hinweg, Lichter wie im Reiseflug (Landelicht aus), Ende 40 NM dahinter. Allgemeine
    Luftfahrt FL85, doppelte Vapp, 15 NM. Flughafenregeln für alle Plätze – beta.19.
-5. Rollen – beta.22 (Variante D1): Pushback und Rollen vom Gate zum Haltepunkt über die Rollwege, beta.23 mit Hindernissen; Abflug vom Gate mit Aufreihen und Start – beta.24 (B2), Halt an der richtigen Linie ab beta.28; Rollen nach der Landung – beta.29 (A3); Halt vor gekreuzten Bahnen – beta.30; Abflug-Reihenfolge mit Abstand beim Rollen – beta.31, ohne Deadlock am Haltepunkt ab beta.32, jeder Test endet für sich ab beta.33.
+5. Rollen – beta.22 (Variante D1): Pushback und Rollen vom Gate zum Haltepunkt über die Rollwege, beta.23 mit Hindernissen; Abflug vom Gate mit Aufreihen und Start – beta.24 (B2), Halt an der richtigen Linie ab beta.28; Rollen nach der Landung – beta.29 (A3); Halt vor gekreuzten Bahnen – beta.30; Abflug-Reihenfolge mit Abstand beim Rollen – beta.31, ohne Deadlock am Haltepunkt ab beta.32, jeder Test endet für sich ab beta.33; Takt der Landungen und Mischbetrieb auf einer Bahn – beta.34.
 6. Helikopter – nach dem Rollen: kinematisch (Anflug, Schweben, senkrecht landen und abheben), auf Heliports und Flughäfen;
    Heliports bekommen dann nur Helis.
 

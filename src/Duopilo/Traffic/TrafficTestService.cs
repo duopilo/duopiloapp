@@ -254,6 +254,12 @@ public sealed class TrafficTestService : IHostedService, IDisposable
 
     private const double MaxKinematicNm = 12;
 
+    /// <summary>A3: Kinematik ab dem Spawn – etwas Rand, damit der erste Messpunkt sicher innerhalb liegt.</summary>
+    private const double KinematicSpawnMarginNm = 0.2;
+
+    /// <summary>Landung: ein Ergebnis der Bahnprüfung gilt so lange.</summary>
+    private const double LandingCheckValidSeconds = 8;
+
     /// <summary>Falls der Sim STATIC CG TO GROUND nicht liefert: Bezugspunkt so hoch über den Rädern (A320 im Test: 9 ft).</summary>
     private const double DefaultCgHeightFt = 9;
 
@@ -479,17 +485,50 @@ public sealed class TrafficTestService : IHostedService, IDisposable
 
             var slot = Enumerable.Range(0, MaxConcurrent).First(i => running.All(r => r.Slot != i));
             double? throttle = request.SpeedMethod == TrafficSpeedMethod.Throttle ? request.ThrottlePercent ?? TrafficTestPlan.DefaultThrottlePercent : null;
+
+            // A3: in die Reihe der Landungen auf dieser Bahn – Abstand hinter dem letzten Anflug, Lücke für wartende Abflüge, nicht näher
+            // als ein Abflug gerade braucht
+            var wake = TrafficRules.WakeOf(modelType?.IcaoType, category);
+            var spawnNm = request.SpawnNm;
+            if (request.Variant == TrafficTestVariant.A3)
+            {
+                var sameRunway = running.Where(r => r.SameRunway(runway)).ToList();
+                var arrivals = sameRunway
+                    .Select(r => (r.Tail, Distance: ArrivalDistanceNm(r), r.Wake))
+                    .Where(a => a.Distance is not null)
+                    .Select(a => (a.Tail, a.Distance!.Value, a.Wake))
+                    .ToList();
+                var waiting = sameRunway.Any(r => r.InitialPlan.TakeoffAfterTaxi && r.Kinematics is null && !IsDeparting(r));
+                var departing = sameRunway.Where(r => r.InitialPlan.TakeoffAfterTaxi && IsDeparting(r)).Select(r => (double?)(r.ReleaseNm ?? RunwayOccupancy.FinalNm)).Max();
+                var arrival = ArrivalSequence.Plan(request.SpawnNm ?? TrafficTestPlan.DefaultSpawnNm(request.Variant), arrivals, wake, waiting, departing);
+                spawnNm = arrival.SpawnNm;
+                taxiEvents.Add(arrival.Behind is null && arrival.Reason == "free"
+                    ? string.Create(CultureInfo.InvariantCulture, $"arrival_sequence free, spawn {arrival.SpawnNm:0.0} NM")
+                    : arrival.Behind is null
+                    ? string.Create(CultureInfo.InvariantCulture, $"arrival_sequence {arrival.Reason}, spawn {arrival.SpawnNm:0.0} NM")
+                    : string.Create(CultureInfo.InvariantCulture, $"arrival_sequence {arrival.SpacingNm:0.#} NM behind {arrival.Behind} ({arrival.Reason}), spawn {arrival.SpawnNm:0.0} NM"));
+            }
+
             var plan = request.Variant switch
             {
                 TrafficTestVariant.B1 => TrafficTestPlan.BuildTakeoff(runway, approachKt, request.RollM, throttle),
                 TrafficTestVariant.D1 => TrafficTestPlan.BuildTaxi(runway, approachKt, taxiRoute!, taxiGraph!),
                 TrafficTestVariant.B2 => TrafficTestPlan.BuildTaxi(runway, approachKt, taxiRoute!, taxiGraph!, takeoff: true),
                 TrafficTestVariant.C1 => TrafficTestPlan.BuildOverflight(runway.Overhead(request.TrackDeg), category, approachKt, request.FlightLevel, request.CruiseKt, request.SpawnNm),
-                _ => TrafficTestPlan.Build(runway, request.Variant, request.SpawnNm, request.TouchdownM, request.FinalLowFt, approachKt, throttle),
+                _ => TrafficTestPlan.Build(runway, request.Variant, spawnNm, request.TouchdownM, request.FinalLowFt, approachKt, throttle),
             };
             if (request.Variant == TrafficTestVariant.A3)
             {
                 plan = plan with { Taxi = taxiRoute };
+            }
+
+            // B2: So weit muss die nächste Landung beim Aufreihen weg sein (Aufreihen, Startlauf, 500 ft)
+            double? releaseNm = null;
+            if (plan.TakeoffAfterTaxi && taxiRoute?.LineUpPath is { } lineUp)
+            {
+                var profile = KinematicProfile.For(category);
+                releaseNm = Math.Round(ArrivalSequence.DepartureReleaseNm(lineUp.LengthM, Math.Max(40, plan.ApproachKt + profile.RotateAboveVappKt), profile.TakeoffAccelMps2), 1);
+                taxiEvents.Add(string.Create(CultureInfo.InvariantCulture, $"departure_release line up with the next landing beyond {releaseNm:0.0} NM"));
             }
             var spawnUtc = DateTimeOffset.UtcNow;
             var csv = OpenCsv(plan, spawnUtc);
@@ -509,13 +548,16 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             {
                 SpeedMethod = request.SpeedMethod,
                 GoAroundEnabled = request.GoAround,
-                KinematicNm = plan.Variant == TrafficTestVariant.A3 ? Math.Clamp(plan.SpawnNm, MinKinematicNm, MaxKinematicNm)
+                KinematicNm = plan.Variant == TrafficTestVariant.A3 ? plan.SpawnNm + KinematicSpawnMarginNm
                     : plan.IsTakeoff || plan.IsOverflight || request.KinematicNm is null ? null : Math.Clamp(request.KinematicNm.Value, MinKinematicNm, MaxKinematicNm),
                 KinematicTakeoff = plan.IsTakeoff && request.KinematicTakeoff,
                 Category = category,
                 Lights = plan.IsOverflight ? TrafficLights.Cruise : plan.IsTaxi ? TrafficLights.Rollout : TrafficLights.Approach,
                 TaxiGraph = taxiGraph,
                 FullModel = !title.Contains("Passive", StringComparison.OrdinalIgnoreCase),
+                Wake = wake,
+                Runways = runways,
+                ReleaseNm = releaseNm,
             };
             run.AddEvent(0, plan.IsTaxi && plan.Taxi is { } taxi && taxiGraph is not null
                 ? string.Create(CultureInfo.InvariantCulture, $"spawn at parking {taxi.Parking.Parking?.Label} ({taxi.Parking.Parking?.TypeName}, {taxi.Parking.Parking?.RadiusM:0} m), route {string.Join(' ', taxi.Taxiways)} {taxi.LengthM:0} m to the hold on {taxi.Hold.Taxiway} ({taxi.Hold.Runway}), pushback {(taxi.Pushback ? "yes" : "no")}, net {taxiGraph.Nodes.Count} nodes, {taxiGraph.Edges.Count} paths, mapping {taxiGraph.Mapping} ({taxiGraph.MappingErrorM:0.0} m), object {objectId}, {run.Tail}")
@@ -928,6 +970,13 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 run.AddEvent(point.Seconds, string.Create(CultureInfo.InvariantCulture, $"speed_target {kt:0} kt (ias {sample.IndicatedKt:0})"));
                 Fire(_sim.SetAiDesiredSpeedAsync(run.ObjectId, kt, CancellationToken.None), "speed");
             }
+        }
+
+        // Landung (Kinematik): ab 2 NM prüfen, ob die Bahn frei ist; bei 0,4 NM noch belegt – durchstarten
+        if (run.Kinematics is { Phase: KinematicPhase.Approach or KinematicPhase.Flare } approach && !plan.IsTakeoff && !plan.IsTaxi
+            && !plan.IsOverflight && run.Analysis.GoAroundPlan is null && !run.Analysis.TouchedDown)
+        {
+            CheckRunwayBeforeLanding(run, approach, point.Seconds);
         }
 
         run.PreviousAlongM = point.AlongM;
@@ -1451,6 +1500,8 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             return;
         }
 
+        // Kreuzen: Endanflug bis 4 NM; Aufreihen zum Start: so weit, wie die nächste Landung beim Losrollen weg sein muss
+        var finalNm = held.Phase == TaxiPhase.Holding ? run.ReleaseNm ?? RunwayOccupancy.FinalNm : RunwayOccupancy.FinalNm;
         run.RunwayScanBusy = true;
         var since = held.PhaseSeconds;
         _ = Task.Run(async () =>
@@ -1475,7 +1526,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                     return;
                 }
 
-                var blocker = RunwayOccupancy.Blocker(graph.Icao, runway, scan.Samples, run.ObjectId);
+                var blocker = RunwayOccupancy.Blocker(graph.Icao, runway, scan.Samples, run.ObjectId, finalNm);
                 if (blocker is null)
                 {
                     held.RunwayClear = true;
@@ -1496,6 +1547,100 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             finally
             {
                 run.RunwayScanBusy = false;
+            }
+        });
+    }
+
+    /// <summary>Anflug noch in der Luft vor der Schwelle (nicht durchgestartet): Entfernung zur Schwelle in NM, sonst null.</summary>
+    private static double? ArrivalDistanceNm(TrafficTestRun run)
+    {
+        var plan = run.InitialPlan;
+        if (plan.IsTakeoff || plan.IsTaxi || plan.IsOverflight || run.Analysis.GoAroundPlan is not null || run.Analysis.TouchedDown)
+        {
+            return null;
+        }
+
+        if (run.Kinematics is { } kin)
+        {
+            return kin.Phase is KinematicPhase.Approach or KinematicPhase.Flare && kin.AlongM < 0 ? -kin.AlongM / RunwayEnd.MetersPerNm : null;
+        }
+
+        return run.Last?.DistanceToThresholdNm ?? plan.SpawnNm;
+    }
+
+    /// <summary>
+    /// Landung mit Kinematik: Ab <see cref="ArrivalSequence.LandingCheckNm"/> fragt der Test den Verkehr ab (höchstens eine Abfrage zugleich),
+    /// ob jemand auf der Bahn ist (<see cref="RunwayOccupancy.OnRunway"/> – eine Landung davor beim Ausrollen, ein Abflug beim Aufreihen
+    /// oder im Startlauf). Ist sie bei <see cref="ArrivalSequence.GoAroundDecisionNm"/> nach der letzten Abfrage noch belegt, startet das
+    /// Flugzeug durch; ohne Antwort landet es.
+    /// </summary>
+    private void CheckRunwayBeforeLanding(TrafficTestRun run, TrafficKinematics kin, double seconds)
+    {
+        var plan = run.Analysis.Plan;
+        if (kin.AlongM < -ArrivalSequence.LandingCheckNm * RunwayEnd.MetersPerNm)
+        {
+            return;
+        }
+
+        var label = plan.Runway.Designation;
+        if (kin.AlongM >= -ArrivalSequence.GoAroundDecisionNm * RunwayEnd.MetersPerNm)
+        {
+            var fresh = run.LandingCheckedUtc is { } at && (DateTimeOffset.UtcNow - at).TotalSeconds <= LandingCheckValidSeconds;
+            if (run.LandingBlocker is { } blocker && fresh && run.GoAroundEnabled && kin.GoAround())
+            {
+                var goAround = TrafficGoAroundPlan.Build(plan, kin.AlongM);
+                var reason = new TrafficGoAroundReason("runway_occupied", 0, "runway_occupied " + blocker);
+                lock (_lock)
+                {
+                    run.Analysis.MarkGoAround(seconds, kin.AlongM, kin.HeightFt, kin.SpeedKt, reason, goAround);
+                }
+
+                run.AddEvent(seconds, string.Create(CultureInfo.InvariantCulture, $"go_around {reason.Text} at {kin.HeightFt:0} ft, {kin.AlongM:0} m"));
+                _log.LogInformation(Loc.Log("log.trafficTest.goAround"), label, reason.Text);
+            }
+
+            return;
+        }
+
+        if (run.LandingScanBusy || run.Runways is not { } runways || RunwayOf(runways, label) is not { } runway)
+        {
+            return;
+        }
+
+        run.LandingScanBusy = true;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var radius = RunwayScanRadiusM;
+                if (_sim.Num("lat") is { } lat && _sim.Num("lon") is { } lon)
+                {
+                    radius += RouteMath.DistanceNm(lat, lon, plan.Runway.ThresholdLatitude, plan.Runway.ThresholdLongitude) * RunwayEnd.MetersPerNm;
+                }
+
+                var scan = await _traffic.ScanAsync((uint)Math.Min(radius, TrafficConnection.MaxScanRadiusMeters), includeHelicopters: true, withText: true, CancellationToken.None);
+                if (scan.Error is not null)
+                {
+                    return;
+                }
+
+                var blocker = RunwayOccupancy.OnRunway(plan.Runway.Airport, runway, scan.Samples, run.ObjectId);
+                run.LandingBlocker = blocker;
+                run.LandingCheckedUtc = DateTimeOffset.UtcNow;
+                var text = blocker is null ? "landing_clear " + label : "landing_runway_busy " + label + ": " + blocker;
+                if (text != run.LastLandingEvent)
+                {
+                    run.LastLandingEvent = text;
+                    run.AddEvent(seconds, text);
+                }
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or InvalidOperationException or TimeoutException or ObjectDisposedException)
+            {
+                _log.LogDebug(ex, "Landing runway check failed");
+            }
+            finally
+            {
+                run.LandingScanBusy = false;
             }
         });
     }
@@ -1981,6 +2126,50 @@ public sealed class TrafficTestService : IHostedService, IDisposable
 
         /// <summary>Lage des vorigen Messpunkts entlang der Mittellinie (für das Überfliegen der Schwelle).</summary>
         public double? PreviousAlongM { get; set; }
+
+        /// <summary>Wirbelschleppen-Kategorie des Typs (Abstand im Endanflug).</summary>
+        public TrafficWake Wake { get; init; } = TrafficWake.Medium;
+
+        /// <summary>Bahnen des Flughafens (für die Bahnprüfung vor der Landung).</summary>
+        public IReadOnlyList<AirportRunway>? Runways { get; init; }
+
+        /// <summary>B2: So weit muss die nächste Landung beim Aufreihen weg sein (<see cref="ArrivalSequence.DepartureReleaseNm"/>).</summary>
+        public double? ReleaseNm { get; init; }
+
+        private volatile bool _landingScanBusy;
+
+        /// <summary>Landung: Eine Abfrage, ob die Bahn frei ist, läuft gerade.</summary>
+        public bool LandingScanBusy
+        {
+            get => _landingScanBusy;
+            set => _landingScanBusy = value;
+        }
+
+        private string? _landingBlocker;
+
+        /// <summary>Landung: was die Bahn bei der letzten Abfrage belegt hat, null = frei (aus einem anderen Thread gesetzt).</summary>
+        public string? LandingBlocker
+        {
+            get => Volatile.Read(ref _landingBlocker);
+            set => Volatile.Write(ref _landingBlocker, value);
+        }
+
+        private long _landingCheckedTicks;
+
+        /// <summary>Landung: wann die Bahn zuletzt abgefragt wurde.</summary>
+        public DateTimeOffset? LandingCheckedUtc
+        {
+            get
+            {
+                var ticks = Interlocked.Read(ref _landingCheckedTicks);
+                return ticks > 0 ? new DateTimeOffset(ticks, TimeSpan.Zero) : null;
+            }
+
+            set => Interlocked.Exchange(ref _landingCheckedTicks, value?.UtcTicks ?? 0);
+        }
+
+        /// <summary>Landung: zuletzt gemeldetes Ergebnis der Bahnprüfung.</summary>
+        public string? LastLandingEvent { get; set; }
 
         public bool GearUpSent { get; set; }
 

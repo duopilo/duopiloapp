@@ -37,6 +37,12 @@ public static class TrafficTestTools
         "Taxi tests (D1, B2, A3) on the same runway don't replace each other but queue: each keeps 48 m (general aviation 22 m) behind " +
         "another test aircraft ahead on its route, B2 lines up in the order of arrival at the holding points, one departure at a time " +
         "(the next lines up once the previous is above 400 ft); new tests skip the parking spots of running ones. " +
+        "Landings (A3) on the same runway queue too: a new one spawns behind the last arrival still on final with wake spacing (3 NM, " +
+        "behind heavy 4–6, behind super 4–8, light behind medium 5) – 8 NM when a departure (B2) of that runway is waiting, so it fits " +
+        "in between; spawnNm is the earliest point, up to 30 NM. Mixed mode on one runway: B2 lines up only when the next landing is " +
+        "farther than its release distance (line-up, takeoff roll and 500 ft at 145 kt, 4–8 NM; event departure_release); a kinematic " +
+        "landing checks from 2 NM whether someone is on the runway and goes around at 0.4 NM if it is still occupied (go_around " +
+        "runway_occupied, climb straight ahead to 3000 ft, the test ends at 2800 ft). " +
         "traffic_taxi_info shows the network and the route without spawning. Variant B2 is a departure from the gate: like D1 to the " +
         "holding point, 15 s there, then line up (over the taxi points onto the centerline, in a curve into the takeoff direction, " +
         "40 m on) and take off like B1 with kinematicTakeoff from there – landing light and strobes on; the evaluation switches to the " +
@@ -191,7 +197,8 @@ public static class TrafficTestTools
         "lined_up; A3 landing until the exit, then taxi and holding at the parking spot), parking spot, holding point (A3: the exit), " +
         "taxiways, route length, pushback, turns, distance (with the pushback; crossing stops and taxi_spacing count on the taxi path without it), speed, crossings (runway, taxiway, stop) and crossingsDone, A3 exitAlongM and " +
         "exitKt, waitingFor (the test aircraft it keeps its distance to); events holding_short, runway_busy (what blocks it), runway_clear, " +
-        "taxi_spacing, line_up_queue, line_up_wait. Paths of " +
+        "taxi_spacing, line_up_queue, line_up_wait; arrivals arrival_sequence (spawn and spacing), landing_clear, landing_runway_busy, " +
+        "go_around runway_occupied; B2 departure_release. Paths of " +
         "the CSV and summary files. The waypoints only with details: true.")]
     public static string Status(
         TrafficTestService tests,
