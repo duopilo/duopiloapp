@@ -127,7 +127,7 @@ public static class TrafficModels
         Passive("B788", "Boeing 787-8", 140, "B787-08"),
         Passive("B789", "Boeing 787-9", 145, "B787-09"),
         Passive("B78X", "Boeing 787-10", 150, "B787-10"),
-        Passive("MD11", "McDonnell Douglas MD-11", 155, "MD11F"),
+        Passive("MD11", "McDonnell Douglas MD-11", 155, TrafficModelStatus.Candidate, "EDDL 1.11.2026 (beta.21): kinematic takeoff from 23R, liftoff after 1852 m with 169 kt; EDDF (beta.19): approach to 07L with ignoreRunwayRules.", "MD11F"),
         Passive("DC10", "McDonnell Douglas MD-10", 150, "MD10-10F", "MD10-30F"),
         Passive("MD88", "McDonnell Douglas MD-88", 135, "MD88"),
         Passive("MD90", "McDonnell Douglas MD-90", 135, "MD90_30"),

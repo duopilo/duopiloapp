@@ -225,6 +225,10 @@ public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spa
     private double? _gearUpSeconds;
     private double? _rollStartSeconds;
     private double? _liftoffSeconds;
+    private double? _taxiMoveSeconds;
+    private double? _taxiStillSince;
+    private double? _taxiStopSeconds;
+    private double _taxiMaxKt;
     private double _liftoffAlong;
     private double _liftoffCross;
     private double _liftoffKt;
@@ -293,6 +297,31 @@ public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spa
         _goAroundHighest = heightFt;
     }
 
+    /// <summary>Rollen: wann es losging, wann es danach stand (unter 0,5 kt), höchste Geschwindigkeit.</summary>
+    private void AddTaxi(AiProbeSample s, double seconds, List<string> events)
+    {
+        _taxiMaxKt = Math.Max(_taxiMaxKt, s.GroundSpeedKt);
+        if (_taxiMoveSeconds is null && s.GroundSpeedKt > 0.5)
+        {
+            _taxiMoveSeconds = Math.Round(seconds, 1);
+            events.Add("taxi_start");
+        }
+        else if (_taxiMoveSeconds is not null && s.GroundSpeedKt <= 0.5)
+        {
+            _taxiStillSince ??= seconds;
+            if (_taxiStopSeconds is null && seconds - _taxiStillSince.Value >= 3)
+            {
+                _taxiStopSeconds = Math.Round(seconds, 1);
+                events.Add("taxi_stopped");
+            }
+        }
+        else
+        {
+            _taxiStillSince = null;
+            _taxiStopSeconds = null;
+        }
+    }
+
     public TrafficTestPoint Add(AiProbeSample s)
     {
         Samples++;
@@ -316,6 +345,14 @@ public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spa
             _previousAlong = along;
             _previousSeconds = seconds;
             return new TrafficTestPoint(Math.Round(seconds, 1), along, cross, null, targetKt, events);
+        }
+
+        if (plan.IsTaxi)
+        {
+            AddTaxi(s, seconds, events);
+            _previousAlong = along;
+            _previousSeconds = seconds;
+            return new TrafficTestPoint(Math.Round(seconds, 1), along, cross, null, Math.Round(s.GroundSpeedKt), events);
         }
 
         if (plan.IsTakeoff)
@@ -455,6 +492,7 @@ public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spa
     {
         var verdict = Samples == 0 ? "no_data"
             : plan.IsOverflight ? (_exited ? "passed" : "cruising")
+            : plan.IsTaxi ? (_taxiStopSeconds is not null ? "stopped" : _taxiMoveSeconds is not null ? "taxiing" : "parked")
             : plan.IsTakeoff ? (_liftoffSeconds is null
                 ? (_overran ? "no_liftoff" : _rollStartSeconds is null ? "no_roll" : "rolling")
                 : _highestFt >= TrafficTestPlan.ClimbEndFt ? "climbed" : "climbing")

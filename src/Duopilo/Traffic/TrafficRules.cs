@@ -488,7 +488,7 @@ public sealed class TrafficRules
 
     public static string CategoryName(TrafficCategory category) => category.ToString().ToLowerInvariant();
 
-    private static TrafficCategory? ParseCategory(string? name) => name?.Trim().ToLowerInvariant() switch
+    public static TrafficCategory? ParseCategory(string? name) => name?.Trim().ToLowerInvariant() switch
     {
         "airliner" => TrafficCategory.Airliner,
         "generalaviation" or "general_aviation" or "ga" => TrafficCategory.GeneralAviation,

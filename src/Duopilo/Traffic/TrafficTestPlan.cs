@@ -18,6 +18,9 @@ public enum TrafficTestVariant
 
     /// <summary>Überflug in Reiseflughöhe: geradeaus über den Flughafen hinweg, von der Wegpunkt-KI geflogen.</summary>
     C1,
+
+    /// <summary>Rollen: Spawn an einer Parkposition, Pushback, über die Rollwege zum Haltepunkt der Startbahn (Duopilo rollt selbst).</summary>
+    D1,
 }
 
 /// <summary>
@@ -239,6 +242,12 @@ public sealed record TrafficTestPlan(
     /// <summary>Ob es ein Überflug ist (<see cref="TrafficTestVariant.C1"/>).</summary>
     public bool IsOverflight => Variant == TrafficTestVariant.C1;
 
+    /// <summary>Ob es Rollen ist (<see cref="TrafficTestVariant.D1"/>).</summary>
+    public bool IsTaxi => Variant == TrafficTestVariant.D1;
+
+    /// <summary>Rollen: Route von der Parkposition zum Haltepunkt.</summary>
+    public TaxiRoute? Taxi { get; init; }
+
     /// <summary>Überflug: Reiseflughöhe (MSL, Fuß; Flugfläche bei Standarddruck gleichgesetzt).</summary>
     public double CruiseAltitudeFt { get; init; }
 
@@ -335,6 +344,11 @@ public sealed record TrafficTestPlan(
         if (variant == TrafficTestVariant.C1)
         {
             return BuildOverflight(runway.Overhead(null), TrafficCategory.Airliner, approachKt);
+        }
+
+        if (variant == TrafficTestVariant.D1)
+        {
+            throw new ArgumentException("D1 (taxi) needs a taxi route, see BuildTaxi.", nameof(variant));
         }
 
         if (runway.LengthM < MinRunwayM)
@@ -488,6 +502,29 @@ public sealed record TrafficTestPlan(
             CruiseIasKt = ias,
             CruiseTasKt = tas,
             ExitM = exit,
+        };
+    }
+
+    /// <summary>
+    /// Rollen (D1): Spawn am Anfang des Wegs (Parkposition, Kurs wie beim Losrollen bzw. Pushback), Fahrwerk unten. Wegpunkte bekommt
+    /// die KI keine – Duopilo rollt selbst; der eine Eintrag am Haltepunkt dient Status und Auswertung.
+    /// </summary>
+    public static TrafficTestPlan BuildTaxi(RunwayEnd runway, double? approachKt, TaxiRoute route, TaxiGraph graph)
+    {
+        var start = route.PushbackPath is { } push ? push.At(0) : route.TaxiPath.At(0);
+        var heading = route.PushbackPath is not null ? TrafficMath.Normalize(start.HeadingDeg + 180) : start.HeadingDeg;
+        var (lat, lon) = graph.ToLatLon(start.East, start.North);
+        var spawn = new AiInitPosition(lat, lon, runway.ElevationFt, heading, OnGround: true, AirspeedKt: 0);
+        var hold = route.Hold.Node;
+        var (holdAlong, _) = runway.Offsets(hold.Latitude, hold.Longitude);
+        var waypoints = new List<TrafficTestWaypoint>
+        {
+            new("hold", holdAlong, new AiWaypoint(hold.Latitude, hold.Longitude, runway.ElevationFt, 0, AiWaypointFlags.OnGround)),
+        };
+        var vapp = Math.Clamp(approachKt ?? DefaultApproachKt, 50, 180);
+        return new TrafficTestPlan(TrafficTestVariant.D1, runway, spawn, 0, true, null, null, 0, 0, 0, vapp, waypoints, [], [])
+        {
+            Taxi = route,
         };
     }
 

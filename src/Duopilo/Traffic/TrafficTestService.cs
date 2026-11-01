@@ -23,6 +23,7 @@ namespace Duopilo.Traffic;
 /// <param name="TrackDeg">C1: Kurs des Überflugs (rechtweisend); leer = Richtung der Bahn.</param>
 /// <param name="FlightLevel">C1: Flugfläche; leer = 350 (GA 85).</param>
 /// <param name="CruiseKt">C1: wahre Reisegeschwindigkeit; leer = 450 kt (GA doppelte Vapp).</param>
+/// <param name="Parking">D1: Parkposition, z. B. "A12"; leer = passend zum Typ zufällig.</param>
 /// <param name="KinematicTakeoff">B1: Duopilo fliegt den Start selbst (Startlauf, Rotieren, Steigflug, <see cref="TrafficKinematics.Takeoff"/>); false = Wegpunkt-KI wie bis beta.20.</param>
 public sealed record TrafficTestRequest(
     string Airport,
@@ -44,7 +45,8 @@ public sealed record TrafficTestRequest(
     double? FlightLevel = null,
     double? CruiseKt = null,
     bool IgnoreRunwayRules = false,
-    bool KinematicTakeoff = true);
+    bool KinematicTakeoff = true,
+    string? Parking = null);
 
 /// <summary>Zeitpunkt und Text eines Ereignisses der Testlinie.</summary>
 public sealed record TrafficTestEvent(double Seconds, string Text);
@@ -103,7 +105,76 @@ public sealed record TrafficTestStatus(
     string? SummaryFile,
     string? Note,
     double? KinematicNm = null,
-    TrafficTestKinematics? Kinematics = null);
+    TrafficTestKinematics? Kinematics = null,
+    TrafficTestTaxi? Taxi = null);
+
+/// <summary>Rollweg-Netz eines Flughafens zum Prüfen (traffic_taxi_info).</summary>
+/// <param name="Mapping">Zuordnung von BIAS_X/BIAS_Z zu Ost/Nord; <paramref name="MappingErrorM"/> ist der mittlere Abstand der Bahn-Abschnitte zur Mittellinie damit.</param>
+/// <param name="BrokenPaths">Abschnitte mit Index außerhalb der Listen (verworfen).</param>
+public sealed record TrafficTaxiInfo(
+    string Airport,
+    double ReferenceLatitude,
+    double ReferenceLongitude,
+    double ElevationFt,
+    int TaxiPoints,
+    int Parkings,
+    int Paths,
+    int RunwayPaths,
+    int BrokenPaths,
+    string Mapping,
+    double? MappingErrorM,
+    IReadOnlyList<string> Taxiways,
+    IReadOnlyList<TrafficTaxiInfoParking> ParkingSpots,
+    IReadOnlyList<TrafficTaxiInfoHolds> Holds,
+    TrafficTaxiInfoRoute? Route,
+    string? RouteError);
+
+public sealed record TrafficTaxiInfoParking(string Label, string Type, double RadiusM, double HeadingDeg);
+
+/// <summary>Haltepunkte einer Bahn: Anzahl und die Rollwege daran.</summary>
+public sealed record TrafficTaxiInfoHolds(string Runway, int Count, IReadOnlyList<string> Taxiways);
+
+/// <summary>Route von der Parkposition zum Haltepunkt mit den Punkten (zum Nachsehen auf der Karte).</summary>
+public sealed record TrafficTaxiInfoRoute(
+    string Parking,
+    string ParkingType,
+    string HoldRunway,
+    string HoldTaxiway,
+    IReadOnlyList<string> Taxiways,
+    double RouteM,
+    bool Pushback,
+    double PushbackM,
+    double TaxiPathM,
+    int Turns,
+    double? MinTurnRadiusM,
+    IReadOnlyList<TrafficTaxiInfoPoint> Points);
+
+public sealed record TrafficTaxiInfoPoint(double Latitude, double Longitude, string Kind);
+
+/// <summary>Stand des Rollens (D1, <see cref="TaxiKinematics"/>).</summary>
+/// <param name="Phase">parked, pushback, pushback_done, taxi, holding.</param>
+/// <param name="Taxiways">Rollwege der Route.</param>
+/// <param name="RouteM">Länge der Route im Netz.</param>
+/// <param name="DistanceM">Bisher gerollt (Pushback und Rollen).</param>
+/// <param name="Mapping">Wie BIAS_X/BIAS_Z auf Ost/Nord liegen (<see cref="TaxiGraph.Mapping"/>), mit dem mittleren Abstand der Bahn-Abschnitte zur Mittellinie.</param>
+public sealed record TrafficTestTaxi(
+    string Phase,
+    string Parking,
+    string ParkingType,
+    string HoldRunway,
+    string HoldTaxiway,
+    IReadOnlyList<string> Taxiways,
+    double RouteM,
+    bool Pushback,
+    double? PushbackM,
+    double TaxiPathM,
+    int Turns,
+    double? MinTurnRadiusM,
+    double DistanceM,
+    double SpeedKt,
+    double MaxSpeedKt,
+    string Mapping,
+    double? MappingErrorM);
 
 /// <summary>Stand der Kinematik eines Tests (<see cref="TrafficKinematics"/>).</summary>
 /// <param name="Phase">approach, flare, rollout, stopped; Start: lineup, takeoff_roll, rotation, climb.</param>
@@ -176,6 +247,12 @@ public sealed class TrafficTestService : IHostedService, IDisposable
 
     /// <summary>Volle Modelle: Lichter in diesem Abstand (s) noch einmal senden, bis zum Aufsetzen.</summary>
     private const double FullModelLightResendSeconds = 15;
+
+    /// <summary>Rollen: So lange steht das Flugzeug am Haltepunkt, dann endet der Test (holding).</summary>
+    private const double HoldingEndSeconds = 60;
+
+    /// <summary>Rollen: so viele Parkpositionen probiert der Test, bis eine eine Route zum Haltepunkt hat.</summary>
+    private const int MaxParkingTries = 25;
 
     /// <summary>Start: Weicht der gemessene Boden mehr als das von der Bahnhöhe ab, gilt die Bahnhöhe aus den Bahndaten.</summary>
     private const double MaxGroundCorrectionFt = 100;
@@ -284,7 +361,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             // Ohne Titel wählen die Regeln das Modell (Verkehrsmix, Militärplatz, nur Allgemeine Luftfahrt …)
             var ruleMessages = new List<string>();
             var rules = request.Variant == TrafficTestVariant.C1 ? null : LoadRules(ruleMessages);
-            var operation = request.Variant == TrafficTestVariant.B1 ? TrafficOperation.Departure : TrafficOperation.Arrival;
+            var operation = request.Variant is TrafficTestVariant.B1 or TrafficTestVariant.D1 ? TrafficOperation.Departure : TrafficOperation.Arrival;
             var (title, livery) = await ResolveModelAsync(request, rules, runway, operation, ct);
             var modelType = TrafficModels.TypeOf(title, livery);
             var approachKt = request.ApproachKt ?? modelType?.ApproachKt;
@@ -294,6 +371,15 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             if (violations.Count > 0 && !request.IgnoreRunwayRules)
             {
                 throw new InvalidOperationException(Loc.T("tools.trafficTest.runwayRules", runway.Designation, string.Join(" ", violations.Select(v => v.Text))));
+            }
+
+            // Rollen: Netz lesen, Parkposition und Route vor dem Ersetzen – fehlt etwas, bleibt der laufende Test
+            TaxiGraph? taxiGraph = null;
+            TaxiRoute? taxiRoute = null;
+            if (request.Variant == TrafficTestVariant.D1)
+            {
+                taxiGraph = await LoadTaxiGraphAsync(airport, runways, ct);
+                taxiRoute = PlanTaxi(taxiGraph, runway, request.Parking, category, TrafficRules.WakeOf(modelType?.IcaoType, category));
             }
 
             // Ein Test je Bahn: den alten auf dieser Bahn ersetzen, auf anderen Bahnen höchstens MaxConcurrent
@@ -313,6 +399,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             var plan = request.Variant switch
             {
                 TrafficTestVariant.B1 => TrafficTestPlan.BuildTakeoff(runway, approachKt, request.RollM, throttle),
+                TrafficTestVariant.D1 => TrafficTestPlan.BuildTaxi(runway, approachKt, taxiRoute!, taxiGraph!),
                 TrafficTestVariant.C1 => TrafficTestPlan.BuildOverflight(runway.Overhead(request.TrackDeg), category, approachKt, request.FlightLevel, request.CruiseKt, request.SpawnNm),
                 _ => TrafficTestPlan.Build(runway, request.Variant, request.SpawnNm, request.TouchdownM, request.FinalLowFt, approachKt, throttle),
             };
@@ -337,10 +424,13 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 KinematicNm = plan.IsTakeoff || plan.IsOverflight || request.KinematicNm is null ? null : Math.Clamp(request.KinematicNm.Value, MinKinematicNm, MaxKinematicNm),
                 KinematicTakeoff = plan.IsTakeoff && request.KinematicTakeoff,
                 Category = category,
-                Lights = plan.IsOverflight ? TrafficLights.Cruise : TrafficLights.Approach,
+                Lights = plan.IsOverflight ? TrafficLights.Cruise : plan.IsTaxi ? TrafficLights.Rollout : TrafficLights.Approach,
+                TaxiGraph = taxiGraph,
                 FullModel = !title.Contains("Passive", StringComparison.OrdinalIgnoreCase),
             };
-            run.AddEvent(0, plan.IsTakeoff
+            run.AddEvent(0, plan.Taxi is { } taxi && taxiGraph is not null
+                ? string.Create(CultureInfo.InvariantCulture, $"spawn at parking {taxi.Parking.Parking?.Label} ({taxi.Parking.Parking?.TypeName}, {taxi.Parking.Parking?.RadiusM:0} m), route {string.Join(' ', taxi.Taxiways)} {taxi.LengthM:0} m to the hold on {taxi.Hold.Taxiway} ({taxi.Hold.Runway}), pushback {(taxi.Pushback ? "yes" : "no")}, net {taxiGraph.Nodes.Count} nodes, {taxiGraph.Edges.Count} paths, mapping {taxiGraph.Mapping} ({taxiGraph.MappingErrorM:0.0} m), object {objectId}, {run.Tail}")
+                : plan.IsTakeoff
                 ? string.Create(CultureInfo.InvariantCulture, $"spawn on the runway {TrafficTestPlan.LineUpM:0} m behind its start, takeoff speed {plan.TakeoffKt:0} kt, object {objectId}, {run.Tail}")
                 : plan.IsOverflight
                 ? string.Create(CultureInfo.InvariantCulture, $"spawn {plan.SpawnNm:0.#} NM before overhead, {plan.CruiseAltitudeFt:0} ft, track {plan.Runway.HeadingTrueDeg:000}, {plan.CruiseKt:0} kt tas (about {plan.CruiseIasKt:0} ias), object {objectId}, {run.Tail}")
@@ -393,10 +483,14 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 }
 
                 await _sim.SetAiLightsAsync(objectId, run.Lights, ct);
-                run.AddEvent(0, plan.IsOverflight ? "lights_sent cruise" : "lights_sent approach");
+                run.AddEvent(0, plan.IsOverflight ? "lights_sent cruise" : plan.IsTaxi ? "lights_sent taxi" : "lights_sent approach");
 
-                await _sim.SetAiWaypointsAsync(objectId, [.. plan.Waypoints.Select(w => w.Waypoint)], ct);
-                run.AddEvent(0, string.Create(CultureInfo.InvariantCulture, $"waypoints_sent {plan.Waypoints.Count}"));
+                // Rollen: keine Wegpunkte – Duopilo schiebt das Flugzeug ab dem ersten Messpunkt selbst
+                if (!plan.IsTaxi)
+                {
+                    await _sim.SetAiWaypointsAsync(objectId, [.. plan.Waypoints.Select(w => w.Waypoint)], ct);
+                    run.AddEvent(0, string.Create(CultureInfo.InvariantCulture, $"waypoints_sent {plan.Waypoints.Count}"));
+                }
                 _sim.StartAiProbe(objectId, OnSample);
                 if (request.SpeedMethod == TrafficSpeedMethod.Velocity)
                 {
@@ -560,6 +654,26 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                     k.Liftoff is { } lift ? Math.Round(lift.AlongM) : null,
                     k.Liftoff is { } liftKt ? Math.Round(liftKt.SpeedKt) : null,
                     k.Liftoff is { } liftPitch ? Math.Round(liftPitch.PitchDeg, 1) : null)
+                : null,
+            plan.Taxi is { } route
+                ? new TrafficTestTaxi(
+                    run.TaxiKinematics is { } t ? JsonNamingPolicy.SnakeCaseLower.ConvertName(t.Phase.ToString()) : "parked",
+                    route.Parking.Parking?.Label ?? "",
+                    route.Parking.Parking?.TypeName ?? "",
+                    route.Hold.Runway,
+                    route.Hold.Taxiway,
+                    route.Taxiways,
+                    route.LengthM,
+                    route.Pushback,
+                    route.PushbackPath is { } push ? Math.Round(push.LengthM) : null,
+                    Math.Round(route.TaxiPath.LengthM),
+                    route.TaxiPath.Turns,
+                    route.TaxiPath.MinRadiusM is { } radius ? Math.Round(radius, 1) : null,
+                    Math.Round(run.TaxiKinematics?.TotalM ?? 0),
+                    Math.Round(run.TaxiKinematics?.SpeedKt ?? 0, 1),
+                    Math.Round(run.TaxiKinematics?.MaxSpeedKt ?? 0, 1),
+                    run.TaxiGraph?.Mapping ?? "",
+                    run.TaxiGraph?.MappingErrorM)
                 : null);
     }
 
@@ -613,7 +727,23 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             // Kinematik: Übernahme ab KinematicNm vor der Schwelle; danach liefert sie Fahrt, Sinkrate, Neigung und "am Boden" –
             // eingefroren meldet der Sim dafür nichts Brauchbares
             StartKinematicsIfDue(run, sample);
-            if (run.Kinematics is { } kin)
+            if (run.TaxiKinematics is { } taxi)
+            {
+                if (sample.AltitudeAglFt > 0 && sample.AltitudeAglFt < 300)
+                {
+                    taxi.GroundTargetFt = sample.AltitudeFt - sample.AltitudeAglFt;
+                }
+
+                sample = sample with
+                {
+                    OnGround = true,
+                    IndicatedKt = taxi.SpeedKt,
+                    GroundSpeedKt = taxi.SpeedKt,
+                    VerticalSpeedFpm = 0,
+                    PitchDeg = taxi.PitchDeg,
+                };
+            }
+            else if (run.Kinematics is { } kin)
             {
                 CorrectGround(run, kin, sample);
                 sample = sample with
@@ -659,7 +789,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
 
         // Durchstarten: zu hoch oder zu schnell über der Schwelle, oder zu lange nicht aufgesetzt – neue Wegpunkte geradeaus,
         // Steigflug auf 3000 ft, schneller werden; das Fahrwerk kommt bei positiver Steigrate rein (nicht mit Kinematik: die fliegt den Pfad)
-        if (run.GoAroundEnabled && !plan.IsTakeoff && !plan.IsOverflight && run.Kinematics is null && run.Analysis.GoAroundPlan is null
+        if (run.GoAroundEnabled && !plan.IsTakeoff && !plan.IsOverflight && !plan.IsTaxi && run.Kinematics is null && run.Analysis.GoAroundPlan is null
             && TrafficGoAround.Check(plan, run.PreviousAlongM, point.AlongM, sample.AltitudeFt, sample.IndicatedKt, sample.OnGround, run.Analysis.TouchedDown) is { } reason)
         {
             var goAround = TrafficGoAroundPlan.Build(plan, point.AlongM);
@@ -698,6 +828,18 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 run.StopScheduled = true;
                 var at = plan.Runway.Airport + " " + plan.Runway.Designation;
                 _ = Task.Run(() => StopTestAsync(reached ? "go_around" : "go_around_timeout", CancellationToken.None, at));
+            }
+        }
+
+        // Rollen (D1): eine Minute am Haltepunkt stehen, dann Ende
+        if (plan.IsTaxi && run.TaxiKinematics is { Phase: TaxiPhase.Holding })
+        {
+            run.HoldingSinceSeconds ??= point.Seconds;
+            if (point.Seconds - run.HoldingSinceSeconds.Value >= HoldingEndSeconds && !run.StopScheduled)
+            {
+                run.StopScheduled = true;
+                var at = plan.Runway.Airport + " " + plan.Runway.Designation;
+                _ = Task.Run(() => StopTestAsync("holding", CancellationToken.None, at));
             }
         }
 
@@ -849,6 +991,16 @@ public sealed class TrafficTestService : IHostedService, IDisposable
     /// </summary>
     private void StartKinematicsIfDue(TrafficTestRun run, AiProbeSample sample)
     {
+        if (run.Analysis.Plan.IsTaxi)
+        {
+            if (run.TaxiKinematics is null)
+            {
+                StartTaxiKinematics(run, sample);
+            }
+
+            return;
+        }
+
         if (run.KinematicTakeoff)
         {
             if (run.Kinematics is null)
@@ -887,6 +1039,151 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         var seconds = Math.Max(0, (sample.Utc - run.SpawnUtc).TotalSeconds);
         run.AddEvent(Math.Round(seconds, 1), string.Create(CultureInfo.InvariantCulture,
             $"kinematic_start at {-along / RunwayEnd.MetersPerNm:0.0} NM, {kin.StartHeightFt:0} ft, {sample.IndicatedKt:0} kt (cg {cg:0.0} ft, static pitch {sample.StaticPitchDeg:0.0}°)"));
+    }
+
+    /// <summary>
+    /// Rollen (D1): Duopilo übernimmt mit dem ersten Messpunkt und schiebt das Flugzeug über die Wege der Route (Pushback, Rollen).
+    /// Boden gemessen unter dem Flugzeug, sonst die Bahnhöhe.
+    /// </summary>
+    private void StartTaxiKinematics(TrafficTestRun run, AiProbeSample sample)
+    {
+        var plan = run.Analysis.Plan;
+        if (plan.Taxi is not { } route || run.TaxiGraph is not { } graph)
+        {
+            return;
+        }
+
+        var cg = sample.CgHeightFt > 0.5 ? sample.CgHeightFt : DefaultCgHeightFt;
+        var measured = sample.AltitudeFt - sample.AltitudeAglFt;
+        var ground = sample.AltitudeAglFt > 0 && Math.Abs(measured - plan.Runway.ElevationFt) < MaxGroundCorrectionFt ? measured : plan.Runway.ElevationFt;
+        var taxi = new TaxiKinematics(route.PushbackPath, route.TaxiPath, graph.ToLatLon, ground, cg, GroundPitch(sample.StaticPitchDeg));
+        run.TaxiKinematics = taxi;
+        _sim.StartAiPose(run.ObjectId, dt =>
+        {
+            taxi.Advance(dt);
+            return taxi.Pose();
+        });
+        var seconds = Math.Max(0, (sample.Utc - run.SpawnUtc).TotalSeconds);
+        run.AddEvent(Math.Round(seconds, 1), string.Create(CultureInfo.InvariantCulture,
+            $"kinematic_taxi pushback {route.PushbackPath?.LengthM ?? 0:0} m, taxi {route.TaxiPath.LengthM:0} m, {route.TaxiPath.Turns} turns (cg {cg:0.0} ft, static pitch {sample.StaticPitchDeg:0.0}°)"));
+    }
+
+    /// <summary>
+    /// Rollen (D1): Rollwege lesen, Netz bauen, Parkposition wählen (genannte oder passend zum Typ zufällig) und die Route zum ersten
+    /// erreichbaren Haltepunkt vor der Startbahn. Wirft mit einem Text für den Piloten, wenn etwas fehlt.
+    /// </summary>
+    private static TaxiRoute PlanTaxi(TaxiGraph graph, RunwayEnd runway, string? parking, TrafficCategory category, TrafficWake wake)
+    {
+        var profile = TaxiProfile.For(category);
+        if (!string.IsNullOrWhiteSpace(parking))
+        {
+            var node = graph.FindParking(parking)
+                ?? throw new InvalidOperationException(Loc.T("tools.trafficTest.parkingUnknown", parking.Trim(), graph.Icao, string.Join(", ", graph.Parkings.Select(p => p.Label).Take(20))));
+            return TaxiRoute.Plan(graph, runway, node, profile)
+                ?? throw new InvalidOperationException(Loc.T("tools.trafficTest.noTaxiRoute", node.Parking?.Label ?? "", runway.Designation));
+        }
+
+        if (graph.DepartureHolds(runway).Count == 0)
+        {
+            throw new InvalidOperationException(Loc.T("tools.trafficTest.noHold", runway.Designation, graph.Icao));
+        }
+
+        foreach (var node in TaxiRoute.CandidateParkings(graph, category, wake, Random.Shared).Take(MaxParkingTries))
+        {
+            if (TaxiRoute.Plan(graph, runway, node, profile) is { } route)
+            {
+                return route;
+            }
+        }
+
+        throw new InvalidOperationException(Loc.T("tools.trafficTest.noTaxiRoute", "–", runway.Designation));
+    }
+
+    private async Task<TaxiGraph> LoadTaxiGraphAsync(string airport, IReadOnlyList<AirportRunway> runways, CancellationToken ct)
+    {
+        var data = await _sim.RequestAirportTaxiwaysAsync(airport, ct);
+        if (data.Points.Count == 0)
+        {
+            throw new InvalidOperationException(Loc.T("tools.trafficTest.noTaxiways", airport));
+        }
+
+        return TaxiGraph.Build(data, runways);
+    }
+
+    /// <summary>
+    /// Rollweg-Netz eines Flughafens zum Prüfen (traffic_taxi_info): Umfang, Achsen-Zuordnung, Parkpositionen, Haltepunkte und – mit
+    /// <paramref name="runway"/> – die Route von <paramref name="parking"/> (oder einer passenden) zum Haltepunkt.
+    /// </summary>
+    public async Task<TrafficTaxiInfo> TaxiInfoAsync(string airport, string? runway, string? parking, string? category, int limit, CancellationToken ct)
+    {
+        if (!_sim.Connection.IsConnected)
+        {
+            throw new InvalidOperationException(Loc.T("sim.notConnected"));
+        }
+
+        var icao = airport.Trim().ToUpperInvariant();
+        var runways = await _sim.RequestAirportRunwaysAsync(icao, ct);
+        if (runways.Count == 0)
+        {
+            throw new InvalidOperationException(Loc.T("tools.trafficTest.airportUnknown", icao));
+        }
+
+        var graph = await LoadTaxiGraphAsync(icao, runways, ct);
+        var holds = graph.Holds();
+        var cat = TrafficRules.ParseCategory(category) ?? TrafficCategory.Airliner;
+        TrafficTaxiInfoRoute? route = null;
+        string? routeError = null;
+        if (!string.IsNullOrWhiteSpace(runway))
+        {
+            var end = RunwayEnd.Find(icao, runways, runway);
+            if (end is null)
+            {
+                routeError = Loc.T("tools.trafficTest.runwayUnknown", runway.Trim().ToUpperInvariant(), icao, string.Join(", ", runways.SelectMany(r => new[] { r.Primary, r.Secondary }).Where(d => d.Length > 0)));
+            }
+            else
+            {
+                try
+                {
+                    var planned = PlanTaxi(graph, end, parking, cat, cat == TrafficCategory.GeneralAviation ? TrafficWake.Light : TrafficWake.Medium);
+                    route = new TrafficTaxiInfoRoute(
+                        planned.Parking.Parking?.Label ?? "",
+                        planned.Parking.Parking?.TypeName ?? "",
+                        planned.Hold.Runway,
+                        planned.Hold.Taxiway,
+                        planned.Taxiways,
+                        planned.LengthM,
+                        planned.Pushback,
+                        Math.Round(planned.PushbackPath?.LengthM ?? 0),
+                        Math.Round(planned.TaxiPath.LengthM),
+                        planned.TaxiPath.Turns,
+                        planned.TaxiPath.MinRadiusM is { } r ? Math.Round(r, 1) : null,
+                        [.. planned.Nodes.Select(n => graph.Nodes[n]).Select(n => new TrafficTaxiInfoPoint(Math.Round(n.Latitude, 6), Math.Round(n.Longitude, 6), n.IsParking ? "parking" : n.IsHoldShort ? "hold" : "taxi"))]);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    routeError = ex.Message;
+                }
+            }
+        }
+
+        var take = Math.Clamp(limit, 1, 500);
+        return new TrafficTaxiInfo(
+            icao,
+            Math.Round(graph.Latitude, 6),
+            Math.Round(graph.Longitude, 6),
+            Math.Round(graph.ElevationFt),
+            graph.Nodes.Count(n => !n.IsParking),
+            graph.Nodes.Count(n => n.IsParking),
+            graph.Edges.Count,
+            graph.Edges.Count(e => e.Type == 2),
+            graph.BrokenPaths,
+            graph.Mapping,
+            graph.MappingErrorM,
+            [.. graph.Edges.Select(e => e.Name).Where(n => n.Length > 0).Distinct().OrderBy(n => n, StringComparer.OrdinalIgnoreCase)],
+            [.. graph.Parkings.OrderBy(p => p.Label, StringComparer.OrdinalIgnoreCase).Take(take).Select(p => new TrafficTaxiInfoParking(p.Label, p.TypeName, Math.Round(p.RadiusM, 1), Math.Round(p.HeadingDeg)))],
+            [.. holds.GroupBy(h => h.Runway).OrderBy(g => g.Key).Select(g => new TrafficTaxiInfoHolds(g.Key, g.Count(), [.. g.Select(h => h.Taxiway).Where(t => t.Length > 0).Distinct().OrderBy(t => t)]))],
+            route,
+            routeError);
     }
 
     /// <summary>
@@ -1030,7 +1327,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         try
         {
             writer.WriteLine(string.Create(CultureInfo.InvariantCulture,
-                $"{s.Utc:O},{p.Seconds:0.0},{s.Latitude:0.000000},{s.Longitude:0.000000},{s.AltitudeFt:0},{s.AltitudeAglFt:0},{s.IndicatedKt:0},{p.TargetKt:0},{s.GroundSpeedKt:0},{s.VerticalSpeedFpm:0},{s.HeadingTrueDeg:0},{s.PitchDeg:0.0},{s.BankDeg:0.0},{(s.OnGround ? 1 : 0)},{(s.GearHandleDown ? 1 : 0)},{s.GearTotalPercent:0.0},{s.GearCenterPercent:0.0},{s.GearLeftPercent:0.0},{s.GearRightPercent:0.0},{Csv(AiLights.Describe(s.LightStates))},{s.DesiredKt:0},{Csv(s.AiState)},{run.Kinematics?.Phase.ToString().ToLowerInvariant()},{p.AlongM:0},{p.CrossM:0.0},{p.DistanceToThresholdNm:0.00},{Csv(string.Join(' ', p.Events))}"));
+                $"{s.Utc:O},{p.Seconds:0.0},{s.Latitude:0.000000},{s.Longitude:0.000000},{s.AltitudeFt:0},{s.AltitudeAglFt:0},{s.IndicatedKt:0},{p.TargetKt:0},{s.GroundSpeedKt:0},{s.VerticalSpeedFpm:0},{s.HeadingTrueDeg:0},{s.PitchDeg:0.0},{s.BankDeg:0.0},{(s.OnGround ? 1 : 0)},{(s.GearHandleDown ? 1 : 0)},{s.GearTotalPercent:0.0},{s.GearCenterPercent:0.0},{s.GearLeftPercent:0.0},{s.GearRightPercent:0.0},{Csv(AiLights.Describe(s.LightStates))},{s.DesiredKt:0},{Csv(s.AiState)},{run.Kinematics?.Phase.ToString().ToLowerInvariant() ?? run.TaxiKinematics?.Phase.ToString().ToLowerInvariant()},{p.AlongM:0},{p.CrossM:0.0},{p.DistanceToThresholdNm:0.00},{Csv(string.Join(' ', p.Events))}"));
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException)
         {
@@ -1178,6 +1475,15 @@ public sealed class TrafficTestService : IHostedService, IDisposable
 
         /// <summary>Ab dieser Entfernung zur Schwelle Kinematik statt KI, sonst null.</summary>
         public double? KinematicNm { get; init; }
+
+        /// <summary>D1: Rollweg-Netz des Flughafens (Umrechnung der Wege in Breite/Länge).</summary>
+        public TaxiGraph? TaxiGraph { get; init; }
+
+        /// <summary>D1: Kinematik am Boden, ab dem ersten Messpunkt.</summary>
+        public TaxiKinematics? TaxiKinematics { get; set; }
+
+        /// <summary>D1: seit wann das Flugzeug am Haltepunkt steht.</summary>
+        public double? HoldingSinceSeconds { get; set; }
 
         /// <summary>B1: Duopilo fliegt den Start selbst (<see cref="TrafficKinematics.Takeoff"/>) statt der Wegpunkt-KI.</summary>
         public bool KinematicTakeoff { get; init; }
