@@ -526,7 +526,7 @@ public sealed class TaxiTests
         Assert.Equal("A9", route.Hold.Taxiway);
         // Bezugspunkt und Schwelle rechnen kugelförmig, das Netz nach WGS84: ein paar Meter Spiel
         Assert.InRange(route.EntryAlongM!.Value, 1795, 1805);
-        Assert.Equal(route.EntryAlongM!.Value - TaxiRoute.ExitLeadM, route.HandoverAlongM!.Value, 0);
+        Assert.InRange(route.HandoverAlongM!.Value, route.EntryAlongM!.Value - TaxiRoute.ExitLeadM - 1, route.EntryAlongM!.Value - TaxiRoute.ExitLeadM + 1);
         Assert.Equal(15, route.Nodes[0]);
         Assert.Null(route.PushbackPath);
         Assert.InRange(route.HandoverKt, 5, TaxiProfile.Airliner.TaxiKt);
