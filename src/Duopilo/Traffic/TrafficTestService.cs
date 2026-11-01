@@ -23,6 +23,7 @@ namespace Duopilo.Traffic;
 /// <param name="TrackDeg">C1: Kurs des Überflugs (rechtweisend); leer = Richtung der Bahn.</param>
 /// <param name="FlightLevel">C1: Flugfläche; leer = 350 (GA 85).</param>
 /// <param name="CruiseKt">C1: wahre Reisegeschwindigkeit; leer = 450 kt (GA doppelte Vapp).</param>
+/// <param name="KinematicTakeoff">B1: Duopilo fliegt den Start selbst (Startlauf, Rotieren, Steigflug, <see cref="TrafficKinematics.Takeoff"/>); false = Wegpunkt-KI wie bis beta.20.</param>
 public sealed record TrafficTestRequest(
     string Airport,
     string Runway,
@@ -42,7 +43,8 @@ public sealed record TrafficTestRequest(
     double? TrackDeg = null,
     double? FlightLevel = null,
     double? CruiseKt = null,
-    bool IgnoreRunwayRules = false);
+    bool IgnoreRunwayRules = false,
+    bool KinematicTakeoff = true);
 
 /// <summary>Zeitpunkt und Text eines Ereignisses der Testlinie.</summary>
 public sealed record TrafficTestEvent(double Seconds, string Text);
@@ -104,10 +106,15 @@ public sealed record TrafficTestStatus(
     TrafficTestKinematics? Kinematics = null);
 
 /// <summary>Stand der Kinematik eines Tests (<see cref="TrafficKinematics"/>).</summary>
-/// <param name="Phase">approach, flare, rollout, stopped.</param>
-/// <param name="StartAlongM">Wo Duopilo übernommen hat (vor der Schwelle negativ).</param>
+/// <param name="Phase">approach, flare, rollout, stopped; Start: lineup, takeoff_roll, rotation, climb.</param>
+/// <param name="StartAlongM">Wo Duopilo übernommen hat (vor der Schwelle negativ; Start: ab dem Bahnanfang).</param>
 /// <param name="StartHeightFt">Höhe der Räder über der Bahn bei der Übernahme.</param>
 /// <param name="FlareAlongM">Wo das Abfangen begann.</param>
+/// <param name="RotateKt">Start: Rotationsgeschwindigkeit (Vr).</param>
+/// <param name="ClimbKt">Start: Steiggeschwindigkeit bis zur Beschleunigungshöhe.</param>
+/// <param name="TakeoffAccelMps2">Start: Beschleunigung im Startlauf.</param>
+/// <param name="RotateAlongM">Start: wo das Rotieren begann (ab dem Bahnanfang).</param>
+/// <param name="LiftoffAlongM">Start: Abhebepunkt (ab dem Bahnanfang).</param>
 public sealed record TrafficTestKinematics(
     string Phase,
     double StartAlongM,
@@ -119,7 +126,14 @@ public sealed record TrafficTestKinematics(
     double? TouchdownSinkFpm,
     double GroundFt,
     double CgHeightFt,
-    double GroundPitchDeg = 0);
+    double GroundPitchDeg = 0,
+    double? RotateKt = null,
+    double? ClimbKt = null,
+    double? TakeoffAccelMps2 = null,
+    double? RotateAlongM = null,
+    double? LiftoffAlongM = null,
+    double? LiftoffKt = null,
+    double? LiftoffPitchDeg = null);
 
 /// <summary>
 /// Testwerkzeug für eigenen KI-Verkehr, Stufe A der Testlinie (docs/research/eigener-verkehr.md): NonATC-Flugzeuge fliegen einen
@@ -162,6 +176,9 @@ public sealed class TrafficTestService : IHostedService, IDisposable
 
     /// <summary>Volle Modelle: Lichter in diesem Abstand (s) noch einmal senden, bis zum Aufsetzen.</summary>
     private const double FullModelLightResendSeconds = 15;
+
+    /// <summary>Start: Weicht der gemessene Boden mehr als das von der Bahnhöhe ab, gilt die Bahnhöhe aus den Bahndaten.</summary>
+    private const double MaxGroundCorrectionFt = 100;
 
     /// <summary>STATIC PITCH darüber gilt als Unsinn (Spornradflugzeuge stehen mit rund 10–12° Nase hoch).</summary>
     private const double MaxStaticPitchDeg = 15;
@@ -318,6 +335,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 SpeedMethod = request.SpeedMethod,
                 GoAroundEnabled = request.GoAround,
                 KinematicNm = plan.IsTakeoff || plan.IsOverflight || request.KinematicNm is null ? null : Math.Clamp(request.KinematicNm.Value, MinKinematicNm, MaxKinematicNm),
+                KinematicTakeoff = plan.IsTakeoff && request.KinematicTakeoff,
                 Category = category,
                 Lights = plan.IsOverflight ? TrafficLights.Cruise : TrafficLights.Approach,
                 FullModel = !title.Contains("Passive", StringComparison.OrdinalIgnoreCase),
@@ -524,7 +542,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             run.KinematicNm,
             run.Kinematics is { } k
                 ? new TrafficTestKinematics(
-                    k.Phase.ToString().ToLowerInvariant(),
+                    JsonNamingPolicy.SnakeCaseLower.ConvertName(k.Phase.ToString()),
                     Math.Round(k.StartAlongM),
                     Math.Round(k.StartHeightFt),
                     Math.Round(k.StartSpeedKt),
@@ -534,7 +552,14 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                     k.Touchdown is { } tdSink ? Math.Round(tdSink.SinkFpm) : null,
                     Math.Round(k.GroundFt, 1),
                     Math.Round(k.CgHeightFt, 1),
-                    Math.Round(k.GroundPitchDeg, 1))
+                    Math.Round(k.GroundPitchDeg, 1),
+                    k.IsTakeoff || k.Liftoff is not null ? Math.Round(k.RotateKt) : null,
+                    k.IsTakeoff || k.Liftoff is not null ? Math.Round(k.ClimbKt) : null,
+                    k.IsTakeoff || k.Liftoff is not null ? Math.Round(k.TakeoffAccelMps2, 2) : null,
+                    k.RotateAlongM is { } rotate ? Math.Round(rotate) : null,
+                    k.Liftoff is { } lift ? Math.Round(lift.AlongM) : null,
+                    k.Liftoff is { } liftKt ? Math.Round(liftKt.SpeedKt) : null,
+                    k.Liftoff is { } liftPitch ? Math.Round(liftPitch.PitchDeg, 1) : null)
                 : null);
     }
 
@@ -687,7 +712,9 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         // Start (B1): Fahrwerk rein bei positiver Steigrate; Ende bei 2800 ft, am Boden über das Bahnende oder ohne Losrollen
         if (plan.IsTakeoff)
         {
-            if (run.Analysis.LiftedOff && !run.GearUpSent && !sample.OnGround && heightFt >= TakeoffGearUpFt
+            // Mit Kinematik zählt die Höhe der Räder (der Bezugspunkt liegt bei der A400M schon am Boden 19 ft hoch)
+            var wheelsFt = run.Kinematics?.HeightFt ?? heightFt;
+            if (run.Analysis.LiftedOff && !run.GearUpSent && !sample.OnGround && wheelsFt >= TakeoffGearUpFt
                 && sample.VerticalSpeedFpm >= TrafficGoAroundPlan.PositiveClimbFpm)
             {
                 run.GearUpSent = true;
@@ -822,6 +849,16 @@ public sealed class TrafficTestService : IHostedService, IDisposable
     /// </summary>
     private void StartKinematicsIfDue(TrafficTestRun run, AiProbeSample sample)
     {
+        if (run.KinematicTakeoff)
+        {
+            if (run.Kinematics is null)
+            {
+                StartTakeoffKinematics(run, sample);
+            }
+
+            return;
+        }
+
         if (run.KinematicNm is not { } nm || run.Kinematics is not null || sample.OnGround || run.Analysis.GoAroundPlan is not null
             || run.Analysis.TouchedDown)
         {
@@ -850,6 +887,30 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         var seconds = Math.Max(0, (sample.Utc - run.SpawnUtc).TotalSeconds);
         run.AddEvent(Math.Round(seconds, 1), string.Create(CultureInfo.InvariantCulture,
             $"kinematic_start at {-along / RunwayEnd.MetersPerNm:0.0} NM, {kin.StartHeightFt:0} ft, {sample.IndicatedKt:0} kt (cg {cg:0.0} ft, static pitch {sample.StaticPitchDeg:0.0}°)"));
+    }
+
+    /// <summary>
+    /// Start (B1): Duopilo übernimmt gleich mit dem ersten Messpunkt – die Wegpunkt-KI hob ohne zu rotieren ab (beta.16/17). Bahnhöhe
+    /// gemessen unter dem Flugzeug, sonst aus den Bahndaten; Lage am Boden aus STATIC PITCH.
+    /// </summary>
+    private void StartTakeoffKinematics(TrafficTestRun run, AiProbeSample sample)
+    {
+        var plan = run.Analysis.Plan;
+        var (along, cross) = plan.Runway.Offsets(sample.Latitude, sample.Longitude);
+        var cg = sample.CgHeightFt > 0.5 ? sample.CgHeightFt : DefaultCgHeightFt;
+        var measured = sample.AltitudeFt - sample.AltitudeAglFt;
+        var ground = sample.AltitudeAglFt > 0 && Math.Abs(measured - plan.Runway.ElevationFt) < MaxGroundCorrectionFt ? measured : plan.Runway.ElevationFt;
+        var speed = sample.OnGround ? Math.Max(0, sample.GroundSpeedKt) : 0;
+        var kin = TrafficKinematics.Takeoff(plan, KinematicProfile.For(run.Category), Math.Clamp(along, 0, plan.Runway.LengthM / 2), cross, speed, ground, cg, GroundPitch(sample.StaticPitchDeg));
+        run.Kinematics = kin;
+        _sim.StartAiPose(run.ObjectId, dt =>
+        {
+            kin.Advance(dt);
+            return kin.Pose();
+        });
+        var seconds = Math.Max(0, (sample.Utc - run.SpawnUtc).TotalSeconds);
+        run.AddEvent(Math.Round(seconds, 1), string.Create(CultureInfo.InvariantCulture,
+            $"kinematic_takeoff at {kin.AlongM:0} m, {speed:0} kt, vr {kin.RotateKt:0} kt, climb {kin.ClimbKt:0} kt, {kin.TakeoffAccelMps2:0.0} m/s² (cg {cg:0.0} ft, static pitch {sample.StaticPitchDeg:0.0}°)"));
     }
 
     /// <summary>
@@ -1117,6 +1178,9 @@ public sealed class TrafficTestService : IHostedService, IDisposable
 
         /// <summary>Ab dieser Entfernung zur Schwelle Kinematik statt KI, sonst null.</summary>
         public double? KinematicNm { get; init; }
+
+        /// <summary>B1: Duopilo fliegt den Start selbst (<see cref="TrafficKinematics.Takeoff"/>) statt der Wegpunkt-KI.</summary>
+        public bool KinematicTakeoff { get; init; }
 
         /// <summary>Kategorie des Typs (Kennwerte der Kinematik).</summary>
         public TrafficCategory Category { get; init; }

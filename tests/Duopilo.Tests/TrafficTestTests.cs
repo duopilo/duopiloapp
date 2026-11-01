@@ -1069,6 +1069,133 @@ public sealed class TrafficTestTests
         Assert.Equal(end.ElevationFt + 19.4, kin.GroundFt, 3);
     }
 
+    /// <summary>Start mit Kinematik durchrechnen, bis die Räder <paramref name="untilFt"/> über der Bahn sind oder die Zeit um ist (30 Schritte pro Sekunde).</summary>
+    private static List<(KinematicPhase Phase, double AlongM, double HeightFt, double SpeedKt, double PitchDeg, double VsFpm)> FlyTakeoff(TrafficKinematics kin, double untilFt = TrafficTestPlan.ClimbEndFt, double seconds = 600)
+    {
+        var track = new List<(KinematicPhase, double, double, double, double, double)>();
+        for (var i = 0; i < 30 * seconds && kin.HeightFt < untilFt; i++)
+        {
+            kin.Advance(1.0 / 30);
+            track.Add((kin.Phase, kin.AlongM, kin.HeightFt, kin.SpeedKt, kin.PitchDeg, kin.VerticalSpeedFpm));
+        }
+
+        return track;
+    }
+
+    [Fact]
+    public void Kinematik_Start_A320_rotiert_hebt_ab_und_steigt()
+    {
+        // Die Wegpunkt-KI hob in beta.16/17 ohne zu rotieren ab (0,3°) – die Kinematik rotiert wie ein Airbus
+        var end = End("23L");
+        var plan = TrafficTestPlan.BuildTakeoff(end, approachKt: 135);
+        var kin = TrafficKinematics.Takeoff(plan, KinematicProfile.Airliner, TrafficTestPlan.LineUpM, 0.5, 0, end.ElevationFt, 9, 0.3);
+        Assert.Equal(KinematicPhase.Lineup, kin.Phase);
+        Assert.True(kin.OnGround);
+        Assert.True(kin.IsTakeoff);
+        Assert.Equal(140, kin.RotateKt);
+        Assert.Equal(155, kin.ClimbKt);
+        Assert.Equal(2.0, kin.TakeoffAccelMps2, 3);
+
+        var track = FlyTakeoff(kin);
+
+        // Erst aufgereiht stehen, dann rollen
+        Assert.Equal(KinematicPhase.Lineup, track[(int)(2.5 * 30)].Phase);
+        Assert.Equal(TrafficTestPlan.LineUpM, track[(int)(2.5 * 30)].AlongM, 3);
+
+        // Rotieren bei Vr, mit 8° abheben nach rund 1,5 km
+        Assert.InRange(kin.RotateAlongM!.Value, 1250, 1450);
+        var (liftoffAlong, liftoffKt, liftoffPitch) = kin.Liftoff!.Value;
+        Assert.InRange(liftoffAlong, 1450, 1650);
+        Assert.InRange(liftoffKt, 144, 152);
+        Assert.InRange(liftoffPitch, 8, 8.2);
+        Assert.All(track.Where(t => t.Phase is KinematicPhase.TakeoffRoll or KinematicPhase.Rotation), t => Assert.Equal(0, t.HeightFt));
+
+        // Nach dem Abheben weiter Nase hoch, die Steigrate baut sich auf statt zu springen
+        var climb = track.SkipWhile(t => t.Phase != KinematicPhase.Climb).ToList();
+        Assert.True(climb[0].VsFpm < 500);
+        var firstSeconds = climb.Take(30 * 2).ToList();
+        Assert.All(firstSeconds.Zip(firstSeconds.Skip(1)), p => Assert.True(p.Second.PitchDeg >= p.First.PitchDeg));
+
+        // Steigflug um 15° mit 2500 ft/min bei V2 + 10
+        var at800 = track.First(t => t.HeightFt >= 800);
+        Assert.InRange(at800.PitchDeg, 14, 16);
+        Assert.InRange(at800.VsFpm, 2400, 2600);
+        Assert.Equal(155, at800.SpeedKt, 0);
+
+        // Ab 1500 ft flacher und schneller
+        var at2500 = track.First(t => t.HeightFt >= 2500);
+        Assert.InRange(at2500.VsFpm, 1300, 1600);
+        Assert.True(at2500.SpeedKt > 190);
+        Assert.InRange(at2500.PitchDeg, 5, 10);
+        Assert.False(kin.OnGround);
+        Assert.Equal(0, kin.CrossM, 1);
+    }
+
+    [Fact]
+    public void Kinematik_Start_Allgemeine_Luftfahrt_wie_eine_C172()
+    {
+        var end = End("23L");
+        var plan = TrafficTestPlan.BuildTakeoff(end, approachKt: 65);
+        var kin = TrafficKinematics.Takeoff(plan, KinematicProfile.GeneralAviation, TrafficTestPlan.LineUpM, 0, 0, end.ElevationFt, 4, 0);
+        Assert.Equal(55, kin.RotateKt);
+        Assert.Equal(75, kin.ClimbKt);
+
+        var track = FlyTakeoff(kin, 500);
+
+        var (liftoffAlong, liftoffKt, liftoffPitch) = kin.Liftoff!.Value;
+        Assert.InRange(liftoffAlong, 330, 500);
+        Assert.InRange(liftoffKt, 55, 62);
+        Assert.InRange(liftoffPitch, 6, 6.2);
+        var at300 = track.First(t => t.HeightFt >= 300);
+        Assert.InRange(at300.VsFpm, 650, 750);
+        Assert.InRange(at300.PitchDeg, 8, 10.5);
+        Assert.Equal(75, at300.SpeedKt, 0);
+    }
+
+    [Fact]
+    public void Kinematik_Start_auf_kurzer_Bahn_Vr_bis_60_Prozent()
+    {
+        var shortRunway = new AirportRunway(51.0, 7.0, 100, 90, 1500, 45, "09", "27");
+        var end = RunwayEnd.Find("EDXX", [shortRunway], "09")!;
+        var plan = TrafficTestPlan.BuildTakeoff(end, approachKt: 135);
+        var kin = TrafficKinematics.Takeoff(plan, KinematicProfile.Airliner, TrafficTestPlan.LineUpM, 0, 0, end.ElevationFt, 9, 0);
+
+        Assert.True(kin.TakeoffAccelMps2 > 2.5);
+        FlyTakeoff(kin, 100);
+        Assert.InRange(kin.RotateAlongM!.Value, 700, (1500 * TrafficKinematics.RotateByRunwayShare) + 5);
+        Assert.True(kin.Liftoff!.Value.AlongM < 1500);
+    }
+
+    [Fact]
+    public void Kinematik_Start_faengt_auf_3000_ft_ab()
+    {
+        var end = End("23L");
+        var plan = TrafficTestPlan.BuildTakeoff(end, approachKt: 135);
+        var kin = TrafficKinematics.Takeoff(plan, KinematicProfile.Airliner, TrafficTestPlan.LineUpM, 0, 0, end.ElevationFt, 9, 0);
+
+        FlyTakeoff(kin, double.MaxValue, 300);
+        Assert.InRange(kin.HeightFt, TrafficKinematics.LevelOffFt - 20, TrafficKinematics.LevelOffFt + 20);
+        Assert.InRange(kin.VerticalSpeedFpm, 0, 50);
+        Assert.Equal(KinematicPhase.Climb, kin.Phase);
+    }
+
+    [Fact]
+    public void Kinematik_Start_rollt_die_KI_schon_geht_es_ohne_Stehen_weiter()
+    {
+        var end = End("23L");
+        var plan = TrafficTestPlan.BuildTakeoff(end, approachKt: 120);
+        var kin = TrafficKinematics.Takeoff(plan, KinematicProfile.Airliner, 90, 0, 20, end.ElevationFt, 19, 2.8);
+
+        Assert.Equal(KinematicPhase.TakeoffRoll, kin.Phase);
+        kin.Advance(1);
+        Assert.True(kin.AlongM > 100);
+        Assert.Equal(2.8, kin.PitchDeg, 3);
+        FlyTakeoff(kin, 50);
+
+        // A400M steht mit 2,8° – abheben trotzdem erst bei 8°
+        Assert.InRange(kin.Liftoff!.Value.PitchDeg, 8, 8.2);
+    }
+
     [Theory]
     [InlineData(-0.4, -0.4)]
     [InlineData(11.5, 11.5)]

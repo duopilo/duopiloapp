@@ -20,7 +20,8 @@ public static class TrafficTestTools
         "flies a final approach to a runway by waypoints, lands and stops on the runway – to find out whether Duopilo can run its own traffic. " +
         "Variant A1: spawn 5 NM out on the extended centerline with the gear already down. Variant A2: spawn 15 NM out with the gear up, gear " +
         "command at 3000 ft above the runway so it is down by 2500 ft (the evaluation checks that). Variant B1 is a takeoff instead: spawn " +
-        "lined up 60 m behind the start of the runway, takeoff roll, liftoff, climb straight ahead to 3000 ft above the runway, gear up at a " +
+        "lined up 60 m behind the start of the runway, takeoff roll, rotation, liftoff, climb straight ahead to 3000 ft above the runway " +
+        "(flown by Duopilo itself, kinematicTakeoff), gear up at a " +
         "positive climb rate; the test ends at 2800 ft (climbed), on the ground past the runway end (no_liftoff) or without rolling within " +
         "90 s (no_roll). Variant C1 is an overflight at cruise altitude flown by the waypoint AI: spawn spawnNm (default 40, general " +
         "aviation 15) before the middle of the runway at FL350 (general aviation FL85), straight over it on the runway's direction or " +
@@ -85,7 +86,13 @@ public static class TrafficTestTools
             "false = always land, as before.")] bool goAround = true,
         [Description(
             "B1 only: an extra ground waypoint this many m ahead of the spawn with the takeoff speed, in case the AI doesn't start rolling " +
-            "or accelerating towards a first waypoint in the air (0–60 % of the runway). Empty or 0 = none.")] double? rollM = null,
+            "or accelerating towards a first waypoint in the air (0–60 % of the runway). Empty or 0 = none. Only without kinematicTakeoff.")] double? rollM = null,
+        [Description(
+            "B1 only (default true): Duopilo flies the takeoff itself (kinematic, like the final with kinematicNm) – the waypoint AI lifted " +
+            "off without rotating. 3 s lined up, takeoff roll at 2 m/s² (general aviation 1.4; more on short runways so Vr comes by 60 % " +
+            "of the runway), rotation at Vr = Vapp + 5 (general aviation Vapp − 10) with 3°/s, liftoff at 8° (general aviation 6°), climb " +
+            "at V2 + 10 (general aviation V2) with 2500 ft/min (general aviation 700), nose up to about 15° (path plus angle of attack), " +
+            "from 1500 ft above the runway 1500 ft/min and faster, level at 3000 ft. false = waypoint AI as before.")] bool kinematicTakeoff = true,
         CancellationToken cancellationToken = default)
     {
         if (!Enum.TryParse<TrafficTestVariant>(variant?.Trim(), ignoreCase: true, out var parsed) || !Enum.IsDefined(parsed))
@@ -105,7 +112,7 @@ public static class TrafficTestTools
 
         try
         {
-            var status = await tests.StartTestAsync(new TrafficTestRequest(airport, runway, parsed, title, livery, spawnNm, gearMethod, finalLowFt, touchdownM, approachKt, speed, goAround, rollM, throttlePercent, kinematicNm, trackDeg, flightLevel, cruiseKt, ignoreRunwayRules), cancellationToken);
+            var status = await tests.StartTestAsync(new TrafficTestRequest(airport, runway, parsed, title, livery, spawnNm, gearMethod, finalLowFt, touchdownM, approachKt, speed, goAround, rollM, throttlePercent, kinematicNm, trackDeg, flightLevel, cruiseKt, ignoreRunwayRules, kinematicTakeoff), cancellationToken);
             return Json.Serialize(new { ok = true, status = Brief(status) });
         }
         catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or TimeoutException or ArgumentException)
@@ -126,7 +133,7 @@ public static class TrafficTestTools
         "mean IAS and ground speed), go-around " +
         "(reason, where, height, lowest and highest point after it, seconds until the gear was up, whether 2800 ft were reached), takeoff " +
         "(roll start, liftoff point, speed and pitch, roll distance, height over the runway end, climb rate, pitch and bank up to 1500 ft, " +
-        "gear up, lights at liftoff), kinematics (phase, where Duopilo took over, flare, touchdown, ground height), speed deviation, height " +
+        "gear up, lights at liftoff), kinematics (phase, where Duopilo took over, flare, touchdown, ground height; takeoff: Vr, climb speed, acceleration, where the rotation began, liftoff point, speed and pitch), speed deviation, height " +
         "above the runway when the gear was down and whether that was by 2500 ft, values " +
         "at the approach gates (altitude deviation from the glide path, pitch), approach pitch, touchdown point, speed, sink rate, pitch and " +
         "flare (pitch gain before touchdown), max bank on final, lights on final and after landing, float seconds, stop point. Paths of " +

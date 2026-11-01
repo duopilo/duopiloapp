@@ -35,7 +35,7 @@ Eigener KI-Verkehr von Duopilo statt des Verkehrs aus dem Simulator, Schritt fü
 
 - [x] **Anflug und Landung** (Betas von v0.10) – KI-Verkehrsmodelle fliegen den Endanflug über Wegpunkte und halten auf der Bahn: Fahrwerk bis 2500 ft draußen, Lichter, Freigabeliste der KI-Verkehrsmodelle aus MSFS 2024 (rund 250 Typen) mit Anfluggeschwindigkeit je Typ, Geschwindigkeitsregelung, bis zu 4 gleichzeitig
 - [x] **Durchstarten** (beta.15, in der Beta) – über der Schwelle mehr als 150 ft zu hoch oder Vapp + 20 kt zu schnell, oder bis 900 m nicht am Boden: geradeaus Steigflug auf 3000 ft, Fahrwerk rein; die KI nimmt die neuen Wegpunkte im Flug an
-- [x] **Start** (beta.16, in der Beta) – Spawn auf der Bahn, Startlauf, Abheben, Steigflug auf 3000 ft, Fahrwerk rein, Lichter; Auswertung von Abhebepunkt und Steigflug (rotieren tut die KI noch nicht)
+- [x] **Start** (beta.16, in der Beta) – Spawn auf der Bahn, Startlauf, Abheben, Steigflug auf 3000 ft, Fahrwerk rein, Lichter; Auswertung von Abhebepunkt und Steigflug
 - [x] **Kinematik im Endanflug** (beta.17, in der Beta) – die Wegpunkt-KI fliegt nicht langsamer als rund 169 kt und landet mit festen 133 kt, deshalb bewegt Duopilo das Flugzeug die letzten Meilen selbst: Geschwindigkeit je Typ, 3°-Pfad, Abfangen, weiches Aufsetzen, Bremsen bis zum Halt
 - [x] **Überflüge in Reiseflughöhe** (beta.18, in der Beta) – Flugzeuge, die auf ihrer Flugfläche über deine Gegend ziehen, geflogen von der Wegpunkt-KI
 - [ ] **Flughafenregeln** (beta.19) – welches Flugzeug welchen Platz und welche Bahn nutzen darf, für alle Flughäfen: Militärplätze nur Militärverkehr (A400M, Super Hornet), Heliports und geschlossene Plätze keinen, kleine Plätze nur Allgemeine Luftfahrt, Bahnregeln (EDDF 07L/25R nur Landungen ohne B747, A380, MD-11), Verkehrsmix je Flughafen (Finkenwerder überwiegend Beluga)
@@ -43,6 +43,6 @@ Eigener KI-Verkehr von Duopilo statt des Verkehrs aus dem Simulator, Schritt fü
 - [ ] **Helikopter** – kinematisch: Anflug, Schweben, senkrechtes Landen und Abheben auf Heliports und Flughäfen
 - [ ] **Fahrplan-Verkehr** – Flüge, über den ICAO-Typ den installierten Modellen zugeordnet
 - [x] Auch in Frankfurt testen (drei Parallelbahnen und die Startbahn West)
-- [ ] Rotieren beim Start (Kinematik wie im Endanflug)
+- [x] **Rotieren beim Start** (beta.21) – Duopilo fliegt den Start selbst (Kinematik wie im Endanflug): Startlauf, rotieren bei Vr mit 3°/s, abheben bei 8°, Steigflug um 15°
 
 Ideen und Wünsche: [Issues](https://github.com/duopilo/duopiloapp/issues).
