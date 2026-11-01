@@ -524,6 +524,12 @@ Haltepunkt 23R 14 s, reiht auf, hebt bei 1556 m mit 148 kt ab; DUO01 rückt nach
 Deadlock: DUO03 steht hinter DUO01 auf K, 150 m vor der Schwelle und in Richtung der Bahn – die Bahnprüfung zählt es als „DUO03 on
 final 23R 0.1 NM“, DUO01 reiht nicht auf, DUO03 wartet auf DUO01. Fix in beta.32: im Endanflug zählt nur, wer in der Luft ist.
 
+**beta.32 in Düsseldorf (1.11.2026):** derselbe Test, kein Deadlock mehr: DUO02 startet (1557 m, 149 kt), DUO01 reiht nach
+`runway_clear` auf, DUO03 rückt an den Haltepunkt und meldet `line_up_wait DUO01 departing`. Dann der nächste Fehler: Als DUO02 bei
+2800 ft fertig war, beendete das Ende alle Tests der Bahn – DUO01 im Startlauf bei 60 kt und DUO03 am Haltepunkt verschwanden mit
+„climbed“. Das automatische Ende lief noch über `StopTestAsync(Bahn)` aus der Zeit mit einem Test pro Bahn. Fix in beta.33: ein Test,
+der von selbst fertig ist, endet allein; `traffic_test_stop` kann mit `tail` einen einzelnen Test der Warteschlange beenden.
+
 **Fahrplan des eigenen Verkehrs (Stand 1.11.2026):**
 
 1. Anflug und Landung – erledigt bis beta.14 (Wegpunkte, Fahrwerk bis 2500 ft, Lichter, Freigabeliste, Geschwindigkeit).
@@ -533,7 +539,7 @@ final 23R 0.1 NM“, DUO01 reiht nicht auf, DUO03 wartet auf DUO01. Fix in beta.
 4. Überflüge in Reiseflughöhe – beta.18 (Variante C1, Wegpunkt-KI): Spawn 40 NM vor der Bahnmitte auf FL350 mit 450 kt TAS (ab
    beta.19 als TAS an die KI), geradeaus darüber hinweg, Lichter wie im Reiseflug (Landelicht aus), Ende 40 NM dahinter. Allgemeine
    Luftfahrt FL85, doppelte Vapp, 15 NM. Flughafenregeln für alle Plätze – beta.19.
-5. Rollen – beta.22 (Variante D1): Pushback und Rollen vom Gate zum Haltepunkt über die Rollwege, beta.23 mit Hindernissen; Abflug vom Gate mit Aufreihen und Start – beta.24 (B2), Halt an der richtigen Linie ab beta.28; Rollen nach der Landung – beta.29 (A3); Halt vor gekreuzten Bahnen – beta.30; Abflug-Reihenfolge mit Abstand beim Rollen – beta.31, ohne Deadlock am Haltepunkt ab beta.32.
+5. Rollen – beta.22 (Variante D1): Pushback und Rollen vom Gate zum Haltepunkt über die Rollwege, beta.23 mit Hindernissen; Abflug vom Gate mit Aufreihen und Start – beta.24 (B2), Halt an der richtigen Linie ab beta.28; Rollen nach der Landung – beta.29 (A3); Halt vor gekreuzten Bahnen – beta.30; Abflug-Reihenfolge mit Abstand beim Rollen – beta.31, ohne Deadlock am Haltepunkt ab beta.32, jeder Test endet für sich ab beta.33.
 6. Helikopter – nach dem Rollen: kinematisch (Anflug, Schweben, senkrecht landen und abheben), auf Heliports und Flughäfen;
    Heliports bekommen dann nur Helis.
 
