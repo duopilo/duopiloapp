@@ -15,12 +15,12 @@
 Der Installer (Inno Setup):
 
 - installiert nach `C:\Program Files\Duopilo` – oder ohne Adminrechte nur für deinen eigenen Benutzer,
-- legt einen Startmenü-Eintrag an und auf Wunsch den Autostart (derselbe wie **Mit Windows starten** im Tray-Menü),
+- legt einen Startmenü-Eintrag und eine Desktop-Verknüpfung an (vorausgewählt, abwählbar), auf Wunsch auch den Autostart (derselbe wie **Mit Windows starten** im Tray-Menü),
 - nimmt die Sprache von Windows (sonst Englisch).
 
 Bei Updates bleibt `appsettings.Local.json` unangetastet. Mitgelieferte Profile, `atc-templates.json` und `appsettings.json` werden erneuert; deine eigenen Änderungen daran landen vorher als Sicherung in `backup\<date>\`.
 
-Die Deinstallation entfernt Programm, Startmenü-Eintrag und Autostart und fragt, ob auch die Einstellungen und `%LOCALAPPDATA%\Duopilo` weg sollen.
+Die Deinstallation entfernt Programm, Startmenü-Eintrag, Desktop-Verknüpfung und Autostart und fragt, ob auch die Einstellungen und `%LOCALAPPDATA%\Duopilo` weg sollen.
 
 Außerdem gibt es ein ZIP mit demselben self-contained Build.
 

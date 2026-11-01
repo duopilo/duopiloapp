@@ -13,7 +13,11 @@
 ;    Updates erneuert. Hat jemand sie seit der letzten Installation geändert, sichert der Installer sie vorher nach
 ;    backup\<Datum>\. Vergleichsbasis ist shipped-files.sha256 (Prüfsummen der zuletzt installierten Fassung).
 ;  - %LOCALAPPDATA%\Duopilo (Logs, Modelle, Dashboard-Einstellungen) fasst der Installer nicht an.
-; Deinstallation: Programm, Startmenü-Eintrag und Autostart weg; Einstellungen und Daten nur nach Rückfrage.
+; Desktop-Verknüpfung: bei einer Neuinstallation vorausgewählt; bei Updates gilt die letzte Wahl (Installationen ohne
+;  diese Option: aus). Ein stilles Update aus Duopilo heraus erneuert nur eine vorhandene Verknüpfung – eine gelöschte
+;  kommt nicht zurück. Für alle Benutzer installiert liegt sie auf dem öffentlichen Desktop.
+; Deinstallation: Programm, Startmenü-Eintrag, Desktop-Verknüpfung und Autostart weg; Einstellungen und Daten nur nach
+;  Rückfrage.
 ;
 ; Update von Kopilot (bis 0.9.x hieß Duopilo so – gleiche AppId):
 ;  - Lag Kopilot im Standardordner …\Kopilot, kommt Duopilo daneben nach …\Duopilo. appsettings.Local.json (mit
@@ -126,6 +130,8 @@ german.LegacyRemoved=%1 heißt jetzt %2. Deine Einstellungen, eigenen Profile un
 german.LegacyKept=%1 heißt jetzt %2. Der alte Programmordner ließ sich nicht ganz entfernen:%n%n%3%n%nDeine Einstellungen sind übernommen – den Ordner kannst du selbst löschen.
 
 [Tasks]
+; checkedonce: bei Updates nicht von selbst angehakt, wenn die Option vorher nicht gewählt war (oder es sie noch nicht gab)
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: checkedonce
 Name: "autostart"; Description: "{cm:AutostartTask}"; GroupDescription: "{cm:AutostartGroup}"; Flags: unchecked
 
 [InstallDelete]
@@ -152,6 +158,7 @@ Source: "appsettings.Local.leer.de.json"; DestDir: "{app}"; DestName: "appsettin
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon; Check: DesktopIconWanted
 
 [Registry]
 ; Gleicher Eintrag wie „Mit Windows starten“ im Tray-Menü – beides schaltet also dasselbe.
@@ -175,6 +182,9 @@ var
   { Ordner einer vorhandenen Kopilot-Installation, wenn Duopilo in einen anderen Ordner kommt – sonst leer.
     Wird erst in PrepareToInstall bestimmt (vorher steht der Zielordner noch nicht fest). }
   OldDir: String;
+  { Gab es schon eine Installation (gleiche AppId, auch Kopilot)? Wird in PrepareToInstall gemerkt – danach schreibt
+    Setup den Uninstall-Schlüssel neu. }
+  WasInstalled: Boolean;
 
 { Update aus Duopilo heraus: Duopilo startet den Installer still mit /LAUNCH=1 und hat sich vorher beendet. }
 function LaunchAfterUpdate(): Boolean;
@@ -190,6 +200,15 @@ begin
   Result := '';
   if RegQueryStringValue(HKA, UninstallKey, 'Inno Setup: App Path', Path) and (Trim(Path) <> '') then
     Result := RemoveBackslashUnlessRoot(Trim(Path));
+end;
+
+{ Check für die Desktop-Verknüpfung (zusätzlich zur Aufgabe desktopicon): Neuinstallation oder Setup mit Dialog – wie
+  gewählt. Stilles Update (aus Duopilo heraus): nur eine vorhandene Verknüpfung erneuern, eine gelöschte nicht wieder
+  anlegen (die gemerkte Auswahl würde sie sonst bei jedem Update zurückbringen). }
+function DesktopIconWanted(): Boolean;
+begin
+  Result := not WasInstalled or not WizardSilent()
+    or FileExists(ExpandConstant('{autodesktop}\{#AppName}.lnk'));
 end;
 
 { Zielordner: neu Programme\Duopilo; Update aus dem alten Standardordner …\Kopilot daneben nach …\Duopilo;
@@ -437,6 +456,7 @@ var
   Running: String;
 begin
   Result := '';
+  WasInstalled := PreviousAppDir() <> '';
   OldDir := FindOldDir();
   if OldDir <> '' then
     Log('Update from {#LegacyName} in its old folder ' + OldDir + ' to ' + ExpandConstant('{app}'));
