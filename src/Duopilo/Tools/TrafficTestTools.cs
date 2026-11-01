@@ -31,7 +31,10 @@ public static class TrafficTestTools
         "taxiway network, runways only crossed) to the first reachable holding point of the runway, pushback when the nose points away " +
         "from the taxiway (2.5 kt, in a curve onto the taxiway), 10 s, then taxi at 15 kt (general aviation 10), slower in turns, stop " +
         "just before the holding point; nav, beacon, taxi and logo lights; the test ends after a minute at the holding point (holding). " +
-        "traffic_taxi_info shows the network and the route without spawning. Up to 4 tests at the same time, one per runway (e.g. a parallel approach: one call for 05L, one for 05R); starting a " +
+        "traffic_taxi_info shows the network and the route without spawning. Variant B2 is a departure from the gate: like D1 to the " +
+        "holding point, 15 s there, then line up (over the taxi points onto the centerline, in a curve into the takeoff direction, " +
+        "40 m on) and take off like B1 with kinematicTakeoff from there – landing light and strobes on; the evaluation switches to the " +
+        "takeoff's, the test ends at 2800 ft (climbed). Up to 4 tests at the same time, one per runway (e.g. a parallel approach: one call for 05L, one for 05R); starting a " +
         "test on a runway that already has one replaces it. Pick runways the pilot is not using right now. Samples (1 per second) go to one CSV " +
         "per test in the data folder (traffic-tests). Follow with traffic_test_status, end with traffic_test_stop (the aircraft is removed; " +
         "after MaxMinutes, default 15, also without stop). Lights: nav, beacon, strobes, landing, taxi and logo on at spawn; after touchdown " +
@@ -51,7 +54,7 @@ public static class TrafficTestTools
         TrafficTestService tests,
         [Description("ICAO code of the airport, e.g. EDDL. Must be within 80 NM of the pilot's aircraft.")] string airport,
         [Description("Runway end to land on or take off from, e.g. 23L (5L and 05L are the same).")] string runway,
-        [Description("A1 (gear down from spawn, 5 NM), A2 (spawn 15 NM with the gear up, gear down at 3000 ft above the runway), B1 (takeoff from the runway), C1 (overflight at cruise altitude) or D1 (taxi from a parking spot to the holding point of the runway). Default A1.")] string variant = "A1",
+        [Description("A1 (gear down from spawn, 5 NM), A2 (spawn 15 NM with the gear up, gear down at 3000 ft above the runway), B1 (takeoff from the runway), C1 (overflight at cruise altitude), D1 (taxi from a parking spot to the holding point of the runway) or B2 (departure from the gate: taxi, line up, take off). Default A1.")] string variant = "A1",
         [Description("Aircraft title as listed by traffic_test_models. Empty = automatic (an FSLTL A320 if installed, else a verified model of the approval list – a PassiveAircraft model –, else any A320; FlyByWire and Headwind models are skipped).")] string? title = null,
         [Description("Livery name for the title (MSFS 2024 modular aircraft). Empty = default livery.")] string? livery = null,
         [Description("Spawn distance before the threshold in NM (2–30; C1: before the overflight point, 5–75). Empty = default of the variant.")] double? spawnNm = null,
@@ -99,7 +102,7 @@ public static class TrafficTestTools
             "of the runway), rotation at Vr = Vapp + 5 (general aviation Vapp − 10) with 3°/s, liftoff at 8° (general aviation 6°), climb " +
             "at V2 + 10 (general aviation V2) with 2500 ft/min (general aviation 700), nose up to about 15° (path plus angle of attack), " +
             "from 1500 ft above the runway 1500 ft/min and faster, level at 3000 ft. false = waypoint AI as before.")] bool kinematicTakeoff = true,
-        [Description("D1 only: parking spot to start from, e.g. 'A12', 'P5' or 'G3' (traffic_taxi_info lists them). Empty = one that fits the type, at random.")] string? parking = null,
+        [Description("D1 and B2: parking spot to start from, e.g. 'A12', 'P5' or 'G3' (traffic_taxi_info lists them). Empty = one that fits the type, at random.")] string? parking = null,
         CancellationToken cancellationToken = default)
     {
         if (!Enum.TryParse<TrafficTestVariant>(variant?.Trim(), ignoreCase: true, out var parsed) || !Enum.IsDefined(parsed))

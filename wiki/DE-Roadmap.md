@@ -39,7 +39,7 @@ Eigener KI-Verkehr von Duopilo statt des Verkehrs aus dem Simulator, Schritt fü
 - [x] **Kinematik im Endanflug** (beta.17, in der Beta) – die Wegpunkt-KI fliegt nicht langsamer als rund 169 kt und landet mit festen 133 kt, deshalb bewegt Duopilo das Flugzeug die letzten Meilen selbst: Geschwindigkeit je Typ, 3°-Pfad, Abfangen, weiches Aufsetzen, Bremsen bis zum Halt
 - [x] **Überflüge in Reiseflughöhe** (beta.18, in der Beta) – Flugzeuge, die auf ihrer Flugfläche über deine Gegend ziehen, geflogen von der Wegpunkt-KI
 - [ ] **Flughafenregeln** (beta.19) – welches Flugzeug welchen Platz und welche Bahn nutzen darf, für alle Flughäfen: Militärplätze nur Militärverkehr (A400M, Super Hornet), Heliports und geschlossene Plätze keinen, kleine Plätze nur Allgemeine Luftfahrt, Bahnregeln (EDDF 07L/25R nur Landungen ohne B747, A380, MD-11), Verkehrsmix je Flughafen (Finkenwerder überwiegend Beluga)
-- [ ] **Rollen** (beta.22, erster Test) – Pushback und Rollen vom Gate zum Haltepunkt über die Rollwege des Flughafens (Rollweg-Netz aus MSFS); Aufreihen und Rollen nach der Landung noch offen
+- [ ] **Rollen** (beta.22, erster Test) – Pushback und Rollen vom Gate zum Haltepunkt über die Rollwege des Flughafens (Rollweg-Netz aus MSFS); Aufreihen und Start vom Gate (B2) ab beta.24; Rollen nach der Landung noch offen
 - [ ] **Helikopter** – kinematisch: Anflug, Schweben, senkrechtes Landen und Abheben auf Heliports und Flughäfen
 - [ ] **Fahrplan-Verkehr** – Flüge, über den ICAO-Typ den installierten Modellen zugeordnet
 - [x] Auch in Frankfurt testen (drei Parallelbahnen und die Startbahn West)

@@ -21,6 +21,9 @@ public enum TrafficTestVariant
 
     /// <summary>Rollen: Spawn an einer Parkposition, Pushback, über die Rollwege zum Haltepunkt der Startbahn (Duopilo rollt selbst).</summary>
     D1,
+
+    /// <summary>Abflug vom Gate: wie D1 bis zum Haltepunkt, dann aufreihen und starten wie B1 (alles mit Kinematik).</summary>
+    B2,
 }
 
 /// <summary>
@@ -242,8 +245,11 @@ public sealed record TrafficTestPlan(
     /// <summary>Ob es ein Überflug ist (<see cref="TrafficTestVariant.C1"/>).</summary>
     public bool IsOverflight => Variant == TrafficTestVariant.C1;
 
-    /// <summary>Ob es Rollen ist (<see cref="TrafficTestVariant.D1"/>).</summary>
-    public bool IsTaxi => Variant == TrafficTestVariant.D1;
+    /// <summary>Ob es mit Rollen beginnt (<see cref="TrafficTestVariant.D1"/>, <see cref="TrafficTestVariant.B2"/>).</summary>
+    public bool IsTaxi => Variant is TrafficTestVariant.D1 or TrafficTestVariant.B2;
+
+    /// <summary>Ob nach dem Rollen aufgereiht und gestartet wird (<see cref="TrafficTestVariant.B2"/>).</summary>
+    public bool TakeoffAfterTaxi => Variant == TrafficTestVariant.B2;
 
     /// <summary>Rollen: Route von der Parkposition zum Haltepunkt.</summary>
     public TaxiRoute? Taxi { get; init; }
@@ -346,9 +352,9 @@ public sealed record TrafficTestPlan(
             return BuildOverflight(runway.Overhead(null), TrafficCategory.Airliner, approachKt);
         }
 
-        if (variant == TrafficTestVariant.D1)
+        if (variant is TrafficTestVariant.D1 or TrafficTestVariant.B2)
         {
-            throw new ArgumentException("D1 (taxi) needs a taxi route, see BuildTaxi.", nameof(variant));
+            throw new ArgumentException("D1 and B2 (taxi) need a taxi route, see BuildTaxi.", nameof(variant));
         }
 
         if (runway.LengthM < MinRunwayM)
@@ -509,7 +515,7 @@ public sealed record TrafficTestPlan(
     /// Rollen (D1): Spawn am Anfang des Wegs (Parkposition, Kurs wie beim Losrollen bzw. Pushback), Fahrwerk unten. Wegpunkte bekommt
     /// die KI keine – Duopilo rollt selbst; der eine Eintrag am Haltepunkt dient Status und Auswertung.
     /// </summary>
-    public static TrafficTestPlan BuildTaxi(RunwayEnd runway, double? approachKt, TaxiRoute route, TaxiGraph graph)
+    public static TrafficTestPlan BuildTaxi(RunwayEnd runway, double? approachKt, TaxiRoute route, TaxiGraph graph, bool takeoff = false)
     {
         var start = route.PushbackPath is { } push ? push.At(0) : route.TaxiPath.At(0);
         var heading = route.PushbackPath is not null ? TrafficMath.Normalize(start.HeadingDeg + 180) : start.HeadingDeg;
@@ -522,7 +528,7 @@ public sealed record TrafficTestPlan(
             new("hold", holdAlong, new AiWaypoint(hold.Latitude, hold.Longitude, runway.ElevationFt, 0, AiWaypointFlags.OnGround)),
         };
         var vapp = Math.Clamp(approachKt ?? DefaultApproachKt, 50, 180);
-        return new TrafficTestPlan(TrafficTestVariant.D1, runway, spawn, 0, true, null, null, 0, 0, 0, vapp, waypoints, [], [])
+        return new TrafficTestPlan(takeoff ? TrafficTestVariant.B2 : TrafficTestVariant.D1, runway, spawn, 0, true, null, null, 0, 0, 0, vapp, waypoints, [], [])
         {
             Taxi = route,
         };
