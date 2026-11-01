@@ -409,6 +409,59 @@ public sealed class TaxiTests
     }
 
     [Fact]
+    public void Haltepunkt_direkt_vor_der_Einmuendung_nicht_an_einem_anderen_Rollweg()
+    {
+        // Wie K1 in EDDL (beta.24): An der Kreuzung J geht ein Zubringer mit Haltepunkt B direkt auf die Bahn; der Rollweg geradeaus
+        // hat auch eine Haltelinie A und führt erst über den nächsten Zubringer (Haltepunkt C) auf die Bahn
+        TaxiPointData P(double east, double north, int type = 1) => new(type, 0, east, north);
+        var data = new AirportTaxiData(
+            "EDXT",
+            51.0,
+            7.0,
+            50,
+            [
+                P(-500, 200),      // 0 Rollweg von Osten
+                P(-700, 200),      // 1 Kreuzung J
+                P(-760, 200, 2),   // 2 Haltelinie A am Rollweg geradeaus
+                P(-900, 200),      // 3
+                P(-900, 90, 2),    // 4 Haltepunkt C
+                P(-900, 0),        // 5 Bahn
+                P(-700, 90, 2),    // 6 Haltepunkt B
+                P(-700, 0),        // 7 Bahn
+                P(-1000, 0),       // 8 Bahnanfang
+                P(1000, 0),        // 9 Bahnende
+            ],
+            [new TaxiParkingData(9, 0, 12, 0, 1, 0, 0, 20, -500, 300)],
+            [
+                new TaxiPathData(3, 20, 0, 0, 0, 0, 0),
+                new TaxiPathData(1, 20, 0, 0, 0, 1, 0),
+                new TaxiPathData(1, 20, 0, 0, 1, 2, 0),
+                new TaxiPathData(1, 20, 0, 0, 2, 3, 0),
+                new TaxiPathData(1, 20, 0, 0, 3, 4, 0),
+                new TaxiPathData(1, 20, 0, 0, 4, 5, 0),
+                new TaxiPathData(1, 20, 0, 0, 1, 6, 0),
+                new TaxiPathData(1, 20, 0, 0, 6, 7, 0),
+                new TaxiPathData(2, 45, 9, 0, 8, 5, 0),
+                new TaxiPathData(2, 45, 9, 0, 5, 7, 0),
+                new TaxiPathData(2, 45, 9, 0, 7, 9, 0),
+            ],
+            ["K"]);
+        var graph = TaxiGraph.Build(data, [Runway]);
+        var end = End("09");
+
+        // A führt nur über B oder C auf die Bahn – kein Haltepunkt, an dem man vor der Bahn steht
+        var candidates = TaxiRoute.HoldsBeforeEntry(graph, end);
+        Assert.Equal([4, 6], candidates.Select(c => c.Hold.Node.Id));
+        Assert.Equal([4, 5], candidates[0].LineUp);
+        Assert.Equal([6, 7], candidates[1].LineUp);
+
+        // Aufreihen von dort, wo gehalten wird – direkt auf die Bahn
+        var route = TaxiRoute.Plan(graph, end, graph.FindParking("A1")!, TaxiProfile.Airliner)!.WithLineUp(graph, end, TaxiProfile.Airliner);
+        Assert.Equal(4, route.Hold.Node.Id);
+        Assert.Equal([4, 5], route.LineUpNodes);
+    }
+
+    [Fact]
     public void Andere_Flugzeuge_sperren_Abschnitte_und_Parkpositionen()
     {
         var graph = Graph();
