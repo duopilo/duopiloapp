@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using Duopilo.Atc.Airspace;
 using Duopilo.FlightPlan;
 using Duopilo.Localization;
 using Duopilo.Sim;
@@ -40,7 +41,8 @@ public sealed record TrafficTestRequest(
     double? KinematicNm = null,
     double? TrackDeg = null,
     double? FlightLevel = null,
-    double? CruiseKt = null);
+    double? CruiseKt = null,
+    bool IgnoreRunwayRules = false);
 
 /// <summary>Zeitpunkt und Text eines Ereignisses der Testlinie.</summary>
 public sealed record TrafficTestEvent(double Seconds, string Text);
@@ -257,6 +259,18 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 }
             }
 
+            // Modell und Bahnregeln vor dem Ersetzen: passt das Flugzeug nicht auf die Bahn, bleibt der laufende Test
+            var (title, livery) = await ResolveModelAsync(request, ct);
+            var modelType = TrafficModels.TypeOf(title, livery);
+            var approachKt = request.ApproachKt ?? modelType?.ApproachKt;
+            var category = modelType?.Category ?? TrafficCategory.Airliner;
+            var ruleMessages = new List<string>();
+            var violations = CheckRunwayRules(runway, request.Variant, modelType?.IcaoType, category, approachKt, ruleMessages);
+            if (violations.Count > 0 && !request.IgnoreRunwayRules)
+            {
+                throw new InvalidOperationException(Loc.T("tools.trafficTest.runwayRules", runway.Designation, string.Join(" ", violations.Select(v => v.Text))));
+            }
+
             // Ein Test je Bahn: den alten auf dieser Bahn ersetzen, auf anderen Bahnen höchstens MaxConcurrent
             foreach (var old in Running().Where(r => r.SameRunway(runway)))
             {
@@ -270,10 +284,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             }
 
             var slot = Enumerable.Range(0, MaxConcurrent).First(i => running.All(r => r.Slot != i));
-            var (title, livery) = await ResolveModelAsync(request, ct);
-            var approachKt = request.ApproachKt ?? TrafficModels.TypeOf(title, livery)?.ApproachKt;
             double? throttle = request.SpeedMethod == TrafficSpeedMethod.Throttle ? request.ThrottlePercent ?? TrafficTestPlan.DefaultThrottlePercent : null;
-            var category = TrafficModels.TypeOf(title, livery)?.Category ?? TrafficCategory.Airliner;
             var plan = request.Variant switch
             {
                 TrafficTestVariant.B1 => TrafficTestPlan.BuildTakeoff(runway, approachKt, request.RollM, throttle),
@@ -312,6 +323,16 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             foreach (var warning in plan.Warnings)
             {
                 run.AddEvent(0, "warning:" + warning);
+            }
+
+            foreach (var violation in violations)
+            {
+                run.AddEvent(0, "warning:runway_rules_ignored " + violation.Code + ": " + violation.Text);
+            }
+
+            foreach (var message in ruleMessages)
+            {
+                run.AddEvent(0, "warning:runway_rules_file " + message);
             }
 
             // Gesperrte (FBW, Headwind) und nicht freigegebene Modelle gehen im Test trotzdem, aber mit Hinweis
@@ -797,6 +818,34 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         var seconds = Math.Max(0, (sample.Utc - run.SpawnUtc).TotalSeconds);
         run.AddEvent(Math.Round(seconds, 1), string.Create(CultureInfo.InvariantCulture,
             $"kinematic_start at {-along / RunwayEnd.MetersPerNm:0.0} NM, {kin.StartHeightFt:0} ft, {sample.IndicatedKt:0} kt (cg {cg:0.0} ft, static pitch {sample.StaticPitchDeg:0.0}°)"));
+    }
+
+    /// <summary>
+    /// Bahnregeln für den Test: Landung (A1/A2) oder Start (B1) nach runway-rules.json (bei jedem Start frisch gelesen, damit eigene
+    /// Änderungen sofort gelten) und nach Länge und Breite. Der Überflug (C1) braucht keine Bahn.
+    /// </summary>
+    private IReadOnlyList<TrafficRunwayViolation> CheckRunwayRules(
+        RunwayEnd runway,
+        TrafficTestVariant variant,
+        string? icaoType,
+        TrafficCategory category,
+        double? approachKt,
+        List<string> messages)
+    {
+        if (variant == TrafficTestVariant.C1)
+        {
+            return [];
+        }
+
+        var rules = TrafficRunwayRules.Load(AirspaceLoader.Roots(_options.ResolveDataDirectory()), messages);
+        foreach (var message in messages)
+        {
+            _log.LogWarning(Loc.Log("log.trafficTest.runwayRulesFile"), message);
+        }
+
+        var operation = variant == TrafficTestVariant.B1 ? TrafficOperation.Departure : TrafficOperation.Arrival;
+        var vapp = Math.Clamp(approachKt ?? TrafficTestPlan.DefaultApproachKt, 50, 180);
+        return rules.Check(runway, operation, icaoType, category, vapp);
     }
 
     /// <summary>Lage am Boden aus STATIC PITCH (Nase hoch positiv wie static_pitch in flight_model.cfg); Unsinn ergibt 0.</summary>

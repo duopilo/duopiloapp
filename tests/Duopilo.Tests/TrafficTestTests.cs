@@ -1077,6 +1077,145 @@ public sealed class TrafficTestTests
     public void Lage_am_Boden_aus_STATIC_PITCH(double staticPitch, double expected) =>
         Assert.Equal(expected, TrafficTestService.GroundPitch(staticPitch));
 
+    private static RunwayEnd Eddf(string designation, double lengthM = 4000, double widthM = 45) =>
+        new("EDDF", designation, 50.03, 8.53, 360, designation.StartsWith('1') ? 180 : 70, lengthM, widthM);
+
+    private static TrafficRunwayRules ShippedRules()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "src", "Duopilo", "data", TrafficRunwayRules.Folder, TrafficRunwayRules.FileName)))
+        {
+            dir = dir.Parent;
+        }
+
+        Assert.NotNull(dir);
+        var messages = new List<string>();
+        var rules = TrafficRunwayRules.Load([Path.Combine(dir.FullName, "src", "Duopilo", "data")], messages);
+        Assert.Empty(messages);
+        return rules;
+    }
+
+    [Theory]
+    [InlineData("07L", TrafficTestOperationCase.MD11Arrival, "type")]
+    [InlineData("25R", TrafficTestOperationCase.B744Arrival, "type")]
+    [InlineData("7L", TrafficTestOperationCase.A388Arrival, "type")]
+    [InlineData("07L", TrafficTestOperationCase.A320Departure, "operation")]
+    [InlineData("18", TrafficTestOperationCase.A320Arrival, "operation")]
+    [InlineData("36", TrafficTestOperationCase.A320Departure, "operation")]
+    public void Bahnregeln_EDDF_sperren_Typen_und_Betriebsarten(string runway, TrafficTestOperationCase testCase, string code)
+    {
+        var (type, operation, vapp) = Case(testCase);
+        var violations = ShippedRules().Check(Eddf(runway), operation, type, TrafficCategory.Airliner, vapp);
+        Assert.Contains(violations, v => v.Code == code);
+    }
+
+    [Theory]
+    [InlineData("07L", TrafficTestOperationCase.A320Arrival)]
+    [InlineData("07C", TrafficTestOperationCase.MD11Arrival)]
+    [InlineData("07R", TrafficTestOperationCase.A388Arrival)]
+    [InlineData("18", TrafficTestOperationCase.A320Departure)]
+    [InlineData("25C", TrafficTestOperationCase.B744Arrival)]
+    public void Bahnregeln_EDDF_erlauben_den_Rest(string runway, TrafficTestOperationCase testCase)
+    {
+        var (type, operation, vapp) = Case(testCase);
+        Assert.Empty(ShippedRules().Check(Eddf(runway, runway == "07L" ? 2800 : 4000), operation, type, TrafficCategory.Airliner, vapp));
+    }
+
+    public enum TrafficTestOperationCase
+    {
+        A320Arrival,
+        A320Departure,
+        MD11Arrival,
+        B744Arrival,
+        A388Arrival,
+    }
+
+    private static (string Type, TrafficOperation Operation, double Vapp) Case(TrafficTestOperationCase testCase) => testCase switch
+    {
+        TrafficTestOperationCase.A320Arrival => ("A20N", TrafficOperation.Arrival, 135),
+        TrafficTestOperationCase.A320Departure => ("A20N", TrafficOperation.Departure, 135),
+        TrafficTestOperationCase.MD11Arrival => ("MD11", TrafficOperation.Arrival, 155),
+        TrafficTestOperationCase.B744Arrival => ("B744", TrafficOperation.Arrival, 150),
+        _ => ("A388", TrafficOperation.Arrival, 145),
+    };
+
+    [Fact]
+    public void Bahnregeln_Laenge_und_Breite_aus_den_Bahndaten()
+    {
+        var rules = new TrafficRunwayRules();
+
+        // 737-800 braucht rund 1580 m zum Landen und 2200 m zum Starten, eine C172 rund 320 m
+        Assert.Contains(rules.Check(Eddf("09", 1200), TrafficOperation.Arrival, "B738", TrafficCategory.Airliner, 145), v => v.Code == "too_short");
+        Assert.Empty(rules.Check(Eddf("09", 1800), TrafficOperation.Arrival, "B738", TrafficCategory.Airliner, 145));
+        Assert.Contains(rules.Check(Eddf("09", 1800), TrafficOperation.Departure, "B738", TrafficCategory.Airliner, 145), v => v.Code == "too_short");
+        Assert.Empty(rules.Check(Eddf("09", 600, 18), TrafficOperation.Departure, "C172", TrafficCategory.GeneralAviation, 65));
+
+        // Breite: Heavy und Super 45 m, sonst Verkehrsflugzeuge 30 m, Allgemeine Luftfahrt ohne Prüfung; 0 = unbekannt
+        Assert.Contains(rules.Check(Eddf("09", 4000, 30), TrafficOperation.Arrival, "B77W", TrafficCategory.Airliner, 150), v => v.Code == "too_narrow");
+        Assert.Empty(rules.Check(Eddf("09", 4000, 30), TrafficOperation.Arrival, "A20N", TrafficCategory.Airliner, 135));
+        Assert.Contains(rules.Check(Eddf("09", 2000, 23), TrafficOperation.Arrival, "AT76", TrafficCategory.Airliner, 115), v => v.Code == "too_narrow");
+        Assert.Empty(rules.Check(Eddf("09", 4000, 0), TrafficOperation.Arrival, "A388", TrafficCategory.Airliner, 145));
+    }
+
+    [Theory]
+    [InlineData("A388", TrafficCategory.Airliner, TrafficWake.Super)]
+    [InlineData("MD11", TrafficCategory.Airliner, TrafficWake.Heavy)]
+    [InlineData("B744", TrafficCategory.Airliner, TrafficWake.Heavy)]
+    [InlineData("A359", TrafficCategory.Airliner, TrafficWake.Heavy)]
+    [InlineData("A20N", TrafficCategory.Airliner, TrafficWake.Medium)]
+    [InlineData("C172", TrafficCategory.GeneralAviation, TrafficWake.Light)]
+    [InlineData(null, TrafficCategory.Airliner, TrafficWake.Medium)]
+    public void Wirbelschleppen_Kategorie_aus_dem_Typ(string? type, TrafficCategory category, TrafficWake wake) =>
+        Assert.Equal(wake, TrafficRunwayRules.WakeOf(type, category));
+
+    [Fact]
+    public void Bahnregeln_eigene_Datei_mit_Kategorie_und_Wirbelschleppe()
+    {
+        var rules = TrafficRunwayRules.Parse("""
+            // Kommentar
+            { "airports": { "edxx": { "runways": [
+              { "runways": ["09", "27"], "categories": ["generalaviation"], "note": "Gras" },
+              { "runways": ["04"], "maxWake": "medium" },
+            ] } } }
+            """);
+
+        Assert.Contains(rules.Check(Eddf("09") with { Airport = "EDXX" }, TrafficOperation.Arrival, "A20N", TrafficCategory.Airliner, 135), v => v.Code == "category");
+        Assert.Empty(rules.Check(Eddf("27") with { Airport = "EDXX" }, TrafficOperation.Departure, "C172", TrafficCategory.GeneralAviation, 65));
+        Assert.Contains(rules.Check(Eddf("04") with { Airport = "EDXX" }, TrafficOperation.Arrival, "B77W", TrafficCategory.Airliner, 150), v => v.Code == "wake");
+        Assert.Empty(rules.Check(Eddf("04") with { Airport = "EDXX" }, TrafficOperation.Arrival, "A20N", TrafficCategory.Airliner, 135));
+    }
+
+    [Fact]
+    public void Bahnregeln_eigener_Ordner_ersetzt_den_Flughafen()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "duopilo-rules-" + Guid.NewGuid().ToString("N"));
+        var own = Path.Combine(root, "own");
+        var shipped = Path.Combine(root, "shipped");
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(own, TrafficRunwayRules.Folder));
+            Directory.CreateDirectory(Path.Combine(shipped, TrafficRunwayRules.Folder));
+            File.WriteAllText(Path.Combine(shipped, TrafficRunwayRules.Folder, TrafficRunwayRules.FileName),
+                """{ "airports": { "EDDF": { "runways": [ { "runways": ["18"], "operations": ["departure"] } ] }, "EDDL": { "runways": [ { "runways": ["05R"], "operations": [] } ] } } }""");
+            File.WriteAllText(Path.Combine(own, TrafficRunwayRules.Folder, TrafficRunwayRules.FileName),
+                """{ "airports": { "EDDF": { "runways": [] } } }""");
+
+            var messages = new List<string>();
+            var rules = TrafficRunwayRules.Load([own, shipped], messages);
+            Assert.Empty(messages);
+            Assert.Empty(rules.Check(Eddf("18"), TrafficOperation.Arrival, "A20N", TrafficCategory.Airliner, 135));
+            Assert.Contains(rules.Check(Eddf("05R") with { Airport = "EDDL" }, TrafficOperation.Arrival, "A20N", TrafficCategory.Airliner, 135), v => v.Code == "operation");
+
+            File.WriteAllText(Path.Combine(own, TrafficRunwayRules.Folder, TrafficRunwayRules.FileName), "{ kaputt");
+            TrafficRunwayRules.Load([own, shipped], messages);
+            Assert.Single(messages);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     [Fact]
     public void Ueberflug_ueber_die_Bahnmitte_auf_FL350_geradeaus()
     {

@@ -32,7 +32,11 @@ public static class TrafficTestTools
         "Vapp + 20 kt at the threshold, or not on the ground 900 m behind it (short runways: a third of the length) – then new waypoints " +
         "straight ahead, climb to 3000 ft above the runway, gear up at a positive climb rate, landing light stays on; the test ends at " +
         "2800 ft (reason go_around) or 5 minutes after the go-around (go_around_timeout). " +
-        "Models outside the approval list (traffic_test_models: status) get a warning.")]
+        "Models outside the approval list (traffic_test_models: status) get a warning. Runway rules: the aircraft must fit the runway – " +
+        "landing (A1/A2) or takeoff (B1) allowed there, category, ICAO type and wake category not excluded (data\\traffic\\runway-rules.json, " +
+        "e.g. EDDF 07L/25R landings only without B747, A380, MD-11; 18 takeoffs only), long enough (landing about 0.075 × Vapp² m, " +
+        "takeoff 1.4 times that) and wide enough (heavy and super 45 m, other airliners 30 m); otherwise the start is refused with the " +
+        "reasons (ignoreRunwayRules to test anyway).")]
     public static async Task<string> Start(
         TrafficTestService tests,
         [Description("ICAO code of the airport, e.g. EDDL. Must be within 80 NM of the pilot's aircraft.")] string airport,
@@ -72,6 +76,7 @@ public static class TrafficTestTools
         [Description("C1: track of the overflight in degrees true. Empty = direction of the runway.")] double? trackDeg = null,
         [Description("C1: flight level, e.g. 350. Empty = 350 (general aviation 85).")] double? flightLevel = null,
         [Description("C1: true cruise speed in kt. Empty = 450 (general aviation twice the approach speed, at most 300); the AI gets it as IAS.")] double? cruiseKt = null,
+        [Description("Start even if the aircraft doesn't fit the runway (runway rules, length, width) – the reasons go into the events. Default false.")] bool ignoreRunwayRules = false,
         [Description(
             "Go around when the approach doesn't fit (default true): too high or too fast at the threshold, or no touchdown by 900 m. " +
             "false = always land, as before.")] bool goAround = true,
@@ -97,7 +102,7 @@ public static class TrafficTestTools
 
         try
         {
-            var status = await tests.StartTestAsync(new TrafficTestRequest(airport, runway, parsed, title, livery, spawnNm, gearMethod, finalLowFt, touchdownM, approachKt, speed, goAround, rollM, throttlePercent, kinematicNm, trackDeg, flightLevel, cruiseKt), cancellationToken);
+            var status = await tests.StartTestAsync(new TrafficTestRequest(airport, runway, parsed, title, livery, spawnNm, gearMethod, finalLowFt, touchdownM, approachKt, speed, goAround, rollM, throttlePercent, kinematicNm, trackDeg, flightLevel, cruiseKt, ignoreRunwayRules), cancellationToken);
             return Json.Serialize(new { ok = true, status });
         }
         catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or TimeoutException or ArgumentException)
