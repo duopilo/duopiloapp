@@ -611,20 +611,38 @@ public sealed class TrafficTestService : IHostedService, IDisposable
     }
 
     /// <summary>
-    /// Beendet laufende Tests: Abfrage stoppen, Flugzeug entfernen, Auswertung schreiben. Mit <paramref name="runway"/> nur den Test
-    /// auf dieser Bahn ("05L" oder "EDDL 05L"), sonst alle. Gibt den Stand aller Tests zurück.
+    /// Beendet laufende Tests: Abfrage stoppen, Flugzeug entfernen, Auswertung schreiben. Mit <paramref name="runway"/> nur die Tests
+    /// auf dieser Bahn ("05L" oder "EDDL 05L"), mit <paramref name="tail"/> nur den mit dieser Kennung ("DUO02"), sonst alle. Gibt den
+    /// Stand aller Tests zurück.
     /// </summary>
-    public async Task<IReadOnlyList<TrafficTestStatus>> StopTestAsync(string reason, CancellationToken ct, string? runway = null)
+    public async Task<IReadOnlyList<TrafficTestStatus>> StopTestAsync(string reason, CancellationToken ct, string? runway = null, string? tail = null)
     {
         await _gate.WaitAsync(ct);
         try
         {
-            foreach (var run in Running().Where(r => r.Matches(runway)))
+            foreach (var run in Running().Where(r => r.Matches(runway) && r.HasTail(tail)))
             {
                 await StopCoreAsync(run, reason);
             }
 
             return Status();
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Beendet genau diesen Test (Ende aus der Auswertung: gestartet, am Haltepunkt, geparkt …). Andere Tests derselben Bahn – die
+    /// Warteschlange – laufen weiter.
+    /// </summary>
+    private async Task StopRunAsync(TrafficTestRun run, string reason)
+    {
+        await _gate.WaitAsync(CancellationToken.None);
+        try
+        {
+            await StopCoreAsync(run, reason);
         }
         finally
         {
@@ -927,8 +945,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             if ((reached || point.Seconds >= goAroundSeconds + TrafficGoAroundPlan.TimeoutSeconds) && !run.StopScheduled)
             {
                 run.StopScheduled = true;
-                var at = plan.Runway.Airport + " " + plan.Runway.Designation;
-                _ = Task.Run(() => StopTestAsync(reached ? "go_around" : "go_around_timeout", CancellationToken.None, at));
+                _ = Task.Run(() => StopRunAsync(run, reached ? "go_around" : "go_around_timeout"));
             }
         }
 
@@ -939,8 +956,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             if (point.Seconds - run.HoldingSinceSeconds.Value >= HoldingEndSeconds && !run.StopScheduled)
             {
                 run.StopScheduled = true;
-                var at = plan.Runway.Airport + " " + plan.Runway.Designation;
-                _ = Task.Run(() => StopTestAsync("holding", CancellationToken.None, at));
+                _ = Task.Run(() => StopRunAsync(run, "holding"));
             }
         }
 
@@ -951,8 +967,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             if (point.Seconds - run.HoldingSinceSeconds.Value >= HoldingEndSeconds && !run.StopScheduled)
             {
                 run.StopScheduled = true;
-                var at = plan.Runway.Airport + " " + plan.Runway.Designation;
-                _ = Task.Run(() => StopTestAsync("parked", CancellationToken.None, at));
+                _ = Task.Run(() => StopRunAsync(run, "parked"));
             }
         }
 
@@ -967,8 +982,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         if (plan.IsOverflight && point.AlongM >= plan.ExitM && !run.StopScheduled)
         {
             run.StopScheduled = true;
-            var at = plan.Runway.Airport + " " + plan.Runway.Designation;
-            _ = Task.Run(() => StopTestAsync("passed", CancellationToken.None, at));
+            _ = Task.Run(() => StopRunAsync(run, "passed"));
         }
 
         // Start (B1): Fahrwerk rein bei positiver Steigrate; Ende bei 2800 ft, am Boden über das Bahnende oder ohne Losrollen
@@ -991,8 +1005,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             if (end is not null && !run.StopScheduled)
             {
                 run.StopScheduled = true;
-                var at = plan.Runway.Airport + " " + plan.Runway.Designation;
-                _ = Task.Run(() => StopTestAsync(end, CancellationToken.None, at));
+                _ = Task.Run(() => StopRunAsync(run, end));
             }
         }
 
@@ -1100,8 +1113,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         if (point.Seconds > run.MaxMinutes * 60 && !run.StopScheduled)
         {
             run.StopScheduled = true;
-            var designation = run.Analysis.Plan.Runway.Airport + " " + run.Analysis.Plan.Runway.Designation;
-            _ = Task.Run(() => StopTestAsync("timeout", CancellationToken.None, designation));
+            _ = Task.Run(() => StopRunAsync(run, "timeout"));
         }
     }
 
@@ -1989,6 +2001,9 @@ public sealed class TrafficTestService : IHostedService, IDisposable
 
         /// <summary>Passt zu "05L", "5L" oder "EDDL 05L"; leer passt immer.</summary>
         public bool Matches(string? runway) => TrafficTestService.Matches(Analysis.Plan.Runway, runway);
+
+        /// <summary>Kennung ist <paramref name="tail"/> ("DUO02", Groß/klein egal); leer passt immer.</summary>
+        public bool HasTail(string? tail) => string.IsNullOrWhiteSpace(tail) || string.Equals(Tail, tail.Trim(), StringComparison.OrdinalIgnoreCase);
 
         public void AddEvent(double seconds, string text)
         {

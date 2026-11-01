@@ -213,17 +213,21 @@ public static class TrafficTestTools
 
     [McpServerTool(Name = "traffic_test_stop", ReadOnly = false, Destructive = false, Idempotent = true)]
     [Description(
-        "Ends traffic tests: removes the test aircraft from the sim and writes the evaluation next to the CSV. Without runway all tests " +
-        "end. Returns the final state of the ended tests (without waypoints) and how many are still running.")]
+        "Ends traffic tests: removes the test aircraft from the sim and writes the evaluation next to the CSV. Without runway and tail all " +
+        "tests end. A test that finishes by itself (climbed, holding, parked …) ends alone; the others on its runway keep running. Returns " +
+        "the final state of the ended tests (without waypoints) and how many are still running.")]
     public static async Task<string> Stop(
         TrafficTestService tests,
-        [Description("Only the test on this runway, e.g. 05L or 'EDDL 05L'. Empty = all tests.")] string? runway = null,
+        [Description("Only the tests on this runway, e.g. 05L or 'EDDL 05L'. Empty = all runways.")] string? runway = null,
+        [Description("Only the test with this tail, e.g. DUO02 (one aircraft of a queue). Empty = all on the runway.")] string? tail = null,
         CancellationToken cancellationToken = default)
     {
         try
         {
-            var all = await tests.StopTestAsync("stopped", cancellationToken, runway);
-            var ended = string.IsNullOrWhiteSpace(runway) ? all : tests.Status(runway);
+            var all = await tests.StopTestAsync("stopped", cancellationToken, runway, tail);
+            var ended = string.IsNullOrWhiteSpace(runway) && string.IsNullOrWhiteSpace(tail)
+                ? all
+                : [.. tests.Status(runway).Where(t => string.IsNullOrWhiteSpace(tail) || string.Equals(t.Tail, tail.Trim(), StringComparison.OrdinalIgnoreCase))];
             return Json.Serialize(new { ok = true, running = all.Count(t => t.State == "running"), tests = ended.Select(Brief).ToList() });
         }
         catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
