@@ -357,8 +357,9 @@ Nachschicken.
 **Durchstarten im Sim (1.11.2026, beta.15, A2, EDDL):** Die ATR kreuzte die Schwelle 163 ft zu hoch (142 kt) → `go_around`.
 Die neue Wegpunktliste nahm sie an (MSFS 2024 übernimmt im Flug also eine zweite Liste – der Bug aus SU14 trifft hier nicht zu):
 Zustand von `STATE_SIMPLE_LANDING` zurück auf `STATE_SIMPLE_FLIGHT`, tiefster Punkt 211 ft (beim Durchstarten 213 ft), Steigflug
-mit rund 1250 ft/min, Fahrwerksbefehl bei 221 ft, Fahrwerk drin bei 420 ft (13 s). Der A320 lag mit +141 ft und 144 kt unter den
-Grenzen und landete normal (792 m, 1412 ft/min).
+mit 1250–1425 ft/min, Fahrwerksbefehl bei 221 ft, Fahrwerk drin bei 420 ft (13 s), 2800 ft nach 2 Minuten → Test endete mit
+`go_around`. Die Fahrt blieb auch dabei bei 169 kt. Der A320 lag mit +141 ft und 144 kt unter den Grenzen und landete normal
+(792 m, 1412 ft/min), hielt 13 m vor dem letzten Wegpunkt; im Schlafzustand danach wieder alle Lichter aus.
 
 **Durchstarten (ab beta.15):** Die ATR kam weit zu hoch über die Schwelle (auch wegen 160 kt statt 115 kt), die C172 setzte spät auf.
 Duopilo startet deshalb durch, wenn das Flugzeug an der Schwelle mehr als 150 ft über dem Gleitpfad oder mehr als Vapp + 20 kt ist oder
