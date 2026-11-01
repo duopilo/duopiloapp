@@ -52,8 +52,9 @@ public sealed record KinematicProfile(
 /// Ablauf: Geschwindigkeit mit <see cref="KinematicProfile.DecelKtPerSec"/> auf Vapp + 5, ab 0,5 NM auf Vapp; Höhe läuft weich auf
 /// den 3°-Pfad (50 ft über der Schwelle), seitlich auf die Mittellinie. Ab <see cref="KinematicProfile.FlareHeightFt"/> nimmt die
 /// Sinkrate mit der Höhe ab bis <see cref="KinematicProfile.TouchdownSinkFpm"/>, die Nase kommt hoch. Nach dem Aufsetzen geht die
-/// Nase runter, dann bremst das Flugzeug so, dass es am Haltepunkt des Plans steht. Höhen sind die der Räder über der Bahn; gesetzt
-/// wird der Bezugspunkt (<see cref="CgHeightFt"/> darüber).
+/// Nase runter auf die Lage am Boden (<see cref="GroundPitchDeg"/>, STATIC PITCH des Modells), dann bremst das Flugzeug so, dass es
+/// am Haltepunkt des Plans steht. Höhen sind die der Räder über der Bahn; gesetzt wird der Bezugspunkt (<see cref="CgHeightFt"/>
+/// darüber). Die Bahnhöhe läuft gleitend auf den gemessenen Wert (<see cref="GroundTargetFt"/>).
 /// </summary>
 public sealed class TrafficKinematics
 {
@@ -72,6 +73,9 @@ public sealed class TrafficKinematics
 
     /// <summary>Nase runter nach dem Aufsetzen.</summary>
     private const double DerotateDegPerSec = 1.5;
+
+    /// <summary>So schnell folgt die Bahnhöhe dem gemessenen Wert – je Frame, damit das Flugzeug nicht springt.</summary>
+    public const double GroundSlewFtPerSec = 6;
 
     private readonly TrafficTestPlan _plan;
     private readonly KinematicProfile _profile;
@@ -113,8 +117,14 @@ public sealed class TrafficKinematics
     /// <summary>Steig- bzw. Sinkrate des letzten Schritts (negativ = sinkend).</summary>
     public double VerticalSpeedFpm { get; private set; }
 
-    /// <summary>Höhe der Bahn (MSL), auf die die Räder aufsetzen – der Dienst gleicht sie mit gemessenen Werten nach.</summary>
+    /// <summary>Höhe der Bahn (MSL), auf die die Räder aufsetzen – läuft auf <see cref="GroundTargetFt"/>.</summary>
     public double GroundFt { get; set; }
+
+    /// <summary>Gemessene Bahnhöhe unter dem Flugzeug (vom Dienst), null = keine Messung; <see cref="GroundFt"/> folgt ihr gleitend.</summary>
+    public double? GroundTargetFt { get; set; }
+
+    /// <summary>Längsneigung, mit der das Modell am Boden steht (STATIC PITCH), Nase hoch positiv – das Ziel beim Ausrollen.</summary>
+    public double GroundPitchDeg { get; set; }
 
     /// <summary>Höhe des Bezugspunkts über den Rädern (STATIC CG TO GROUND).</summary>
     public double CgHeightFt { get; set; }
@@ -145,9 +155,20 @@ public sealed class TrafficKinematics
     /// <summary>Rechnet <paramref name="dt"/> Sekunden weiter.</summary>
     public void Advance(double dt)
     {
-        if (dt <= 0 || Phase == KinematicPhase.Stopped)
+        if (dt <= 0)
         {
-            VerticalSpeedFpm = Phase == KinematicPhase.Stopped ? 0 : VerticalSpeedFpm;
+            return;
+        }
+
+        if (GroundTargetFt is { } ground)
+        {
+            GroundFt = Toward(GroundFt, ground, GroundSlewFtPerSec * dt);
+        }
+
+        if (Phase == KinematicPhase.Stopped)
+        {
+            VerticalSpeedFpm = 0;
+            PitchDeg = Toward(PitchDeg, GroundPitchDeg, DerotateDegPerSec * dt);
             return;
         }
 
@@ -237,7 +258,7 @@ public sealed class TrafficKinematics
         _rolloutSeconds += dt;
         VerticalSpeedFpm = 0;
         HeightFt = 0;
-        PitchDeg = Toward(PitchDeg, 0, DerotateDegPerSec * dt);
+        PitchDeg = Toward(PitchDeg, GroundPitchDeg, DerotateDegPerSec * dt);
         CrossM *= Math.Exp(-dt / BlendSeconds);
         if (_rolloutSeconds > BrakeDelaySeconds)
         {

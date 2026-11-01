@@ -506,6 +506,7 @@ public sealed partial class SimConnectClient
                 LightStates = (int)d.LightStates,
                 DesiredKt = d.DesiredKt,
                 CgHeightFt = d.CgHeightFt,
+                StaticPitchDeg = d.StaticPitchDeg,
             };
             try
             {
@@ -816,6 +817,9 @@ public sealed record AiProbeSample(
 
     /// <summary>Höhe des Bezugspunkts über dem Boden, wenn das Flugzeug steht (STATIC CG TO GROUND) – die Kinematik setzt es damit auf.</summary>
     public double CgHeightFt { get; init; }
+
+    /// <summary>Längsneigung des Modells am Boden (STATIC PITCH), Nase hoch positiv – die Kinematik rollt damit aus.</summary>
+    public double StaticPitchDeg { get; init; }
 }
 
 /// <summary>Lage eines von Duopilo bewegten KI-Flugzeugs (<see cref="SimConnectClient.StartAiPose"/>).</summary>
@@ -878,13 +882,14 @@ public static class AiProbeVariables
         ("LIGHT STATES", "mask"),
         ("AI DESIRED SPEED", "knots"),
         ("STATIC CG TO GROUND", "feet"),
+        ("STATIC PITCH", "degrees"),
     ];
 
     /// <summary>Zustand der KI (z. B. „SIMPLE_LANDING“), als STRING64 hinter den Zahlen.</summary>
     public const string State = "AI TRAFFIC STATE";
 }
 
-/// <summary>Struktur zu <see cref="AiProbeVariables"/>: neunzehn FLOAT64, dann STRING64.</summary>
+/// <summary>Struktur zu <see cref="AiProbeVariables"/>: zwanzig FLOAT64, dann STRING64.</summary>
 [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
 public struct AiProbeData
 {
@@ -925,6 +930,8 @@ public struct AiProbeData
     public double DesiredKt;
 
     public double CgHeightFt;
+
+    public double StaticPitchDeg;
 
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
     public string State;
