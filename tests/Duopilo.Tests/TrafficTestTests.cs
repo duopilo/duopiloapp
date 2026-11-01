@@ -547,7 +547,8 @@ public sealed class TrafficTestTests
         Assert.Equal(6, TrafficLights.Approach.Changes().Count());
 
         // Nach der Landung nur drei Lichter schalten, der Rest bleibt
-        Assert.Equal([(AiLight.Strobe, false), (AiLight.Landing, false), (AiLight.Taxi, true)], TrafficLights.Rollout.Changes());
+        Assert.Equal([(AiLight.Nav, true), (AiLight.Beacon, true), (AiLight.Strobe, false), (AiLight.Landing, false), (AiLight.Taxi, true), (AiLight.Logo, true)], TrafficLights.Rollout.Changes());
+        Assert.False(TrafficLights.Rollout.MatchedBy(0)); // im Schlafzustand alles aus
         Assert.True(TrafficLights.Rollout.MatchedBy(0x010B));
         Assert.False(TrafficLights.Rollout.MatchedBy(0x011F));
     }
@@ -872,6 +873,55 @@ public sealed class TrafficTestTests
         Assert.False(rolling.LiftedOff);
         Assert.Equal(0, rolling.Summary().Takeoff!.HeightOverRunwayEndFt);
     }
+
+    [Fact]
+    public void Speed_Versuch_Schub_in_den_Wegpunkten_in_der_Luft()
+    {
+        var end = End("23L");
+        var plan = TrafficTestPlan.Build(end, TrafficTestVariant.A2, approachKt: 135, throttlePercent: 25);
+
+        Assert.Equal(25, plan.ThrottlePercent);
+        var air = plan.Waypoints.Where(w => !w.Waypoint.Flags.HasFlag(AiWaypointFlags.OnGround)).ToList();
+        var ground = plan.Waypoints.Where(w => w.Waypoint.Flags.HasFlag(AiWaypointFlags.OnGround)).ToList();
+        Assert.NotEmpty(air);
+        Assert.All(air, w =>
+        {
+            Assert.True(w.Waypoint.Flags.HasFlag(AiWaypointFlags.ThrottleRequested));
+            Assert.False(w.Waypoint.Flags.HasFlag(AiWaypointFlags.SpeedRequested));
+            Assert.True(w.Waypoint.Flags.HasFlag(AiWaypointFlags.ComputeVerticalSpeed));
+            Assert.Equal(25, w.Waypoint.ThrottlePercent);
+        });
+
+        // Am Boden weiter die Geschwindigkeit
+        Assert.All(ground, w => Assert.True(w.Waypoint.Flags.HasFlag(AiWaypointFlags.SpeedRequested)));
+
+        // Ohne Schub wie bisher, Schub begrenzt auf 0–100 %, auch beim Start
+        Assert.Null(TrafficTestPlan.Build(end, TrafficTestVariant.A2).ThrottlePercent);
+        Assert.All(TrafficTestPlan.Build(end, TrafficTestVariant.A2).Waypoints, w => Assert.False(w.Waypoint.Flags.HasFlag(AiWaypointFlags.ThrottleRequested)));
+        Assert.Equal(100, TrafficTestPlan.Build(end, TrafficTestVariant.A1, throttlePercent: 150).ThrottlePercent);
+        Assert.All(TrafficTestPlan.BuildTakeoff(end, throttlePercent: 90).Waypoints, w => Assert.Equal(90, w.Waypoint.ThrottlePercent));
+    }
+
+    [Fact]
+    public void Wunschgeschwindigkeit_in_der_Luft_hinter_der_Schwelle_nicht_unter_Vapp_minus_5()
+    {
+        var plan = TrafficTestPlan.Build(End("23L"), TrafficTestVariant.A2, approachKt: 135);
+
+        Assert.Equal(160, plan.AirborneTargetKt(-8 * RunwayEnd.MetersPerNm));
+        Assert.Equal(140, plan.AirborneTargetKt(-2 * RunwayEnd.MetersPerNm));
+        Assert.Equal(135, plan.AirborneTargetKt(-100));
+        // Hinter der Schwelle wären die nächsten Wegpunkte Aufsetzen (130) und Ausrollen (60) – in der Luft bleibt es bei 130
+        Assert.Equal(130, plan.TouchdownKt);
+        Assert.Equal(130, plan.AirborneTargetKt(400));
+        Assert.Equal(130, plan.AirborneTargetKt(1000));
+    }
+
+    [Theory]
+    [InlineData(140, 0, 140)]
+    [InlineData(140, 3000, 148.4)]
+    [InlineData(250, 10000, 300)]
+    public void Wahre_Fluggeschwindigkeit_zwei_Prozent_je_1000_ft(double ias, double altitudeFt, double tas) =>
+        Assert.Equal(tas, TrafficTestPlan.TrueAirspeedKt(ias, altitudeFt), 1);
 
     private static TrafficTestPoint Add(
         TrafficTestAnalysis analysis,

@@ -55,8 +55,12 @@ public static class TrafficTestTools
             "below, Vapp at the threshold. B1: takeoff speed about V2 = Vapp + 10, climb waypoints + 10, + 40 and + 60 kt on top. Empty = " +
             "from the approval list (traffic_test_models: approachKt), else 135.")] double? approachKt = null,
         [Description(
-            "Control the speed on approach via the simvar AI DESIRED SPEED (default true) – the AI ignores the speed in the waypoints and " +
-            "flew 160–169 kt with every model. false = waypoint speeds only, as before.")] bool speedControl = true,
+            "How the speed is controlled – the AI ignores the speed in the waypoints (every model flew 160–169 kt) and overwrote AI DESIRED " +
+            "SPEED in beta.14 (stayed at 169 kt). 'desired' (default): AI DESIRED SPEED to the speed of the next waypoint. 'throttle' " +
+            "(experiment): waypoints in the air with THROTTLE_REQUESTED and a fixed throttle (throttlePercent) instead of the speed. " +
+            "'velocity' (experiment): VELOCITY BODY Z five times a second to the wanted speed as TAS, plus AI DESIRED SPEED. 'off': waypoint " +
+            "speeds only.")] string speedMethod = "desired",
+        [Description("Throttle in % (0–100) of the waypoints in the air for speedMethod 'throttle'. Empty = 30.")] double? throttlePercent = null,
         [Description(
             "Go around when the approach doesn't fit (default true): too high or too fast at the threshold, or no touchdown by 900 m. " +
             "false = always land, as before.")] bool goAround = true,
@@ -75,9 +79,14 @@ public static class TrafficTestTools
             return Json.Serialize(new { ok = false, error = Loc.T("tools.trafficTest.gearUnknown", gear ?? "") });
         }
 
+        if (!Enum.TryParse<TrafficSpeedMethod>(speedMethod?.Trim(), ignoreCase: true, out var speed) || !Enum.IsDefined(speed))
+        {
+            return Json.Serialize(new { ok = false, error = Loc.T("tools.trafficTest.speedMethodUnknown", speedMethod ?? "") });
+        }
+
         try
         {
-            var status = await tests.StartTestAsync(new TrafficTestRequest(airport, runway, parsed, title, livery, spawnNm, gearMethod, finalLowFt, touchdownM, approachKt, speedControl, goAround, rollM), cancellationToken);
+            var status = await tests.StartTestAsync(new TrafficTestRequest(airport, runway, parsed, title, livery, spawnNm, gearMethod, finalLowFt, touchdownM, approachKt, speed, goAround, rollM, throttlePercent), cancellationToken);
             return Json.Serialize(new { ok = true, status });
         }
         catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or TimeoutException or ArgumentException)
