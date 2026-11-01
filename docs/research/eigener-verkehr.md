@@ -476,7 +476,13 @@ K1, Aufreihen, Startlauf ab 40 m. Gehalten hat die A320 aber an der falschen Lin
 aufgereiht hat sie über den nächsten Rollweg – statt an der kurzen Linie am Zubringer, der direkt auf die Bahn führt. Für beta.26: liegt
 hinter dem gewählten Haltepunkt ein weiterer näher an der Mittellinie, dort halten (ILS-Linie); für beta.27: nur Haltepunkte, von denen
 der Weg auf die Bahn kurz ist (höchstens 300 m) und an keinem weiteren Haltepunkt derselben Bahn vorbeiführt, Einmündung nahe am
-Bahnanfang zuerst; das Aufreihen nimmt denselben Weg.
+Bahnanfang zuerst; das Aufreihen nimmt denselben Weg. Auch beta.27 plante wieder 267 m Aufreihen: Die Positionsdaten (CSV) zeigen, dass
+die A320 in beta.24 an der langen Linie (102 m vor der Schwelle, 108 m neben der Mittellinie) mit Kurs 270 hielt, sich zum Aufreihen
+auf der Stelle umdrehte (Kurs 90), zurück zur Kreuzung rollte und über den geschwungenen Zubringer auf die Bahn fuhr (Einmündung 85 m
+vor der Schwelle). **Der Zubringer hat im MSFS-Netz keinen Haltepunkt** – die kurze Linie dort ist nur gemalt. Für beta.28: Die Route
+führt jetzt zur Einmündung (Rollpunkt auf der Mittellinie, über einen Rollweg erreicht; kürzeste Route, jeder Meter hinter dem
+Bahnanfang zählt dreifach), gehalten wird rückwärts gesucht am letzten normalen Haltepunkt der Bahn auf der Route (nicht der ILS-Linie)
+oder – fehlt einer – dort, wo die Route den Abstand des nächsten Haltepunkts der Bahn zur Mittellinie unterschreitet (hier 108 m).
 
 **Fahrplan des eigenen Verkehrs (Stand 1.11.2026):**
 

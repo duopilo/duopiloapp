@@ -1161,7 +1161,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 ?? throw new InvalidOperationException(Loc.T("tools.trafficTest.noTaxiRoute", node.Parking?.Label ?? "", runway.Designation));
         }
 
-        if (graph.DepartureHolds(runway).Count == 0)
+        if (TaxiRoute.RunwayEntries(graph, runway).Count == 0)
         {
             throw new InvalidOperationException(Loc.T("tools.trafficTest.noHold", runway.Designation, graph.Icao));
         }
