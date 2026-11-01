@@ -338,8 +338,25 @@ B737-800 → B738 …), mit Anfluggeschwindigkeit je Typ; die vollen Modelle ble
 Duopilo im Anflug `AI DESIRED SPEED` auf die Geschwindigkeit des nächsten Wegpunkts (aus Vapp des Typs: ab 6 NM Vapp + 25, darunter
 Vapp + 5, an der Schwelle Vapp). Fallback, falls die KI das auch ignoriert: Schub über `THROTTLE_REQUESTED` regeln.
 
-Nächste Schritte: Geschwindigkeitsregelung testen (ATR, A320 NEO, C172), danach Stufe B. Sieht es dann immer noch komisch aus, in Frankfurt
-testen. Danach Speed über den Schub (`THROTTLE_REQUESTED`) und Stufe B.
+**Durchstarten (ab beta.15):** Die ATR kam weit zu hoch über die Schwelle (auch wegen 160 kt statt 115 kt), die C172 setzte spät auf.
+Duopilo startet deshalb durch, wenn das Flugzeug an der Schwelle mehr als 150 ft über dem Gleitpfad oder mehr als Vapp + 20 kt ist oder
+bis 900 m hinter der Schwelle (kurze Bahnen: ein Drittel der Länge, mindestens 300 m hinter dem Boden-Wegpunkt) nicht aufgesetzt hat.
+Dann ersetzen drei Wegpunkte geradeaus in Bahnrichtung den Anflug (3 NM: 1500 ft, 6 NM und 12 NM: 3000 ft über der Bahn, Vapp + 15/35/50),
+die Wunschgeschwindigkeit folgt ihnen, das Fahrwerk kommt bei mehr als 300 ft/min Steigen rein, das Landelicht bleibt an. Der Test endet
+bei 2800 ft über der Bahn (`go_around`) oder 5 Minuten nach dem Durchstarten (`go_around_timeout`). Offen: ob die KI für neue Wegpunkte
+ihren Landemodus (`STATE_SIMPLE_LANDING`) verlässt – setzt sie trotzdem auf, heißt das Ergebnis `go_around_ignored`.
+
+Nächste Schritte: Geschwindigkeitsregelung testen (ATR, A320 NEO, C172) und das Durchstarten (beta.15). Sieht es dann immer noch komisch
+aus, in Frankfurt testen; Speed notfalls über den Schub (`THROTTLE_REQUESTED`).
+
+**Fahrplan des eigenen Verkehrs (Stand 1.11.2026):**
+
+1. Anflug und Landung – erledigt bis beta.14 (Wegpunkte, Fahrwerk bis 2500 ft, Lichter, Freigabeliste, Geschwindigkeit).
+2. Durchstarten – beta.15.
+3. Starts – beta.16 (der Start aus Stufe B): Spawn auf der Bahn oder am Rollhalt, Startlauf, Rotieren, Steigflug auf 3000 ft, Fahrwerk rein, Lichter;
+   Auswertung von Abhebepunkt und Steigflug.
+4. Überflüge in Reiseflughöhe – danach: Flugzeuge, die über den Bereich des Spielers hinweg auf ihrer Flugfläche ziehen.
+5. Rollen – irgendwann: Pushback und Rollen zwischen Gate und Bahn über die Rollwege (aus Stufe C).
 
 **Entscheidung danach:**
 

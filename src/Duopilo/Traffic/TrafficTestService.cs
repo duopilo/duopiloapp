@@ -15,6 +15,7 @@ namespace Duopilo.Traffic;
 /// <param name="TouchdownM">Erster Boden-Wegpunkt hinter der Schwelle (davor negativ); leer = <see cref="TrafficTestPlan.DefaultTouchdownM"/>.</param>
 /// <param name="ApproachKt">Anfluggeschwindigkeit (Vapp); leer = aus der Freigabeliste, sonst <see cref="TrafficTestPlan.DefaultApproachKt"/>.</param>
 /// <param name="SpeedControl">Geschwindigkeit im Anflug über AI DESIRED SPEED regeln (die Wegpunkt-Geschwindigkeit beachtet die KI nicht).</param>
+/// <param name="GoAround">Durchstarten, wenn die KI zu hoch oder zu schnell über die Schwelle kommt oder zu lange nicht aufsetzt (<see cref="TrafficGoAround"/>).</param>
 public sealed record TrafficTestRequest(
     string Airport,
     string Runway,
@@ -26,7 +27,8 @@ public sealed record TrafficTestRequest(
     double? FinalLowFt = null,
     double? TouchdownM = null,
     double? ApproachKt = null,
-    bool SpeedControl = true);
+    bool SpeedControl = true,
+    bool GoAround = true);
 
 /// <summary>Zeitpunkt und Text eines Ereignisses der Testlinie.</summary>
 public sealed record TrafficTestEvent(double Seconds, string Text);
@@ -71,6 +73,7 @@ public sealed record TrafficTestStatus(
     double FinalLowFt,
     double ApproachKt,
     bool SpeedControl,
+    bool GoAround,
     uint ObjectId,
     DateTimeOffset StartedUtc,
     double ElapsedSeconds,
@@ -232,6 +235,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             var run = new TrafficTestRun(plan, slot, title, livery, request.Gear, objectId, spawnUtc, csv?.Path, csv?.Writer, _options.TrafficTest.MaxMinutes)
             {
                 SpeedControl = request.SpeedControl,
+                GoAroundEnabled = request.GoAround,
             };
             run.AddEvent(0, string.Create(CultureInfo.InvariantCulture, $"spawn {plan.SpawnNm:0.#} NM, {plan.Spawn.AltitudeFt:0} ft, {plan.Spawn.AirspeedKt} kt, object {objectId}, {run.Tail}"));
             foreach (var warning in plan.Warnings)
@@ -396,6 +400,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             plan.FinalLowFt,
             plan.ApproachKt,
             run.SpeedControl,
+            run.GoAroundEnabled,
             run.ObjectId,
             run.SpawnUtc,
             Math.Round(((run.EndedUtc ?? now) - run.SpawnUtc).TotalSeconds),
@@ -403,7 +408,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             run.Last,
             run.Analysis.Summary(),
             [.. run.Events],
-            plan.Waypoints,
+            [.. plan.Waypoints, .. (run.Analysis.GoAroundPlan?.Waypoints ?? [])],
             run.CsvPath,
             run.SummaryPath,
             note);
@@ -472,10 +477,54 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         }
 
         var plan = run.Analysis.Plan;
+        var heightFt = sample.AltitudeFt - plan.Runway.ElevationFt;
+
+        // Durchstarten: zu hoch oder zu schnell über der Schwelle, oder zu lange nicht aufgesetzt – neue Wegpunkte geradeaus,
+        // Steigflug auf 3000 ft, schneller werden; das Fahrwerk kommt bei positiver Steigrate rein
+        if (run.GoAroundEnabled && run.Analysis.GoAroundPlan is null
+            && TrafficGoAround.Check(plan, run.PreviousAlongM, point.AlongM, sample.AltitudeFt, sample.IndicatedKt, sample.OnGround, run.Analysis.TouchedDown) is { } reason)
+        {
+            var goAround = TrafficGoAroundPlan.Build(plan, point.AlongM);
+            lock (_lock)
+            {
+                run.Analysis.MarkGoAround(point.Seconds, point.AlongM, Math.Max(0, heightFt), sample.IndicatedKt, reason, goAround);
+            }
+
+            run.AddEvent(point.Seconds, string.Create(CultureInfo.InvariantCulture, $"go_around {reason.Text} at {heightFt:0} ft, {point.AlongM:0} m"));
+            _log.LogInformation(Loc.Log("log.trafficTest.goAround"), plan.Runway.Designation, reason.Text);
+            Fire(_sim.SetAiWaypointsAsync(run.ObjectId, [.. goAround.Waypoints.Select(w => w.Waypoint)], CancellationToken.None), "go_around");
+            if (run.SpeedControl)
+            {
+                var kt = goAround.TargetKt(point.AlongM);
+                run.DesiredSentKt = kt;
+                run.DesiredSentSeconds = point.Seconds;
+                run.AddEvent(point.Seconds, string.Create(CultureInfo.InvariantCulture, $"speed_target {kt:0} kt (ias {sample.IndicatedKt:0})"));
+                Fire(_sim.SetAiDesiredSpeedAsync(run.ObjectId, kt, CancellationToken.None), "speed");
+            }
+        }
+
+        run.PreviousAlongM = point.AlongM;
+
+        if (run.Analysis.GoAroundSeconds is { } goAroundSeconds && !run.Analysis.TouchedDown)
+        {
+            if (!run.GearUpSent && !sample.OnGround && sample.VerticalSpeedFpm >= TrafficGoAroundPlan.PositiveClimbFpm)
+            {
+                run.GearUpSent = true;
+                run.AddEvent(point.Seconds, string.Create(CultureInfo.InvariantCulture, $"gear_up_sent {GearName(run.GearMethod)} at {heightFt:0} ft"));
+                Fire(_sim.SetAiGearAsync(run.ObjectId, false, run.GearMethod, CancellationToken.None), "gear");
+            }
+
+            var reached = heightFt >= TrafficGoAroundPlan.EndFt;
+            if ((reached || point.Seconds >= goAroundSeconds + TrafficGoAroundPlan.TimeoutSeconds) && !run.StopScheduled)
+            {
+                run.StopScheduled = true;
+                var at = plan.Runway.Airport + " " + plan.Runway.Designation;
+                _ = Task.Run(() => StopTestAsync(reached ? "go_around" : "go_around_timeout", CancellationToken.None, at));
+            }
+        }
 
         // A2: Fahrwerk erst im Anflug ausfahren – bei 3000 ft über der Bahn, spätestens am Punkt des Gleitpfads in dieser Höhe
-        var heightFt = sample.AltitudeFt - plan.Runway.ElevationFt;
-        if (plan.GearDownFt is { } gearFt && run.GearCommands == 0 && !sample.OnGround
+        if (plan.GearDownFt is { } gearFt && run.GearCommands == 0 && !sample.OnGround && run.Analysis.GoAroundPlan is null
             && (heightFt <= gearFt || (plan.GearDownNm is { } gearNm && point.DistanceToThresholdNm is { } d && d <= gearNm)))
         {
             run.GearCommands++;
@@ -485,8 +534,8 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             Fire(_sim.SetAiGearAsync(run.ObjectId, true, run.GearMethod, CancellationToken.None), "gear");
         }
 
-        // Fährt das Fahrwerk nach dem Befehl nicht aus, bis zu dreimal im Abstand von 3 s nachschicken (nur in der Luft)
-        if (run.GearCommands is > 0 and < 4 && !sample.OnGround && sample.GearExtendedPercent < 50
+        // Fährt das Fahrwerk nach dem Befehl nicht aus, bis zu dreimal im Abstand von 3 s nachschicken (nur in der Luft, nicht beim Durchstarten)
+        if (run.GearCommands is > 0 and < 4 && !sample.OnGround && sample.GearExtendedPercent < 50 && run.Analysis.GoAroundPlan is null
             && point.Seconds >= run.GearSentSeconds + (3 * run.GearCommands))
         {
             run.GearCommands++;
@@ -495,18 +544,19 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         }
 
         // Geschwindigkeit: die KI beachtet die Wegpunkt-Geschwindigkeit nicht – Wunschgeschwindigkeit des nächsten Wegpunkts setzen,
-        // bei Änderung sofort, sonst alle 5 s (in der Luft bis zum Aufsetzen)
+        // bei Änderung sofort, sonst alle 5 s (in der Luft bis zum Aufsetzen; nach dem Durchstarten die Wegpunkte des Durchstartens)
+        var targetKt = run.Analysis.GoAroundPlan?.TargetKt(point.AlongM) ?? point.TargetKt;
         if (run.SpeedControl && !sample.OnGround && !run.Analysis.TouchedDown
-            && (run.DesiredSentKt != point.TargetKt || point.Seconds >= run.DesiredSentSeconds + 5))
+            && (run.DesiredSentKt != targetKt || point.Seconds >= run.DesiredSentSeconds + 5))
         {
-            if (run.DesiredSentKt != point.TargetKt)
+            if (run.DesiredSentKt != targetKt)
             {
-                run.AddEvent(point.Seconds, string.Create(CultureInfo.InvariantCulture, $"speed_target {point.TargetKt:0} kt (ias {sample.IndicatedKt:0})"));
+                run.AddEvent(point.Seconds, string.Create(CultureInfo.InvariantCulture, $"speed_target {targetKt:0} kt (ias {sample.IndicatedKt:0})"));
             }
 
-            run.DesiredSentKt = point.TargetKt;
+            run.DesiredSentKt = targetKt;
             run.DesiredSentSeconds = point.Seconds;
-            Fire(_sim.SetAiDesiredSpeedAsync(run.ObjectId, point.TargetKt, CancellationToken.None), "speed");
+            Fire(_sim.SetAiDesiredSpeedAsync(run.ObjectId, targetKt, CancellationToken.None), "speed");
         }
 
         // Lichter einmal nachschicken, falls das Modell sie beim Spawn noch nicht angenommen hat
@@ -640,7 +690,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                     gear = GearName(run.GearMethod),
                     spawnUtc = run.SpawnUtc,
                     endReason = run.EndReason,
-                    plan = new { plan.SpawnNm, plan.GearAtSpawn, plan.GearDownFt, plan.GearDownNm, plan.TouchdownM, plan.StopM, plan.FinalLowFt, plan.ApproachKt, speedControl = run.SpeedControl, waypoints = plan.Waypoints },
+                    plan = new { plan.SpawnNm, plan.GearAtSpawn, plan.GearDownFt, plan.GearDownNm, plan.TouchdownM, plan.StopM, plan.FinalLowFt, plan.ApproachKt, speedControl = run.SpeedControl, goAround = run.GoAroundEnabled, waypoints = plan.Waypoints, goAroundWaypoints = run.Analysis.GoAroundPlan?.Waypoints },
                     summary,
                     events = run.Events,
                 },
@@ -735,6 +785,14 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         public double? DesiredSentKt { get; set; }
 
         public double DesiredSentSeconds { get; set; }
+
+        /// <summary>Ob die KI durchstarten soll, wenn der Anflug nicht passt (<see cref="TrafficGoAround"/>).</summary>
+        public bool GoAroundEnabled { get; init; }
+
+        /// <summary>Lage des vorigen Messpunkts entlang der Mittellinie (für das Überfliegen der Schwelle).</summary>
+        public double? PreviousAlongM { get; set; }
+
+        public bool GearUpSent { get; set; }
 
         public IReadOnlyList<TrafficTestEvent> Events
         {

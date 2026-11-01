@@ -41,8 +41,32 @@ public sealed record TrafficTestTouchdown(
     double PitchDeg,
     double? FlarePitchGainDeg);
 
+/// <summary>Durchstarten des Testflugzeugs (<see cref="TrafficGoAround"/>).</summary>
+/// <param name="Reason">high_at_threshold, fast_at_threshold oder no_touchdown_by.</param>
+/// <param name="Value">ft über dem Gleitpfad, kt über Vapp oder die Grenze in m hinter der Schwelle.</param>
+/// <param name="AlongM">Wo durchgestartet wurde, ab der Schwelle.</param>
+/// <param name="HeightFt">Höhe über der Bahn beim Durchstarten.</param>
+/// <param name="LowestFt">Tiefster Punkt danach (über der Bahn) – sinkt die KI erst weiter, liegt er unter <paramref name="HeightFt"/>.</param>
+/// <param name="HighestFt">Höchster Punkt danach (über der Bahn).</param>
+/// <param name="GearUpSeconds">Sekunden nach dem Durchstarten, bis das Fahrwerk ganz drin war; null, solange es draußen ist.</param>
+/// <param name="Reached">Ob die KI <see cref="TrafficGoAroundPlan.EndFt"/> über der Bahn erreicht hat.</param>
+public sealed record TrafficTestGoAround(
+    string Reason,
+    double Value,
+    double Seconds,
+    double AlongM,
+    double HeightFt,
+    double IndicatedKt,
+    double LowestFt,
+    double HighestFt,
+    double? GearUpSeconds,
+    bool Reached);
+
 /// <summary>Auswertung eines Testanflugs.</summary>
-/// <param name="Verdict">stopped (gelandet und angehalten), landed, floated (schwebt über der Bahn), airborne, no_data.</param>
+/// <param name="Verdict">
+/// stopped (gelandet und angehalten), landed, floated (schwebt über der Bahn), airborne, go_around (durchgestartet, nicht gelandet),
+/// go_around_ignored (durchgestartet, aber doch aufgesetzt), no_data.
+/// </param>
 /// <param name="MeanSpeedDeviationKt">Mittlere Abweichung IAS minus Wunsch im Anflug (positiv = zu schnell).</param>
 /// <param name="GearExtendedAtNm">Entfernung zur Schwelle, als das Fahrwerk ganz draußen war (0 = erst hinter der Schwelle).</param>
 /// <param name="GearExtendedAtFt">Höhe über der Bahn, als das Fahrwerk ganz draußen war (0 = erst am Boden).</param>
@@ -56,6 +80,7 @@ public sealed record TrafficTestTouchdown(
 /// <param name="MaxFinalBankDeg">Größte Querneigung (Betrag) in der Luft auf den letzten 2 NM bis zum Aufsetzen.</param>
 /// <param name="LightsOnFinal">Eingeschaltete Lichter des letzten Messpunkts in der Luft (z. B. "nav beacon landing taxi strobe logo").</param>
 /// <param name="LightsAfterLanding">Eingeschaltete Lichter des letzten Messpunkts am Boden nach dem Aufsetzen.</param>
+/// <param name="GoAround">Durchstarten, falls die KI durchgestartet ist.</param>
 public sealed record TrafficTestSummary(
     string Verdict,
     int Samples,
@@ -77,7 +102,8 @@ public sealed record TrafficTestSummary(
     double? MaxFinalBankDeg,
     string? LightsOnFinal,
     string? LightsAfterLanding,
-    IReadOnlyList<string> AiStates);
+    IReadOnlyList<string> AiStates,
+    TrafficTestGoAround? GoAround = null);
 
 /// <summary>
 /// Wertet die Messpunkte eines Testanflugs aus (rein rechnerisch, ohne SimConnect): Lage zur Mittellinie, Geschwindigkeit gegenüber
@@ -120,6 +146,14 @@ public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spa
     private double? _previousAlong;
     private double? _previousSeconds;
     private double _lastAirborneVs;
+    private TrafficGoAroundReason? _goAroundReason;
+    private double _goAroundSeconds;
+    private double _goAroundAlong;
+    private double _goAroundHeight;
+    private double _goAroundIas;
+    private double _goAroundLowest;
+    private double _goAroundHighest;
+    private double? _gearUpSeconds;
 
     public int Samples { get; private set; }
 
@@ -128,6 +162,33 @@ public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spa
 
     public TrafficTestPlan Plan => plan;
 
+    /// <summary>Wegpunkte des Durchstartens, nachdem <see cref="MarkGoAround"/> es gemeldet hat; sonst null.</summary>
+    public TrafficGoAroundPlan? GoAroundPlan { get; private set; }
+
+    /// <summary>Sekunde des Durchstartens, sonst null.</summary>
+    public double? GoAroundSeconds => GoAroundPlan is null ? null : _goAroundSeconds;
+
+    /// <summary>
+    /// Der Dienst hat das Durchstarten eingeleitet: Ab jetzt gelten die Geschwindigkeiten von <paramref name="goAround"/>, die Auswertung
+    /// verfolgt Steigflug und Fahrwerk, und das Urteil heißt go_around.
+    /// </summary>
+    public void MarkGoAround(double seconds, double alongM, double heightFt, double indicatedKt, TrafficGoAroundReason reason, TrafficGoAroundPlan goAround)
+    {
+        if (GoAroundPlan is not null)
+        {
+            return;
+        }
+
+        GoAroundPlan = goAround;
+        _goAroundReason = reason;
+        _goAroundSeconds = seconds;
+        _goAroundAlong = alongM;
+        _goAroundHeight = heightFt;
+        _goAroundIas = indicatedKt;
+        _goAroundLowest = heightFt;
+        _goAroundHighest = heightFt;
+    }
+
     public TrafficTestPoint Add(AiProbeSample s)
     {
         Samples++;
@@ -135,6 +196,7 @@ public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spa
         var dt = _previousSeconds is { } p ? Math.Clamp(seconds - p, 0, 5) : 0;
         var (along, cross) = plan.Runway.Offsets(s.Latitude, s.Longitude);
         var next = plan.Next(along);
+        var targetKt = GoAroundPlan?.TargetKt(along) ?? next.Waypoint.SpeedKt;
         var events = new List<string>();
 
         if (s.AiState is { } state && (_states.Count == 0 || _states[^1] != state))
@@ -154,6 +216,17 @@ public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spa
         {
             _belowGearHeightWithoutGear = true;
             events.Add(string.Create(CultureInfo.InvariantCulture, $"gear_not_down_by {TrafficTestPlan.GearDownByFt:0} ft"));
+        }
+
+        if (GoAroundPlan is not null && seconds > _goAroundSeconds)
+        {
+            _goAroundLowest = Math.Min(_goAroundLowest, heightFt);
+            _goAroundHighest = Math.Max(_goAroundHighest, heightFt);
+            if (_gearUpSeconds is null && s.GearExtendedPercent <= 1 && !s.OnGround)
+            {
+                _gearUpSeconds = Math.Round(seconds - _goAroundSeconds, 1);
+                events.Add(string.Create(CultureInfo.InvariantCulture, $"gear_retracted at {Math.Round(heightFt / 10) * 10:0} ft"));
+            }
         }
 
         if (!s.OnGround)
@@ -202,12 +275,12 @@ public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spa
                 _maxFinalCross = Math.Max(_maxFinalCross ?? 0, Math.Abs(cross));
             }
 
-            if (s.AltitudeAglFt < FloatAglFt && along > plan.TouchdownM + FloatMarginM)
+            if (s.AltitudeAglFt < FloatAglFt && along > plan.TouchdownM + FloatMarginM && GoAroundPlan is null)
             {
                 _floatSeconds += dt;
             }
 
-            if (along > plan.Runway.LengthM && !_airborneBeyondEnd)
+            if (along > plan.Runway.LengthM && !_airborneBeyondEnd && GoAroundPlan is null)
             {
                 _airborneBeyondEnd = true;
                 events.Add("airborne_beyond_runway_end");
@@ -255,12 +328,13 @@ public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spa
         _previousAlong = along;
         _previousSeconds = seconds;
         var distance = _touchdown is null && along < 0 ? Math.Round(-along / RunwayEnd.MetersPerNm, 2) : (double?)null;
-        return new TrafficTestPoint(Math.Round(seconds, 1), along, cross, distance, next.Waypoint.SpeedKt, events);
+        return new TrafficTestPoint(Math.Round(seconds, 1), along, cross, distance, targetKt, events);
     }
 
     public TrafficTestSummary Summary()
     {
         var verdict = Samples == 0 ? "no_data"
+            : GoAroundPlan is not null ? (_touchdown is null ? "go_around" : "go_around_ignored")
             : _touchdown is null ? (_floatSeconds >= 5 || _airborneBeyondEnd ? "floated" : "airborne")
             : _stopAlong is not null ? "stopped"
             : "landed";
@@ -286,7 +360,20 @@ public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spa
             _maxFinalBank is { } bank ? Math.Round(bank, 1) : null,
             _lightsOnFinal is { } final ? AiLights.Describe(final) : null,
             _lightsAfterLanding is { } after ? AiLights.Describe(after) : null,
-            [.. _states]);
+            [.. _states],
+            _goAroundReason is { } reason
+                ? new TrafficTestGoAround(
+                    reason.Code,
+                    reason.Value,
+                    Math.Round(_goAroundSeconds, 1),
+                    Math.Round(_goAroundAlong),
+                    Math.Round(_goAroundHeight),
+                    Math.Round(_goAroundIas),
+                    Math.Round(_goAroundLowest),
+                    Math.Round(_goAroundHighest),
+                    _gearUpSeconds,
+                    _goAroundHighest >= TrafficGoAroundPlan.EndFt)
+                : null);
     }
 
     /// <summary>Überflogene Messpunkte des Anflugs (…nm und Schwelle) zwischen vorigem und aktuellem Messpunkt.</summary>

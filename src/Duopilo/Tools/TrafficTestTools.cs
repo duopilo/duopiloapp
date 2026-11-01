@@ -23,7 +23,11 @@ public static class TrafficTestTools
         "test on a runway that already has one replaces it. Pick runways the pilot is not using right now. Samples (1 per second) go to one CSV " +
         "per test in the data folder (traffic-tests). Follow with traffic_test_status, end with traffic_test_stop (the aircraft is removed; " +
         "after MaxMinutes, default 15, also without stop). Lights: nav, beacon, strobes, landing, taxi and logo on at spawn; after touchdown " +
-        "below 60 kt landing lights and strobes off. Models outside the approval list (traffic_test_models: status) get a warning.")]
+        "below 60 kt landing lights and strobes off. Go-around (goAround, default on): more than 150 ft above the glide path or more than " +
+        "Vapp + 20 kt at the threshold, or not on the ground 900 m behind it (short runways: a third of the length) – then new waypoints " +
+        "straight ahead, climb to 3000 ft above the runway, gear up at a positive climb rate, landing light stays on; the test ends at " +
+        "2800 ft (reason go_around) or 5 minutes after the go-around (go_around_timeout). " +
+        "Models outside the approval list (traffic_test_models: status) get a warning.")]
     public static async Task<string> Start(
         TrafficTestService tests,
         [Description("ICAO code of the airport, e.g. EDDL. Must be within 80 NM of the pilot's aircraft.")] string airport,
@@ -49,6 +53,9 @@ public static class TrafficTestTools
         [Description(
             "Control the speed on approach via the simvar AI DESIRED SPEED (default true) – the AI ignores the speed in the waypoints and " +
             "flew 160–169 kt with every model. false = waypoint speeds only, as before.")] bool speedControl = true,
+        [Description(
+            "Go around when the approach doesn't fit (default true): too high or too fast at the threshold, or no touchdown by 900 m. " +
+            "false = always land, as before.")] bool goAround = true,
         CancellationToken cancellationToken = default)
     {
         if (!Enum.TryParse<TrafficTestVariant>(variant?.Trim(), ignoreCase: true, out var parsed) || !Enum.IsDefined(parsed))
@@ -63,7 +70,7 @@ public static class TrafficTestTools
 
         try
         {
-            var status = await tests.StartTestAsync(new TrafficTestRequest(airport, runway, parsed, title, livery, spawnNm, gearMethod, finalLowFt, touchdownM, approachKt, speedControl), cancellationToken);
+            var status = await tests.StartTestAsync(new TrafficTestRequest(airport, runway, parsed, title, livery, spawnNm, gearMethod, finalLowFt, touchdownM, approachKt, speedControl, goAround), cancellationToken);
             return Json.Serialize(new { ok = true, status });
         }
         catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or TimeoutException or ArgumentException)
@@ -78,7 +85,9 @@ public static class TrafficTestTools
         "tail, ICAO type and model status (verified, candidate, excluded, unknown), last sample (altitude, IAS against the requested speed, " +
         "ground speed, vertical speed, pitch – nose up positive –, bank, gear, lights, " +
         "distance to the threshold, position relative to the centerline, AI state), events (spawn, gear, touchdown, stopped …) and the " +
-        "evaluation: verdict (stopped, landed, floated = hovered above the runway without touching down, airborne), speed deviation, height " +
+        "evaluation: verdict (stopped, landed, floated = hovered above the runway without touching down, airborne, go_around, " +
+        "go_around_ignored = went around but touched down anyway), go-around (reason, where, height, lowest and highest point after it, " +
+        "seconds until the gear was up, whether 2800 ft were reached), speed deviation, height " +
         "above the runway when the gear was down and whether that was by 2500 ft, values " +
         "at the approach gates (altitude deviation from the glide path, pitch), approach pitch, touchdown point, speed, sink rate, pitch and " +
         "flare (pitch gain before touchdown), max bank on final, lights on final and after landing, float seconds, stop point. Paths of " +
