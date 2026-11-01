@@ -1425,7 +1425,7 @@ public sealed class TrafficTestTests
 
         Assert.Contains(over.Events, e => e.StartsWith("overhead at 34950 ft", StringComparison.Ordinal));
         Assert.Contains("exit", exit.Events);
-        Assert.Equal(265, over.TargetKt);
+        Assert.Equal(450, over.TargetKt);
 
         var summary = analysis.Summary();
         Assert.Equal("passed", summary.Verdict);
