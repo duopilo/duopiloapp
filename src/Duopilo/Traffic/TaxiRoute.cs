@@ -57,6 +57,75 @@ public sealed record TaxiRoute(
     /// <summary>Rollpunkte hinter dem Halt bis zur Einmündung auf die Bahn (der Weg des Aufreihens).</summary>
     public IReadOnlyList<int> LineUpNodes { get; init; } = [];
 
+    /// <summary>Rollen nach der Landung: hier (entlang ab der Schwelle, auf der Mittellinie) übernimmt das Rollen von der Landung.</summary>
+    public double? HandoverAlongM { get; init; }
+
+    /// <summary>Rollen nach der Landung: so schnell kommt das Flugzeug dort an (der Weg danach erlaubt nicht mehr).</summary>
+    public double HandoverKt { get; init; }
+
+    /// <summary>Rollen nach der Landung: so weit vor dem Abrollpunkt übernimmt das Rollen (Platz für den Bogen von der Bahn).</summary>
+    public const double ExitLeadM = 60;
+
+    /// <summary>
+    /// Rollen nach der Landung: der erste Abrollpunkt hinter <paramref name="minExitAlongM"/> (Rollpunkt auf der Mittellinie, von dem die
+    /// Route zu <paramref name="parking"/> über einen Rollweg die Bahn verlässt) und der Weg dorthin: ab <see cref="ExitLeadM"/> vor dem
+    /// Abrollpunkt auf der Mittellinie, im Bogen von der Bahn und über die Rollwege bis auf die Parkposition (vorwärts hinein). Die
+    /// Geschwindigkeit bei der Übernahme ist die, die der Weg dort erlaubt (höchstens die Rollgeschwindigkeit). Null = kein Weg.
+    /// </summary>
+    public static TaxiRoute? PlanArrival(TaxiGraph graph, RunwayEnd end, TaxiNode parking, TaxiProfile profile, double minExitAlongM)
+    {
+        var exits = graph.Nodes
+            .Where(n => !n.IsParking && !n.IsHoldShort)
+            .Select(n => (Node: n, Offsets: end.Offsets(n.Latitude, n.Longitude)))
+            .Where(x => Math.Abs(x.Offsets.CrossM) <= OnCenterlineM && x.Offsets.AlongM >= minExitAlongM && x.Offsets.AlongM <= end.LengthM - 50)
+            .OrderBy(x => x.Offsets.AlongM);
+        foreach (var (node, offsets) in exits)
+        {
+            if (graph.Route(node.Id, parking.Id) is not { Count: >= 2 } nodes || graph.Edge(nodes[0], nodes[1]) is not { Type: not 2 }
+                || ExitTurnDeg(graph, end, offsets, nodes) > MaxExitTurnDeg)
+            {
+                continue;
+            }
+
+            var handoverAlong = offsets.AlongM - ExitLeadM;
+            var (lat, lon) = end.Point(handoverAlong);
+            var points = new List<(double East, double North)> { graph.ToLocal(lat, lon) };
+            points.AddRange(nodes.Select(n => (graph.Nodes[n].EastM, graph.Nodes[n].NorthM)));
+            var straight = profile.TaxiKt * MetersPerSecondPerKnot;
+            var path = TaxiPath.Build(points, profile.TurnRadiusM, straight, profile.LateralMps2, Math.Min(straight, MinTurnMps));
+            var handoverKt = Math.Min(profile.TaxiKt, path.AllowedMps(0, TaxiKinematics.DecelMps2) / MetersPerSecondPerKnot);
+            var exit = new TaxiHold(node, end.Designation, 0, graph.Edge(nodes[0], nodes[1])?.Name ?? "");
+            return new TaxiRoute(parking, exit, nodes, graph.TaxiwayNames(nodes), Math.Round(graph.LengthM(nodes)), null, path)
+            {
+                HandoverAlongM = Math.Round(handoverAlong, 1),
+                HandoverKt = Math.Round(handoverKt, 1),
+                EntryAlongM = Math.Round(offsets.AlongM),
+            };
+        }
+
+        return null;
+    }
+
+    /// <summary>Rollen nach der Landung: Abrollwege, die stärker als so nach hinten abknicken, fallen weg (Schnellabrollwege der Gegenrichtung).</summary>
+    public const double MaxExitTurnDeg = 110;
+
+    /// <summary>Knick vom Abrollpunkt in den Abrollweg (0 = geradeaus, 90 = rechtwinklig), gemessen zum ersten Rollpunkt mindestens 15 m weiter.</summary>
+    private static double ExitTurnDeg(TaxiGraph graph, RunwayEnd end, (double AlongM, double CrossM) exit, IReadOnlyList<int> nodes)
+    {
+        foreach (var id in nodes.Skip(1))
+        {
+            var n = graph.Nodes[id];
+            var (along, cross) = end.Offsets(n.Latitude, n.Longitude);
+            var (dAlong, dCross) = (along - exit.AlongM, cross - exit.CrossM);
+            if (Math.Sqrt((dAlong * dAlong) + (dCross * dCross)) >= 15)
+            {
+                return Math.Atan2(Math.Abs(dCross), dAlong) * 180 / Math.PI;
+            }
+        }
+
+        return 0;
+    }
+
     /// <summary>Einmündung auf die Mittellinie, entlang ab dem Bahnanfang; null = Route ohne Einmündung (<see cref="Build(TaxiGraph, TaxiNode, TaxiHold, IReadOnlyList{int}, TaxiProfile)"/>).</summary>
     public double? EntryAlongM { get; init; }
 

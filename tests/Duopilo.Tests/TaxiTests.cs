@@ -515,6 +515,103 @@ public sealed class TaxiTests
     }
 
     [Fact]
+    public void Rollen_nach_der_Landung_am_ersten_Abrollweg_hinter_dem_Bremsweg()
+    {
+        var graph = Graph();
+        var gate = graph.FindParking("A5")!;
+
+        // Landung auf 09 (Schwelle im Westen): Abrollpunkte bei 200 m (A1) und 1800 m (A9) – frühestens ab 1000 m bleibt A9
+        var route = TaxiRoute.PlanArrival(graph, End("09"), gate, TaxiProfile.Airliner, 1000)!;
+        Assert.Equal(15, route.Hold.Node.Id);
+        Assert.Equal("A9", route.Hold.Taxiway);
+        Assert.InRange(route.EntryAlongM!.Value, 1798, 1802);
+        Assert.InRange(route.HandoverAlongM!.Value, 1798 - TaxiRoute.ExitLeadM, 1802 - TaxiRoute.ExitLeadM);
+        Assert.Equal(15, route.Nodes[0]);
+        Assert.Null(route.PushbackPath);
+        Assert.InRange(route.HandoverKt, 5, TaxiProfile.Airliner.TaxiKt);
+
+        // Der Weg beginnt auf der Mittellinie in Landerichtung und endet auf der Parkposition
+        var (startEast, startNorth, startHeading) = route.TaxiPath.At(0);
+        Assert.InRange(startEast, 800 - TaxiRoute.ExitLeadM - 2, 800 - TaxiRoute.ExitLeadM + 2);
+        Assert.InRange(startNorth, -1, 1);
+        Assert.InRange(startHeading, 89, 91);
+        var (endEast, endNorth, _) = route.TaxiPath.At(route.TaxiPath.LengthM);
+        Assert.InRange(endEast, -0.5, 0.5);
+        Assert.InRange(endNorth, 349.5, 350.5);
+
+        // Früher erlaubt: A1; in Gegenrichtung (27, Schwelle im Osten) liegt A1 bei 1800 m
+        Assert.Equal(12, TaxiRoute.PlanArrival(graph, End("09"), gate, TaxiProfile.Airliner, 100)!.Hold.Node.Id);
+        Assert.Equal(12, TaxiRoute.PlanArrival(graph, End("27"), gate, TaxiProfile.Airliner, 1000)!.Hold.Node.Id);
+
+        // Kein Abrollweg hinter dem Bremsweg: kein Weg
+        Assert.Null(TaxiRoute.PlanArrival(graph, End("09"), gate, TaxiProfile.Airliner, 1900));
+    }
+
+    [Fact]
+    public void Rollen_nach_der_Landung_nicht_ueber_einen_Abrollweg_nach_hinten()
+    {
+        // Abrollweg bei 1200 m knickt nach hinten ab (Schnellabrollweg der Gegenrichtung), der bei 1500 m rechtwinklig
+        TaxiPointData P(double east, double north, int type = 1) => new(type, 0, east, north);
+        var data = new AirportTaxiData(
+            "EDXT",
+            51.0,
+            7.0,
+            50,
+            [
+                P(-1000, 0),       // 0 Bahnanfang
+                P(200, 0),         // 1 Abrollpunkt nach hinten
+                P(500, 0),         // 2 Abrollpunkt rechtwinklig
+                P(1000, 0),        // 3 Bahnende
+                P(50, 100),        // 4
+                P(300, 100),       // 5
+                P(500, 100),       // 6
+            ],
+            [new TaxiParkingData(9, 0, 12, 0, 1, 0, 180, 20, 300, 200)],
+            [
+                new TaxiPathData(2, 45, 9, 0, 0, 1, 0),
+                new TaxiPathData(2, 45, 9, 0, 1, 2, 0),
+                new TaxiPathData(2, 45, 9, 0, 2, 3, 0),
+                new TaxiPathData(1, 20, 0, 0, 1, 4, 0),
+                new TaxiPathData(1, 20, 0, 0, 4, 5, 0),
+                new TaxiPathData(1, 20, 0, 0, 5, 6, 0),
+                new TaxiPathData(1, 20, 0, 0, 6, 2, 0),
+                new TaxiPathData(3, 20, 0, 0, 5, 0, 0),
+            ],
+            ["K"]);
+        var graph = TaxiGraph.Build(data, [Runway]);
+
+        var route = TaxiRoute.PlanArrival(graph, End("09"), graph.FindParking("A1")!, TaxiProfile.Airliner, 1000)!;
+        Assert.Equal(2, route.Hold.Node.Id);
+        Assert.InRange(route.EntryAlongM!.Value, 1498, 1502);
+    }
+
+    [Fact]
+    public void Rollen_nach_der_Landung_rollt_gleich_mit_der_Uebergabe_Geschwindigkeit()
+    {
+        var graph = Graph();
+        var route = TaxiRoute.PlanArrival(graph, End("09"), graph.FindParking("A5")!, TaxiProfile.Airliner, 1000)!;
+        var kin = new TaxiKinematics(null, route.TaxiPath, graph.ToLatLon, 164, 9, 0.3, rolling: route.HandoverKt);
+
+        Assert.Equal(TaxiPhase.Taxi, kin.Phase);
+        Assert.Equal(route.HandoverKt, kin.SpeedKt, 1);
+        kin.Advance(1.0 / 30);
+        Assert.Equal(TaxiPhase.Taxi, kin.Phase);
+        Assert.InRange(kin.SpeedKt, route.HandoverKt - 0.1, route.HandoverKt + 0.1);
+        Assert.InRange(kin.HeadingDeg, 89, 91);
+
+        for (var i = 0; i < 30 * 900 && kin.Phase != TaxiPhase.Holding; i++)
+        {
+            kin.Advance(1.0 / 30);
+            Assert.True(kin.SpeedKt <= TaxiProfile.Airliner.TaxiKt + 0.01);
+        }
+
+        // Steht auf der Parkposition
+        Assert.Equal(TaxiPhase.Holding, kin.Phase);
+        Assert.InRange(kin.EastM, -1, 1);
+        Assert.InRange(kin.NorthM, 349, 351);
+    }
+
+    [Fact]
     public void Andere_Flugzeuge_sperren_Abschnitte_und_Parkpositionen()
     {
         var graph = Graph();

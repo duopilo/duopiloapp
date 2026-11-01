@@ -23,7 +23,7 @@
 - [ ] Testflug in VR mit der Sprachschleife
 - [ ] `L:`-Variablen und Aktionen für den iniBuilds A321LR (FMA, A/THR, Master Warning, ECAM)
 - [ ] Eingabe-Modul: im Sim prüfen, NAV & LOGO über Input Events, weitere Flugzeuge
-- [ ] ATC: Rollweg aus dem Rollweg-Graphen der Facilities-API berechnen, Gate aus der Parkposition
+- [ ] ATC: Rollweg aus dem Rollweg-Graphen der Facilities-API berechnen, Gate aus der Parkposition – Graph und Routensuche gibt es seit dem Rolltest des Verkehrs (beta.22), die Anbindung an ATC fehlt noch
 - [ ] ATC: Squawk 7600/7500 behandeln
 - [ ] Anbindung von WASimCommander (`L:`-Variablen auflisten, Events)
 - [ ] Sprachmodus mit dem Remote-Connector testen
@@ -38,11 +38,14 @@ Eigener KI-Verkehr von Duopilo statt des Verkehrs aus dem Simulator, Schritt fü
 - [x] **Start** (beta.16, in der Beta) – Spawn auf der Bahn, Startlauf, Abheben, Steigflug auf 3000 ft, Fahrwerk rein, Lichter; Auswertung von Abhebepunkt und Steigflug
 - [x] **Kinematik im Endanflug** (beta.17, in der Beta) – die Wegpunkt-KI fliegt nicht langsamer als rund 169 kt und landet mit festen 133 kt, deshalb bewegt Duopilo das Flugzeug die letzten Meilen selbst: Geschwindigkeit je Typ, 3°-Pfad, Abfangen, weiches Aufsetzen, Bremsen bis zum Halt
 - [x] **Überflüge in Reiseflughöhe** (beta.18, in der Beta) – Flugzeuge, die auf ihrer Flugfläche über deine Gegend ziehen, geflogen von der Wegpunkt-KI
-- [ ] **Flughafenregeln** (beta.19) – welches Flugzeug welchen Platz und welche Bahn nutzen darf, für alle Flughäfen: Militärplätze nur Militärverkehr (A400M, Super Hornet), Heliports und geschlossene Plätze keinen, kleine Plätze nur Allgemeine Luftfahrt, Bahnregeln (EDDF 07L/25R nur Landungen ohne B747, A380, MD-11), Verkehrsmix je Flughafen (Finkenwerder überwiegend Beluga)
-- [ ] **Rollen** (beta.22, erster Test) – Pushback und Rollen vom Gate zum Haltepunkt über die Rollwege des Flughafens (Rollweg-Netz aus MSFS); Aufreihen und Start vom Gate (B2) ab beta.24; Rollen nach der Landung noch offen
+- [x] **Flughafenregeln** (beta.19, in der Beta) – welches Flugzeug welchen Platz und welche Bahn nutzen darf, für alle Flughäfen: Militärplätze nur Militärverkehr (A400M, Super Hornet), Heliports und geschlossene Plätze keinen, kleine Plätze nur Allgemeine Luftfahrt, Bahnregeln (EDDF 07L/25R nur Landungen ohne B747, A380, MD-11), Verkehrsmix je Flughafen (Finkenwerder überwiegend Beluga)
+- [x] **Rotieren beim Start** (beta.21, in der Beta) – Duopilo fliegt den Start selbst (Kinematik wie im Endanflug): Startlauf, rotieren bei Vr mit 3°/s, abheben bei 8°, Steigflug um 15°; getestet mit A400M, MD-11 und A320
+- [x] **Rollen zur Bahn** (beta.22 bis beta.28, in der Beta) – Duopilo bewegt das Flugzeug über die Rollwege des Flughafens (Rollweg-Netz aus MSFS): Gate nach Größe und Typ, Pushback entlang der Route bis zur nächsten Kreuzung, Rollen mit 15 kt und in Kurven langsamer, um geparkte Flugzeuge herum (beta.23), Halt an der Haltelinie des Rollwegs, über den es auf die Bahn rollt (beta.28)
+- [x] **Abflug vom Gate** (beta.24, in der Beta) – Pushback, Rollen, Aufreihen auf der Mittellinie und kinematischer Start in einem Lauf; getestet in EDDL 23R vom Gate A15
+- [ ] **Rollen nach der Landung** (beta.29) – Landung, noch rollend über einen passenden Abrollweg von der Bahn, Rollen zu einem freien Gate
+- [ ] **Abflug-Reihenfolge** – mehrere Flugzeuge nacheinander am Haltepunkt, Aufreihen erst, wenn die Bahn frei ist
 - [ ] **Helikopter** – kinematisch: Anflug, Schweben, senkrechtes Landen und Abheben auf Heliports und Flughäfen
 - [ ] **Fahrplan-Verkehr** – Flüge, über den ICAO-Typ den installierten Modellen zugeordnet
 - [x] Auch in Frankfurt testen (drei Parallelbahnen und die Startbahn West)
-- [x] **Rotieren beim Start** (beta.21) – Duopilo fliegt den Start selbst (Kinematik wie im Endanflug): Startlauf, rotieren bei Vr mit 3°/s, abheben bei 8°, Steigflug um 15°
 
 Ideen und Wünsche: [Issues](https://github.com/duopilo/duopiloapp/issues).

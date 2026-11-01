@@ -981,6 +981,39 @@ public sealed class TrafficTestTests
     }
 
     [Fact]
+    public void Kinematik_mit_Abrollpunkt_bremst_auf_Rollgeschwindigkeit_statt_zum_Halt()
+    {
+        var end = End("23L");
+        var plan = TrafficTestPlan.Build(end, TrafficTestVariant.A3, approachKt: 135);
+        var along = -3 * RunwayEnd.MetersPerNm;
+        var kin = new TrafficKinematics(plan, KinematicProfile.Airliner, along, 0, TrafficKinematics.GlidePathHeightFt(along), 140, 2.5, end.ElevationFt, 9)
+        {
+            ExitAlongM = 1800,
+            ExitKt = 14,
+        };
+
+        var minGroundKt = double.MaxValue;
+        for (var i = 0; i < 30 * 600 && kin.Phase != KinematicPhase.Exited; i++)
+        {
+            kin.Advance(1.0 / 30);
+            if (kin.Phase == KinematicPhase.Rollout)
+            {
+                minGroundKt = Math.Min(minGroundKt, kin.SpeedKt);
+            }
+        }
+
+        // Am Abrollpunkt mit Rollgeschwindigkeit, nie langsamer, am Boden – und danach bewegt sie sich nicht mehr
+        Assert.Equal(KinematicPhase.Exited, kin.Phase);
+        Assert.NotNull(kin.Touchdown);
+        Assert.Equal(1800, kin.AlongM, 1);
+        Assert.InRange(kin.SpeedKt, 14, 16);
+        Assert.True(minGroundKt >= 14);
+        Assert.True(kin.OnGround);
+        kin.Advance(1);
+        Assert.Equal(1800, kin.AlongM, 1);
+    }
+
+    [Fact]
     public void Kinematik_Lage_fuer_den_Sim_Bezugspunkt_ueber_den_Raedern()
     {
         var end = End("23L");

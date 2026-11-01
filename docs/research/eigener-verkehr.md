@@ -484,6 +484,18 @@ führt jetzt zur Einmündung (Rollpunkt auf der Mittellinie, über einen Rollweg
 Bahnanfang zählt dreifach), gehalten wird rückwärts gesucht am letzten normalen Haltepunkt der Bahn auf der Route (nicht der ILS-Linie)
 oder – fehlt einer – dort, wo die Route den Abstand des nächsten Haltepunkts der Bahn zur Mittellinie unterschreitet (hier 108 m).
 
+**beta.28 in Düsseldorf (1.11.2026):** Abflug vom Gate A15 (B2): Pushback 65 m, 2,8 km um 32 geparkte Flugzeuge herum, Halt am
+geschwungenen Zubringer K 113 m vor der Mittellinie – an der richtigen Linie –, vorwärts aufgereiht, abgehoben nach 1535 m mit 148 kt.
+
+**Rollen nach der Landung (beta.29, Variante A3):** Die Landung fliegt die Kinematik ab dem Spawn. Vor dem Spawn wählt Duopilo eine freie
+Parkposition und den Abrollpunkt: den ersten Rollpunkt auf der Mittellinie hinter dem Bremsweg (Aufsetzen um 450 m, 2 s Bremsverzug,
+mit 2 m/s² auf Rollgeschwindigkeit, dazu 60 m), von dem die Route zur Parkposition über einen Rollweg die Bahn verlässt und dabei
+höchstens 110° abknickt (keine Schnellabrollwege der Gegenrichtung). Die Landekinematik bremst nicht bis zum Halt, sondern bis 60 m vor
+dem Abrollpunkt auf die Geschwindigkeit, die der Weg dort erlaubt (höchstens 15 kt), und geht in die Phase `exited`; im selben Frame
+übernimmt die Kinematik am Boden mit dieser Geschwindigkeit (ohne Stehen an der Parkposition) – im Bogen von der Bahn, über die
+Rollwege mit den Hindernissen und vorwärts auf die Parkposition. Offen: Bahnkreuzungen auf dem Weg (Halt vor der 23L), Eingeparkt
+wird vorwärts wie im echten Betrieb.
+
 **Fahrplan des eigenen Verkehrs (Stand 1.11.2026):**
 
 1. Anflug und Landung – erledigt bis beta.14 (Wegpunkte, Fahrwerk bis 2500 ft, Lichter, Freigabeliste, Geschwindigkeit).
@@ -493,7 +505,7 @@ oder – fehlt einer – dort, wo die Route den Abstand des nächsten Haltepunkt
 4. Überflüge in Reiseflughöhe – beta.18 (Variante C1, Wegpunkt-KI): Spawn 40 NM vor der Bahnmitte auf FL350 mit 450 kt TAS (ab
    beta.19 als TAS an die KI), geradeaus darüber hinweg, Lichter wie im Reiseflug (Landelicht aus), Ende 40 NM dahinter. Allgemeine
    Luftfahrt FL85, doppelte Vapp, 15 NM. Flughafenregeln für alle Plätze – beta.19.
-5. Rollen – beta.22 (Variante D1): Pushback und Rollen vom Gate zum Haltepunkt über die Rollwege, beta.23 mit Hindernissen; Abflug vom Gate mit Aufreihen und Start – beta.24 (B2); Rollen nach der Landung danach.
+5. Rollen – beta.22 (Variante D1): Pushback und Rollen vom Gate zum Haltepunkt über die Rollwege, beta.23 mit Hindernissen; Abflug vom Gate mit Aufreihen und Start – beta.24 (B2), Halt an der richtigen Linie ab beta.28; Rollen nach der Landung – beta.29 (A3); danach die Abflug-Reihenfolge (mehrere Flugzeuge am Haltepunkt).
 6. Helikopter – nach dem Rollen: kinematisch (Anflug, Schweben, senkrecht landen und abheben), auf Heliports und Flughäfen;
    Heliports bekommen dann nur Helis.
 
