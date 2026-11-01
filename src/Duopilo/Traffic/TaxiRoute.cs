@@ -53,10 +53,10 @@ public sealed record TaxiRoute(
                 continue;
             }
 
-            if (graph.Route(holdNode, node.Id) is { Count: >= 2 } path && graph.LengthM(path) < bestLength && graph.LengthM(path) < 600)
+            if (graph.Route(holdNode, node.Id) is { Count: >= 2 } candidate && graph.LengthM(candidate) < Math.Min(bestLength, 600))
             {
-                best = path;
-                bestLength = graph.LengthM(path);
+                best = candidate;
+                bestLength = graph.LengthM(candidate);
             }
         }
 
