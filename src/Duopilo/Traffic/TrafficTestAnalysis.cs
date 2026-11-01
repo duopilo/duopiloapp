@@ -121,7 +121,7 @@ public sealed record TrafficTestOverflight(
 /// stopped (gelandet und angehalten), landed, floated (schwebt über der Bahn), airborne, go_around (durchgestartet, nicht gelandet),
 /// go_around_ignored (durchgestartet, aber doch aufgesetzt), no_data. Beim Start (B1): climbed (auf
 /// <see cref="TrafficTestPlan.ClimbEndFt"/> gestiegen), climbing, rolling, no_roll (nicht losgerollt), no_liftoff (am Boden über das
-/// Bahnende). Beim Überflug (C1): passed (hinter dem Ausflugpunkt), cruising.
+/// Bahnende). Beim Überflug (C1): passed (hinter dem Ausflugpunkt), cruising. A4 vor dem Eindrehpunkt auf den Final: enroute.
 /// </param>
 /// <param name="MeanSpeedDeviationKt">Mittlere Abweichung IAS minus Wunsch im Anflug (positiv = zu schnell).</param>
 /// <param name="GearExtendedAtNm">Entfernung zur Schwelle, als das Fahrwerk ganz draußen war (0 = erst hinter der Schwelle).</param>
@@ -347,6 +347,14 @@ public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spa
             return new TrafficTestPoint(Math.Round(seconds, 1), along, cross, null, targetKt, events);
         }
 
+        // A4 vor dem Eindrehpunkt: noch kein Endanflug – erst danach wertet eine neue Auswertung mit dem Endanflug aus
+        if (plan.Arrival is not null)
+        {
+            _previousAlong = along;
+            _previousSeconds = seconds;
+            return new TrafficTestPoint(Math.Round(seconds, 1), along, cross, null, targetKt, events);
+        }
+
         if (plan.IsTaxi)
         {
             AddTaxi(s, seconds, events);
@@ -496,6 +504,7 @@ public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spa
             : plan.IsTakeoff ? (_liftoffSeconds is null
                 ? (_overran ? "no_liftoff" : _rollStartSeconds is null ? "no_roll" : "rolling")
                 : _highestFt >= TrafficTestPlan.ClimbEndFt ? "climbed" : "climbing")
+            : plan.Arrival is not null ? "enroute"
             : GoAroundPlan is not null ? (_touchdown is null ? "go_around" : "go_around_ignored")
             : _touchdown is null ? (_floatSeconds >= 5 || _airborneBeyondEnd ? "floated" : "airborne")
             : _stopAlong is not null ? "stopped"

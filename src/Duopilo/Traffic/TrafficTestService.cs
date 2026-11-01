@@ -28,6 +28,8 @@ namespace Duopilo.Traffic;
 /// <param name="Latitude">C2: Überflugpunkt (Breite); leer = das eigene Flugzeug.</param>
 /// <param name="Longitude">C2: Überflugpunkt (Länge).</param>
 /// <param name="OffsetNm">C2: so weit neben dem Punkt vorbei (rechts vom Kurs positiv); leer = genau darüber.</param>
+/// <param name="FromDeg">A4: aus dieser Richtung kommt der Anflug (Peilung von der Schwelle); leer = von hinten auf der Mittellinie.</param>
+/// <param name="EndNm">B3: der Test endet so weit von der Bahn; leer = 40 NM.</param>
 public sealed record TrafficTestRequest(
     string Airport,
     string Runway,
@@ -52,7 +54,9 @@ public sealed record TrafficTestRequest(
     string? Parking = null,
     double? Latitude = null,
     double? Longitude = null,
-    double? OffsetNm = null);
+    double? OffsetNm = null,
+    double? FromDeg = null,
+    double? EndNm = null);
 
 /// <summary>Zeitpunkt und Text eines Ereignisses der Testlinie.</summary>
 public sealed record TrafficTestEvent(double Seconds, string Text);
@@ -112,7 +116,38 @@ public sealed record TrafficTestStatus(
     string? Note,
     double? KinematicNm = null,
     TrafficTestKinematics? Kinematics = null,
-    TrafficTestTaxi? Taxi = null);
+    TrafficTestTaxi? Taxi = null,
+    TrafficTestEnroute? Enroute = null);
+
+/// <summary>Stand des Streckenflugs (A4 vor dem Final, B3 nach dem Start, <see cref="EnrouteKinematics"/>).</summary>
+/// <param name="Leg">arrival oder departure.</param>
+/// <param name="Phase">descent, level, turn, joined (Anflug); climb, turn, cruise (Abflug).</param>
+/// <param name="DistanceNm">Anflug: Weg bis zur Schwelle; Abflug: Entfernung zur Bahn.</param>
+/// <param name="BankDeg">Querneigung, rechts positiv.</param>
+/// <param name="TurnDeg">Anflug: wie weit die Kurve auf den Final dreht.</param>
+/// <param name="ToTurnNm">Anflug: Weg bis zum Beginn der Kurve.</param>
+/// <param name="JoinNm">Anflug: Eindrehpunkt so weit vor der Schwelle.</param>
+/// <param name="TrackDeg">Abflug: Kurs nach der Kurve.</param>
+/// <param name="EndNm">Abflug: Ende des Tests so weit von der Bahn.</param>
+public sealed record TrafficTestEnroute(
+    string Leg,
+    string Phase,
+    double DistanceNm,
+    double AltitudeFt,
+    double TargetAltitudeFt,
+    double SpeedKt,
+    double TargetKt,
+    double TrueAirspeedKt,
+    double VerticalSpeedFpm,
+    double HeadingDeg,
+    double BankDeg,
+    double MaxBankDeg,
+    double? TurnDeg,
+    string? TurnDirection,
+    double? ToTurnNm,
+    double? JoinNm,
+    double? TrackDeg,
+    double? EndNm);
 
 /// <summary>Rollweg-Netz eines Flughafens zum Prüfen (traffic_taxi_info).</summary>
 /// <param name="Mapping">Zuordnung von BIAS_X/BIAS_Z zu Ost/Nord; <paramref name="MappingErrorM"/> ist der mittlere Abstand der Bahn-Abschnitte zur Mittellinie damit.</param>
@@ -272,6 +307,9 @@ public sealed class TrafficTestService : IHostedService, IDisposable
     /// <summary>C2: führt der Überflug mindestens so weit daneben vorbei, bleibt die Standard-Flugfläche.</summary>
     private const double OverflightSeparationNm = 3;
 
+    /// <summary>B3: In dieser Höhe über der Bahn übernimmt der Steigflug bis in den Reiseflug (<see cref="EnrouteKinematics"/>) den nach dem Start.</summary>
+    private const double DepartureHandoverFt = 1500;
+
     /// <summary>Rolltests (D1, B2, A3) laufen mindestens so lange – in der Warteschlange brauchte ein Abflug in EDDL gut 13 min.</summary>
     private const int TaxiMaxMinutes = 30;
 
@@ -430,7 +468,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             // Ohne Titel wählen die Regeln das Modell (Verkehrsmix, Militärplatz, nur Allgemeine Luftfahrt …)
             var ruleMessages = new List<string>();
             var rules = request.Variant is TrafficTestVariant.C1 or TrafficTestVariant.C2 ? null : LoadRules(ruleMessages);
-            var operation = request.Variant is TrafficTestVariant.B1 or TrafficTestVariant.D1 or TrafficTestVariant.B2 ? TrafficOperation.Departure : TrafficOperation.Arrival;
+            var operation = request.Variant is TrafficTestVariant.B1 or TrafficTestVariant.D1 or TrafficTestVariant.B2 or TrafficTestVariant.B3 ? TrafficOperation.Departure : TrafficOperation.Arrival;
             var (title, livery) = await ResolveModelAsync(request, rules, runway, operation, ct);
             var modelType = TrafficModels.TypeOf(title, livery);
             var approachKt = request.ApproachKt ?? modelType?.ApproachKt;
@@ -446,7 +484,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             TaxiGraph? taxiGraph = null;
             TaxiRoute? taxiRoute = null;
             var taxiEvents = new List<string>();
-            if (request.Variant is TrafficTestVariant.D1 or TrafficTestVariant.B2)
+            if (request.Variant is TrafficTestVariant.D1 or TrafficTestVariant.B2 or TrafficTestVariant.B3)
             {
                 taxiGraph = await LoadTaxiGraphAsync(airport, runways, ct);
                 var (obstacles, scanError) = await SetTaxiObstaclesAsync(taxiGraph, category, ct);
@@ -463,8 +501,8 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                     taxiEvents.Add("warning:parking_occupied " + taxiRoute.Parking.Parking?.Label);
                 }
 
-                // B2: vom Haltepunkt auf die Bahn und in Startrichtung aufreihen
-                if (request.Variant == TrafficTestVariant.B2)
+                // B2, B3: vom Haltepunkt auf die Bahn und in Startrichtung aufreihen
+                if (request.Variant is TrafficTestVariant.B2 or TrafficTestVariant.B3)
                 {
                     taxiRoute = taxiRoute.WithLineUp(taxiGraph, runway, TaxiProfile.For(category));
                     if (taxiRoute.LineUpPath is null)
@@ -476,8 +514,24 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 }
             }
 
-            // A3: Abrollpunkt und Weg zu einer freien Parkposition, bevor der laufende Test ersetzt wird
-            if (request.Variant == TrafficTestVariant.A3)
+            // A4: Weg aus dem Reiseflug auf den Final und Spawn – vor dem Ersetzen, passt er nicht, bleibt der laufende Test
+            TrafficTestPlan? arrivalPlan = null;
+            if (request.Variant == TrafficTestVariant.A4)
+            {
+                arrivalPlan = TrafficTestPlan.BuildArrival(runway, category, approachKt, request.FromDeg, request.SpawnNm, request.FlightLevel, request.CruiseKt, request.TouchdownM, request.FinalLowFt);
+                if (_sim.Num("lat") is { } ownLat && _sim.Num("lon") is { } ownLon
+                    && RouteMath.DistanceNm(ownLat, ownLon, arrivalPlan.Spawn.Latitude, arrivalPlan.Spawn.Longitude) is var away and > MaxDistanceNm)
+                {
+                    throw new InvalidOperationException(Loc.T("tools.trafficTest.spawnTooFar", away, MaxDistanceNm));
+                }
+
+                var leg = arrivalPlan.Arrival!;
+                taxiEvents.Add(string.Create(CultureInfo.InvariantCulture,
+                    $"arrival_route from {leg.FromDeg:000} at {leg.SpawnDistanceNm:0.#} NM: {leg.Path.StraightM / RunwayEnd.MetersPerNm:0.#} NM on {TrafficMath.Normalize(runway.HeadingTrueDeg + leg.Path.LineHeadingDeg):000}, {leg.Path.SweepDeg:0}° {(leg.Path.RightTurn ? "right" : "left")} turn (radius {leg.Path.RadiusM / RunwayEnd.MetersPerNm:0.0} NM) onto the final at {leg.Profile.JoinNm:0} NM, {arrivalPlan.SpawnNm:0.#} NM to the threshold, at most FL{leg.CruiseFt / 100:000}"));
+            }
+
+            // A3, A4: Abrollpunkt und Weg zu einer freien Parkposition, bevor der laufende Test ersetzt wird
+            if (request.Variant is TrafficTestVariant.A3 or TrafficTestVariant.A4)
             {
                 taxiGraph = await LoadTaxiGraphAsync(airport, runways, ct);
                 var (obstacles, scanError) = await SetTaxiObstaclesAsync(taxiGraph, category, ct);
@@ -496,7 +550,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             // Rollen: gekreuzte Bahnen mit Halt davor (A3: ohne die Landebahn, auf der der Weg beginnt)
             if (taxiRoute is not null && taxiGraph is not null)
             {
-                var landing = request.Variant == TrafficTestVariant.A3 ? RunwayOf(runways, runway.Designation) : null;
+                var landing = request.Variant is TrafficTestVariant.A3 or TrafficTestVariant.A4 ? RunwayOf(runways, runway.Designation) : null;
                 taxiRoute = taxiRoute.WithCrossings(taxiGraph, TaxiProfile.For(category), landing);
                 taxiEvents.Add(taxiRoute.Crossings.Count == 0
                     ? "taxi_crossings none"
@@ -505,8 +559,8 @@ public sealed class TrafficTestService : IHostedService, IDisposable
 
             // Ein Test je Bahn: den alten auf dieser Bahn ersetzen, auf anderen Bahnen höchstens MaxConcurrent. Rollende Tests (D1, B2, A3)
             // ersetzen einander nicht – sie stellen sich an (Abstand beim Rollen, Reihenfolge am Haltepunkt)
-            var rolling = request.Variant is TrafficTestVariant.D1 or TrafficTestVariant.B2 or TrafficTestVariant.A3;
-            foreach (var old in Running().Where(r => r.SameRunway(runway) && !(rolling && (r.InitialPlan.IsTaxi || r.InitialPlan.Variant == TrafficTestVariant.A3))))
+            var rolling = request.Variant is TrafficTestVariant.D1 or TrafficTestVariant.B2 or TrafficTestVariant.B3 or TrafficTestVariant.A3 or TrafficTestVariant.A4;
+            foreach (var old in Running().Where(r => r.SameRunway(runway) && !(rolling && (r.InitialPlan.IsTaxi || r.InitialPlan.TaxiAfterLanding))))
             {
                 await StopCoreAsync(old, "replaced");
             }
@@ -556,13 +610,26 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 TrafficTestVariant.B1 => TrafficTestPlan.BuildTakeoff(runway, approachKt, request.RollM, throttle),
                 TrafficTestVariant.D1 => TrafficTestPlan.BuildTaxi(runway, approachKt, taxiRoute!, taxiGraph!),
                 TrafficTestVariant.B2 => TrafficTestPlan.BuildTaxi(runway, approachKt, taxiRoute!, taxiGraph!, takeoff: true),
+                TrafficTestVariant.B3 => TrafficTestPlan.BuildTaxi(runway, approachKt, taxiRoute!, taxiGraph!, takeoff: true) with
+                {
+                    Variant = TrafficTestVariant.B3,
+                    Departure = TrafficTestPlan.DepartureLegFor(category, approachKt, request.TrackDeg, request.FlightLevel, request.CruiseKt, request.EndNm),
+                },
+                TrafficTestVariant.A4 => arrivalPlan!,
                 TrafficTestVariant.C1 => TrafficTestPlan.BuildOverflight(runway.Overhead(request.TrackDeg), category, approachKt, request.FlightLevel, request.CruiseKt, request.SpawnNm),
                 TrafficTestVariant.C2 => TrafficTestPlan.BuildOverflight(runway, category, approachKt, OverflightLevel(request, category, overflightEvents), request.CruiseKt, request.SpawnNm, TrafficTestVariant.C2),
                 _ => TrafficTestPlan.Build(runway, request.Variant, spawnNm, request.TouchdownM, request.FinalLowFt, approachKt, throttle),
             };
-            if (request.Variant == TrafficTestVariant.A3)
+            if (plan.TaxiAfterLanding)
             {
                 plan = plan with { Taxi = taxiRoute };
+            }
+
+            if (plan.Departure is { } departure)
+            {
+                var trackText = departure.TrackDeg?.ToString("000", CultureInfo.InvariantCulture) ?? "runway heading";
+                taxiEvents.Add(string.Create(CultureInfo.InvariantCulture,
+                    $"departure_planned track {trackText}, FL{departure.CruiseFt / 100:000}, test ends {departure.EndNm:0} NM out"));
             }
 
             // B2: So weit muss die nächste Landung beim Aufreihen weg sein (Aufreihen, Startlauf, 500 ft)
@@ -588,16 +655,17 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             }
 
             // Rollen und Warteschlangen dauern länger als ein Anflug: mindestens TaxiMaxMinutes
-            var maxMinutes = plan.IsTaxi || plan.Variant == TrafficTestVariant.A3 ? Math.Max(_options.TrafficTest.MaxMinutes, TaxiMaxMinutes) : _options.TrafficTest.MaxMinutes;
+            var maxMinutes = plan.IsTaxi || plan.TaxiAfterLanding ? Math.Max(_options.TrafficTest.MaxMinutes, TaxiMaxMinutes) : _options.TrafficTest.MaxMinutes;
             var run = new TrafficTestRun(plan, slot, title, livery, request.Gear, objectId, spawnUtc, csv?.Path, csv?.Writer, maxMinutes)
             {
                 SpeedMethod = request.SpeedMethod,
                 GoAroundEnabled = request.GoAround,
                 KinematicNm = plan.Variant == TrafficTestVariant.A3 ? plan.SpawnNm + KinematicSpawnMarginNm
-                    : plan.IsTakeoff || plan.IsOverflight || request.KinematicNm is null ? null : Math.Clamp(request.KinematicNm.Value, MinKinematicNm, MaxKinematicNm),
+                    : plan.Arrival is not null || plan.IsTakeoff || plan.IsOverflight || request.KinematicNm is null ? null : Math.Clamp(request.KinematicNm.Value, MinKinematicNm, MaxKinematicNm),
                 KinematicTakeoff = plan.IsTakeoff && request.KinematicTakeoff,
                 Category = category,
-                Lights = plan.IsOverflight ? TrafficLights.Cruise : plan.IsTaxi ? TrafficLights.Rollout : TrafficLights.Approach,
+                Lights = plan.IsOverflight || (plan.Arrival is not null && plan.Spawn.AltitudeFt >= EnrouteProfile.SpeedLimitFt) ? TrafficLights.Cruise
+                    : plan.IsTaxi ? TrafficLights.Rollout : TrafficLights.Approach,
                 TaxiGraph = taxiGraph,
                 FullModel = !title.Contains("Passive", StringComparison.OrdinalIgnoreCase),
                 Wake = wake,
@@ -608,6 +676,8 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 ? string.Create(CultureInfo.InvariantCulture, $"spawn at parking {taxi.Parking.Parking?.Label} ({taxi.Parking.Parking?.TypeName}, {taxi.Parking.Parking?.RadiusM:0} m), route {string.Join(' ', taxi.Taxiways)} {taxi.LengthM:0} m to the hold on {taxi.Hold.Taxiway} ({taxi.Hold.Runway}), pushback {(taxi.Pushback ? "yes" : "no")}, net {taxiGraph.Nodes.Count} nodes, {taxiGraph.Edges.Count} paths, mapping {taxiGraph.Mapping} ({taxiGraph.MappingErrorM:0.0} m), object {objectId}, {run.Tail}")
                 : plan.IsTakeoff
                 ? string.Create(CultureInfo.InvariantCulture, $"spawn on the runway {TrafficTestPlan.LineUpM:0} m behind its start, takeoff speed {plan.TakeoffKt:0} kt, object {objectId}, {run.Tail}")
+                : plan.Arrival is { } arrivalLeg
+                ? string.Create(CultureInfo.InvariantCulture, $"spawn {arrivalLeg.SpawnDistanceNm:0.#} NM from the threshold from {arrivalLeg.FromDeg:000}, {plan.Spawn.AltitudeFt:0} ft, heading {plan.Spawn.HeadingTrueDeg:000}, {plan.Spawn.AirspeedKt} kt, gear up, object {objectId}, {run.Tail}")
                 : plan.IsOverflight
                 ? string.Create(CultureInfo.InvariantCulture, $"spawn {plan.SpawnNm:0.#} NM before overhead, {plan.CruiseAltitudeFt:0} ft, track {plan.Runway.HeadingTrueDeg:000}, {plan.CruiseKt:0} kt tas (about {plan.CruiseIasKt:0} ias), object {objectId}, {run.Tail}")
                 : string.Create(CultureInfo.InvariantCulture, $"spawn {plan.SpawnNm:0.#} NM, {plan.Spawn.AltitudeFt:0} ft, {plan.Spawn.AirspeedKt} kt, object {objectId}, {run.Tail}"));
@@ -664,10 +734,10 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 }
 
                 await _sim.SetAiLightsAsync(objectId, run.Lights, ct);
-                run.AddEvent(0, plan.IsOverflight ? "lights_sent cruise" : plan.IsTaxi ? "lights_sent taxi" : "lights_sent approach");
+                run.AddEvent(0, run.Lights == TrafficLights.Cruise ? "lights_sent cruise" : plan.IsTaxi ? "lights_sent taxi" : "lights_sent approach");
 
-                // Rollen: keine Wegpunkte – Duopilo schiebt das Flugzeug ab dem ersten Messpunkt selbst
-                if (!plan.IsTaxi)
+                // Rollen: keine Wegpunkte – Duopilo schiebt das Flugzeug ab dem ersten Messpunkt selbst; A4 fliegt Duopilo ab dem Spawn
+                if (!plan.IsTaxi && plan.Arrival is null)
                 {
                     await _sim.SetAiWaypointsAsync(objectId, [.. plan.Waypoints.Select(w => w.Waypoint)], ct);
                     run.AddEvent(0, string.Create(CultureInfo.InvariantCulture, $"waypoints_sent {plan.Waypoints.Count}"));
@@ -856,7 +926,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 : null,
             run.InitialPlan.Taxi is { } route
                 ? new TrafficTestTaxi(
-                    run.InitialPlan.Variant == TrafficTestVariant.A3 && !run.TaxiActive ? "landing"
+                    run.InitialPlan.TaxiAfterLanding && !run.TaxiActive ? "landing"
                         : run.TaxiKinematics is { } t ? JsonNamingPolicy.SnakeCaseLower.ConvertName(t.Phase.ToString()) : "parked",
                     route.Parking.Parking?.Label ?? "",
                     route.Parking.Parking?.TypeName ?? "",
@@ -880,8 +950,29 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                     [.. route.Crossings.Select(c => string.Create(CultureInfo.InvariantCulture, $"{c.Runway} on {c.Taxiway} at {c.StopS:0} m"))],
                     run.TaxiKinematics?.CrossingsDone ?? 0,
                     run.BlockedBy is { } by ? _runs.FirstOrDefault(r => r.ObjectId == by)?.Tail : null)
-                : null);
+                : null,
+            run.Enroute is { } en ? EnrouteStatus(run, en) : null);
     }
+
+    private static TrafficTestEnroute EnrouteStatus(TrafficTestRun run, EnrouteKinematics en) => new(
+        en.IsArrival ? "arrival" : "departure",
+        en.Phase,
+        Math.Round(en.IsArrival ? en.RemainingNm : en.DistanceFromRunwayNm, 1),
+        Math.Round(en.AltitudeFt + en.CgHeightFt),
+        Math.Round(en.GroundFt + en.TargetHeightFt + en.CgHeightFt),
+        Math.Round(en.SpeedKt),
+        Math.Round(en.TargetKt),
+        Math.Round(en.TrueAirspeedKt),
+        Math.Round(en.VerticalSpeedFpm),
+        Math.Round(en.HeadingTrueDeg),
+        Math.Round(en.BankRightDeg, 1),
+        Math.Round(en.MaxBankDeg, 1),
+        en.Path is { } path ? Math.Round(path.SweepDeg) : null,
+        en.Path is { } turn ? (turn.RightTurn ? "right" : "left") : null,
+        en.IsArrival ? Math.Round(en.ToTurnNm, 1) : null,
+        run.InitialPlan.Arrival?.Profile.JoinNm,
+        en.IsArrival ? null : Math.Round(TrafficMath.Normalize(run.InitialPlan.Runway.HeadingTrueDeg + en.TargetHeadingDeg)),
+        run.InitialPlan.Departure?.EndNm);
 
     private async Task<(string Title, string Livery)> ResolveModelAsync(
         TrafficTestRequest request,
@@ -933,7 +1024,19 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             // Kinematik: Übernahme ab KinematicNm vor der Schwelle; danach liefert sie Fahrt, Sinkrate, Neigung und "am Boden" –
             // eingefroren meldet der Sim dafür nichts Brauchbares
             StartKinematicsIfDue(run, sample);
-            if (run.Kinematics is { } kin && !run.TaxiActive)
+            if (run.Enroute is { } enroute && !enroute.Joined)
+            {
+                // Streckenflug (A4 vor dem Final, B3 nach dem Start): Werte aus der Rechnung, eingefroren meldet der Sim nichts Brauchbares
+                sample = sample with
+                {
+                    OnGround = false,
+                    IndicatedKt = enroute.SpeedKt,
+                    GroundSpeedKt = enroute.TrueAirspeedKt,
+                    VerticalSpeedFpm = enroute.VerticalSpeedFpm,
+                    PitchDeg = enroute.PitchDeg,
+                };
+            }
+            else if (run.Kinematics is { } kin && !run.TaxiActive)
             {
                 CorrectGround(run, kin, sample);
                 sample = sample with
@@ -995,7 +1098,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
 
         // Durchstarten: zu hoch oder zu schnell über der Schwelle, oder zu lange nicht aufgesetzt – neue Wegpunkte geradeaus,
         // Steigflug auf 3000 ft, schneller werden; das Fahrwerk kommt bei positiver Steigrate rein (nicht mit Kinematik: die fliegt den Pfad)
-        if (run.GoAroundEnabled && !plan.IsTakeoff && !plan.IsOverflight && !plan.IsTaxi && run.Kinematics is null && run.Analysis.GoAroundPlan is null
+        if (run.GoAroundEnabled && !plan.IsTakeoff && !plan.IsOverflight && !plan.IsTaxi && plan.Arrival is null && run.Kinematics is null && run.Analysis.GoAroundPlan is null
             && TrafficGoAround.Check(plan, run.PreviousAlongM, point.AlongM, sample.AltitudeFt, sample.IndicatedKt, sample.OnGround, run.Analysis.TouchedDown) is { } reason)
         {
             var goAround = TrafficGoAroundPlan.Build(plan, point.AlongM);
@@ -1054,8 +1157,8 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             }
         }
 
-        // A3: eine Minute an der Parkposition stehen, dann Ende
-        if (run.InitialPlan.Variant == TrafficTestVariant.A3 && run.TaxiActive && run.TaxiKinematics is { Phase: TaxiPhase.Holding })
+        // A3, A4: eine Minute an der Parkposition stehen, dann Ende
+        if (run.InitialPlan.TaxiAfterLanding && run.TaxiActive && run.TaxiKinematics is { Phase: TaxiPhase.Holding })
         {
             run.HoldingSinceSeconds ??= point.Seconds;
             if (point.Seconds - run.HoldingSinceSeconds.Value >= HoldingEndSeconds && !run.StopScheduled)
@@ -1066,7 +1169,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         }
 
         // Rollen: vor einer gekreuzten Bahn und vor dem Aufreihen (B2) erst weiter, wenn die Bahn frei ist
-        if (run.TaxiKinematics is { CheckRunway: true } held && (run.InitialPlan.Variant != TrafficTestVariant.A3 || run.TaxiActive))
+        if (run.TaxiKinematics is { CheckRunway: true } held && (!run.InitialPlan.TaxiAfterLanding || run.TaxiActive))
         {
             UpdateTaxiSpacing(run, held, point.Seconds);
             CheckRunwayWhileHolding(run, held, point.Seconds);
@@ -1092,7 +1195,10 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 Fire(_sim.SetAiGearAsync(run.ObjectId, false, run.GearMethod, CancellationToken.None), "gear");
             }
 
-            var end = run.Analysis.LiftedOff && heightFt >= TrafficTestPlan.ClimbEndFt ? "climbed"
+            // B3 endet erst draußen (departed), nicht bei 2800 ft
+            var departed = run.InitialPlan.Departure is { } leg && run.Enroute is { IsArrival: false } climb && climb.DistanceFromRunwayNm >= leg.EndNm;
+            var end = departed ? "departed"
+                : run.Analysis.LiftedOff && heightFt >= TrafficTestPlan.ClimbEndFt && run.InitialPlan.Departure is null ? "climbed"
                 : !run.Analysis.LiftedOff && sample.OnGround && point.AlongM > plan.Runway.LengthM ? "no_liftoff"
                 : !run.Analysis.RollStarted && point.Seconds - run.TakeoffStartedSeconds >= NoRollSeconds ? "no_roll"
                 : null;
@@ -1101,6 +1207,11 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 run.StopScheduled = true;
                 _ = Task.Run(() => StopRunAsync(run, end));
             }
+        }
+
+        if (run.Enroute is { Joined: false } enrouteLeg)
+        {
+            UpdateEnroute(run, enrouteLeg, point.Seconds);
         }
 
         // A2: Fahrwerk erst im Anflug ausfahren – bei 3000 ft über der Bahn, spätestens am Punkt des Gleitpfads in dieser Höhe
@@ -1128,7 +1239,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         // Durchstarten die Wegpunkte des Durchstartens). Velocity setzt zusätzlich VELOCITY BODY Z (VelocityTick, 5 Hz).
         var targetKt = run.Analysis.GoAroundPlan?.TargetKt(point.AlongM) ?? plan.AirborneTargetKt(point.AlongM);
         var airborne = !sample.OnGround && !run.Analysis.TouchedDown && (!plan.IsTakeoff || run.Analysis.LiftedOff);
-        if (run.SpeedMethod == TrafficSpeedMethod.Velocity && run.Kinematics is null)
+        if (run.SpeedMethod == TrafficSpeedMethod.Velocity && run.Kinematics is null && run.Enroute is null)
         {
             var tasKt = TrafficTestPlan.TrueAirspeedKt(targetKt, sample.AltitudeFt);
             if (airborne && run.VelocityFtS is null)
@@ -1139,7 +1250,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             run.VelocityFtS = airborne ? tasKt * FeetPerSecondPerKnot : null;
         }
 
-        if (run.SpeedMethod is (TrafficSpeedMethod.Desired or TrafficSpeedMethod.Velocity) && airborne && run.Kinematics is null
+        if (run.SpeedMethod is (TrafficSpeedMethod.Desired or TrafficSpeedMethod.Velocity) && airborne && run.Kinematics is null && run.Enroute is null
             && (run.DesiredSentKt != targetKt || point.Seconds >= run.DesiredSentSeconds + 5))
         {
             if (run.DesiredSentKt != targetKt)
@@ -1231,6 +1342,21 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             return;
         }
 
+        // A4: ab dem Spawn der Streckenflug; am Eindrehpunkt wechselt die Auswertung auf den Endanflug
+        if (run.InitialPlan.Arrival is { } leg)
+        {
+            if (run.Enroute is null)
+            {
+                StartArrivalKinematics(run, sample, leg);
+            }
+            else if (run.Enroute.Joined && run.Analysis.Plan.Arrival is not null)
+            {
+                JoinFinal(run, sample, run.Enroute);
+            }
+
+            return;
+        }
+
         if (run.KinematicTakeoff)
         {
             if (run.Kinematics is null)
@@ -1258,15 +1384,37 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         var ground = plan.Runway.ElevationFt;
         // A3 übernimmt gleich am Spawn – meldet der Sim dort noch keine Fahrt, mit der Spawn-Geschwindigkeit (Vapp + 5) weiter
         var speedKt = sample.IndicatedKt >= plan.ApproachKt * 0.7 ? sample.IndicatedKt : plan.ApproachKt + 5;
-        var kin = new TrafficKinematics(plan, KinematicProfile.For(run.Category), along, cross, sample.AltitudeFt - ground - cg, speedKt, sample.PitchDeg, ground, cg)
+        var (kin, after) = StartLanding(run, plan, along, cross, sample.AltitudeFt - ground - cg, speedKt, sample.PitchDeg, ground, cg, GroundPitch(sample.StaticPitchDeg));
+        _sim.StartAiPose(run.ObjectId, dt => LandingPose(run, kin, after, dt));
+        var seconds = Math.Max(0, (sample.Utc - run.SpawnUtc).TotalSeconds);
+        run.AddEvent(Math.Round(seconds, 1), string.Create(CultureInfo.InvariantCulture,
+            $"kinematic_start at {-along / RunwayEnd.MetersPerNm:0.0} NM, {kin.StartHeightFt:0} ft, {sample.IndicatedKt:0} kt (cg {cg:0.0} ft, static pitch {sample.StaticPitchDeg:0.0}°)"));
+    }
+
+    /// <summary>
+    /// Endanflug mit Kinematik ab dieser Lage (A1/A2 ab KinematicNm, A3 ab dem Spawn, A4 ab dem Eindrehpunkt). A3, A4: am Abrollpunkt mit
+    /// Rollgeschwindigkeit, dort übernimmt das Rollen zur Parkposition (im selben Frame, ohne Halt).
+    /// </summary>
+    private static (TrafficKinematics Kinematics, TaxiKinematics? After) StartLanding(
+        TrafficTestRun run,
+        TrafficTestPlan plan,
+        double alongM,
+        double crossM,
+        double heightFt,
+        double speedKt,
+        double pitchDeg,
+        double ground,
+        double cg,
+        double groundPitchDeg)
+    {
+        var kin = new TrafficKinematics(plan, KinematicProfile.For(run.Category), alongM, crossM, heightFt, speedKt, pitchDeg, ground, cg)
         {
-            GroundPitchDeg = GroundPitch(sample.StaticPitchDeg),
+            GroundPitchDeg = groundPitchDeg,
         };
         run.Kinematics = kin;
 
-        // A3: am Abrollpunkt mit Rollgeschwindigkeit, dort übernimmt das Rollen (im selben Frame, ohne Halt)
         TaxiKinematics? after = null;
-        if (run.InitialPlan.Variant == TrafficTestVariant.A3 && plan.Taxi is { HandoverAlongM: { } handover } route && run.TaxiGraph is { } graph)
+        if (run.InitialPlan.TaxiAfterLanding && plan.Taxi is { HandoverAlongM: { } handover } route && run.TaxiGraph is { } graph)
         {
             kin.ExitAlongM = handover;
             kin.ExitKt = route.HandoverKt;
@@ -1277,27 +1425,112 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             run.TaxiKinematics = after;
         }
 
+        return (kin, after);
+    }
+
+    /// <summary>Ein Frame des Endanflugs (<see cref="StartLanding"/>): Landung, nach dem Abrollpunkt das Rollen.</summary>
+    private static AiPose LandingPose(TrafficTestRun run, TrafficKinematics kin, TaxiKinematics? after, double dt)
+    {
+        if (after is not null && run.TaxiActive)
+        {
+            after.Advance(dt);
+            return after.Pose();
+        }
+
+        kin.Advance(dt);
+        if (after is not null && kin.Phase == KinematicPhase.Exited)
+        {
+            after.GroundFt = kin.GroundFt;
+            run.TaxiActive = true;
+            return after.Pose();
+        }
+
+        return kin.Pose();
+    }
+
+    /// <summary>
+    /// A4: Duopilo fliegt ab dem ersten Messpunkt den Weg aus dem Reiseflug (<see cref="EnrouteKinematics.Arrival"/>); am Eindrehpunkt
+    /// übernimmt im selben Frame der Endanflug (<see cref="StartLanding"/>) mit Lage, Höhe, Fahrt und Nase von dort.
+    /// </summary>
+    private void StartArrivalKinematics(TrafficTestRun run, AiProbeSample sample, ArrivalLeg leg)
+    {
+        var plan = run.InitialPlan;
+        var cg = sample.CgHeightFt > 0.5 ? sample.CgHeightFt : DefaultCgHeightFt;
+        var ground = plan.Runway.ElevationFt;
+        var profile = KinematicProfile.For(run.Category);
+        var groundPitch = GroundPitch(sample.StaticPitchDeg);
+        var en = EnrouteKinematics.Arrival(plan.Runway, leg.Path, leg.Profile, leg.CruiseFt, leg.CruiseTasKt, leg.SpawnHeightFt, leg.SpawnKt, ground, cg,
+            profile.ApproachPitchDeg + TrafficTestPlan.GlideSlopeDeg, plan.ApproachKt + 5);
+        run.Enroute = en;
+        TrafficKinematics? kin = null;
+        TaxiKinematics? after = null;
         _sim.StartAiPose(run.ObjectId, dt =>
         {
-            if (after is not null && run.TaxiActive)
+            if (kin is null)
             {
-                after.Advance(dt);
-                return after.Pose();
+                en.Advance(dt);
+                if (!en.Joined)
+                {
+                    return en.Pose();
+                }
+
+                (kin, after) = StartLanding(run, plan, en.AlongM, en.CrossM, en.HeightFt, en.SpeedKt, en.PitchDeg, ground, cg, groundPitch);
             }
 
-            kin.Advance(dt);
-            if (after is not null && kin.Phase == KinematicPhase.Exited)
-            {
-                after.GroundFt = kin.GroundFt;
-                run.TaxiActive = true;
-                return after.Pose();
-            }
-
-            return kin.Pose();
+            return LandingPose(run, kin, after, dt);
         });
         var seconds = Math.Max(0, (sample.Utc - run.SpawnUtc).TotalSeconds);
         run.AddEvent(Math.Round(seconds, 1), string.Create(CultureInfo.InvariantCulture,
-            $"kinematic_start at {-along / RunwayEnd.MetersPerNm:0.0} NM, {kin.StartHeightFt:0} ft, {sample.IndicatedKt:0} kt (cg {cg:0.0} ft, static pitch {sample.StaticPitchDeg:0.0}°)"));
+            $"kinematic_start enroute {en.RemainingNm:0.0} NM to the threshold, {en.AltitudeFt:0} ft, {en.SpeedKt:0} kt, turn in {en.ToTurnNm:0.0} NM (cg {cg:0.0} ft)"));
+    }
+
+    /// <summary>A4 am Eindrehpunkt: die Auswertung wechselt auf den Endanflug (Messpunkte, Fahrwerk bei 3000 ft, Aufsetzen).</summary>
+    private static void JoinFinal(TrafficTestRun run, AiProbeSample sample, EnrouteKinematics en)
+    {
+        run.Analysis = new TrafficTestAnalysis(run.InitialPlan.FinalAfterJoin(), run.SpawnUtc);
+        var seconds = Math.Max(0, (sample.Utc - run.SpawnUtc).TotalSeconds);
+        run.AddEvent(Math.Round(seconds, 1), string.Create(CultureInfo.InvariantCulture,
+            $"final_join at {-en.AlongM / RunwayEnd.MetersPerNm:0.0} NM, {en.HeightFt:0} ft above the runway (glide path {TrafficKinematics.GlidePathHeightFt(en.AlongM):0}), {en.SpeedKt:0} kt, max bank {en.MaxBankDeg:0}°"));
+    }
+
+    /// <summary>
+    /// Streckenflug: Ereignisse (Steigflug übernommen, Kurve, auf Kurs, Reiseflughöhe) und Lichter an FL100 – im Abflug Landelicht aus
+    /// (Reiseflug), im Anflug wieder an.
+    /// </summary>
+    private void UpdateEnroute(TrafficTestRun run, EnrouteKinematics en, double seconds)
+    {
+        if (!en.IsArrival && run.Once("climb_out"))
+        {
+            var track = TrafficMath.Normalize(run.InitialPlan.Runway.HeadingTrueDeg + en.TargetHeadingDeg);
+            run.AddEvent(seconds, string.Create(CultureInfo.InvariantCulture,
+                $"climb_out at {en.StartHeightFt:0} ft above the runway, {en.SpeedKt:0} kt, track {track:000}, to FL{(run.InitialPlan.Departure?.CruiseFt ?? 0) / 100:000}"));
+        }
+
+        if (en.IsArrival && en.Turning && run.Once("turn_final"))
+        {
+            run.AddEvent(seconds, string.Create(CultureInfo.InvariantCulture,
+                $"turn_final {en.Path!.SweepDeg:0}° {(en.Path.RightTurn ? "right" : "left")} at {en.RemainingNm:0.0} NM to the threshold, {en.AltitudeFt:0} ft, {en.SpeedKt:0} kt"));
+        }
+
+        if (!en.IsArrival && en.Phase != "turn" && Math.Abs(en.BankRightDeg) < 1 && run.Once("on_track"))
+        {
+            run.AddEvent(seconds, string.Create(CultureInfo.InvariantCulture, $"on_track {en.HeadingTrueDeg:000} at {en.AltitudeFt:0} ft, {en.DistanceFromRunwayNm:0.0} NM out"));
+        }
+
+        if (!en.IsArrival && run.InitialPlan.Departure is { } leg && en.AltitudeFt >= leg.CruiseFt - 100 && run.Once("level_off"))
+        {
+            run.AddEvent(seconds, string.Create(CultureInfo.InvariantCulture, $"level_off FL{leg.CruiseFt / 100:000} at {en.DistanceFromRunwayNm:0.0} NM, {en.TrueAirspeedKt:0} kt tas"));
+        }
+
+        var wanted = en.IsArrival
+            ? (en.Joined || en.AltitudeFt < EnrouteProfile.SpeedLimitFt ? TrafficLights.Approach : TrafficLights.Cruise)
+            : en.AltitudeFt >= EnrouteProfile.SpeedLimitFt ? TrafficLights.Cruise : TrafficLights.Approach;
+        if (wanted != run.Lights)
+        {
+            run.Lights = wanted;
+            run.AddEvent(seconds, string.Create(CultureInfo.InvariantCulture, $"lights_sent {(wanted == TrafficLights.Cruise ? "cruise" : "approach")} at {en.AltitudeFt:0} ft"));
+            Fire(_sim.SetAiLightsAsync(run.ObjectId, wanted, CancellationToken.None), "lights");
+        }
     }
 
     /// <summary>
@@ -1351,9 +1584,29 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         run.Analysis = new TrafficTestAnalysis(takeoffPlan, run.SpawnUtc);
         run.TakeoffStartedSeconds = seconds;
         run.Lights = TrafficLights.Approach;
+
+        // B3: ab DepartureHandoverFt fliegt der Steigflug bis in den Reiseflug weiter (Kurve auf den Kurs, Steigen, Beschleunigen)
+        var departure = plan.Departure;
+        var profile = KinematicProfile.For(run.Category);
+        EnrouteKinematics? climb = null;
         _sim.StartAiPose(run.ObjectId, dt =>
         {
+            if (climb is not null)
+            {
+                climb.Advance(dt);
+                return climb.Pose();
+            }
+
             kin.Advance(dt);
+            if (departure is not null && kin.Phase == KinematicPhase.Climb && kin.HeightFt >= DepartureHandoverFt)
+            {
+                climb = EnrouteKinematics.Departure(takeoffPlan.Runway, departure.Profile, departure.TrackDeg, departure.CruiseFt, departure.CruiseTasKt,
+                    kin.AlongM, kin.CrossM, kin.HeightFt, kin.SpeedKt, kin.VerticalSpeedFpm, kin.PitchDeg, kin.GroundFt, kin.CgHeightFt,
+                    profile.ApproachPitchDeg + TrafficTestPlan.GlideSlopeDeg, plan.ApproachKt + 5);
+                run.Enroute = climb;
+                return climb.Pose();
+            }
+
             return kin.Pose();
         });
         Fire(_sim.SetAiLightsAsync(run.ObjectId, run.Lights, CancellationToken.None), "lights");
@@ -1445,7 +1698,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         foreach (var other in Running())
         {
             if (other == run || other.TaxiKinematics is not { } ot || other.TaxiGraph is not { } og || og.Icao != graph.Icao
-                || (other.InitialPlan.Variant == TrafficTestVariant.A3 && !other.TaxiActive)
+                || (other.InitialPlan.TaxiAfterLanding && !other.TaxiActive)
                 || (other.InitialPlan.TakeoffAfterTaxi && other.Kinematics is not null)
                 || (other.BlockedBy == run.ObjectId && run.Slot < other.Slot))
             {
@@ -1715,7 +1968,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         {
             if (other == run || other.TaxiKinematics is not { } ot || other.TaxiGraph is not { } og || og.Icao != graph.Icao
                 || ot.Phase is not (TaxiPhase.Taxi or TaxiPhase.HoldingShort)
-                || (other.InitialPlan.Variant == TrafficTestVariant.A3 && !other.TaxiActive))
+                || (other.InitialPlan.TaxiAfterLanding && !other.TaxiActive))
             {
                 continue;
             }
@@ -1778,6 +2031,12 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         if (plan.IsTakeoff || plan.IsTaxi || plan.IsOverflight || run.Analysis.GoAroundPlan is not null || run.Analysis.TouchedDown)
         {
             return null;
+        }
+
+        // A4 vor dem Final: der Weg bis zur Schwelle
+        if (plan.Arrival is not null && run.Kinematics is null)
+        {
+            return run.Enroute?.RemainingNm ?? plan.SpawnNm;
         }
 
         if (run.Kinematics is { } kin)
@@ -2124,10 +2383,14 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             return;
         }
 
+        // Abschnitt: Streckenflug, Rollen oder Kinematik
+        var phase = run.Enroute is { Joined: false } enroute ? "enroute_" + enroute.Phase
+            : run.TaxiActive ? run.TaxiKinematics?.Phase.ToString().ToLowerInvariant()
+            : run.Kinematics?.Phase.ToString().ToLowerInvariant() ?? run.TaxiKinematics?.Phase.ToString().ToLowerInvariant();
         try
         {
             writer.WriteLine(string.Create(CultureInfo.InvariantCulture,
-                $"{s.Utc:O},{p.Seconds:0.0},{s.Latitude:0.000000},{s.Longitude:0.000000},{s.AltitudeFt:0},{s.AltitudeAglFt:0},{s.IndicatedKt:0},{p.TargetKt:0},{s.GroundSpeedKt:0},{s.VerticalSpeedFpm:0},{s.HeadingTrueDeg:0},{s.PitchDeg:0.0},{s.BankDeg:0.0},{(s.OnGround ? 1 : 0)},{(s.GearHandleDown ? 1 : 0)},{s.GearTotalPercent:0.0},{s.GearCenterPercent:0.0},{s.GearLeftPercent:0.0},{s.GearRightPercent:0.0},{Csv(AiLights.Describe(s.LightStates))},{s.DesiredKt:0},{Csv(s.AiState)},{(run.TaxiActive ? run.TaxiKinematics?.Phase.ToString().ToLowerInvariant() : run.Kinematics?.Phase.ToString().ToLowerInvariant() ?? run.TaxiKinematics?.Phase.ToString().ToLowerInvariant())},{p.AlongM:0},{p.CrossM:0.0},{p.DistanceToThresholdNm:0.00},{Csv(string.Join(' ', p.Events))}"));
+                $"{s.Utc:O},{p.Seconds:0.0},{s.Latitude:0.000000},{s.Longitude:0.000000},{s.AltitudeFt:0},{s.AltitudeAglFt:0},{s.IndicatedKt:0},{p.TargetKt:0},{s.GroundSpeedKt:0},{s.VerticalSpeedFpm:0},{s.HeadingTrueDeg:0},{s.PitchDeg:0.0},{s.BankDeg:0.0},{(s.OnGround ? 1 : 0)},{(s.GearHandleDown ? 1 : 0)},{s.GearTotalPercent:0.0},{s.GearCenterPercent:0.0},{s.GearLeftPercent:0.0},{s.GearRightPercent:0.0},{Csv(AiLights.Describe(s.LightStates))},{s.DesiredKt:0},{Csv(s.AiState)},{phase},{p.AlongM:0},{p.CrossM:0.0},{p.DistanceToThresholdNm:0.00},{Csv(string.Join(' ', p.Events))}"));
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException)
         {
@@ -2345,6 +2608,14 @@ public sealed class TrafficTestService : IHostedService, IDisposable
 
         /// <summary>Kinematik ab der Übernahme, sonst null (nur auf dem SimConnect-Thread verändert).</summary>
         public TrafficKinematics? Kinematics { get; set; }
+
+        /// <summary>Streckenflug: A4 ab dem Spawn bis zum Final, B3 ab dem Steigflug nach dem Start; sonst null.</summary>
+        public EnrouteKinematics? Enroute { get; set; }
+
+        private readonly HashSet<string> _once = [];
+
+        /// <summary>true beim ersten Aufruf mit diesem Schlüssel (Ereignisse nur einmal schreiben).</summary>
+        public bool Once(string key) => _once.Add(key);
 
         public double? DesiredSentKt { get; set; }
 
