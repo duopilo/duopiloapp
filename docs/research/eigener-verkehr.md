@@ -406,16 +406,27 @@ Bugfahrwerk der A320 stand beim Ausrollen etwas hoch: Nase 0° statt der Lage am
 `STATIC PITCH` (Lage am Boden, Nase hoch positiv wie `static_pitch`), Bahnhöhe je Frame mit 6 ft/s auf den Messwert. Start A320
 von der 18 wie in beta.16 (636 m, 139 kt, 740 ft über dem Bahnende).
 
+**beta.18 in Frankfurt (1.11.2026):** A320 kinematisch ab dem Spawn (`kinematicNm` 5) hält ab 5 NM 140 kt, Gates ±8 ft,
+Aufsetzen 453 m. STATIC PITCH der A320: 0,3° – das Bugfahrwerk stand wie vorher etwas hoch, aus dem Cockpit kaum zu sehen; das
+Vorzeichen ist offen. **A400M Cargo** (volles Modell, kein KI-Dummy) als KI: kinematisch gelandet (438 m, 115 kt), Fahrwerk erst nach
+24 s, die Lichter meldete der Sim gleich als an, sichtbar wurden sie aber erst nach einiger Zeit – das Bordnetz des vollen Modells läuft
+wohl erst an. Überflug: A320 auf FL350 exakt auf Höhe, 60–136 m neben dem Kurs, aber **die KI nimmt die Wunschgeschwindigkeit als
+TAS**: 265 kt gewünscht → 265 kt über Grund statt 450. C172 auf FL85 ±3 ft mit 110 kt (die KI fliegt hier also langsamer als die
+169 kt im Anflug); ihr Landelicht ließ sich nicht ausschalten. Für beta.19: Überflug mit TAS, Lichter voller Modelle nach 10/20/30 s
+nachschicken, Militär als Kategorie (A400M, F/A-18E), Flughafenregeln für alle Plätze aus OurAirports, Verkehrsmix je Platz.
+
 **Fahrplan des eigenen Verkehrs (Stand 1.11.2026):**
 
 1. Anflug und Landung – erledigt bis beta.14 (Wegpunkte, Fahrwerk bis 2500 ft, Lichter, Freigabeliste, Geschwindigkeit).
 2. Durchstarten – beta.15 (klappt). Endanflug und Landung mit Kinematik – beta.17.
 3. Starts – beta.16 (der Start aus Stufe B, Variante B1): Spawn auf der Bahn, Startlauf, Rotieren, Steigflug auf 3000 ft, Fahrwerk
    rein, Lichter; Auswertung von Abhebepunkt und Steigflug. Spawn am Rollhalt kommt mit dem Rollen.
-4. Überflüge in Reiseflughöhe – beta.18 (Variante C1, Wegpunkt-KI): Spawn 40 NM vor der Bahnmitte auf FL350 mit 450 kt TAS (als IAS
-   an die KI, die Wunschgeschwindigkeit wirkt nach oben), geradeaus darüber hinweg, Lichter wie im Reiseflug (Landelicht aus), Ende
-   40 NM dahinter. Allgemeine Luftfahrt FL85, doppelte Vapp, 15 NM.
+4. Überflüge in Reiseflughöhe – beta.18 (Variante C1, Wegpunkt-KI): Spawn 40 NM vor der Bahnmitte auf FL350 mit 450 kt TAS (ab
+   beta.19 als TAS an die KI), geradeaus darüber hinweg, Lichter wie im Reiseflug (Landelicht aus), Ende 40 NM dahinter. Allgemeine
+   Luftfahrt FL85, doppelte Vapp, 15 NM. Flughafenregeln für alle Plätze – beta.19.
 5. Rollen – irgendwann: Pushback und Rollen zwischen Gate und Bahn über die Rollwege (aus Stufe C).
+6. Helikopter – nach dem Rollen: kinematisch (Anflug, Schweben, senkrecht landen und abheben), auf Heliports und Flughäfen;
+   Heliports bekommen dann nur Helis.
 
 **Entscheidung danach:**
 

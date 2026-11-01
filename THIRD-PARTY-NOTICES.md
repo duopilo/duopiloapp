@@ -26,6 +26,7 @@ In `data/` next to `Duopilo.exe` (details, revisions and attribution in [`src/Du
 | FIR boundaries and names (`data/vatspy`) | [VAT-Spy Data Project](https://github.com/vatsimnetwork/vatspy-data-project) | CC BY-SA 4.0 |
 | En-route sectors (`data/sectors`) | [VATGlasses Data Project](https://github.com/lennycolton/vatglasses-data) (VATSIM) | **CC BY-NC-SA 4.0 – non-commercial use only** |
 | Airlines and callsigns (`data/openflights`) | [OpenFlights](https://openflights.org/data.php) | Open Database License 1.0 / Database Contents License |
+| Airport classification (`data/ourairports`) | [OurAirports](https://github.com/davidmegginson/ourairports-data) | Public domain |
 
 The sector data may only be used non-commercially under its license, even though Duopilo's code is MIT.
 

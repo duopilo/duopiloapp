@@ -160,6 +160,9 @@ public sealed class TrafficTestService : IHostedService, IDisposable
     /// <summary>Falls der Sim STATIC CG TO GROUND nicht liefert: Bezugspunkt so hoch über den Rädern (A320 im Test: 9 ft).</summary>
     private const double DefaultCgHeightFt = 9;
 
+    /// <summary>Volle Modelle: Lichter so viele Sekunden nach dem Spawn noch einmal senden.</summary>
+    private static readonly double[] FullModelLightResendSeconds = [10, 20, 30];
+
     /// <summary>STATIC PITCH darüber gilt als Unsinn (Spornradflugzeuge stehen mit rund 10–12° Nase hoch).</summary>
     private const double MaxStaticPitchDeg = 15;
 
@@ -175,6 +178,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly object _lock = new();
     private readonly List<TrafficTestRun> _runs = [];
+    private TrafficAirportDirectory? _airportDirectory;
 
     public TrafficTestService(SimConnectClient sim, IOptions<DuopiloOptions> options, ILogger<TrafficTestService> log)
     {
@@ -259,13 +263,17 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 }
             }
 
-            // Modell und Bahnregeln vor dem Ersetzen: passt das Flugzeug nicht auf die Bahn, bleibt der laufende Test
-            var (title, livery) = await ResolveModelAsync(request, ct);
+            // Modell und Flughafenregeln vor dem Ersetzen: passt das Flugzeug nicht zu Platz oder Bahn, bleibt der laufende Test.
+            // Ohne Titel wählen die Regeln das Modell (Verkehrsmix, Militärplatz, nur Allgemeine Luftfahrt …)
+            var ruleMessages = new List<string>();
+            var rules = request.Variant == TrafficTestVariant.C1 ? null : LoadRules(ruleMessages);
+            var operation = request.Variant == TrafficTestVariant.B1 ? TrafficOperation.Departure : TrafficOperation.Arrival;
+            var (title, livery) = await ResolveModelAsync(request, rules, runway, operation, ct);
             var modelType = TrafficModels.TypeOf(title, livery);
             var approachKt = request.ApproachKt ?? modelType?.ApproachKt;
             var category = modelType?.Category ?? TrafficCategory.Airliner;
-            var ruleMessages = new List<string>();
-            var violations = CheckRunwayRules(runway, request.Variant, modelType?.IcaoType, category, approachKt, ruleMessages);
+            var violations = rules?.Check(runway, operation, modelType?.IcaoType, category, Math.Clamp(approachKt ?? TrafficTestPlan.DefaultApproachKt, 50, 180))
+                ?? [];
             if (violations.Count > 0 && !request.IgnoreRunwayRules)
             {
                 throw new InvalidOperationException(Loc.T("tools.trafficTest.runwayRules", runway.Designation, string.Join(" ", violations.Select(v => v.Text))));
@@ -312,11 +320,12 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 KinematicNm = plan.IsTakeoff || plan.IsOverflight || request.KinematicNm is null ? null : Math.Clamp(request.KinematicNm.Value, MinKinematicNm, MaxKinematicNm),
                 Category = category,
                 Lights = plan.IsOverflight ? TrafficLights.Cruise : TrafficLights.Approach,
+                FullModel = !title.Contains("PassiveAircraft", StringComparison.OrdinalIgnoreCase),
             };
             run.AddEvent(0, plan.IsTakeoff
                 ? string.Create(CultureInfo.InvariantCulture, $"spawn on the runway {TrafficTestPlan.LineUpM:0} m behind its start, takeoff speed {plan.TakeoffKt:0} kt, object {objectId}, {run.Tail}")
                 : plan.IsOverflight
-                ? string.Create(CultureInfo.InvariantCulture, $"spawn {plan.SpawnNm:0.#} NM before overhead, {plan.CruiseAltitudeFt:0} ft, track {plan.Runway.HeadingTrueDeg:000}, {plan.CruiseKt:0} kt ias ({plan.CruiseTasKt:0} tas), object {objectId}, {run.Tail}")
+                ? string.Create(CultureInfo.InvariantCulture, $"spawn {plan.SpawnNm:0.#} NM before overhead, {plan.CruiseAltitudeFt:0} ft, track {plan.Runway.HeadingTrueDeg:000}, {plan.CruiseKt:0} kt tas (about {plan.CruiseIasKt:0} ias), object {objectId}, {run.Tail}")
                 : string.Create(CultureInfo.InvariantCulture, $"spawn {plan.SpawnNm:0.#} NM, {plan.Spawn.AltitudeFt:0} ft, {plan.Spawn.AirspeedKt} kt, object {objectId}, {run.Tail}"));
             run.AddEvent(0, "speed_method " + SpeedMethodName(request.SpeedMethod)
                 + (plan.ThrottlePercent is { } t ? string.Create(CultureInfo.InvariantCulture, $" {t:0} %") : ""));
@@ -529,7 +538,12 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 : null);
     }
 
-    private async Task<(string Title, string Livery)> ResolveModelAsync(TrafficTestRequest request, CancellationToken ct)
+    private async Task<(string Title, string Livery)> ResolveModelAsync(
+        TrafficTestRequest request,
+        TrafficRules? rules,
+        RunwayEnd runway,
+        TrafficOperation operation,
+        CancellationToken ct)
     {
         if (!string.IsNullOrWhiteSpace(request.Title))
         {
@@ -546,8 +560,15 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             throw new InvalidOperationException(Loc.T("tools.trafficTest.titleRequired"));
         }
 
-        var pick = PickDefaultModel(models) ?? throw new InvalidOperationException(Loc.T("tools.trafficTest.noModel"));
-        return (pick.Title, pick.Livery);
+        if (rules is null)
+        {
+            var pick = PickDefaultModel(models) ?? throw new InvalidOperationException(Loc.T("tools.trafficTest.noModel"));
+            return (pick.Title, pick.Livery);
+        }
+
+        var fitting = rules.PickModel(models, runway, operation, Random.Shared, PickDefaultModel(models))
+            ?? throw new InvalidOperationException(Loc.T("tools.trafficTest.noFittingModel", runway.Airport, runway.Designation));
+        return (fitting.Title, fitting.Livery);
     }
 
     /// <summary>Messpunkt vom SimConnect-Thread: auswerten, ins CSV schreiben, Fahrwerk und Zeitlimit.</summary>
@@ -741,9 +762,19 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             run.LightsChecked = true;
             if (!run.Lights.MatchedBy(sample.LightStates))
             {
-                run.AddEvent(point.Seconds, "lights_resent approach (were: " + AiLights.Describe(sample.LightStates) + ")");
+                run.AddEvent(point.Seconds, "lights_resent " + (run.Analysis.Plan.IsOverflight ? "cruise" : "approach") + " (were: " + AiLights.Describe(sample.LightStates) + ")");
                 Fire(_sim.SetAiLightsAsync(run.ObjectId, run.Lights, CancellationToken.None), "lights");
             }
+        }
+
+        // Volle Modelle (kein PassiveAircraft-Dummy): Das Bordnetz läuft erst einige Sekunden nach dem Spawn an, der Sim meldet die
+        // Lichter aber schon als an (A400M in EDDF, beta.18) – deshalb nach 10, 20 und 30 s noch einmal senden, bis zum Ausrollen
+        if (run.FullModel && !run.RolloutLightsSent && run.FullModelLightResends < FullModelLightResendSeconds.Length
+            && point.Seconds >= FullModelLightResendSeconds[run.FullModelLightResends])
+        {
+            run.FullModelLightResends++;
+            run.AddEvent(point.Seconds, "lights_resent full_model");
+            Fire(_sim.SetAiLightsAsync(run.ObjectId, run.Lights, CancellationToken.None), "lights");
         }
 
         // Nach dem Aufsetzen beim Abbremsen: Landelicht und Strobes aus, Taxilicht an
@@ -821,31 +852,20 @@ public sealed class TrafficTestService : IHostedService, IDisposable
     }
 
     /// <summary>
-    /// Bahnregeln für den Test: Landung (A1/A2) oder Start (B1) nach runway-rules.json (bei jedem Start frisch gelesen, damit eigene
-    /// Änderungen sofort gelten) und nach Länge und Breite. Der Überflug (C1) braucht keine Bahn.
+    /// Flughafenregeln für den Test: airport-rules.json bei jedem Start frisch (eigene Änderungen gelten sofort), die Einordnung aller
+    /// Flugplätze (OurAirports, rund 47 000 Kennungen) nur beim ersten Mal.
     /// </summary>
-    private IReadOnlyList<TrafficRunwayViolation> CheckRunwayRules(
-        RunwayEnd runway,
-        TrafficTestVariant variant,
-        string? icaoType,
-        TrafficCategory category,
-        double? approachKt,
-        List<string> messages)
+    private TrafficRules LoadRules(List<string> messages)
     {
-        if (variant == TrafficTestVariant.C1)
-        {
-            return [];
-        }
-
-        var rules = TrafficRunwayRules.Load(AirspaceLoader.Roots(_options.ResolveDataDirectory()), messages);
+        var roots = AirspaceLoader.Roots(_options.ResolveDataDirectory());
+        _airportDirectory ??= TrafficAirportDirectory.Load(roots, messages);
+        var rules = TrafficRules.Load(roots, messages, _airportDirectory);
         foreach (var message in messages)
         {
             _log.LogWarning(Loc.Log("log.trafficTest.runwayRulesFile"), message);
         }
 
-        var operation = variant == TrafficTestVariant.B1 ? TrafficOperation.Departure : TrafficOperation.Arrival;
-        var vapp = Math.Clamp(approachKt ?? TrafficTestPlan.DefaultApproachKt, 50, 180);
-        return rules.Check(runway, operation, icaoType, category, vapp);
+        return rules;
     }
 
     /// <summary>Lage am Boden aus STATIC PITCH (Nase hoch positiv wie static_pitch in flight_model.cfg); Unsinn ergibt 0.</summary>
@@ -1071,6 +1091,12 @@ public sealed class TrafficTestService : IHostedService, IDisposable
 
         /// <summary>Ob nach dem Spawn geprüft wurde, dass die Anfluglichter an sind.</summary>
         public bool LightsChecked { get; set; }
+
+        /// <summary>Volles Modell statt PassiveAircraft-Dummy – Lichter kommen erst, wenn sein Bordnetz läuft.</summary>
+        public bool FullModel { get; init; }
+
+        /// <summary>Wie oft die Lichter des vollen Modells schon nachgeschickt wurden.</summary>
+        public int FullModelLightResends { get; set; }
 
         public bool RolloutLightsSent { get; set; }
 
