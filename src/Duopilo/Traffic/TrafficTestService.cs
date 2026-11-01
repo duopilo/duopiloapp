@@ -180,7 +180,9 @@ public sealed record TrafficTestTaxi(
     double MaxSpeedKt,
     string Mapping,
     double? MappingErrorM,
-    double? LineUpAlongM = null);
+    double? LineUpAlongM = null,
+    double? ExitAlongM = null,
+    double? ExitKt = null);
 
 /// <summary>Stand der Kinematik eines Tests (<see cref="TrafficKinematics"/>).</summary>
 /// <param name="Phase">approach, flare, rollout, stopped; Start: lineup, takeoff_roll, rotation, climb.</param>
@@ -259,6 +261,12 @@ public sealed class TrafficTestService : IHostedService, IDisposable
 
     /// <summary>Rollen: Flugzeuge so weit um den Bezugspunkt des Flughafens zählen als Hindernisse (und so viel Rand bekommt die Abfrage).</summary>
     private const double TaxiObstacleMarginM = 6000;
+
+    /// <summary>A3: Aufsetzpunkt der Kinematik hinter der Schwelle (für den frühesten Abrollpunkt).</summary>
+    private const double TaxiInTouchdownM = 450;
+
+    /// <summary>A3: mit dieser Verzögerung rechnet die Wahl des Abrollpunkts (die Kinematik bremst bis 2,5 m/s²).</summary>
+    private const double TaxiInBrakeMps2 = 2.0;
 
     /// <summary>Rollen: so viele Parkpositionen probiert der Test, bis eine eine Route zum Haltepunkt hat.</summary>
     private const int MaxParkingTries = 25;
@@ -417,6 +425,22 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 }
             }
 
+            // A3: Abrollpunkt und Weg zu einer freien Parkposition, bevor der laufende Test ersetzt wird
+            if (request.Variant == TrafficTestVariant.A3)
+            {
+                taxiGraph = await LoadTaxiGraphAsync(airport, runways, ct);
+                var (obstacles, scanError) = await SetTaxiObstaclesAsync(taxiGraph, category, ct);
+                taxiEvents.Add(string.Create(CultureInfo.InvariantCulture, $"taxi_obstacles {obstacles} aircraft on the ground, {taxiGraph.BlockedEdges} paths blocked (clearance {taxiGraph.ClearanceM:0} m)"));
+                if (scanError is not null)
+                {
+                    taxiEvents.Add("warning:taxi_obstacles_unknown " + scanError);
+                }
+
+                taxiRoute = PlanTaxiIn(taxiGraph, runway, request.Parking, category, TrafficRules.WakeOf(modelType?.IcaoType, category), approachKt ?? TrafficTestPlan.DefaultApproachKt);
+                taxiEvents.Add(string.Create(CultureInfo.InvariantCulture,
+                    $"taxi_in_planned exit {taxiRoute.EntryAlongM:0} m ({taxiRoute.Hold.Taxiway}) at {taxiRoute.HandoverKt:0} kt, route {string.Join(' ', taxiRoute.Taxiways)} {taxiRoute.LengthM:0} m to parking {taxiRoute.Parking.Parking?.Label} ({taxiRoute.Parking.Parking?.TypeName})"));
+            }
+
             // Ein Test je Bahn: den alten auf dieser Bahn ersetzen, auf anderen Bahnen höchstens MaxConcurrent
             foreach (var old in Running().Where(r => r.SameRunway(runway)))
             {
@@ -439,6 +463,10 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 TrafficTestVariant.C1 => TrafficTestPlan.BuildOverflight(runway.Overhead(request.TrackDeg), category, approachKt, request.FlightLevel, request.CruiseKt, request.SpawnNm),
                 _ => TrafficTestPlan.Build(runway, request.Variant, request.SpawnNm, request.TouchdownM, request.FinalLowFt, approachKt, throttle),
             };
+            if (request.Variant == TrafficTestVariant.A3)
+            {
+                plan = plan with { Taxi = taxiRoute };
+            }
             var spawnUtc = DateTimeOffset.UtcNow;
             var csv = OpenCsv(plan, spawnUtc);
 
@@ -457,14 +485,15 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             {
                 SpeedMethod = request.SpeedMethod,
                 GoAroundEnabled = request.GoAround,
-                KinematicNm = plan.IsTakeoff || plan.IsOverflight || request.KinematicNm is null ? null : Math.Clamp(request.KinematicNm.Value, MinKinematicNm, MaxKinematicNm),
+                KinematicNm = plan.Variant == TrafficTestVariant.A3 ? Math.Clamp(plan.SpawnNm, MinKinematicNm, MaxKinematicNm)
+                    : plan.IsTakeoff || plan.IsOverflight || request.KinematicNm is null ? null : Math.Clamp(request.KinematicNm.Value, MinKinematicNm, MaxKinematicNm),
                 KinematicTakeoff = plan.IsTakeoff && request.KinematicTakeoff,
                 Category = category,
                 Lights = plan.IsOverflight ? TrafficLights.Cruise : plan.IsTaxi ? TrafficLights.Rollout : TrafficLights.Approach,
                 TaxiGraph = taxiGraph,
                 FullModel = !title.Contains("Passive", StringComparison.OrdinalIgnoreCase),
             };
-            run.AddEvent(0, plan.Taxi is { } taxi && taxiGraph is not null
+            run.AddEvent(0, plan.IsTaxi && plan.Taxi is { } taxi && taxiGraph is not null
                 ? string.Create(CultureInfo.InvariantCulture, $"spawn at parking {taxi.Parking.Parking?.Label} ({taxi.Parking.Parking?.TypeName}, {taxi.Parking.Parking?.RadiusM:0} m), route {string.Join(' ', taxi.Taxiways)} {taxi.LengthM:0} m to the hold on {taxi.Hold.Taxiway} ({taxi.Hold.Runway}), pushback {(taxi.Pushback ? "yes" : "no")}, net {taxiGraph.Nodes.Count} nodes, {taxiGraph.Edges.Count} paths, mapping {taxiGraph.Mapping} ({taxiGraph.MappingErrorM:0.0} m), object {objectId}, {run.Tail}")
                 : plan.IsTakeoff
                 ? string.Create(CultureInfo.InvariantCulture, $"spawn on the runway {TrafficTestPlan.LineUpM:0} m behind its start, takeoff speed {plan.TakeoffKt:0} kt, object {objectId}, {run.Tail}")
@@ -698,7 +727,8 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 : null,
             run.InitialPlan.Taxi is { } route
                 ? new TrafficTestTaxi(
-                    run.TaxiKinematics is { } t ? JsonNamingPolicy.SnakeCaseLower.ConvertName(t.Phase.ToString()) : "parked",
+                    run.InitialPlan.Variant == TrafficTestVariant.A3 && !run.TaxiActive ? "landing"
+                        : run.TaxiKinematics is { } t ? JsonNamingPolicy.SnakeCaseLower.ConvertName(t.Phase.ToString()) : "parked",
                     route.Parking.Parking?.Label ?? "",
                     route.Parking.Parking?.TypeName ?? "",
                     route.Hold.Runway,
@@ -715,7 +745,9 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                     Math.Round(run.TaxiKinematics?.MaxSpeedKt ?? 0, 1),
                     run.TaxiGraph?.Mapping ?? "",
                     run.TaxiGraph?.MappingErrorM,
-                    run.InitialPlan.TakeoffAfterTaxi ? route.LineUpAlongM : null)
+                    run.InitialPlan.TakeoffAfterTaxi ? route.LineUpAlongM : null,
+                    route.HandoverAlongM is not null ? route.EntryAlongM : null,
+                    route.HandoverAlongM is not null ? route.HandoverKt : null)
                 : null);
     }
 
@@ -769,7 +801,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             // Kinematik: Übernahme ab KinematicNm vor der Schwelle; danach liefert sie Fahrt, Sinkrate, Neigung und "am Boden" –
             // eingefroren meldet der Sim dafür nichts Brauchbares
             StartKinematicsIfDue(run, sample);
-            if (run.Kinematics is { } kin)
+            if (run.Kinematics is { } kin && !run.TaxiActive)
             {
                 CorrectGround(run, kin, sample);
                 sample = sample with
@@ -882,6 +914,18 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 run.StopScheduled = true;
                 var at = plan.Runway.Airport + " " + plan.Runway.Designation;
                 _ = Task.Run(() => StopTestAsync("holding", CancellationToken.None, at));
+            }
+        }
+
+        // A3: eine Minute an der Parkposition stehen, dann Ende
+        if (run.InitialPlan.Variant == TrafficTestVariant.A3 && run.TaxiActive && run.TaxiKinematics is { Phase: TaxiPhase.Holding })
+        {
+            run.HoldingSinceSeconds ??= point.Seconds;
+            if (point.Seconds - run.HoldingSinceSeconds.Value >= HoldingEndSeconds && !run.StopScheduled)
+            {
+                run.StopScheduled = true;
+                var at = plan.Runway.Airport + " " + plan.Runway.Designation;
+                _ = Task.Run(() => StopTestAsync("parked", CancellationToken.None, at));
             }
         }
 
@@ -1072,14 +1116,40 @@ public sealed class TrafficTestService : IHostedService, IDisposable
 
         var cg = sample.CgHeightFt > 0.5 ? sample.CgHeightFt : DefaultCgHeightFt;
         var ground = plan.Runway.ElevationFt;
-        var kin = new TrafficKinematics(plan, KinematicProfile.For(run.Category), along, cross, sample.AltitudeFt - ground - cg, sample.IndicatedKt, sample.PitchDeg, ground, cg)
+        // A3 übernimmt gleich am Spawn – meldet der Sim dort noch keine Fahrt, mit der Spawn-Geschwindigkeit (Vapp + 5) weiter
+        var speedKt = sample.IndicatedKt >= plan.ApproachKt * 0.7 ? sample.IndicatedKt : plan.ApproachKt + 5;
+        var kin = new TrafficKinematics(plan, KinematicProfile.For(run.Category), along, cross, sample.AltitudeFt - ground - cg, speedKt, sample.PitchDeg, ground, cg)
         {
             GroundPitchDeg = GroundPitch(sample.StaticPitchDeg),
         };
         run.Kinematics = kin;
+
+        // A3: am Abrollpunkt mit Rollgeschwindigkeit, dort übernimmt das Rollen (im selben Frame, ohne Halt)
+        TaxiKinematics? after = null;
+        if (run.InitialPlan.Variant == TrafficTestVariant.A3 && plan.Taxi is { HandoverAlongM: { } handover } route && run.TaxiGraph is { } graph)
+        {
+            kin.ExitAlongM = handover;
+            kin.ExitKt = route.HandoverKt;
+            after = new TaxiKinematics(null, route.TaxiPath, graph.ToLatLon, ground, cg, kin.GroundPitchDeg, rolling: route.HandoverKt);
+            run.TaxiKinematics = after;
+        }
+
         _sim.StartAiPose(run.ObjectId, dt =>
         {
+            if (after is not null && run.TaxiActive)
+            {
+                after.Advance(dt);
+                return after.Pose();
+            }
+
             kin.Advance(dt);
+            if (after is not null && kin.Phase == KinematicPhase.Exited)
+            {
+                after.GroundFt = kin.GroundFt;
+                run.TaxiActive = true;
+                return after.Pose();
+            }
+
             return kin.Pose();
         });
         var seconds = Math.Max(0, (sample.Utc - run.SpawnUtc).TotalSeconds);
@@ -1203,6 +1273,35 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             .ToList();
         graph.SetObstacles(parked, TaxiProfile.For(category).ClearanceM);
         return (parked.Count, scan.Error);
+    }
+
+    /// <summary>
+    /// A3: Abrollpunkt und Weg zur Parkposition (genannte oder passend zum Typ zufällig, frei). Abrollen frühestens dort, wo das
+    /// Flugzeug nach dem Aufsetzen (um 450 m) mit 2 m/s² auf Rollgeschwindigkeit gebremst hat.
+    /// </summary>
+    private static TaxiRoute PlanTaxiIn(TaxiGraph graph, RunwayEnd runway, string? parking, TrafficCategory category, TrafficWake wake, double approachKt)
+    {
+        var profile = TaxiProfile.For(category);
+        var touchdownMps = Math.Max(20, approachKt - 5) * 0.514444;
+        var taxiMps = profile.TaxiKt * 0.514444;
+        var minExit = TaxiInTouchdownM + (touchdownMps * 2) + (((touchdownMps * touchdownMps) - (taxiMps * taxiMps)) / (2 * TaxiInBrakeMps2)) + TaxiRoute.ExitLeadM;
+        if (!string.IsNullOrWhiteSpace(parking))
+        {
+            var node = graph.FindParking(parking)
+                ?? throw new InvalidOperationException(Loc.T("tools.trafficTest.parkingUnknown", parking.Trim(), graph.Icao, string.Join(", ", graph.Parkings.Select(p => p.Label).Take(20))));
+            return TaxiRoute.PlanArrival(graph, runway, node, profile, minExit)
+                ?? throw new InvalidOperationException(Loc.T("tools.trafficTest.noTaxiRoute", node.Parking?.Label ?? "", runway.Designation));
+        }
+
+        foreach (var node in TaxiRoute.CandidateParkings(graph, category, wake, Random.Shared).Take(MaxParkingTries))
+        {
+            if (TaxiRoute.PlanArrival(graph, runway, node, profile, minExit) is { } route)
+            {
+                return route;
+            }
+        }
+
+        throw new InvalidOperationException(Loc.T("tools.trafficTest.noTaxiRoute", "–", runway.Designation));
     }
 
     private async Task<TaxiGraph> LoadTaxiGraphAsync(string airport, IReadOnlyList<AirportRunway> runways, CancellationToken ct)
@@ -1438,7 +1537,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         try
         {
             writer.WriteLine(string.Create(CultureInfo.InvariantCulture,
-                $"{s.Utc:O},{p.Seconds:0.0},{s.Latitude:0.000000},{s.Longitude:0.000000},{s.AltitudeFt:0},{s.AltitudeAglFt:0},{s.IndicatedKt:0},{p.TargetKt:0},{s.GroundSpeedKt:0},{s.VerticalSpeedFpm:0},{s.HeadingTrueDeg:0},{s.PitchDeg:0.0},{s.BankDeg:0.0},{(s.OnGround ? 1 : 0)},{(s.GearHandleDown ? 1 : 0)},{s.GearTotalPercent:0.0},{s.GearCenterPercent:0.0},{s.GearLeftPercent:0.0},{s.GearRightPercent:0.0},{Csv(AiLights.Describe(s.LightStates))},{s.DesiredKt:0},{Csv(s.AiState)},{run.Kinematics?.Phase.ToString().ToLowerInvariant() ?? run.TaxiKinematics?.Phase.ToString().ToLowerInvariant()},{p.AlongM:0},{p.CrossM:0.0},{p.DistanceToThresholdNm:0.00},{Csv(string.Join(' ', p.Events))}"));
+                $"{s.Utc:O},{p.Seconds:0.0},{s.Latitude:0.000000},{s.Longitude:0.000000},{s.AltitudeFt:0},{s.AltitudeAglFt:0},{s.IndicatedKt:0},{p.TargetKt:0},{s.GroundSpeedKt:0},{s.VerticalSpeedFpm:0},{s.HeadingTrueDeg:0},{s.PitchDeg:0.0},{s.BankDeg:0.0},{(s.OnGround ? 1 : 0)},{(s.GearHandleDown ? 1 : 0)},{s.GearTotalPercent:0.0},{s.GearCenterPercent:0.0},{s.GearLeftPercent:0.0},{s.GearRightPercent:0.0},{Csv(AiLights.Describe(s.LightStates))},{s.DesiredKt:0},{Csv(s.AiState)},{(run.TaxiActive ? run.TaxiKinematics?.Phase.ToString().ToLowerInvariant() : run.Kinematics?.Phase.ToString().ToLowerInvariant() ?? run.TaxiKinematics?.Phase.ToString().ToLowerInvariant())},{p.AlongM:0},{p.CrossM:0.0},{p.DistanceToThresholdNm:0.00},{Csv(string.Join(' ', p.Events))}"));
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException)
         {
@@ -1599,6 +1698,15 @@ public sealed class TrafficTestService : IHostedService, IDisposable
 
         /// <summary>D1: Kinematik am Boden, ab dem ersten Messpunkt.</summary>
         public TaxiKinematics? TaxiKinematics { get; set; }
+
+        private volatile bool _taxiActive;
+
+        /// <summary>A3: Das Rollen hat von der Landung übernommen (wird im Frame gesetzt, daher volatile).</summary>
+        public bool TaxiActive
+        {
+            get => _taxiActive;
+            set => _taxiActive = value;
+        }
 
         /// <summary>D1: seit wann das Flugzeug am Haltepunkt steht.</summary>
         public double? HoldingSinceSeconds { get; set; }

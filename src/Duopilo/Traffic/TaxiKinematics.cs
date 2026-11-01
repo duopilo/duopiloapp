@@ -84,7 +84,7 @@ public sealed class TaxiKinematics
     private const double AccelMps2 = 0.5;
 
     /// <summary>Bremsen vor Kurven und am Halt (m/s²).</summary>
-    private const double DecelMps2 = 0.6;
+    public const double DecelMps2 = 0.6;
 
     /// <summary>Anfahren und Bremsen beim Pushback (m/s²).</summary>
     private const double PushbackAccelMps2 = 0.2;
@@ -96,7 +96,8 @@ public sealed class TaxiKinematics
     /// <param name="taxi">Weg zum Haltepunkt.</param>
     /// <param name="toLatLon">Meter östlich/nördlich → Breite/Länge (<see cref="TaxiGraph.ToLatLon"/>).</param>
     /// <param name="lineUp">Weg vom Haltepunkt auf die Bahn (Aufreihen); null = am Haltepunkt bleiben.</param>
-    public TaxiKinematics(TaxiPath? pushback, TaxiPath taxi, Func<double, double, (double Latitude, double Longitude)> toLatLon, double groundFt, double cgHeightFt, double groundPitchDeg, TaxiPath? lineUp = null)
+    /// <param name="rolling">Rollen nach der Landung: gleich in <see cref="TaxiPhase.Taxi"/> mit dieser Geschwindigkeit (kt), ohne an der Parkposition zu stehen; null = erst stehen.</param>
+    public TaxiKinematics(TaxiPath? pushback, TaxiPath taxi, Func<double, double, (double Latitude, double Longitude)> toLatLon, double groundFt, double cgHeightFt, double groundPitchDeg, TaxiPath? lineUp = null, double? rolling = null)
     {
         Pushback = pushback is { LengthM: > 0.5 } ? pushback : null;
         Taxi = taxi;
@@ -108,6 +109,11 @@ public sealed class TaxiKinematics
         var start = Pushback is { } p ? p.At(0) : taxi.At(0);
         (EastM, NorthM) = (start.East, start.North);
         HeadingDeg = Pushback is not null ? TrafficMath.Normalize(start.HeadingDeg + 180) : start.HeadingDeg;
+        if (rolling is { } kt)
+        {
+            Phase = TaxiPhase.Taxi;
+            SpeedKt = Math.Max(0, kt);
+        }
     }
 
     public TaxiPath? Pushback { get; }

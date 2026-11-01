@@ -18,6 +18,9 @@ public enum KinematicPhase
     /// <summary>Steht.</summary>
     Stopped,
 
+    /// <summary>Hat die Bahn am Abrollpunkt mit Rollgeschwindigkeit erreicht – ab hier rollt <see cref="TaxiKinematics"/> weiter.</summary>
+    Exited,
+
     /// <summary>Start: steht aufgereiht auf der Bahn, Triebwerke laufen hoch.</summary>
     Lineup,
 
@@ -272,13 +275,22 @@ public sealed class TrafficKinematics
 
     public double StartSpeedKt { get; }
 
+    /// <summary>
+    /// Rollen nach der Landung: Statt am Haltepunkt zu stehen, bremst das Flugzeug bis hierhin (entlang ab der Schwelle) auf
+    /// <see cref="ExitKt"/> und geht in <see cref="KinematicPhase.Exited"/> – dort übernimmt <see cref="TaxiKinematics"/>. Null = halten.
+    /// </summary>
+    public double? ExitAlongM { get; set; }
+
+    /// <summary>Rollgeschwindigkeit am Abrollpunkt (<see cref="ExitAlongM"/>).</summary>
+    public double ExitKt { get; set; }
+
     /// <summary>Wo das Abfangen begann, sonst null.</summary>
     public double? FlareAlongM { get; private set; }
 
     /// <summary>Aufsetzpunkt, Fahrt und Sinkrate, sonst null.</summary>
     public (double AlongM, double SpeedKt, double SinkFpm, double PitchDeg)? Touchdown { get; private set; }
 
-    public bool OnGround => Phase is KinematicPhase.Rollout or KinematicPhase.Stopped or KinematicPhase.Lineup or KinematicPhase.TakeoffRoll or KinematicPhase.Rotation;
+    public bool OnGround => Phase is KinematicPhase.Rollout or KinematicPhase.Stopped or KinematicPhase.Exited or KinematicPhase.Lineup or KinematicPhase.TakeoffRoll or KinematicPhase.Rotation;
 
     /// <summary>Höhe des 3°-Pfads über der Bahn an einer Stelle (Räder), hinter der Schwelle weiter fallend.</summary>
     public static double GlidePathHeightFt(double alongM) =>
@@ -302,7 +314,7 @@ public sealed class TrafficKinematics
             GroundFt = Toward(GroundFt, ground, GroundSlewFtPerSec * dt);
         }
 
-        if (Phase == KinematicPhase.Stopped)
+        if (Phase is KinematicPhase.Stopped or KinematicPhase.Exited)
         {
             VerticalSpeedFpm = 0;
             PitchDeg = Toward(PitchDeg, GroundPitchDeg, DerotateDegPerSec * dt);
@@ -395,10 +407,13 @@ public sealed class TrafficKinematics
             Phase = KinematicPhase.Rollout;
             _rolloutSeconds = 0;
 
-            // So bremsen, dass das Flugzeug am Haltepunkt steht – nicht stärker als das Profil zulässt
-            var distance = Math.Max(1, _plan.StopM - AlongM - (GroundSpeedMps(0) * BrakeDelaySeconds));
+            // So bremsen, dass das Flugzeug am Haltepunkt steht – oder am Abrollpunkt die Rollgeschwindigkeit hat; nicht stärker als
+            // das Profil zulässt
+            var target = ExitAlongM ?? _plan.StopM;
+            var distance = Math.Max(1, target - AlongM - (GroundSpeedMps(0) * BrakeDelaySeconds));
             var speed = SpeedKt * MetersPerSecondPerKnot;
-            _brakeMps2 = Math.Clamp(speed * speed / (2 * distance), 0.8, _profile.MaxBrakeMps2);
+            var exitSpeed = ExitAlongM is null ? 0 : ExitKt * MetersPerSecondPerKnot;
+            _brakeMps2 = Math.Clamp(Math.Max(0, (speed * speed) - (exitSpeed * exitSpeed)) / (2 * distance), 0.8, _profile.MaxBrakeMps2);
         }
     }
 
@@ -411,10 +426,18 @@ public sealed class TrafficKinematics
         CrossM *= Math.Exp(-dt / BlendSeconds);
         if (_rolloutSeconds > BrakeDelaySeconds)
         {
-            SpeedKt = Math.Max(0, SpeedKt - (_brakeMps2 / MetersPerSecondPerKnot * dt));
+            var floor = ExitAlongM is null ? 0 : ExitKt;
+            SpeedKt = Math.Max(floor, SpeedKt - (_brakeMps2 / MetersPerSecondPerKnot * dt));
         }
 
         AlongM += SpeedKt * MetersPerSecondPerKnot * dt;
+        if (ExitAlongM is { } exit && AlongM >= exit)
+        {
+            AlongM = exit;
+            Phase = KinematicPhase.Exited;
+            return;
+        }
+
         if (SpeedKt <= 0)
         {
             SpeedKt = 0;

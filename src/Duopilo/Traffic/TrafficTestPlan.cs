@@ -24,6 +24,9 @@ public enum TrafficTestVariant
 
     /// <summary>Abflug vom Gate: wie D1 bis zum Haltepunkt, dann aufreihen und starten wie B1 (alles mit Kinematik).</summary>
     B2,
+
+    /// <summary>Landung mit Rollen zur Parkposition: wie A1 mit Kinematik ab dem Spawn, auf Rollgeschwindigkeit bremsen, abrollen, zur Parkposition.</summary>
+    A3,
 }
 
 /// <summary>
@@ -380,7 +383,7 @@ public sealed record TrafficTestPlan(
 
         // A2: Fahrwerk bei 3000 ft über der Bahn, spätestens am Punkt des Gleitpfads in dieser Höhe; liegt der Spawn schon tiefer, gleich
         var spawnHeight = GlidePathFt(runway, spawn) - runway.ElevationFt;
-        var gearAtSpawn = variant == TrafficTestVariant.A1 || spawnHeight <= GearCommandFt;
+        var gearAtSpawn = variant is TrafficTestVariant.A1 or TrafficTestVariant.A3 || spawnHeight <= GearCommandFt;
         double? gearDownFt = gearAtSpawn ? null : GearCommandFt;
         double? gearDownNm = gearAtSpawn ? null : Math.Round(GlidePathDistanceNm(GearCommandFt), 1);
 
