@@ -61,7 +61,8 @@ First step towards Duopilo's own traffic: `traffic_test_start` spawns an AI airc
 
 - **A1:** spawn 5 NM out with the gear down. **A2:** spawn 15 NM out, gear down at 3000 ft above the runway (down by 2500 ft).
 - The waypoints of the last mile lie up to 100 ft below the glide path (`finalLowFt`), because the AI levels off on short final.
-- `traffic_test_status` shows the evaluation (touchdown, flare, floating, speed, stop point), samples go to `%LOCALAPPDATA%\Duopilo\traffic-tests\`.
+- Too high (more than 150 ft) or too fast (more than Vapp + 20 kt) at the threshold, or not on the ground by 900 m: the aircraft goes around – straight ahead, climb to 3000 ft, gear up (`goAround: false` always lands).
+- `traffic_test_status` shows the evaluation (touchdown, flare, floating, speed, stop point, go-around), samples go to `%LOCALAPPDATA%\Duopilo\traffic-tests\`.
 - `traffic_test_stop` removes the aircraft, with `runway` only that one (also after 15 minutes and when Duopilo exits).
 
 Background and plan: [research on own traffic](https://github.com/duopilo/duopiloapp/blob/main/docs/research/eigener-verkehr.md).

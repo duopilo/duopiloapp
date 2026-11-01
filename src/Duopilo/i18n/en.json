@@ -1188,6 +1188,7 @@
   "log.sim.aiProbeFailed": "Processing the values of AI object {ObjectId} failed",
   "log.trafficTest.started": "Traffic test {Variant} started: {Airport} runway {Runway}, {Title}, object {ObjectId}",
   "log.trafficTest.ended": "Traffic test on runway {Runway} ended ({Reason}): {Verdict}, {Samples} samples",
+  "log.trafficTest.goAround": "Traffic test on runway {Runway}: go-around ({Reason})",
   "log.trafficTest.actionFailed": "Traffic test: {Action} failed: {Message}",
   "log.trafficTest.csvFailed": "Traffic test: log file not writable: {Message}",
   "log.traffic.messageLogUnavailable": "Traffic message log not available: {Message}",

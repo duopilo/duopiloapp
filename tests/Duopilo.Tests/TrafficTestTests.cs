@@ -615,6 +615,151 @@ public sealed class TrafficTestTests
         }
     }
 
+    [Theory]
+    [InlineData(250, 135, "high_at_threshold", 200)]
+    [InlineData(190, 160, "fast_at_threshold", 25)]
+    [InlineData(150, 150, null, 0)]
+    [InlineData(150, 135, null, 0)]
+    public void Durchstarten_zu_hoch_oder_zu_schnell_an_der_Schwelle(double heightFt, double ias, string? code, double value)
+    {
+        var end = End("23L");
+        var plan = TrafficTestPlan.Build(end, TrafficTestVariant.A1);
+
+        // Erster Messpunkt hinter der Schwelle, gemessen gegen den Gleitpfad an der Schwelle (50 ft)
+        var reason = TrafficGoAround.Check(plan, -40, 30, end.ElevationFt + heightFt, ias, onGround: false, touchedDown: false);
+
+        Assert.Equal(code, reason?.Code);
+        if (code is not null)
+        {
+            Assert.Equal(value, reason!.Value);
+            Assert.StartsWith(code, reason.Text);
+        }
+
+        // Nur beim Überfliegen der Schwelle, nicht davor und nicht danach
+        Assert.Null(TrafficGoAround.Check(plan, -120, -40, end.ElevationFt + heightFt, ias, false, false));
+        Assert.Null(TrafficGoAround.Check(plan, 30, 100, end.ElevationFt + heightFt, ias, false, false));
+    }
+
+    [Fact]
+    public void Durchstarten_ohne_Aufsetzen_bis_900_m()
+    {
+        var end = End("23L");
+        var plan = TrafficTestPlan.Build(end, TrafficTestVariant.A1);
+        var low = end.ElevationFt + 15;
+
+        Assert.Equal(900, TrafficGoAround.LongLandingM(plan));
+        Assert.Null(TrafficGoAround.Check(plan, 820, 880, low, 130, false, false));
+        var reason = TrafficGoAround.Check(plan, 880, 940, low, 130, false, false);
+        Assert.Equal("no_touchdown_by", reason!.Code);
+        Assert.Equal("no_touchdown_by 900 m", reason.Text);
+
+        // Am Boden oder schon aufgesetzt: kein Durchstarten mehr
+        Assert.Null(TrafficGoAround.Check(plan, 880, 940, end.ElevationFt, 130, onGround: true, touchedDown: false));
+        Assert.Null(TrafficGoAround.Check(plan, 880, 940, low, 130, onGround: false, touchedDown: true));
+        Assert.Null(TrafficGoAround.Check(plan, -40, 30, end.ElevationFt + 400, 200, onGround: false, touchedDown: true));
+    }
+
+    [Theory]
+    [InlineData(1500, null, 500)]
+    [InlineData(2400, 600.0, 900)]
+    [InlineData(3000, 0.0, 900)]
+    public void Spaetester_Aufsetzpunkt_kurze_Bahn_ein_Drittel(double lengthM, double? touchdownM, double expected)
+    {
+        var runway = new AirportRunway(51.2895, 6.7668, 45, 47, lengthM, 45, "05R", "23L");
+        var plan = TrafficTestPlan.Build(RunwayEnd.Find("EDDL", [runway], "23L")!, TrafficTestVariant.A1, touchdownM: touchdownM);
+
+        Assert.Equal(expected, TrafficGoAround.LongLandingM(plan));
+    }
+
+    [Fact]
+    public void Durchstarten_geradeaus_auf_3000_ft_schneller_werden()
+    {
+        var end = End("23L");
+        var plan = TrafficTestPlan.Build(end, TrafficTestVariant.A1, approachKt: 135);
+        var goAround = TrafficGoAroundPlan.Build(plan, 400);
+
+        Assert.Equal(["ga1", "ga2", "ga3"], goAround.Waypoints.Select(w => w.Name));
+        Assert.Equal(new double[] { 400 + (3 * 1852), 400 + (6 * 1852), 400 + (12 * 1852) }, goAround.Waypoints.Select(w => w.AlongM));
+        Assert.Equal(new double[] { 1500, 3000, 3000 }, goAround.Waypoints.Select(w => Math.Round(w.Waypoint.AltitudeFt - end.ElevationFt)));
+        Assert.Equal(new double[] { 150, 170, 185 }, goAround.Waypoints.Select(w => w.Waypoint.SpeedKt));
+        Assert.All(goAround.Waypoints, w =>
+        {
+            var (along, cross) = end.Offsets(w.Waypoint.Latitude, w.Waypoint.Longitude);
+            Assert.Equal(w.AlongM, along, 0);
+            Assert.Equal(0, cross, 0);
+            Assert.False(w.Waypoint.Flags.HasFlag(AiWaypointFlags.OnGround));
+            Assert.True(w.Waypoint.Flags.HasFlag(AiWaypointFlags.SpeedRequested));
+        });
+
+        Assert.Equal(150, goAround.TargetKt(500));
+        Assert.Equal(170, goAround.TargetKt(400 + (4 * 1852)));
+        Assert.Equal(185, goAround.TargetKt(100_000));
+
+        // Durchstarten vor der Schwelle (zu hoch): ab der Schwelle gerechnet
+        Assert.Equal(3 * 1852, TrafficGoAroundPlan.Build(plan, -60).Waypoints[0].AlongM);
+    }
+
+    [Fact]
+    public void Auswertung_Durchstarten_Steigflug_Fahrwerk_rein()
+    {
+        var end = End("23L");
+        var plan = TrafficTestPlan.Build(end, TrafficTestVariant.A1, approachKt: 135);
+        var start = DateTimeOffset.UtcNow;
+        var analysis = new TrafficTestAnalysis(plan, start);
+        var t = 0;
+        for (var nm = 2.0; nm > 0; nm -= 0.25)
+        {
+            Add(analysis, end, start, t++, -nm * RunwayEnd.MetersPerNm, TrafficTestPlan.GlidePathFt(end, nm) + 200, ias: 140, gs: 140, onGround: false, agl: 500);
+        }
+
+        // 250 ft über der Schwelle: Durchstarten
+        var over = Add(analysis, end, start, t, 40, end.ElevationFt + 250, ias: 138, gs: 138, onGround: false, agl: 250);
+        var reason = TrafficGoAround.Check(plan, -0.25 * RunwayEnd.MetersPerNm, over.AlongM, end.ElevationFt + 250, 138, false, analysis.TouchedDown)!;
+        analysis.MarkGoAround(over.Seconds, over.AlongM, 250, 138, reason, TrafficGoAroundPlan.Build(plan, over.AlongM));
+        Assert.Equal((double)t, analysis.GoAroundSeconds);
+
+        // Erst noch etwas gesunken, dann Steigflug, Fahrwerk kommt rein, über das Bahnende hinaus
+        var next = Add(analysis, end, start, ++t, 300, end.ElevationFt + 220, ias: 140, gs: 140, onGround: false, agl: 220, vs: -300);
+        Assert.Equal(150, next.TargetKt);
+        Add(analysis, end, start, ++t, 600, end.ElevationFt + 400, ias: 145, gs: 145, onGround: false, agl: 400, vs: 1500, gear: 50);
+        var retracted = Add(analysis, end, start, ++t, 1500, end.ElevationFt + 900, ias: 150, gs: 150, onGround: false, agl: 900, vs: 2000, gear: 0);
+        Add(analysis, end, start, ++t, 4000, end.ElevationFt + 2000, ias: 160, gs: 160, onGround: false, agl: 2000, vs: 2000, gear: 0);
+        Add(analysis, end, start, ++t, 8000, end.ElevationFt + 2850, ias: 170, gs: 170, onGround: false, agl: 2850, vs: 1500, gear: 0);
+
+        Assert.Contains("gear_retracted at 900 ft", retracted.Events);
+        var summary = analysis.Summary();
+        Assert.Equal("go_around", summary.Verdict);
+        Assert.Equal("high_at_threshold", summary.GoAround!.Reason);
+        Assert.Equal(200, summary.GoAround.Value);
+        Assert.Equal(250, summary.GoAround.HeightFt);
+        Assert.Equal(220, summary.GoAround.LowestFt);
+        Assert.Equal(2850, summary.GoAround.HighestFt);
+        Assert.Equal(3.0, summary.GoAround.GearUpSeconds);
+        Assert.True(summary.GoAround.Reached);
+        Assert.False(summary.AirborneBeyondRunwayEnd);
+        Assert.Null(summary.Touchdown);
+    }
+
+    [Fact]
+    public void Auswertung_Durchstarten_ignoriert_wenn_die_KI_trotzdem_aufsetzt()
+    {
+        var end = End("23L");
+        var plan = TrafficTestPlan.Build(end, TrafficTestVariant.A1);
+        var start = DateTimeOffset.UtcNow;
+        var analysis = new TrafficTestAnalysis(plan, start);
+        Add(analysis, end, start, 0, -1852, TrafficTestPlan.GlidePathFt(end, 1), ias: 140, gs: 140, onGround: false, agl: 370);
+        var late = Add(analysis, end, start, 1, 950, end.ElevationFt + 10, ias: 130, gs: 130, onGround: false, agl: 10);
+        var reason = TrafficGoAround.Check(plan, 880, late.AlongM, end.ElevationFt + 10, 130, false, false)!;
+        analysis.MarkGoAround(late.Seconds, late.AlongM, 10, 130, reason, TrafficGoAroundPlan.Build(plan, late.AlongM));
+        Add(analysis, end, start, 2, 1020, end.ElevationFt, ias: 125, gs: 125, onGround: true, agl: 0);
+
+        var summary = analysis.Summary();
+        Assert.Equal("go_around_ignored", summary.Verdict);
+        Assert.Equal("no_touchdown_by", summary.GoAround!.Reason);
+        Assert.False(summary.GoAround.Reached);
+        Assert.Equal(1020, summary.Touchdown!.AlongM);
+    }
+
     private static TrafficTestPoint Add(
         TrafficTestAnalysis analysis,
         RunwayEnd end,
