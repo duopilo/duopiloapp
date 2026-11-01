@@ -160,8 +160,8 @@ public sealed class TrafficTestService : IHostedService, IDisposable
     /// <summary>Falls der Sim STATIC CG TO GROUND nicht liefert: Bezugspunkt so hoch über den Rädern (A320 im Test: 9 ft).</summary>
     private const double DefaultCgHeightFt = 9;
 
-    /// <summary>Volle Modelle: Lichter so viele Sekunden nach dem Spawn noch einmal senden.</summary>
-    private static readonly double[] FullModelLightResendSeconds = [10, 20, 30];
+    /// <summary>Volle Modelle: Lichter in diesem Abstand (s) noch einmal senden, bis zum Aufsetzen.</summary>
+    private const double FullModelLightResendSeconds = 15;
 
     /// <summary>STATIC PITCH darüber gilt als Unsinn (Spornradflugzeuge stehen mit rund 10–12° Nase hoch).</summary>
     private const double MaxStaticPitchDeg = 15;
@@ -767,10 +767,11 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             }
         }
 
-        // Volle Modelle (kein PassiveAircraft-Dummy): Das Bordnetz läuft erst einige Sekunden nach dem Spawn an, der Sim meldet die
-        // Lichter aber schon als an (A400M in EDDF, beta.18) – deshalb nach 10, 20 und 30 s noch einmal senden, bis zum Ausrollen
-        if (run.FullModel && !run.RolloutLightsSent && run.FullModelLightResends < FullModelLightResendSeconds.Length
-            && point.Seconds >= FullModelLightResendSeconds[run.FullModelLightResends])
+        // Volle Modelle (kein PassiveAircraft-Dummy): Der Sim meldet die Lichter gleich als an, sichtbar wurden sie beim A400M aber erst
+        // spät (beta.18 nach einiger Zeit, beta.19 in Wunstorf trotz Nachschicken nach 10/20/30 s erst kurz vor der Bahn) – deshalb alle
+        // 15 s noch einmal senden, bis zum Aufsetzen
+        if (run.FullModel && !run.RolloutLightsSent && !run.Analysis.TouchedDown
+            && point.Seconds >= FullModelLightResendSeconds * (run.FullModelLightResends + 1))
         {
             run.FullModelLightResends++;
             run.AddEvent(point.Seconds, "lights_resent full_model");

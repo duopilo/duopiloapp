@@ -423,6 +423,8 @@ Regeln wählten sie in Wiesbaden (ETOU, Militärplatz) ohne Titel. Bahnregeln in
 18 und A400M in EDDF wurden mit Begründung abgelehnt, mit `ignoreRunwayRules` lief die MD-11 trotzdem (Warnung in den Ereignissen).
 Der A400M fiel in Wiesbaden an der Breite durch (35 m, verlangt 45 m) – für beta.20: schwere Militärtransporter ab 27 m, leichte
 ohne Prüfung; Landelicht zusätzlich mit LANDING_LIGHTS_ON/OFF und LANDING_LIGHTS_SET je Index 1–4; "… Passive" gilt als Passive-Modell.
+A400M in Wunstorf (ETNW 26): sauber im Anflug, die Lichter gingen trotz Nachschicken nach 10/20/30 s erst kurz vor der Bahn an –
+beta.20 schickt sie bei vollen Modellen alle 15 s bis zum Aufsetzen (zeigt, ob unser Befehl wirkt oder das Modell selbst schaltet).
 
 **Fahrplan des eigenen Verkehrs (Stand 1.11.2026):**
 
