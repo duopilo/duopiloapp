@@ -29,4 +29,16 @@
 - [ ] Test voice mode with the remote connector
 - [ ] First public release
 
+## Own traffic
+
+Duopilo's own AI traffic instead of the simulator's, built step by step with the traffic test tool and tested at EDDL ([research](https://github.com/duopilo/duopiloapp/blob/main/docs/research/eigener-verkehr.md), [Traffic](Traffic#traffic-test-developer)):
+
+- [x] **Approach and landing** (v0.10 betas) – AI traffic models fly the final approach by waypoints and stop on the runway: gear down by 2500 ft, lights, approval list of the MSFS 2024 AI traffic models (about 250 types) with an approach speed per type, speed control, up to 4 at once
+- [ ] **Go-around** (beta.15) – more than 150 ft high or Vapp + 20 kt fast over the threshold, or not on the ground by 900 m: climb straight ahead to 3000 ft, gear up
+- [ ] **Takeoff** (beta.16) – spawn on the runway, takeoff roll, rotate, climb to 3000 ft, gear up, lights; evaluation of the liftoff point and the climb
+- [ ] **Overflights at cruise altitude** – aircraft crossing your area at their flight level
+- [ ] **Taxi** – pushback and taxi between gate and runway on the airport's taxiways
+- [ ] **Schedule traffic** – flights mapped to the installed models by ICAO type
+- [ ] Test at Frankfurt as well; softer touchdowns (the AI touches down at about 1400 ft/min)
+
 Ideas and requests: [issues](https://github.com/duopilo/duopiloapp/issues).

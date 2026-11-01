@@ -149,6 +149,17 @@ html:not(.is-prerelease) .if-prerelease { display: none !important; }
 .principles { display: grid; grid-template-columns: 1fr 1fr; gap: 40px 64px; margin-top: 44px; }
 .principles p { margin-top: 10px; color: var(--dim); max-width: 34em; }
 
+/* Roadmap: the steps of the own traffic, in order; the one in beta is cyan. */
+.roadmap { list-style: none; margin: 44px 0 0; padding: 0; }
+.roadmap li {
+  display: grid; grid-template-columns: 130px 190px minmax(0, 1fr); gap: 6px 36px;
+  padding: 22px 0; border-top: 1px solid var(--edge); align-items: baseline;
+}
+.roadmap li:last-child { border-bottom: 1px solid var(--edge); }
+.roadmap .stage { font-family: "B612 Mono", ui-monospace, monospace; font-size: 0.85rem; color: var(--dim); }
+.roadmap .now .stage { color: var(--cyan); }
+.roadmap p { color: var(--dim); max-width: 40em; }
+
 /* Download */
 .download { background: var(--panel); }
 .download-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 48px 64px; margin-top: 36px; }
@@ -189,6 +200,7 @@ html:not(.is-prerelease) .if-prerelease { display: none !important; }
   .hero { grid-template-columns: 1fr; gap: 28px; padding-block: 32px 72px; }
   .hero .transcript { margin-top: 16px; }
   .phases li { grid-template-columns: 1fr; gap: 8px; }
+  .roadmap li { grid-template-columns: 1fr; gap: 6px; }
   .modes, .principles, .download-grid { grid-template-columns: 1fr; }
   .section { padding: 64px 0; }
 }
