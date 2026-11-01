@@ -292,7 +292,34 @@ ist im normalen Flug selten.
 Mustern FlyByWire, A32NX, A380X, Headwind und A330-900neo – die automatische Modellwahl überspringt sie, `traffic_test_models`
 markiert sie, ein Test damit zeigt die Warnung `excludedModel`.
 
-Nächste Schritte: `touchdownM` 150 im Sim prüfen (EDDL 05L/05R, A2), danach Speed über den Schub und Stufe B. Sieht es dann immer noch komisch aus, in Frankfurt
+**A320neo V2 mit `touchdownM` 150 (1.11.2026, beta.12, A2, EDDL 05L/05R gleichzeitig):** Fahrwerk bei 2720 ft draußen und im Sim
+sichtbar. Aufsetzen 696 m (26 ft/min, angehalten) und 1204 m (1416 ft/min) – das gleiche Modell streut bei gleichen Einstellungen um
+500 m; beim A320neo V2 bringt der frühere Boden-Wegpunkt weniger als bei den A330. **Lichter waren aus** (weder Strobes noch Landelicht):
+NonATC-Flugzeuge schaltet der Sim nicht selbst.
+
+**Freigabeliste (ab beta.13):** `TrafficModels.Approved` – Flugzeugtypen mit ICAO-Typ und exakten Modelltiteln (damit VIP- und
+Frachtvarianten nicht ungeprüft mitrutschen):
+
+| Typ | Modell (Titel) | Status |
+|---|---|---|
+| A20N | A320neo V2 | geprüft (Fahrwerk sichtbar, Landung) |
+| A333 | A330-300 (RR), A330-300 (GE) | geprüft (Fahrwerk sichtbar, leicht im Boden) |
+| A321 | A321 | Kandidat (gelandet) |
+| A310 | A310 | Kandidat (gelandet) |
+| A337 | A330-BelugaXL | Kandidat (gelandet) |
+| B748 | 747-8i | Kandidat (gelandet) |
+| B738 | Asobo PassiveAircraft B737-800 | Kandidat (gelandet) |
+| GA | C152, C172, C208, COL4, C404, C408, C25C, C700, BE36, BE58, BE9L, B350, SR22, SF50, TBM9, DA40, DA62, DV20, PC6T, PC12, PC24, DR40, DHC2, DHC6 | ungetestet, erkannt an Titelwörtern |
+
+Über den ICAO-Typ ordnet der spätere Fahrplan-Verkehr Flüge den installierten Modellen zu. Gesperrt bleiben FBW und Headwind.
+Die GA-Typen stammen aus der Flugzeugliste von MSFS 2024 (Standard, Deluxe, Premium Deluxe); nicht aufgenommen sind Hubschrauber,
+Segelflugzeuge, Kunstflug-, Wasser- und Agrarflugzeuge, Militär, historische Muster und eVTOL. Ihre genauen Titel stehen erst nach
+dem Test fest, bis dahin erkennt Duopilo sie an Titelwörtern (z. B. „Caravan“, „King Air“ + „350“).
+
+**Lichter (ab beta.13):** beim Spawn Nav, Beacon, Strobes, Landelicht, Taxi und Logo an; nach dem Aufsetzen unter 60 kt Landelicht
+und Strobes aus. Über die `…_SET`-Events und die `LIGHT …`-SimVars zugleich; `LIGHT STATES` wird mitgeschrieben.
+
+Nächste Schritte: Lichter im Sim prüfen (EDDL 05L/05R, A2), Kandidaten ansehen und freigeben, danach Speed über den Schub und Stufe B. Sieht es dann immer noch komisch aus, in Frankfurt
 testen. Danach Speed über den Schub (`THROTTLE_REQUESTED`) und Stufe B.
 
 **Entscheidung danach:**

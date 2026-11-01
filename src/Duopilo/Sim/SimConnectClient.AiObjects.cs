@@ -43,6 +43,7 @@ public sealed partial class SimConnectClient
     private uint _aiWaypointDefId;
     private uint _aiProbeDefId;
     private uint _aiGearDefId;
+    private readonly Dictionary<string, uint> _aiLightDefIds = new(StringComparer.Ordinal);
     private bool _aiModelsAvailable;
 
     /// <summary>Letzte SimConnect-Ausnahme der letzten <paramref name="window"/> (z. B. CREATE_OBJECT_FAILED), sonst null.</summary>
@@ -211,6 +212,30 @@ public sealed partial class SimConnectClient
             }
         }, ct);
 
+    /// <summary>
+    /// Lichter eines eigenen KI-Flugzeugs (NonATC-Flugzeuge schaltet der Sim nicht selbst). Beide Wege zugleich, weil offen ist, was
+    /// welches Modell annimmt: das Event …_SET mit 1/0 und die SimVar LIGHT …. Lichter mit null bleiben unverändert.
+    /// </summary>
+    public Task SetAiLightsAsync(uint objectId, AiLights lights, CancellationToken ct) =>
+        RunOnSimThreadAsync(sc =>
+        {
+            foreach (var (light, on) in lights.Changes())
+            {
+                var (eventName, simVar) = AiLights.Names(light);
+                TransmitToObject(sc, objectId, eventName, on ? 1u : 0u);
+
+                if (!_aiLightDefIds.TryGetValue(simVar, out var defId))
+                {
+                    defId = ++_nextDefId;
+                    sc.AddToDataDefinition((SimDefinitionId)defId, simVar, "Bool", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
+                    sc.RegisterDataDefineStruct<double>((SimDefinitionId)defId);
+                    _aiLightDefIds[simVar] = defId;
+                }
+
+                sc.SetDataOnSimObject((SimDefinitionId)defId, objectId, SIMCONNECT_DATA_SET_FLAG.DEFAULT, on ? 1.0 : 0.0);
+            }
+        }, ct);
+
     /// <summary>Event an ein eigenes KI-Objekt (nicht an das eigene Flugzeug, daher ohne die Sperrliste des Eingabe-Moduls).</summary>
     private void TransmitToObject(SimConnect sc, uint objectId, string eventName, uint data)
     {
@@ -322,6 +347,7 @@ public sealed partial class SimConnectClient
                 // Der Sim zählt Nase hoch negativ
                 PitchDeg = -d.PitchDeg,
                 BankDeg = d.BankDeg,
+                LightStates = (int)d.LightStates,
             };
             try
             {
@@ -520,6 +546,7 @@ public sealed partial class SimConnectClient
         _aiWaypointDefId = 0;
         _aiProbeDefId = 0;
         _aiGearDefId = 0;
+        _aiLightDefIds.Clear();
         _aiModelsAvailable = false;
         _aiProbes.Clear();
         foreach (var (_, tcs) in _aiCreateRequests)
@@ -616,6 +643,9 @@ public sealed record AiProbeSample(
 
     /// <summary>Querneigung in Grad (PLANE BANK DEGREES, Vorzeichen wie im Sim).</summary>
     public double BankDeg { get; init; }
+
+    /// <summary>Eingeschaltete Lichter (LIGHT STATES, Bits siehe <see cref="AiLights"/>).</summary>
+    public int LightStates { get; init; }
 }
 
 /// <summary>SimVars der KI-Abfrage, in dieser Reihenfolge in der Data Definition (siehe <see cref="AiProbeData"/>).</summary>
@@ -639,13 +669,14 @@ public static class AiProbeVariables
         ("GEAR RIGHT POSITION", "percent"),
         ("PLANE PITCH DEGREES", "degrees"),
         ("PLANE BANK DEGREES", "degrees"),
+        ("LIGHT STATES", "mask"),
     ];
 
     /// <summary>Zustand der KI (z. B. „SIMPLE_LANDING“), als STRING64 hinter den Zahlen.</summary>
     public const string State = "AI TRAFFIC STATE";
 }
 
-/// <summary>Struktur zu <see cref="AiProbeVariables"/>: sechzehn FLOAT64, dann STRING64.</summary>
+/// <summary>Struktur zu <see cref="AiProbeVariables"/>: siebzehn FLOAT64, dann STRING64.</summary>
 [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
 public struct AiProbeData
 {
@@ -681,8 +712,65 @@ public struct AiProbeData
 
     public double BankDeg;
 
+    public double LightStates;
+
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
     public string State;
+}
+
+/// <summary>Ein Licht eines KI-Flugzeugs.</summary>
+public enum AiLight
+{
+    Nav,
+    Beacon,
+    Strobe,
+    Landing,
+    Taxi,
+    Logo,
+}
+
+/// <summary>Gewünschte Lichter eines KI-Flugzeugs; null = unverändert lassen.</summary>
+public sealed record AiLights(bool? Nav = null, bool? Beacon = null, bool? Strobe = null, bool? Landing = null, bool? Taxi = null, bool? Logo = null)
+{
+    // Bits von LIGHT STATES laut SDK
+    private static readonly (AiLight Light, int Bit, string Short)[] Bits =
+    [
+        (AiLight.Nav, 0x0001, "nav"),
+        (AiLight.Beacon, 0x0002, "beacon"),
+        (AiLight.Landing, 0x0004, "landing"),
+        (AiLight.Taxi, 0x0008, "taxi"),
+        (AiLight.Strobe, 0x0010, "strobe"),
+        (AiLight.Logo, 0x0100, "logo"),
+    ];
+
+    /// <summary>Die Lichter, die geschaltet werden sollen, mit Soll-Zustand.</summary>
+    public IEnumerable<(AiLight Light, bool On)> Changes()
+    {
+        (AiLight Light, bool? On)[] all = [(AiLight.Nav, Nav), (AiLight.Beacon, Beacon), (AiLight.Strobe, Strobe), (AiLight.Landing, Landing), (AiLight.Taxi, Taxi), (AiLight.Logo, Logo)];
+        return all.Where(l => l.On is not null).Select(l => (l.Light, l.On!.Value));
+    }
+
+    /// <summary>Event (…_SET mit 1/0) und SimVar eines Lichts.</summary>
+    public static (string EventName, string SimVar) Names(AiLight light) => light switch
+    {
+        AiLight.Nav => ("NAV_LIGHTS_SET", "LIGHT NAV"),
+        AiLight.Beacon => ("BEACON_LIGHTS_SET", "LIGHT BEACON"),
+        AiLight.Strobe => ("STROBES_SET", "LIGHT STROBE"),
+        AiLight.Landing => ("LANDING_LIGHTS_SET", "LIGHT LANDING"),
+        AiLight.Taxi => ("TAXI_LIGHTS_SET", "LIGHT TAXI"),
+        AiLight.Logo => ("LOGO_LIGHTS_SET", "LIGHT LOGO"),
+        _ => throw new ArgumentOutOfRangeException(nameof(light)),
+    };
+
+    /// <summary>Ob <paramref name="light"/> laut LIGHT STATES an ist.</summary>
+    public static bool IsOn(int lightStates, AiLight light) => (lightStates & Bits.Single(b => b.Light == light).Bit) != 0;
+
+    /// <summary>Eingeschaltete Lichter als Text, z. B. "nav beacon landing strobe logo"; "" wenn keins an ist.</summary>
+    public static string Describe(int lightStates) =>
+        string.Join(' ', Bits.Where(b => (lightStates & b.Bit) != 0).Select(b => b.Short));
+
+    /// <summary>Ob alle gewünschten Lichter laut LIGHT STATES so stehen wie verlangt.</summary>
+    public bool MatchedBy(int lightStates) => Changes().All(c => IsOn(lightStates, c.Light) == c.On);
 }
 
 /// <summary>Wie Duopilo das Fahrwerk eines KI-Flugzeugs bedient (traffic_test_start, Parameter gear).</summary>

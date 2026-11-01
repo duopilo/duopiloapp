@@ -54,6 +54,8 @@ public sealed record TrafficTestTouchdown(
 /// <param name="StopShortOfLastWaypointM">Wie weit die KI vor dem letzten Rollwegpunkt angehalten hat.</param>
 /// <param name="ApproachPitchDeg">Mittlere Längsneigung zwischen 2 und 1 NM (Nase hoch positiv).</param>
 /// <param name="MaxFinalBankDeg">Größte Querneigung (Betrag) in der Luft auf den letzten 2 NM bis zum Aufsetzen.</param>
+/// <param name="LightsOnFinal">Eingeschaltete Lichter des letzten Messpunkts in der Luft (z. B. "nav beacon landing taxi strobe logo").</param>
+/// <param name="LightsAfterLanding">Eingeschaltete Lichter des letzten Messpunkts am Boden nach dem Aufsetzen.</param>
 public sealed record TrafficTestSummary(
     string Verdict,
     int Samples,
@@ -73,6 +75,8 @@ public sealed record TrafficTestSummary(
     double? StopShortOfLastWaypointM,
     double? ApproachPitchDeg,
     double? MaxFinalBankDeg,
+    string? LightsOnFinal,
+    string? LightsAfterLanding,
     IReadOnlyList<string> AiStates);
 
 /// <summary>
@@ -97,6 +101,8 @@ public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spa
     private int _approachPitchCount;
     private double? _maxFinalBank;
     private double _lastAirbornePitch;
+    private int? _lightsOnFinal;
+    private int? _lightsAfterLanding;
     private double _speedDeviationSum;
     private int _speedDeviationCount;
     private double? _maxSpeedDeviation;
@@ -116,6 +122,9 @@ public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spa
     private double _lastAirborneVs;
 
     public int Samples { get; private set; }
+
+    /// <summary>Ob das Flugzeug nach dem Anflug aufgesetzt hat.</summary>
+    public bool TouchedDown => _touchdown is not null;
 
     public TrafficTestPlan Plan => plan;
 
@@ -152,6 +161,10 @@ public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spa
             _wasAirborne = true;
             _lastAirborneVs = s.VerticalSpeedFpm;
             _lastAirbornePitch = s.PitchDeg;
+            if (_touchdown is null)
+            {
+                _lightsOnFinal = s.LightStates;
+            }
 
             if (_touchdown is null)
             {
@@ -223,6 +236,7 @@ public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spa
 
             if (_touchdown is not null)
             {
+                _lightsAfterLanding = s.LightStates;
                 _maxRolloutCross = Math.Max(_maxRolloutCross ?? 0, Math.Abs(cross));
                 if (along > plan.Runway.LengthM && !_overran)
                 {
@@ -270,6 +284,8 @@ public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spa
             _stopAlong is { } stop ? Math.Round(lastWaypoint - stop) : null,
             _approachPitchCount > 0 ? Math.Round(_approachPitchSum / _approachPitchCount, 1) : null,
             _maxFinalBank is { } bank ? Math.Round(bank, 1) : null,
+            _lightsOnFinal is { } final ? AiLights.Describe(final) : null,
+            _lightsAfterLanding is { } after ? AiLights.Describe(after) : null,
             [.. _states]);
     }
 

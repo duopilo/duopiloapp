@@ -47,7 +47,7 @@ See [SimBrief & Flight Plan](SimBrief-and-Flight-Plan).
 | `traffic_test_start` | developer test, off by default: spawns an AI aircraft (`DUO01`–`DUO04`) that flies a final approach and lands – variant A1 or A2, up to 4 at once, one per runway |
 | `traffic_test_status` | state and evaluation of the traffic tests (touchdown, flare, floating, speed against request, stop point, CSV file) |
 | `traffic_test_stop` | ends the traffic tests (or the one on a runway) and removes the aircraft |
-| `traffic_test_models` | installed aircraft models (title, livery) for the traffic test |
+| `traffic_test_models` | installed aircraft models (title, livery) for the traffic test, with ICAO type and status from the approval list |
 | `get_atc` | MSFS in-game ATC: callsign, clearances, assigned runway (incl. L/C/R from SimBrief) |
 
 See [Traffic](Traffic).
