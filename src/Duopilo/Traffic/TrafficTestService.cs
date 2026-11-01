@@ -127,9 +127,14 @@ public sealed record TrafficTaxiInfo(
     IReadOnlyList<TrafficTaxiInfoParking> ParkingSpots,
     IReadOnlyList<TrafficTaxiInfoHolds> Holds,
     TrafficTaxiInfoRoute? Route,
-    string? RouteError);
+    string? RouteError,
+    int Obstacles = 0,
+    int BlockedPaths = 0,
+    int OccupiedParkings = 0,
+    string? ObstacleError = null);
 
-public sealed record TrafficTaxiInfoParking(string Label, string Type, double RadiusM, double HeadingDeg);
+/// <param name="Occupied">Ein anderes Flugzeug steht darauf (innerhalb des Radius, mindestens 10 m).</param>
+public sealed record TrafficTaxiInfoParking(string Label, string Type, double RadiusM, double HeadingDeg, bool Occupied = false);
 
 /// <summary>Haltepunkte einer Bahn: Anzahl und die Rollwege daran.</summary>
 public sealed record TrafficTaxiInfoHolds(string Runway, int Count, IReadOnlyList<string> Taxiways);
@@ -251,6 +256,9 @@ public sealed class TrafficTestService : IHostedService, IDisposable
     /// <summary>Rollen: So lange steht das Flugzeug am Haltepunkt, dann endet der Test (holding).</summary>
     private const double HoldingEndSeconds = 60;
 
+    /// <summary>Rollen: Flugzeuge so weit um den Bezugspunkt des Flughafens zählen als Hindernisse (und so viel Rand bekommt die Abfrage).</summary>
+    private const double TaxiObstacleMarginM = 6000;
+
     /// <summary>Rollen: so viele Parkpositionen probiert der Test, bis eine eine Route zum Haltepunkt hat.</summary>
     private const int MaxParkingTries = 25;
 
@@ -267,6 +275,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
     private const double TakeoffGearUpFt = 30;
 
     private readonly SimConnectClient _sim;
+    private readonly TrafficConnection _traffic;
     private readonly DuopiloOptions _options;
     private readonly ILogger<TrafficTestService> _log;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -274,9 +283,10 @@ public sealed class TrafficTestService : IHostedService, IDisposable
     private readonly List<TrafficTestRun> _runs = [];
     private TrafficAirportDirectory? _airportDirectory;
 
-    public TrafficTestService(SimConnectClient sim, IOptions<DuopiloOptions> options, ILogger<TrafficTestService> log)
+    public TrafficTestService(SimConnectClient sim, TrafficConnection traffic, IOptions<DuopiloOptions> options, ILogger<TrafficTestService> log)
     {
         _sim = sim;
+        _traffic = traffic;
         _options = options.Value;
         _log = log;
     }
@@ -376,10 +386,22 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             // Rollen: Netz lesen, Parkposition und Route vor dem Ersetzen – fehlt etwas, bleibt der laufende Test
             TaxiGraph? taxiGraph = null;
             TaxiRoute? taxiRoute = null;
+            var taxiEvents = new List<string>();
             if (request.Variant == TrafficTestVariant.D1)
             {
                 taxiGraph = await LoadTaxiGraphAsync(airport, runways, ct);
+                var (obstacles, scanError) = await SetTaxiObstaclesAsync(taxiGraph, category, ct);
+                taxiEvents.Add(string.Create(CultureInfo.InvariantCulture, $"taxi_obstacles {obstacles} aircraft on the ground, {taxiGraph.BlockedEdges} paths blocked (clearance {taxiGraph.ClearanceM:0} m)"));
+                if (scanError is not null)
+                {
+                    taxiEvents.Add("warning:taxi_obstacles_unknown " + scanError);
+                }
+
                 taxiRoute = PlanTaxi(taxiGraph, runway, request.Parking, category, TrafficRules.WakeOf(modelType?.IcaoType, category));
+                if (taxiGraph.IsOccupied(taxiRoute.Parking))
+                {
+                    taxiEvents.Add("warning:parking_occupied " + taxiRoute.Parking.Parking?.Label);
+                }
             }
 
             // Ein Test je Bahn: den alten auf dieser Bahn ersetzen, auf anderen Bahnen höchstens MaxConcurrent
@@ -440,6 +462,11 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             foreach (var warning in plan.Warnings)
             {
                 run.AddEvent(0, "warning:" + warning);
+            }
+
+            foreach (var taxiEvent in taxiEvents)
+            {
+                run.AddEvent(0, taxiEvent);
             }
 
             foreach (var violation in violations)
@@ -1099,6 +1126,34 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         throw new InvalidOperationException(Loc.T("tools.trafficTest.noTaxiRoute", "–", runway.Designation));
     }
 
+    /// <summary>
+    /// Andere Flugzeuge am Boden rund um den Flughafen (KI-Verkehr an den Gates, das eigene Flugzeug; ohne die eigenen Testflugzeuge)
+    /// als Hindernisse ins Netz: Routen führen mit <see cref="TaxiProfile.ClearanceM"/> Abstand an ihnen vorbei, belegte Parkpositionen
+    /// fallen weg. Der Umkreis der Abfrage liegt um das eigene Flugzeug, deshalb reicht er bis über den Flughafen hinaus.
+    /// </summary>
+    private async Task<(int Count, string? Error)> SetTaxiObstaclesAsync(TaxiGraph graph, TrafficCategory category, CancellationToken ct)
+    {
+        var radius = TaxiObstacleMarginM;
+        if (_sim.Num("lat") is { } lat && _sim.Num("lon") is { } lon)
+        {
+            radius += RouteMath.DistanceNm(lat, lon, graph.Latitude, graph.Longitude) * RunwayEnd.MetersPerNm;
+        }
+
+        var scan = await _traffic.ScanAsync((uint)Math.Min(radius, TrafficConnection.MaxScanRadiusMeters), includeHelicopters: true, withText: false, ct);
+        var own = Running().Select(r => r.ObjectId).ToHashSet();
+        var parked = scan.Samples
+            .Where(s => s.OnGround && !own.Contains(s.ObjectId))
+            .Where(s =>
+            {
+                var (east, north) = graph.ToLocal(s.Latitude, s.Longitude);
+                return Math.Abs(east) < TaxiObstacleMarginM && Math.Abs(north) < TaxiObstacleMarginM;
+            })
+            .Select(s => (s.Latitude, s.Longitude))
+            .ToList();
+        graph.SetObstacles(parked, TaxiProfile.For(category).ClearanceM);
+        return (parked.Count, scan.Error);
+    }
+
     private async Task<TaxiGraph> LoadTaxiGraphAsync(string airport, IReadOnlyList<AirportRunway> runways, CancellationToken ct)
     {
         var data = await _sim.RequestAirportTaxiwaysAsync(airport, ct);
@@ -1129,8 +1184,9 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         }
 
         var graph = await LoadTaxiGraphAsync(icao, runways, ct);
-        var holds = graph.Holds();
         var cat = TrafficRules.ParseCategory(category) ?? TrafficCategory.Airliner;
+        var (obstacles, obstacleError) = await SetTaxiObstaclesAsync(graph, cat, ct);
+        var holds = graph.Holds();
         TrafficTaxiInfoRoute? route = null;
         string? routeError = null;
         if (!string.IsNullOrWhiteSpace(runway))
@@ -1180,10 +1236,14 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             graph.Mapping,
             graph.MappingErrorM,
             [.. graph.Edges.Select(e => e.Name).Where(n => n.Length > 0).Distinct().OrderBy(n => n, StringComparer.OrdinalIgnoreCase)],
-            [.. graph.Parkings.OrderBy(p => p.Label, StringComparer.OrdinalIgnoreCase).Take(take).Select(p => new TrafficTaxiInfoParking(p.Label, p.TypeName, Math.Round(p.RadiusM, 1), Math.Round(p.HeadingDeg)))],
+            [.. graph.Nodes.Where(n => n.Parking is not null).OrderBy(n => n.Parking!.Label, StringComparer.OrdinalIgnoreCase).Take(take).Select(n => new TrafficTaxiInfoParking(n.Parking!.Label, n.Parking.TypeName, Math.Round(n.Parking.RadiusM, 1), Math.Round(n.Parking.HeadingDeg), graph.IsOccupied(n)))],
             [.. holds.GroupBy(h => h.Runway).OrderBy(g => g.Key).Select(g => new TrafficTaxiInfoHolds(g.Key, g.Count(), [.. g.Select(h => h.Taxiway).Where(t => t.Length > 0).Distinct().OrderBy(t => t)]))],
             route,
-            routeError);
+            routeError,
+            obstacles,
+            graph.BlockedEdges,
+            graph.Nodes.Count(n => n.Parking is not null && graph.IsOccupied(n)),
+            obstacleError);
     }
 
     /// <summary>

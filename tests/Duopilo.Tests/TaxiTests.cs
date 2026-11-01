@@ -264,6 +264,44 @@ public sealed class TaxiTests
         Assert.InRange(kin.TotalM, route.PushbackPath!.LengthM + route.TaxiPath.LengthM - 0.5, route.PushbackPath.LengthM + route.TaxiPath.LengthM + 0.5);
     }
 
+    [Fact]
+    public void Andere_Flugzeuge_sperren_Abschnitte_und_Parkpositionen()
+    {
+        var graph = Graph();
+        var gate = graph.FindParking("A5")!;
+
+        // 35 m neben dem Rollweg A: weit genug weg
+        graph.SetObstacles([graph.ToLatLon(-500, 235)], TaxiProfile.Airliner.ClearanceM);
+        Assert.Equal(0, graph.BlockedEdges);
+        Assert.NotNull(TaxiRoute.Plan(graph, End("09"), gate, TaxiProfile.Airliner));
+
+        // Mitten auf A zwischen den Punkten 2 und 3: der Abschnitt ist gesperrt – zum Westende bleibt nur der Umweg über A9 und die Bahn
+        graph.SetObstacles([graph.ToLatLon(-500, 205)], TaxiProfile.Airliner.ClearanceM);
+        Assert.Equal(1, graph.BlockedEdges);
+        Assert.True(graph.IsBlocked(graph.Edge(2, 3)!));
+        var detour = graph.Route(gate.Id, H1)!;
+        Assert.DoesNotContain(2, detour);
+        Assert.Contains(12, detour);
+        Assert.NotNull(TaxiRoute.Plan(graph, End("27"), gate, TaxiProfile.Airliner));
+
+        // Auf dem Gate: belegt, die Auswahl nimmt es nicht
+        graph.SetObstacles([graph.ToLatLon(3, 352)], TaxiProfile.Airliner.ClearanceM);
+        Assert.True(graph.IsOccupied(gate));
+        Assert.Empty(TaxiRoute.CandidateParkings(graph, TrafficCategory.Airliner, TrafficWake.Medium, new Random(1)));
+
+        graph.SetObstacles([], TaxiProfile.Airliner.ClearanceM);
+        Assert.False(graph.IsOccupied(gate));
+        Assert.Equal(0, graph.BlockedEdges);
+    }
+
+    [Theory]
+    [InlineData(5, 5, 0, 0, 10, 0, 5)]
+    [InlineData(-3, 4, 0, 0, 10, 0, 5)]
+    [InlineData(13, 0, 0, 0, 10, 0, 3)]
+    [InlineData(1, 1, 1, 1, 1, 1, 0)]
+    public void Abstand_zur_Strecke(double px, double py, double ax, double ay, double bx, double by, double expected) =>
+        Assert.Equal(expected, TaxiGraph.SegmentDistance(px, py, ax, ay, bx, by), 6);
+
     [Theory]
     [InlineData(16, 5u, 0, "E5")]
     [InlineData(12, 12u, 0, "A12")]

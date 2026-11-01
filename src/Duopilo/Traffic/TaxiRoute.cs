@@ -48,7 +48,8 @@ public sealed record TaxiRoute(
     /// <summary>
     /// Parkpositionen, die zu Kategorie und Wirbelschleppen-Kategorie passen, in zufälliger Reihenfolge: Verkehrsflugzeuge an Gates und
     /// Frachtpositionen, Allgemeine Luftfahrt auf GA-Vorfeldern, Militär auf Militärpositionen – jeweils groß genug (Radius) –, danach
-    /// jede andere Parkposition, die groß genug ist (ohne Tankstellen, Fahrzeuge und Docks).
+    /// jede andere Parkposition, die groß genug ist (ohne Tankstellen, Fahrzeuge und Docks). Belegte Positionen
+    /// (<see cref="TaxiGraph.IsOccupied(TaxiNode)"/>) fallen weg.
     /// </summary>
     public static IReadOnlyList<TaxiNode> CandidateParkings(TaxiGraph graph, TrafficCategory category, TrafficWake wake, Random random)
     {
@@ -65,7 +66,7 @@ public sealed record TaxiRoute(
             TrafficCategory.Military => [6, 7],
             _ => [8, 9, 10, 15, 5],
         };
-        var fitting = graph.Nodes.Where(n => n.Parking is { } p && p.RadiusM >= minRadius && p.Type is not (11 or 12 or 13 or 0)).ToList();
+        var fitting = graph.Nodes.Where(n => n.Parking is { } p && p.RadiusM >= minRadius && p.Type is not (11 or 12 or 13 or 0) && !graph.IsOccupied(n)).ToList();
         var first = fitting.Where(n => preferred.Contains(n.Parking!.Type)).OrderBy(_ => random.Next()).ToList();
         var rest = fitting.Except(first).OrderBy(_ => random.Next());
         return [.. first, .. rest];
@@ -91,7 +92,7 @@ public sealed record TaxiRoute(
             foreach (var edge in graph.EdgesOf(t.Id))
             {
                 var other = graph.Nodes[edge.Other(t.Id)];
-                if (other.IsParking || (nodes.Count >= 3 && other.Id == nodes[2]))
+                if (other.IsParking || (nodes.Count >= 3 && other.Id == nodes[2]) || graph.IsBlocked(edge))
                 {
                     continue;
                 }
