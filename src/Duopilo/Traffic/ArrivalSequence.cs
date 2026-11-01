@@ -6,12 +6,19 @@ namespace Duopilo.Traffic;
 /// <param name="SpacingNm">Abstand zum vorderen Anflug, 0 = keiner.</param>
 /// <param name="Reason">Woher der Abstand kommt: wake (Wirbelschleppen bzw. Radarstaffelung), departure_gap (Lücke für einen Abflug),
 /// departing (ein Abflug rollt gerade auf die Bahn oder startet), sonst free.</param>
-public sealed record ArrivalSlot(double SpawnNm, string? Behind, double SpacingNm, string Reason);
+/// <param name="GapFor">departure_gap: für diesen Abflug (Kennung).</param>
+public sealed record ArrivalSlot(double SpawnNm, string? Behind, double SpacingNm, string Reason, string? GapFor = null);
+
+/// <summary>Ein Abflug, der auf eine Lücke zwischen zwei Landungen wartet.</summary>
+/// <param name="Tail">Kennung.</param>
+/// <param name="ReadySeconds">In so vielen Sekunden steht er am Haltepunkt bereit (0 = schon da).</param>
+/// <param name="ReleaseNm">So weit muss die nächste Landung beim Aufreihen weg sein (<see cref="ArrivalSequence.DepartureReleaseNm"/>).</param>
+public readonly record struct WaitingDeparture(string Tail, double ReadySeconds, double ReleaseNm);
 
 /// <summary>
 /// Takt der Landungen auf einer Bahn und Mischbetrieb mit Starts (eine Bahn für beides wie meist in Düsseldorf). Anflüge kommen mit
 /// Abstand nach Wirbelschleppen-Kategorie hintereinander (ICAO, vereinfacht; sonst <see cref="MinSpacingNm"/> Radarstaffelung). Wartet
-/// ein Abflug derselben Bahn, bekommt er eine Lücke von <see cref="DepartureGapNm"/>. Ein Abflug reiht sich erst auf, wenn die nächste
+/// ein Abflug derselben Bahn, bekommt er eine Lücke, die zu seiner Ankunft am Haltepunkt passt. Ein Abflug reiht sich erst auf, wenn die nächste
 /// Landung weiter als <see cref="DepartureReleaseNm"/> weg ist; ist die Bahn bei <see cref="GoAroundDecisionNm"/> noch belegt, startet
 /// die Landung durch.
 /// </summary>
@@ -20,11 +27,14 @@ public static class ArrivalSequence
     /// <summary>Radarstaffelung im Endanflug, wenn keine Wirbelschleppen-Staffelung mehr verlangt.</summary>
     public const double MinSpacingNm = 3;
 
-    /// <summary>
-    /// Lücke für einen Abflug zwischen zwei Landungen: Die vordere räumt die Bahn in gut einer Minute (die hintere fliegt dabei gut 2 NM),
-    /// danach braucht der Abflug noch rund <see cref="DepartureReleaseNm"/> bis zur nächsten Landung.
-    /// </summary>
-    public const double DepartureGapNm = 8;
+    /// <summary>Lücke für einen Abflug: so lange nach dem Aufsetzen hat die Landung davor die Bahn geräumt (EDDL: gut 40 s bis zum Abrollweg).</summary>
+    public const double LeaderRunwaySeconds = 60;
+
+    /// <summary>Lücke für einen Abflug: Reserve für die Abfrage und das Losrollen.</summary>
+    public const double GapReserveSeconds = 20;
+
+    /// <summary>Für eine Lücke kommt eine Landung höchstens so viel weiter draußen in die Reihe – sonst landet sie zuerst.</summary>
+    public const double MaxGapExtraNm = 8;
 
     /// <summary>Weiter draußen spawnt kein Anflug.</summary>
     public const double MaxSpawnNm = 30;
@@ -82,36 +92,48 @@ public static class ArrivalSequence
 
     /// <summary>
     /// Platz für einen neuen Anflug: gewünscht <paramref name="wantedNm"/> vor der Schwelle, aber mit Abstand hinter dem letzten der
-    /// <paramref name="arrivals"/> (Kennung, Entfernung, Kategorie – noch in der Luft vor der Schwelle) und – wartet ein Abflug
-    /// (<paramref name="departureWaiting"/>) – mit der Lücke dafür. Rollt gerade ein Abflug auf die Bahn oder startet, nicht näher als
-    /// <paramref name="departingReleaseNm"/>. Höchstens <see cref="MaxSpawnNm"/>.
+    /// <paramref name="arrivals"/> (Kennung, Entfernung, Kategorie – noch in der Luft vor der Schwelle). Wartet ein Abflug
+    /// (<paramref name="departure"/>), bekommt er eine Lücke, die zu ihm passt: Die Landung ist noch <see cref="WaitingDeparture.ReleaseNm"/>
+    /// weg, wenn der Abflug bereit ist und die Landung davor die Bahn geräumt hat (<see cref="LeaderRunwaySeconds"/> nach dem Aufsetzen),
+    /// plus <see cref="GapReserveSeconds"/> – aber nur, wenn sie dafür höchstens <see cref="MaxGapExtraNm"/> weiter draußen kommt;
+    /// sonst landet sie zuerst. Rollt gerade ein Abflug auf die Bahn oder startet, nicht näher als <paramref name="departingReleaseNm"/>.
+    /// Höchstens <see cref="MaxSpawnNm"/>.
     /// </summary>
     public static ArrivalSlot Plan(
         double wantedNm,
         IEnumerable<(string Tail, double DistanceNm, TrafficWake Wake)> arrivals,
         TrafficWake own,
-        bool departureWaiting = false,
+        WaitingDeparture? departure = null,
         double? departingReleaseNm = null)
     {
         var spawn = wantedNm;
         string? behind = null;
+        string? gapFor = null;
         var spacing = 0.0;
         var reason = "free";
         var last = arrivals.OrderByDescending(a => a.DistanceNm).FirstOrDefault();
         if (last.Tail is not null)
         {
             spacing = SpacingNm(last.Wake, own);
-            var gap = departureWaiting && DepartureGapNm > spacing;
-            if (gap)
-            {
-                spacing = DepartureGapNm;
-            }
-
             if (last.DistanceNm + spacing > spawn)
             {
                 spawn = last.DistanceNm + spacing;
                 behind = last.Tail;
-                reason = gap ? "departure_gap" : "wake";
+                reason = "wake";
+            }
+        }
+
+        if (departure is { } d)
+        {
+            var leaderClear = last.Tail is null ? 0 : (last.DistanceNm / FinalGroundSpeedKt * 3600) + LeaderRunwaySeconds;
+            var gapNm = d.ReleaseNm + ((Math.Max(d.ReadySeconds, leaderClear) + GapReserveSeconds) * FinalGroundSpeedKt / 3600);
+            if (gapNm > spawn && gapNm - spawn <= MaxGapExtraNm)
+            {
+                spawn = gapNm;
+                behind = last.Tail;
+                spacing = last.Tail is null ? 0 : gapNm - last.DistanceNm;
+                reason = "departure_gap";
+                gapFor = d.Tail;
             }
         }
 
@@ -121,6 +143,6 @@ public static class ArrivalSequence
             reason = "departing";
         }
 
-        return new ArrivalSlot(Math.Round(Math.Min(spawn, MaxSpawnNm), 1), behind, spacing, reason);
+        return new ArrivalSlot(Math.Round(Math.Min(spawn, MaxSpawnNm), 1), behind, Math.Round(spacing, 1), reason, gapFor);
     }
 }

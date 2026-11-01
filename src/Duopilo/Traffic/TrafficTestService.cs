@@ -260,6 +260,18 @@ public sealed class TrafficTestService : IHostedService, IDisposable
     /// <summary>Landung: ein Ergebnis der Bahnprüfung gilt so lange.</summary>
     private const double LandingCheckValidSeconds = 8;
 
+    /// <summary>Rolltests (D1, B2, A3) laufen mindestens so lange – in der Warteschlange brauchte ein Abflug in EDDL gut 13 min.</summary>
+    private const int TaxiMaxMinutes = 30;
+
+    /// <summary>Lücke für einen Abflug: so schnell rollt er im Mittel (mit Kurven, beta.34 in EDDL 5,4–5,6 m/s).</summary>
+    private const double AverageTaxiMps = 5.5;
+
+    /// <summary>Gegenverkehr: so schnell rechnet die Vorfahrt mindestens (auch wenn das Flugzeug gerade steht).</summary>
+    private const double HeadOnMinMps = 2.5;
+
+    /// <summary>Gegenverkehr: kommen beide fast gleichzeitig an (Sekunden), hat die kleinere Kennung Vorfahrt.</summary>
+    private const double HeadOnTieSeconds = 5;
+
     /// <summary>Falls der Sim STATIC CG TO GROUND nicht liefert: Bezugspunkt so hoch über den Rädern (A320 im Test: 9 ft).</summary>
     private const double DefaultCgHeightFt = 9;
 
@@ -498,15 +510,23 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                     .Where(a => a.Distance is not null)
                     .Select(a => (a.Tail, a.Distance!.Value, a.Wake))
                     .ToList();
-                var waiting = sameRunway.Any(r => r.InitialPlan.TakeoffAfterTaxi && r.Kinematics is null && !IsDeparting(r));
+                // Der Abflug, der am frühesten am Haltepunkt bereit ist, bekommt die Lücke
+                var waiting = sameRunway
+                    .Where(r => r.InitialPlan.TakeoffAfterTaxi && r.Kinematics is null && !IsDeparting(r))
+                    .Select(r => (WaitingDeparture?)new WaitingDeparture(r.Tail, DepartureReadySeconds(r), r.ReleaseNm ?? RunwayOccupancy.FinalNm))
+                    .OrderBy(d => d!.Value.ReadySeconds)
+                    .FirstOrDefault();
                 var departing = sameRunway.Where(r => r.InitialPlan.TakeoffAfterTaxi && IsDeparting(r)).Select(r => (double?)(r.ReleaseNm ?? RunwayOccupancy.FinalNm)).Max();
                 var arrival = ArrivalSequence.Plan(request.SpawnNm ?? TrafficTestPlan.DefaultSpawnNm(request.Variant), arrivals, wake, waiting, departing);
                 spawnNm = arrival.SpawnNm;
+                var gapFor = arrival.GapFor is { } gapTail && waiting is { } w
+                    ? string.Create(CultureInfo.InvariantCulture, $" for {gapTail} (ready in {w.ReadySeconds:0} s)")
+                    : "";
                 taxiEvents.Add(arrival.Behind is null && arrival.Reason == "free"
                     ? string.Create(CultureInfo.InvariantCulture, $"arrival_sequence free, spawn {arrival.SpawnNm:0.0} NM")
                     : arrival.Behind is null
-                    ? string.Create(CultureInfo.InvariantCulture, $"arrival_sequence {arrival.Reason}, spawn {arrival.SpawnNm:0.0} NM")
-                    : string.Create(CultureInfo.InvariantCulture, $"arrival_sequence {arrival.SpacingNm:0.#} NM behind {arrival.Behind} ({arrival.Reason}), spawn {arrival.SpawnNm:0.0} NM"));
+                    ? string.Create(CultureInfo.InvariantCulture, $"arrival_sequence {arrival.Reason}{gapFor}, spawn {arrival.SpawnNm:0.0} NM")
+                    : string.Create(CultureInfo.InvariantCulture, $"arrival_sequence {arrival.SpacingNm:0.#} NM behind {arrival.Behind} ({arrival.Reason}{gapFor}), spawn {arrival.SpawnNm:0.0} NM"));
             }
 
             var plan = request.Variant switch
@@ -544,7 +564,9 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 throw;
             }
 
-            var run = new TrafficTestRun(plan, slot, title, livery, request.Gear, objectId, spawnUtc, csv?.Path, csv?.Writer, _options.TrafficTest.MaxMinutes)
+            // Rollen und Warteschlangen dauern länger als ein Anflug: mindestens TaxiMaxMinutes
+            var maxMinutes = plan.IsTaxi || plan.Variant == TrafficTestVariant.A3 ? Math.Max(_options.TrafficTest.MaxMinutes, TaxiMaxMinutes) : _options.TrafficTest.MaxMinutes;
+            var run = new TrafficTestRun(plan, slot, title, livery, request.Gear, objectId, spawnUtc, csv?.Path, csv?.Writer, maxMinutes)
             {
                 SpeedMethod = request.SpeedMethod,
                 GoAroundEnabled = request.GoAround,
@@ -1413,12 +1435,26 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         }
 
         var stop = TaxiTraffic.StopBehind(taxi.Taxi, taxi.DistanceM, others, TaxiTraffic.SpacingFor(run.Category));
-        taxi.TrafficStopS = stop?.StopS ?? double.NaN;
+        double? stopS = stop?.StopS;
         var blocker = stop is { } st ? owners[st.Index] : null;
-        if (blocker?.ObjectId != run.BlockedBy)
+
+        // Gegenverkehr: vor dem gemeinsamen Stück Rollweg warten, wenn der andere Vorfahrt hat
+        var headOn = false;
+        if (HeadOnStop(run, taxi, graph, seconds) is { } giveWay && (stopS is null || giveWay.StopS < stopS.Value))
+        {
+            stopS = giveWay.StopS;
+            blocker = giveWay.Other;
+            headOn = true;
+        }
+
+        taxi.TrafficStopS = stopS ?? double.NaN;
+        if (blocker?.ObjectId != run.BlockedBy || headOn != run.BlockedHeadOn)
         {
             run.BlockedBy = blocker?.ObjectId;
-            run.AddEvent(seconds, blocker is null ? "taxi_spacing_clear" : string.Create(CultureInfo.InvariantCulture, $"taxi_spacing behind {blocker.Tail}, stop at {stop!.Value.StopS:0} m"));
+            run.BlockedHeadOn = headOn;
+            run.AddEvent(seconds, blocker is null ? "taxi_spacing_clear"
+                : headOn ? string.Create(CultureInfo.InvariantCulture, $"taxi_give_way {blocker.Tail} oncoming, hold at {stopS!.Value:0} m")
+                : string.Create(CultureInfo.InvariantCulture, $"taxi_spacing behind {blocker.Tail}, stop at {stopS!.Value:0} m"));
         }
     }
 
@@ -1549,6 +1585,108 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 run.RunwayScanBusy = false;
             }
         });
+    }
+
+    /// <summary>
+    /// B2: In so vielen Sekunden steht der Abflug am Haltepunkt bereit zum Aufreihen – Rest von Parken, Pushback und Warten danach, der
+    /// Rollweg mit <see cref="AverageTaxiMps"/> und das Warten am Haltepunkt; 0 = bereit.
+    /// </summary>
+    private static double DepartureReadySeconds(TrafficTestRun run)
+    {
+        var mps = TaxiKinematics.PushbackKt * 0.514444;
+        if (run.TaxiKinematics is not { } taxi)
+        {
+            var route = run.InitialPlan.Taxi;
+            return TaxiKinematics.ParkedSeconds + ((route?.PushbackPath?.LengthM ?? 0) / mps) + (route?.PushbackPath is null ? 0 : TaxiKinematics.PushbackDoneSeconds)
+                + ((route?.TaxiPath.LengthM ?? 0) / AverageTaxiMps) + TaxiKinematics.HoldBeforeLineUpSeconds;
+        }
+
+        var pushbackM = taxi.Pushback?.LengthM ?? 0;
+        var before = taxi.Phase switch
+        {
+            TaxiPhase.Parked => Math.Max(0, TaxiKinematics.ParkedSeconds - taxi.PhaseSeconds) + (pushbackM / mps) + (taxi.Pushback is null ? 0 : TaxiKinematics.PushbackDoneSeconds),
+            TaxiPhase.Pushback => (Math.Max(0, pushbackM - taxi.DistanceM) / mps) + TaxiKinematics.PushbackDoneSeconds,
+            TaxiPhase.PushbackDone => Math.Max(0, TaxiKinematics.PushbackDoneSeconds - taxi.PhaseSeconds),
+            _ => 0,
+        };
+        var taxiM = taxi.Phase switch
+        {
+            TaxiPhase.Taxi or TaxiPhase.HoldingShort => Math.Max(0, taxi.Taxi.LengthM - taxi.DistanceM),
+            TaxiPhase.Parked or TaxiPhase.Pushback or TaxiPhase.PushbackDone => taxi.Taxi.LengthM,
+            _ => 0,
+        };
+        var hold = taxi.Phase == TaxiPhase.Holding ? Math.Max(0, TaxiKinematics.HoldBeforeLineUpSeconds - taxi.PhaseSeconds) : TaxiKinematics.HoldBeforeLineUpSeconds;
+        return before + (taxiM / AverageTaxiMps) + hold;
+    }
+
+    /// <summary>
+    /// Gegenverkehr: Teilt sich der Weg voraus ein Stück Rollweg in Gegenrichtung mit dem eines anderen rollenden Testflugzeugs
+    /// (<see cref="TaxiTraffic.FindHeadOn"/>), hat Vorfahrt, wer schon drin ist, sonst wer früher hineinkommt (bei fast gleich die
+    /// kleinere Kennung); einmal entschieden, bleibt es dabei, bis das Stück frei ist. Wer Vorfahrt lässt, wartet davor, wo er
+    /// <see cref="TaxiTraffic.HeadOnClearM"/> vom Weg des anderen weg ist. Gibt den nächsten solchen Halt zurück, sonst null.
+    /// </summary>
+    private (double StopS, TrafficTestRun Other)? HeadOnStop(TrafficTestRun run, TaxiKinematics taxi, TaxiGraph graph, double seconds)
+    {
+        (double StopS, TrafficTestRun Other)? best = null;
+        var yieldTo = new HashSet<uint>();
+        foreach (var other in Running())
+        {
+            if (other == run || other.TaxiKinematics is not { } ot || other.TaxiGraph is not { } og || og.Icao != graph.Icao
+                || ot.Phase is not (TaxiPhase.Taxi or TaxiPhase.HoldingShort)
+                || (other.InitialPlan.Variant == TrafficTestVariant.A3 && !other.TaxiActive))
+            {
+                continue;
+            }
+
+            var points = TaxiTraffic.Sample(ot.Taxi, ot.DistanceM, TaxiTraffic.HeadOnOtherAheadM, (e, n) =>
+            {
+                var (lat, lon) = og.ToLatLon(e, n);
+                return graph.ToLocal(lat, lon);
+            });
+            if (TaxiTraffic.FindHeadOn(taxi.Taxi, taxi.DistanceM, points) is not { } conflict)
+            {
+                continue;
+            }
+
+            bool yields;
+            if (other.GiveWayTo.Contains(run.ObjectId))
+            {
+                yields = false;
+            }
+            else if (run.GiveWayTo.Contains(other.ObjectId))
+            {
+                yields = true;
+            }
+            else
+            {
+                var ownInside = conflict.EntryS <= taxi.DistanceM + TaxiTraffic.HeadOnSampleM;
+                var otherInside = conflict.OtherEntryS <= ot.DistanceM + TaxiTraffic.HeadOnSampleM;
+                var ownSeconds = (conflict.EntryS - taxi.DistanceM) / Math.Max(taxi.SpeedKt * 0.514444, HeadOnMinMps);
+                var otherSeconds = (conflict.OtherEntryS - ot.DistanceM) / Math.Max(ot.SpeedKt * 0.514444, HeadOnMinMps);
+                yields = ownInside != otherInside ? otherInside
+                    : Math.Abs(ownSeconds - otherSeconds) > HeadOnTieSeconds ? ownSeconds > otherSeconds
+                    : run.Slot > other.Slot;
+                if (ownInside && otherInside && !run.HeadOnWarned)
+                {
+                    run.HeadOnWarned = true;
+                    run.AddEvent(seconds, "warning:taxi_head_on " + other.Tail + " on the same taxiway, no room to give way");
+                }
+            }
+
+            if (!yields)
+            {
+                continue;
+            }
+
+            yieldTo.Add(other.ObjectId);
+            if (best is null || conflict.HoldS < best.Value.StopS)
+            {
+                best = (conflict.HoldS, other);
+            }
+        }
+
+        run.GiveWayTo = yieldTo;
+        return best;
     }
 
     /// <summary>Anflug noch in der Luft vor der Schwelle (nicht durchgestartet): Entfernung zur Schwelle in NM, sonst null.</summary>
@@ -2087,8 +2225,17 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             set => _runwayScanBusy = value;
         }
 
-        /// <summary>Rollen: wegen dieses Testflugzeugs steht es gerade (Abstand), sonst null.</summary>
+        /// <summary>Rollen: wegen dieses Testflugzeugs steht es gerade (Abstand oder Gegenverkehr), sonst null.</summary>
         public uint? BlockedBy { get; set; }
+
+        /// <summary>Rollen: <see cref="BlockedBy"/> kommt entgegen (Vorfahrt lassen), nicht voraus.</summary>
+        public bool BlockedHeadOn { get; set; }
+
+        /// <summary>Rollen: diesen Testflugzeugen lässt es gerade Vorfahrt (Gegenverkehr).</summary>
+        public IReadOnlySet<uint> GiveWayTo { get; set; } = new HashSet<uint>();
+
+        /// <summary>Rollen: Warnung zu Gegenverkehr ohne Platz zum Ausweichen schon geschrieben.</summary>
+        public bool HeadOnWarned { get; set; }
 
         /// <summary>B2: seit wann es am Haltepunkt auf das Aufreihen wartet (Reihenfolge).</summary>
         public DateTimeOffset? LineUpQueuedUtc { get; set; }
