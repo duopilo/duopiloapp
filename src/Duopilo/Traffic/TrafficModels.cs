@@ -292,15 +292,15 @@ public static class TrafficModels
             ApproachKt = approachKt,
         };
 
-    // Regionalflugzeuge sind Linienverkehr, auch wenn sie langsamer anfliegen als 120 kt
-    private static readonly HashSet<string> Regional = new(StringComparer.Ordinal)
-    {
-        "AT43", "AT45", "AT46", "AT72", "AT75", "AT76", "DH8A", "DH8B", "DH8C", "DH8D", "SB20", "SF34", "B190",
-    };
-
-    /// <summary>Airliner: Regionalflugzeuge und alles über 120 kt Anfluggeschwindigkeit; sonst Allgemeine Luftfahrt (auch Business-Jets).</summary>
+    /// <summary>
+    /// Airliner: Regionalflugzeuge (Linienverkehr, auch wenn sie langsamer als 120 kt anfliegen) und alles über 120 kt; sonst Allgemeine
+    /// Luftfahrt (auch Business-Jets). Als Muster statt als statisches Feld, weil <see cref="Approved"/> davor initialisiert wird.
+    /// </summary>
     private static TrafficCategory CategoryOf(string icaoType, double approachKt) =>
-        Regional.Contains(icaoType) || approachKt > 120 ? TrafficCategory.Airliner : TrafficCategory.GeneralAviation;
+        icaoType is "AT43" or "AT45" or "AT46" or "AT72" or "AT75" or "AT76" or "DH8A" or "DH8B" or "DH8C" or "DH8D" or "SB20" or "SF34" or "B190"
+        || approachKt > 120
+            ? TrafficCategory.Airliner
+            : TrafficCategory.GeneralAviation;
 
     /// <summary>Das Muster, an dem ein Modell gesperrt ist, sonst null.</summary>
     public static string? ExcludedBy(string title, string? livery = null) =>
