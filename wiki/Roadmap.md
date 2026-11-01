@@ -36,9 +36,11 @@ Duopilo's own AI traffic instead of the simulator's, built step by step with the
 - [x] **Approach and landing** (v0.10 betas) – AI traffic models fly the final approach by waypoints and stop on the runway: gear down by 2500 ft, lights, approval list of the MSFS 2024 AI traffic models (about 250 types) with an approach speed per type, speed control, up to 4 at once
 - [x] **Go-around** (beta.15, in beta) – more than 150 ft high or Vapp + 20 kt fast over the threshold, or not on the ground by 900 m: climb straight ahead to 3000 ft, gear up; the AI takes the new waypoints in flight
 - [x] **Takeoff** (beta.16, in beta) – spawn on the runway, takeoff roll, liftoff, climb to 3000 ft, gear up, lights; evaluation of the liftoff point and the climb (the AI doesn't rotate yet)
-- [x] **Kinematic final** (beta.17, in test) – the waypoint AI flies no slower than about 169 kt and lands at a fixed 133 kt, so Duopilo moves the aircraft itself from a few miles out: speed per type, 3° path, flare, soft touchdown, braking to a stop
-- [ ] **Overflights at cruise altitude** (beta.18) – aircraft crossing your area at their flight level, flown by the waypoint AI
+- [x] **Kinematic final** (beta.17, in beta) – the waypoint AI flies no slower than about 169 kt and lands at a fixed 133 kt, so Duopilo moves the aircraft itself from a few miles out: speed per type, 3° path, flare, soft touchdown, braking to a stop
+- [x] **Overflights at cruise altitude** (beta.18, in beta) – aircraft crossing your area at their flight level, flown by the waypoint AI
+- [ ] **Airport rules** (beta.19) – which aircraft may use which airport and runway, for all airports: military airfields only military traffic (A400M, Super Hornet), heliports and closed fields none, small fields general aviation only, runway rules (EDDF 07L/25R landings only without B747, A380, MD-11), traffic mix per airport (Finkenwerder mostly Belugas)
 - [ ] **Taxi** – pushback and taxi between gate and runway on the airport's taxiways
+- [ ] **Helicopters** – kinematic: approach, hover, vertical landing and takeoff on heliports and airports
 - [ ] **Schedule traffic** – flights mapped to the installed models by ICAO type
 - [x] Test at Frankfurt as well (three parallel runways and the Startbahn West)
 - [ ] Rotation on takeoff (kinematic, like the final)

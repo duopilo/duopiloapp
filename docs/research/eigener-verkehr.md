@@ -416,6 +416,8 @@ von der 18 wie in beta.16 (636 m, 139 kt, 740 ft über dem Bahnende).
    an die KI, die Wunschgeschwindigkeit wirkt nach oben), geradeaus darüber hinweg, Lichter wie im Reiseflug (Landelicht aus), Ende
    40 NM dahinter. Allgemeine Luftfahrt FL85, doppelte Vapp, 15 NM.
 5. Rollen – irgendwann: Pushback und Rollen zwischen Gate und Bahn über die Rollwege (aus Stufe C).
+6. Helikopter – nach dem Rollen: kinematisch (Anflug, Schweben, senkrecht landen und abheben), auf Heliports und Flughäfen;
+   Heliports bekommen dann nur Helis.
 
 **Entscheidung danach:**
 
