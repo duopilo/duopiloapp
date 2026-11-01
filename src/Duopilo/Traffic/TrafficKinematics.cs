@@ -224,8 +224,15 @@ public sealed class TrafficKinematics
 
     public KinematicPhase Phase { get; private set; } = KinematicPhase.Approach;
 
-    /// <summary>Ob das ein Start ist (<see cref="Takeoff"/>) statt eines Endanflugs.</summary>
-    public bool IsTakeoff => Phase is KinematicPhase.Lineup or KinematicPhase.TakeoffRoll or KinematicPhase.Rotation or KinematicPhase.Climb;
+    /// <summary>Ob das ein Start ist (<see cref="Takeoff"/>) statt eines Endanflugs (auch nicht nach dem Durchstarten).</summary>
+    public bool IsTakeoff => GoAroundAlongM is null
+        && Phase is KinematicPhase.Lineup or KinematicPhase.TakeoffRoll or KinematicPhase.Rotation or KinematicPhase.Climb;
+
+    /// <summary>Durchgestartet (<see cref="GoAround"/>): wo, ab der Schwelle; sonst null.</summary>
+    public double? GoAroundAlongM { get; private set; }
+
+    /// <summary>Durchstarten: Steiggeschwindigkeit über Vapp.</summary>
+    public const double GoAroundAboveVappKt = 10;
 
     /// <summary>Start: Rotationsgeschwindigkeit (Vr), sonst 0.</summary>
     public double RotateKt { get; private set; }
@@ -345,6 +352,29 @@ public sealed class TrafficKinematics
                 AdvanceClimb(dt);
                 break;
         }
+    }
+
+    /// <summary>
+    /// Durchstarten aus dem Endanflug oder dem Abfangen (die Bahn ist belegt): Ab hier fliegt das Flugzeug wie nach dem Abheben im
+    /// <see cref="KinematicPhase.Climb"/> – Nase hoch, steigen mit Vapp + <see cref="GoAroundAboveVappKt"/>, ab der
+    /// Beschleunigungshöhe schneller, auf 3000 ft über der Bahn waagerecht. Der Anstellwinkel ist zuerst der des Anflugs (Nase minus
+    /// Bahnneigung), so geht das Sinken weich in den Steigflug über. false = schon am Boden oder im Steigflug.
+    /// </summary>
+    public bool GoAround()
+    {
+        if (Phase is not (KinematicPhase.Approach or KinematicPhase.Flare))
+        {
+            return false;
+        }
+
+        GoAroundAlongM = AlongM;
+        ClimbKt = Math.Max(SpeedKt, _plan.ApproachKt + GoAroundAboveVappKt);
+        var tasFps = Math.Max(1, SpeedKt * TasFactor(HeightFt) * FeetPerSecondPerKnot);
+        var pathDeg = Math.Asin(Math.Clamp(VerticalSpeedFpm / 60 / tasFps, -1, 1)) * 180 / Math.PI;
+        _aoaDeg = Math.Max(1, PitchDeg - pathDeg);
+        _climbPitchReached = false;
+        Phase = KinematicPhase.Climb;
+        return true;
     }
 
     /// <summary>Lage für den Sim: Punkt auf der Mittellinie mit Querablage, Bezugspunkt über den Rädern, Bahnkurs.</summary>

@@ -5,8 +5,8 @@ namespace Duopilo.Traffic;
 
 /// <summary>
 /// Ist eine Bahn frei? Für das Rollen: vor dem Kreuzen einer Bahn und vor dem Aufreihen. Belegt ist sie durch ein Flugzeug auf der Bahn
-/// (bis <see cref="OnRunwayMaxHeightFt"/> darüber, mit Rand an den Enden) oder im Endanflug auf eines ihrer Enden (in der Luft, bis
-/// <see cref="FinalNm"/> davor, nahe der verlängerten Mittellinie, tief genug und in Richtung der Bahn unterwegs). Wer am Boden vor der
+/// (bis <see cref="OnRunwayMaxHeightFt"/> darüber, mit Rand an den Enden) oder im Endanflug auf eines ihrer Enden (in der Luft, beim
+/// Kreuzen bis <see cref="FinalNm"/> davor, nahe der verlängerten Mittellinie, tief genug und in Richtung der Bahn unterwegs). Wer am Boden vor der
 /// Schwelle steht oder rollt (die Warteschlange am Haltepunkt), ist nicht im Endanflug.
 /// </summary>
 public static class RunwayOccupancy
@@ -42,11 +42,25 @@ public static class RunwayOccupancy
         return space > 0 ? blocker[..space] : blocker;
     }
 
+    /// <summary>Endanflug: weiter draußen zählt kein Flugzeug, auch nicht vor dem Aufreihen.</summary>
+    public const double MaxFinalNm = 12;
+
+    /// <summary>Endanflug: so viel höher als der 3°-Pfad darf ein Flugzeug in größerer Entfernung noch sein.</summary>
+    public const double AboveGlidePathFt = 1000;
+
     /// <summary>
     /// Was die Bahn <paramref name="runway"/> belegt („DUO02 on final 23L 2.4 NM“), null = frei. <paramref name="ownObjectId"/> (das
-    /// wartende Flugzeug selbst) zählt nicht.
+    /// wartende Flugzeug selbst) zählt nicht. Im Endanflug zählt, wer bis <paramref name="finalNm"/> vor einem der Enden ist (Kreuzen:
+    /// <see cref="FinalNm"/>; Aufreihen zum Start: so weit, wie die nächste Landung beim Losrollen weg sein muss).
     /// </summary>
-    public static string? Blocker(string airport, AirportRunway runway, IEnumerable<AircraftSample> samples, uint ownObjectId)
+    public static string? Blocker(string airport, AirportRunway runway, IEnumerable<AircraftSample> samples, uint ownObjectId, double finalNm = FinalNm) =>
+        Find(airport, runway, samples, ownObjectId, Math.Min(finalNm, MaxFinalNm));
+
+    /// <summary>Für die Landung: wer auf der Bahn ist („DUO02 on the runway“) – den Endanflug dahinter (die nächsten Landungen) nicht.</summary>
+    public static string? OnRunway(string airport, AirportRunway runway, IEnumerable<AircraftSample> samples, uint ownObjectId) =>
+        Find(airport, runway, samples, ownObjectId, 0);
+
+    private static string? Find(string airport, AirportRunway runway, IEnumerable<AircraftSample> samples, uint ownObjectId, double finalNm)
     {
         var first = RunwayEnd.From(airport, runway, primary: true);
         var ends = new List<RunwayEnd> { first };
@@ -71,7 +85,7 @@ public static class RunwayOccupancy
                 return name + " on the runway";
             }
 
-            if (s.OnGround)
+            if (s.OnGround || finalNm <= 0)
             {
                 continue;
             }
@@ -80,7 +94,8 @@ public static class RunwayOccupancy
             {
                 var (a, c) = end.Offsets(s.Latitude, s.Longitude);
                 var toward = Math.Abs(TrafficMath.Normalize(s.HeadingTrueDeg - end.HeadingTrueDeg + 180) - 180) <= FinalHeadingDeg;
-                if (a < 0 && a >= -FinalNm * RunwayEnd.MetersPerNm && Math.Abs(c) <= FinalCrossM && height < FinalMaxHeightFt && toward)
+                var maxHeight = Math.Max(FinalMaxHeightFt, KinematicGlidePathFt(-a) + AboveGlidePathFt);
+                if (a < 0 && a >= -finalNm * RunwayEnd.MetersPerNm && Math.Abs(c) <= FinalCrossM && height < maxHeight && toward)
                 {
                     return string.Create(CultureInfo.InvariantCulture, $"{name} on final {end.Designation} {-a / RunwayEnd.MetersPerNm:0.0} NM");
                 }
@@ -89,4 +104,7 @@ public static class RunwayOccupancy
 
         return null;
     }
+
+    /// <summary>Höhe des 3°-Pfads <paramref name="distanceM"/> vor der Schwelle über der Bahn.</summary>
+    private static double KinematicGlidePathFt(double distanceM) => TrafficKinematics.GlidePathHeightFt(-Math.Max(0, distanceM));
 }

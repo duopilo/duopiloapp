@@ -43,7 +43,8 @@ Eigener KI-Verkehr von Duopilo statt des Verkehrs aus dem Simulator, Schritt fü
 - [x] **Rollen zur Bahn** (beta.22 bis beta.28, in der Beta) – Duopilo bewegt das Flugzeug über die Rollwege des Flughafens (Rollweg-Netz aus MSFS): Gate nach Größe und Typ, Pushback entlang der Route bis zur nächsten Kreuzung, Rollen mit 15 kt und in Kurven langsamer, um geparkte Flugzeuge herum (beta.23), Halt an der Haltelinie des Rollwegs, über den es auf die Bahn rollt (beta.28), Halt vor gekreuzten Bahnen, bis sie frei sind (beta.30)
 - [x] **Abflug vom Gate** (beta.24, in der Beta) – Pushback, Rollen, Aufreihen auf der Mittellinie und kinematischer Start in einem Lauf; getestet in EDDL 23R vom Gate A15
 - [x] **Rollen nach der Landung** (beta.29, in der Beta) – Landung, noch rollend über einen passenden Abrollweg von der Bahn, Rollen zu einem freien Gate; getestet in EDDL 23R bis Gate C2
-- [x] **Abflug-Reihenfolge** (beta.31, in der Beta) – mehrere Flugzeuge von verschiedenen Gates zu einer Bahn: Abstand auf den Rollwegen, Aufreihen in der Reihenfolge der Ankunft, immer nur ein Abflug
+- [x] **Abflug-Reihenfolge** (beta.31, in der Beta) – mehrere Flugzeuge von verschiedenen Gates zu einer Bahn: Abstand auf den Rollwegen, Aufreihen in der Reihenfolge der Ankunft, immer nur ein Abflug; getestet in EDDL 23R mit drei Abflügen (beta.33)
+- [x] **Takt der Landungen und Mischbetrieb** (beta.34, in der Beta) – Landungen nacheinander mit Abstand nach Wirbelschleppen, Lücken für Abflüge, Starts und Landungen auf einer Bahn (wie in Düsseldorf), Durchstarten, wenn die Bahn noch belegt ist
 - [ ] **Follow-me** – eigenes Fahrzeugmodell (Bus mit Vollkaro), führt dein Flugzeug vom Abrollweg zum Gate
 - [ ] **Flughafenfeuerwehr** – europäische Löschfahrzeuge bei Notfällen aus dem ATC-Modul
 - [ ] **Eigene Passive-Flugzeugmodelle**
