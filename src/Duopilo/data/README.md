@@ -9,6 +9,7 @@ every update. Then run `atc_control reload`.
 | `vatspy/` | FIR boundaries (`Boundaries.geojson`) and FIR names (`VATSpy.dat`), unmodified original format | [VAT-Spy Data Project](https://github.com/vatsimnetwork/vatspy-data-project), revision `10fbcea` (2026-10-27) | CC BY-SA 4.0 (`vatspy/LICENSE`) |
 | `sectors/` | En-route sectors with altitude band, frequency and callsign (`atc-sectors.json`), generated with `tools/import_sectors.py` | [VATGlasses Data Project](https://github.com/lennycolton/vatglasses-data) (VATSIM sector data), revision `5946a1c` (2026-10-29) | CC BY-NC-SA 4.0 (`sectors/LICENSE`) – non-commercial only |
 | `openflights/` | Airlines with ICAO code and telephony callsign (`airlines.dat`, original format) | [OpenFlights](https://openflights.org/data.php), revision `e539814` (2026-10-23) | Open Database License (ODbL) 1.0, contents under the Database Contents License |
+| `traffic/` | Runway rules for Duopilo's own traffic (`runway-rules.json`): which runway an aircraft may use for landing or takeoff, by operation, category, ICAO type and wake category. Read at every traffic test start; your own copy replaces the rules of an airport | Duopilo (EDDF: Landebahn Nordwest landings only without B747, A380, MD-11, An-124, L-1011; Startbahn West takeoffs only) | MIT (Duopilo) |
 
 ## Updating
 
