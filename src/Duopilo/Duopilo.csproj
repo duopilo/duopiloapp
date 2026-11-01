@@ -10,7 +10,7 @@
     <AssemblyName>Duopilo</AssemblyName>
     <RootNamespace>Duopilo</RootNamespace>
     <!-- Nur für lokale Builds (update.cmd). Releases setzen die Version aus dem Tag v… (.github/workflows/release.yml). -->
-    <Version>0.10.0-beta.31</Version>
+    <Version>0.10.0-beta.32</Version>
     <!-- SimConnect.dll ist eine native x64-Bibliothek -->
     <PlatformTarget>x64</PlatformTarget>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
