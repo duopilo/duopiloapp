@@ -328,6 +328,53 @@ public sealed class TaxiTests
     }
 
     [Fact]
+    public void Pushback_die_lange_Einfahrlinie_zurueck_bis_zur_Abzweigung()
+    {
+        // Frachtposition wie V38B in EDDL: Nase nach Süden zur Halle, die Einfahrlinie läuft 160 m nach Norden bis zum Rollweg
+        // (Punkt 3), dort geht die Route nach Osten weiter, nach Westen gibt es ebenfalls einen Rollweg
+        TaxiPointData P(double east, double north, int type = 1) => new(type, 0, east, north);
+        var data = new AirportTaxiData(
+            "EDXT",
+            51.0,
+            7.0,
+            50,
+            [P(0, 0), P(0, 50), P(0, 100), P(60, 100), P(-60, 100), P(160, 100, 2)],
+            [new TaxiParkingData(5, 0, 12, 0, 1, 0, 180, 25, 0, -60)],
+            [
+                new TaxiPathData(3, 20, 0, 0, 0, 0, 0),
+                new TaxiPathData(1, 20, 0, 0, 0, 1, 0),
+                new TaxiPathData(1, 20, 0, 0, 1, 2, 0),
+                new TaxiPathData(1, 20, 0, 0, 2, 3, 0),
+                new TaxiPathData(1, 20, 0, 0, 2, 4, 0),
+                new TaxiPathData(1, 20, 0, 0, 3, 5, 0),
+            ],
+            ["V"]);
+        var graph = TaxiGraph.Build(data, []);
+        var parking = graph.FindParking("A1")!;
+        var nodes = graph.Route(parking.Id, 5)!;
+        var route = TaxiRoute.Build(graph, parking, new TaxiHold(graph.Nodes[5], "09/27", 90, "V"), nodes, TaxiProfile.Airliner);
+
+        // Zurück bis zur Abzweigung, Heck nach Westen: die Nase zeigt danach nach Osten in die Route – kein Umdrehen
+        Assert.True(route.Pushback);
+        var (pushEast, pushNorth, _) = route.PushbackPath!.At(route.PushbackPath.LengthM);
+        Assert.Equal(-40, pushEast, 1);
+        Assert.Equal(100, pushNorth, 1);
+        Assert.InRange(route.PushbackPath.LengthM, 180, 200);
+        var (startEast, _, startHeading) = route.TaxiPath.At(0);
+        Assert.Equal(-40, startEast, 1);
+        Assert.Equal(90, startHeading, 1);
+
+        // Ohne Rollweg nach Westen: am ersten Rollpunkt quer zur Einfahrt statt zurück zur Parkposition
+        var noWest = data with { Paths = [.. data.Paths.Where(p => p.End != 4)] };
+        var graph2 = TaxiGraph.Build(noWest, []);
+        var parking2 = graph2.FindParking("A1")!;
+        var route2 = TaxiRoute.Build(graph2, parking2, new TaxiHold(graph2.Nodes[5], "09/27", 90, "V"), graph2.Route(parking2.Id, 5)!, TaxiProfile.Airliner);
+        var (endEast, endNorth, _) = route2.PushbackPath!.At(route2.PushbackPath.LengthM);
+        Assert.Equal(0, endNorth, 1);
+        Assert.Equal(TaxiProfile.Airliner.PushbackLengthM * 0.5, Math.Abs(endEast), 1);
+    }
+
+    [Fact]
     public void Andere_Flugzeuge_sperren_Abschnitte_und_Parkpositionen()
     {
         var graph = Graph();

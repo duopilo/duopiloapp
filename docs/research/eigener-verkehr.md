@@ -465,6 +465,12 @@ nächsten Punkt auf der Mittellinie (höchstens 8 m daneben, in der ersten Bahnh
 40 m weiter, höchstens 10 kt. Von dort übernimmt die Start-Kinematik (B1, Vr bis 60 % der Bahn ab ihrem Anfang gerechnet), die
 Auswertung wechselt auf die des Starts, Landelicht und Strobes gehen an.
 
+**beta.23 in Düsseldorf (1.11.2026):** Mit Hindernissen (32 Flugzeuge am Boden, 65 Abschnitte gesperrt) rollte die A320 von V38B
+sauber um die geparkten Flugzeuge herum zum Haltepunkt K1. Der Pushback sah unschön aus: Die Frachtpositionen haben eine lange
+Einfahrlinie (gut 110 m bis zum Rollweg), die Route ging vom ersten Rollpunkt geradeaus weiter – der Pushback schob nur bis zu diesem
+Punkt und dann zurück Richtung Parkposition, das Flugzeug drehte sich um. Für beta.25: rückwärts die Route entlang bis zu dem Punkt, an
+dem sie abbiegt und hinter dem ein Rollweg in Gegenrichtung liegt (höchstens 250 m), dorthin schwenkt das Heck; sonst quer zur Einfahrt.
+
 **Fahrplan des eigenen Verkehrs (Stand 1.11.2026):**
 
 1. Anflug und Landung – erledigt bis beta.14 (Wegpunkte, Fahrwerk bis 2500 ft, Lichter, Freigabeliste, Geschwindigkeit).

@@ -90,6 +90,9 @@ public sealed record TaxiRoute(
     /// <summary>Der Rollweg hinter dem Pushback-Punkt zählt, wenn er höchstens so weit (Grad) von der Gegenrichtung abweicht.</summary>
     private const double PushbackLineDeg = 45;
 
+    /// <summary>So weit schiebt der Schlepper höchstens zurück, bis die Route abbiegt (lange Einfahrlinien).</summary>
+    public const double MaxPushbackM = 250;
+
     private const double MetersPerSecondPerKnot = 0.514444;
 
     /// <summary>Langsamer als das rollt das Flugzeug auch in engen Kurven nicht (m/s, gut 4 kt).</summary>
@@ -152,32 +155,15 @@ public sealed record TaxiRoute(
         var leadIn = TaxiPath.Heading(points[1].EastM - points[0].EastM, points[1].NorthM - points[0].NorthM);
         if (parking.IsParking && Math.Abs(TrafficMath.Normalize(leadIn - heading + 180) - 180) > PushbackAboveDeg && points.Count >= 2)
         {
-            // Rückwärts zum ersten Rollweg-Punkt T und im Bogen auf den Rollweg dahinter (Gegenrichtung der Weiterfahrt) bis E
-            var t = graph.Nodes[nodes[1]];
-            var ahead = points.Count >= 3 ? Unit(points[2].EastM - t.EastM, points[2].NorthM - t.NorthM) : Unit(t.EastM - parking.EastM, t.NorthM - parking.NorthM);
-            var behind = (East: -ahead.East, North: -ahead.North);
-            var (endEast, endNorth) = (t.EastM + (behind.East * profile.PushbackLengthM * 0.5), t.NorthM + (behind.North * profile.PushbackLengthM * 0.5));
-            var bestDot = Math.Cos(PushbackLineDeg * Math.PI / 180);
-            foreach (var edge in graph.EdgesOf(t.Id))
-            {
-                var other = graph.Nodes[edge.Other(t.Id)];
-                if (other.IsParking || (nodes.Count >= 3 && other.Id == nodes[2]) || graph.IsBlocked(edge))
-                {
-                    continue;
-                }
-
-                var dir = Unit(other.EastM - t.EastM, other.NorthM - t.NorthM);
-                var dot = (dir.East * behind.East) + (dir.North * behind.North);
-                if (dot >= bestDot)
-                {
-                    bestDot = dot;
-                    var length = Math.Min(profile.PushbackLengthM, edge.LengthM);
-                    (endEast, endNorth) = (t.EastM + (dir.East * length), t.NorthM + (dir.North * length));
-                }
-            }
-
-            pushback = TaxiPath.Build([points[0], (t.EastM, t.NorthM), (endEast, endNorth)], profile.PushbackRadiusM, TaxiKinematics.PushbackKt * MetersPerSecondPerKnot, profile.LateralMps2, 0.3);
-            points = [(endEast, endNorth), .. points.Skip(1)];
+            // Rückwärts die Route entlang bis zu dem Punkt J, an dem sie abbiegt und hinter dem ein Rollweg in Gegenrichtung der
+            // Weiterfahrt liegt; dorthin schwenkt das Heck (bis E), die Nase zeigt dann in Fahrtrichtung. Geht die Route nach der
+            // Parkposition erst geradeaus weiter (lange Einfahrlinie wie auf den Frachtpositionen in EDDL), schiebt der Schlepper das
+            // Flugzeug die ganze Linie zurück – sonst müsste es nach dem Pushback umdrehen.
+            var (turnIndex, endEast, endNorth) = PushbackEnd(graph, parking, nodes, points, profile);
+            var pushPoints = points.Take(turnIndex + 1).ToList();
+            pushPoints.Add((endEast, endNorth));
+            pushback = TaxiPath.Build(pushPoints, profile.PushbackRadiusM, TaxiKinematics.PushbackKt * MetersPerSecondPerKnot, profile.LateralMps2, 0.3);
+            points = [(endEast, endNorth), .. points.Skip(turnIndex)];
         }
 
         // Kurz vor dem Haltepunkt stehen bleiben: die Nase steht vor dem Bezugspunkt
@@ -196,6 +182,71 @@ public sealed record TaxiRoute(
         var taxi = TaxiPath.Build(points, profile.TurnRadiusM, straight, profile.LateralMps2, Math.Min(straight, MinTurnMps));
         return new TaxiRoute(parking, hold, nodes, graph.TaxiwayNames(nodes), Math.Round(graph.LengthM(nodes)), pushback, taxi);
     }
+
+    /// <summary>
+    /// Wohin der Pushback führt: der erste Punkt J der Route (ab dem ersten Rollpunkt, höchstens <see cref="MaxPushbackM"/> weit), an
+    /// dem ein freier Abschnitt höchstens <see cref="PushbackLineDeg"/> von der Gegenrichtung der Weiterfahrt abweicht und nicht der
+    /// ist, über den das Flugzeug kam; dort bis E auf diesem Abschnitt (höchstens <see cref="TaxiProfile.PushbackLengthM"/>). Gibt es
+    /// keinen, schwenkt das Heck am ersten Rollpunkt quer zur Einfahrt – dann rollt das Flugzeug mit einer Kurve los statt umzudrehen.
+    /// </summary>
+    private static (int Index, double East, double North) PushbackEnd(
+        TaxiGraph graph,
+        TaxiNode parking,
+        IReadOnlyList<int> nodes,
+        IReadOnlyList<(double EastM, double NorthM)> points,
+        TaxiProfile profile)
+    {
+        var minDot = Math.Cos(PushbackLineDeg * Math.PI / 180);
+        var distance = 0.0;
+        for (var k = 1; k < nodes.Count - 1; k++)
+        {
+            distance += Length(points[k - 1], points[k]);
+            if (distance > MaxPushbackM)
+            {
+                break;
+            }
+
+            var j = graph.Nodes[nodes[k]];
+            var ahead = Unit(points[k + 1].EastM - j.EastM, points[k + 1].NorthM - j.NorthM);
+            var behind = (East: -ahead.East, North: -ahead.North);
+            (double Dot, double East, double North)? best = null;
+            foreach (var edge in graph.EdgesOf(j.Id))
+            {
+                var other = graph.Nodes[edge.Other(j.Id)];
+                if (other.IsParking || other.Id == nodes[k - 1] || other.Id == nodes[k + 1] || graph.IsBlocked(edge))
+                {
+                    continue;
+                }
+
+                var dir = Unit(other.EastM - j.EastM, other.NorthM - j.NorthM);
+                var dot = (dir.East * behind.East) + (dir.North * behind.North);
+                if (dot >= minDot && (best is null || dot > best.Value.Dot))
+                {
+                    var length = Math.Min(profile.PushbackLengthM, edge.LengthM);
+                    best = (dot, j.EastM + (dir.East * length), j.NorthM + (dir.North * length));
+                }
+            }
+
+            if (best is { } found)
+            {
+                return (k, found.East, found.North);
+            }
+        }
+
+        // Kein passender Rollweg: am ersten Rollpunkt quer zur Einfahrt, auf die Seite gegen die nächste Kurve (sonst rechts)
+        var t = graph.Nodes[nodes[1]];
+        var inDir = Unit(t.EastM - parking.EastM, t.NorthM - parking.NorthM);
+        var next = points.Count >= 3 ? Unit(points[2].EastM - t.EastM, points[2].NorthM - t.NorthM) : inDir;
+        var cross = (inDir.East * next.North) - (inDir.North * next.East);
+        // Biegt die Route links ab, schwenkt das Heck nach rechts (die Nase zeigt nach links), sonst umgekehrt; geradeaus: rechts
+        var right = (East: inDir.North, North: -inDir.East);
+        var side = cross < -0.2 ? (East: -right.East, North: -right.North) : right;
+        var half = profile.PushbackLengthM * 0.5;
+        return (1, t.EastM + (side.East * half), t.NorthM + (side.North * half));
+    }
+
+    private static double Length((double EastM, double NorthM) a, (double EastM, double NorthM) b) =>
+        Math.Sqrt(((b.EastM - a.EastM) * (b.EastM - a.EastM)) + ((b.NorthM - a.NorthM) * (b.NorthM - a.NorthM)));
 
     private static (double East, double North) Unit(double east, double north)
     {
