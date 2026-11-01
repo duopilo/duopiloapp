@@ -116,7 +116,8 @@ public sealed record TrafficTestKinematics(
     double? TouchdownKt,
     double? TouchdownSinkFpm,
     double GroundFt,
-    double CgHeightFt);
+    double CgHeightFt,
+    double GroundPitchDeg = 0);
 
 /// <summary>
 /// Testwerkzeug für eigenen KI-Verkehr, Stufe A der Testlinie (docs/research/eigener-verkehr.md): NonATC-Flugzeuge fliegen einen
@@ -156,6 +157,9 @@ public sealed class TrafficTestService : IHostedService, IDisposable
 
     /// <summary>Falls der Sim STATIC CG TO GROUND nicht liefert: Bezugspunkt so hoch über den Rädern (A320 im Test: 9 ft).</summary>
     private const double DefaultCgHeightFt = 9;
+
+    /// <summary>STATIC PITCH darüber gilt als Unsinn (Spornradflugzeuge stehen mit rund 10–12° Nase hoch).</summary>
+    private const double MaxStaticPitchDeg = 15;
 
     /// <summary>Start: Rollt das Flugzeug so lange nach dem Spawn nicht los, endet der Test (no_roll).</summary>
     private const double NoRollSeconds = 90;
@@ -499,7 +503,8 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                     k.Touchdown is { } tdKt ? Math.Round(tdKt.SpeedKt) : null,
                     k.Touchdown is { } tdSink ? Math.Round(tdSink.SinkFpm) : null,
                     Math.Round(k.GroundFt, 1),
-                    Math.Round(k.CgHeightFt, 1))
+                    Math.Round(k.CgHeightFt, 1),
+                    Math.Round(k.GroundPitchDeg, 1))
                 : null);
     }
 
@@ -779,7 +784,10 @@ public sealed class TrafficTestService : IHostedService, IDisposable
 
         var cg = sample.CgHeightFt > 0.5 ? sample.CgHeightFt : DefaultCgHeightFt;
         var ground = plan.Runway.ElevationFt;
-        var kin = new TrafficKinematics(plan, KinematicProfile.For(run.Category), along, cross, sample.AltitudeFt - ground - cg, sample.IndicatedKt, sample.PitchDeg, ground, cg);
+        var kin = new TrafficKinematics(plan, KinematicProfile.For(run.Category), along, cross, sample.AltitudeFt - ground - cg, sample.IndicatedKt, sample.PitchDeg, ground, cg)
+        {
+            GroundPitchDeg = GroundPitch(sample.StaticPitchDeg),
+        };
         run.Kinematics = kin;
         _sim.StartAiPose(run.ObjectId, dt =>
         {
@@ -788,12 +796,17 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         });
         var seconds = Math.Max(0, (sample.Utc - run.SpawnUtc).TotalSeconds);
         run.AddEvent(Math.Round(seconds, 1), string.Create(CultureInfo.InvariantCulture,
-            $"kinematic_start at {-along / RunwayEnd.MetersPerNm:0.0} NM, {kin.StartHeightFt:0} ft, {sample.IndicatedKt:0} kt (cg {cg:0.0} ft)"));
+            $"kinematic_start at {-along / RunwayEnd.MetersPerNm:0.0} NM, {kin.StartHeightFt:0} ft, {sample.IndicatedKt:0} kt (cg {cg:0.0} ft, static pitch {sample.StaticPitchDeg:0.0}°)"));
     }
+
+    /// <summary>Lage am Boden aus STATIC PITCH (Nase hoch positiv wie static_pitch in flight_model.cfg); Unsinn ergibt 0.</summary>
+    public static double GroundPitch(double staticPitchDeg) =>
+        double.IsFinite(staticPitchDeg) && Math.Abs(staticPitchDeg) <= MaxStaticPitchDeg ? staticPitchDeg : 0;
 
     /// <summary>
     /// Bahnhöhe nachführen: Über der Bahn misst der Sim die Höhe über Grund; die Kinematik setzt sonst auf die Höhe aus den
-    /// Bahndaten (Mitte) auf. Höchstens 3 ft je Messpunkt, damit das Flugzeug nicht springt.
+    /// Bahndaten auf (EDDF 07C: 343 ft, gemessen bis 363 ft). Die Kinematik läuft je Frame mit
+    /// <see cref="TrafficKinematics.GroundSlewFtPerSec"/> darauf zu, damit das Flugzeug nicht springt.
     /// </summary>
     private static void CorrectGround(TrafficTestRun run, TrafficKinematics kin, AiProbeSample sample)
     {
@@ -804,8 +817,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             return;
         }
 
-        var measured = sample.AltitudeFt - sample.AltitudeAglFt;
-        kin.GroundFt += Math.Clamp(measured - kin.GroundFt, -3, 3);
+        kin.GroundTargetFt = sample.AltitudeFt - sample.AltitudeAglFt;
     }
 
     /// <summary>Velocity: Längsgeschwindigkeit setzen, solange der Test läuft und die KI in der Luft ist (Timer-Thread).</summary>

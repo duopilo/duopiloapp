@@ -397,6 +397,15 @@ Typ.** Lichter: Die PassiveAircraft haben kein Taxilicht – das Nachschicken na
 (GA 15 ft) auf 150 ft/min, Aufsetzen um 450 m, bremsen bis zum Haltepunkt. Die Wegpunkt-KI bleibt für das normale Fliegen: Anflug
 bis zur Übernahme, Start, Steigflug, Durchstarten.
 
+**beta.17 in Frankfurt (1.11.2026, A1, `kinematicNm` 4, EDDF 07L/07C/07R):** Die Kinematik klappt. Übernahme bei 4 NM mit den
+168 kt der KI, ab 3 NM auf Vapp + 5, an allen Gates höchstens 11 ft neben dem Pfad, 0 m Querablage. Abfangen bei 117–118 m,
+Aufsetzen ATR 432 m / 110 kt, A320 452 m / 130 kt, 737 464 m / 140 kt, alle mit 150 ft/min und 5,5°, Halt bei 1447, 1478 und 1643 m
+(die 737 schafft den Haltepunkt mit 2,5 m/s² nicht). Lichter nach der Landung Nav/Beacon/Taxi/Logo. Im Sim sah das gut aus, nur das
+Bugfahrwerk der A320 stand beim Ausrollen etwas hoch: Nase 0° statt der Lage am Boden. Die Bahnhöhe aus den Daten (343 ft) lag bis
+20 ft unter dem gemessenen Boden, die Korrektur mit 3 ft je Messpunkt holte das erst nach dem Aufsetzen auf. Für beta.18: Nase auf
+`STATIC PITCH` (Lage am Boden, Nase hoch positiv wie `static_pitch`), Bahnhöhe je Frame mit 6 ft/s auf den Messwert. Start A320
+von der 18 wie in beta.16 (636 m, 139 kt, 740 ft über dem Bahnende).
+
 **Fahrplan des eigenen Verkehrs (Stand 1.11.2026):**
 
 1. Anflug und Landung – erledigt bis beta.14 (Wegpunkte, Fahrwerk bis 2500 ft, Lichter, Freigabeliste, Geschwindigkeit).

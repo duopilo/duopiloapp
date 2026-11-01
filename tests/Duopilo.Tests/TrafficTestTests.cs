@@ -1030,6 +1030,54 @@ public sealed class TrafficTestTests
     }
 
     [Fact]
+    public void Kinematik_rollt_mit_der_Lage_am_Boden_aus()
+    {
+        // A320 im Test (EDDF 07C): mit Nase 0° stand das Bugfahrwerk zu hoch – das Modell steht leicht kopflastig
+        var end = End("23L");
+        var plan = TrafficTestPlan.Build(end, TrafficTestVariant.A2, approachKt: 135);
+        var kin = new TrafficKinematics(plan, KinematicProfile.Airliner, -1852, 0, TrafficKinematics.GlidePathHeightFt(-1852), 140, 2.5, end.ElevationFt, 9)
+        {
+            GroundPitchDeg = -0.6,
+        };
+        Fly(kin);
+
+        Assert.Equal(KinematicPhase.Stopped, kin.Phase);
+        Assert.Equal(-0.6, kin.PitchDeg, 2);
+        Assert.Equal(-0.6, kin.Pose().PitchUpDeg, 2);
+    }
+
+    [Fact]
+    public void Kinematik_Bahnhoehe_laeuft_gleitend_auf_den_Messwert()
+    {
+        var end = End("23L");
+        var plan = TrafficTestPlan.Build(end, TrafficTestVariant.A2);
+        var kin = new TrafficKinematics(plan, KinematicProfile.Airliner, -3000, 0, 500, 150, 2.5, end.ElevationFt, 9)
+        {
+            GroundTargetFt = end.ElevationFt + 20,
+        };
+
+        kin.Advance(1);
+        Assert.Equal(end.ElevationFt + TrafficKinematics.GroundSlewFtPerSec, kin.GroundFt, 3);
+        for (var i = 0; i < 30 * 5; i++)
+        {
+            kin.Advance(1.0 / 30);
+        }
+
+        Assert.Equal(end.ElevationFt + 20, kin.GroundFt, 3);
+        kin.GroundTargetFt = end.ElevationFt + 18;
+        kin.Advance(0.1);
+        Assert.Equal(end.ElevationFt + 19.4, kin.GroundFt, 3);
+    }
+
+    [Theory]
+    [InlineData(-0.4, -0.4)]
+    [InlineData(11.5, 11.5)]
+    [InlineData(40, 0)]
+    [InlineData(double.NaN, 0)]
+    public void Lage_am_Boden_aus_STATIC_PITCH(double staticPitch, double expected) =>
+        Assert.Equal(expected, TrafficTestService.GroundPitch(staticPitch));
+
+    [Fact]
     public void Ueberflug_ueber_die_Bahnmitte_auf_FL350_geradeaus()
     {
         var end = End("23L");
