@@ -244,7 +244,7 @@ public static class TrafficModels
         Full("A337", "Airbus A330 BelugaXL (full)", 140, "A330-BelugaXL", "EDDL 31.10.2026: landed, touchdown 897 m."),
         Full("B748", "Boeing 747-8 (full)", 155, "747-8i", "EDDL 31.10.2026: landed."),
         Military("A400", "Airbus A400M Atlas (full)", 120, "A400M Cargo", TrafficModelStatus.Candidate,
-            "EDDF 1.11.2026: landed kinematically (438 m, 115 kt); gear after 24 s, lights visible only some seconds after spawn."),
+            "EDDF 1.11.2026: landed kinematically (438 m, 115 kt); gear after 24 s. ETNW (beta.20): landed (441 m, 115 kt), lights visible only from about 2 km (the far model has none), landing light off after landing."),
         Military("F18S", "Boeing F/A-18E Super Hornet (full)", 135, "FA18E SuperHornet", TrafficModelStatus.Untested, "MSFS 2024 aircraft, not tested as AI yet."),
         Military("C17", "Boeing C-17 Globemaster III (full)", 125, "C-17A Military Airlift", TrafficModelStatus.Candidate,
             "EDDF 1.11.2026: landed kinematically (443 m, 120 kt); lights only nav and logo, nose slightly in the ground.") with
@@ -252,12 +252,12 @@ public static class TrafficModels
             TitleWords = [["Globemaster"], ["C-17"]],
         },
         Military("A10", "Fairchild A-10C Thunderbolt II (full)", 125, "A10C Thunderbolt II", TrafficModelStatus.Candidate,
-            "EDDF 1.11.2026: landed kinematically (444 m, 120 kt); landing light stayed on after landing.") with
+            "EDDF 1.11.2026: landed kinematically (444 m, 120 kt). ETNW (beta.20): landed (489 m, 120 kt), lights visible from far away but only the strobes – the model shows no landing light as AI, the sim still reports it on after landing.") with
         {
             TitleWords = [["A10C"], ["A-10"], ["Thunderbolt II"], ["Warthog"]],
         },
         Military("L39", "Aero L-39 Albatros", 100, "L-39 Albatros", TrafficModelStatus.Candidate,
-            "EDDF and ETOU 1.11.2026: landed kinematically (413–436 m, 95 kt), also the Reno liveries as '... Passive'; landing light stayed on.") with
+            "EDDF and ETOU 1.11.2026: landed kinematically (413–436 m, 95 kt), also the Reno liveries as '... Passive'. ETNW (beta.20): lights visible only close by, landing light off after landing.") with
         {
             TitleWords = [["L-39"], ["L39"], ["Albatros"]],
         },

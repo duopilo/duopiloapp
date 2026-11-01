@@ -426,12 +426,28 @@ ohne Prüfung; Landelicht zusätzlich mit LANDING_LIGHTS_ON/OFF und LANDING_LIGH
 A400M in Wunstorf (ETNW 26): sauber im Anflug, die Lichter gingen trotz Nachschicken nach 10/20/30 s erst kurz vor der Bahn an –
 beta.20 schickt sie bei vollen Modellen alle 15 s bis zum Aufsetzen (zeigt, ob unser Befehl wirkt oder das Modell selbst schaltet).
 
+**beta.20 in Wunstorf (1.11.2026, ETNW 26, ohne `ignoreRunwayRules`):** A400M kinematisch ab 10 NM: Gates ±20 ft, Aufsetzen 441 m
+mit 115 kt und 193 ft/min, Halt 1448 m, nach der Landung Nav/Beacon/Taxi/Logo (Landelicht und Strobes aus). Die Lichter wurden zweimal
+erst kurz vor Bordenau sichtbar – einmal nach 115 s, einmal nach 240 s Flug: **nicht die Zeit, sondern die Entfernung zum Betrachter**
+(das Fernmodell der A400M hat keine Lichter, etwa ab 2 km das volle Modell); das Nachschicken alle 15 s ändert daran nichts. Der L-39 zeigt
+seine Lichter erst auf der Bahn, das Landelicht ist nach der Landung aus. Die A-10 sieht man von weit her, aber nur mit Strobes – ein
+Landelicht zeigt das Modell als KI gar nicht, der Sim meldet es nach der Landung trotzdem als an (LANDING_LIGHTS_SET: erst Wert, dann
+Index, laut SDK richtig). Für Militär vertretbar. Bei einem Parallelanflug ist man nah genug, um die Lichter zu sehen.
+
+**Start mit Kinematik (beta.21):** Die Wegpunkt-KI hob ohne zu rotieren ab – deshalb fliegt Duopilo den Start jetzt selbst
+(`kinematicTakeoff`, Standard an): ab dem ersten Messpunkt KI abgeben und einfrieren wie im Endanflug, 3 s aufgereiht stehen, Startlauf mit
+fester Beschleunigung (2 m/s², GA 1,4; auf kurzen Bahnen mehr, Vr bis 60 % der Bahn), rotieren bei Vr = Vapp + 5 (GA Vapp − 10) mit 3°/s,
+abheben bei 8° (GA 6°). Im Steigflug läuft die Nase auf Bahnneigung + Anstellwinkel (6°, mit der Fahrt quadratisch kleiner), die
+Steigrate folgt aus Nase minus Anstellwinkel – der ist beim Abheben die ganze Längsneigung und klingt in 2,5 s ab, so baut sich das
+Steigen weich auf. V2 + 10 mit 2500 ft/min (A320 um 15°), ab 1500 ft 1500 ft/min und schneller, waagerecht auf 3000 ft. Rechnerisch: A320
+in EDDL rotiert bei rund 1370 m, hebt bei rund 1560 m mit 148 kt ab, C172 nach gut 400 m mit 59 kt.
+
 **Fahrplan des eigenen Verkehrs (Stand 1.11.2026):**
 
 1. Anflug und Landung – erledigt bis beta.14 (Wegpunkte, Fahrwerk bis 2500 ft, Lichter, Freigabeliste, Geschwindigkeit).
 2. Durchstarten – beta.15 (klappt). Endanflug und Landung mit Kinematik – beta.17.
 3. Starts – beta.16 (der Start aus Stufe B, Variante B1): Spawn auf der Bahn, Startlauf, Rotieren, Steigflug auf 3000 ft, Fahrwerk
-   rein, Lichter; Auswertung von Abhebepunkt und Steigflug. Spawn am Rollhalt kommt mit dem Rollen.
+   rein, Lichter; Auswertung von Abhebepunkt und Steigflug. Rotieren mit Kinematik – beta.21. Spawn am Rollhalt kommt mit dem Rollen.
 4. Überflüge in Reiseflughöhe – beta.18 (Variante C1, Wegpunkt-KI): Spawn 40 NM vor der Bahnmitte auf FL350 mit 450 kt TAS (ab
    beta.19 als TAS an die KI), geradeaus darüber hinweg, Lichter wie im Reiseflug (Landelicht aus), Ende 40 NM dahinter. Allgemeine
    Luftfahrt FL85, doppelte Vapp, 15 NM. Flughafenregeln für alle Plätze – beta.19.
