@@ -480,8 +480,8 @@ public sealed class TrafficRules
 
         // Für Abwechslung (Militärplatz: A400M, C-17, A-10, L-39 …) zufällig unter denen mit dem besten Status
         var top = allowed.Max(m => m.Type.Status);
-        var best = allowed.Where(m => m.Type.Status == top).ToList();
-        return best[random.Next(best.Count)].Model;
+        var bestModels = allowed.Where(m => m.Type.Status == top).ToList();
+        return bestModels[random.Next(bestModels.Count)].Model;
     }
 
     public static string OperationName(TrafficOperation operation) => operation == TrafficOperation.Departure ? "departure" : "arrival";
