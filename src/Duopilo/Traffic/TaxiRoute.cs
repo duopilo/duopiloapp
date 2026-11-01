@@ -57,6 +57,51 @@ public sealed record TaxiRoute(
     /// <summary>Rollpunkte hinter dem Halt bis zur Einmündung auf die Bahn (der Weg des Aufreihens).</summary>
     public IReadOnlyList<int> LineUpNodes { get; init; } = [];
 
+    /// <summary>Bahnen, die die Route kreuzt, mit dem Halt davor (in Fahrtrichtung geordnet, <see cref="WithCrossings"/>).</summary>
+    public IReadOnlyList<TaxiCrossing> Crossings { get; init; } = [];
+
+    /// <summary>
+    /// Sucht die Bahnen, die der Rollweg (ohne das Aufreihen) kreuzt, und den Halt davor – wie vor der Startbahn (<see cref="FindStop"/>):
+    /// am letzten normalen Haltepunkt dieser Bahn auf der Route, sonst im Abstand des nächsten Haltepunkts zur Mittellinie, jeweils
+    /// <see cref="TaxiProfile.StopShortM"/> davor. <paramref name="ownRunway"/> (A3: die Landebahn, auf der der Weg beginnt) zählt
+    /// nicht. Ohne Platz für einen Halt (zwei Bahnen zu dicht) wird ohne Halt gekreuzt.
+    /// </summary>
+    public TaxiRoute WithCrossings(TaxiGraph graph, TaxiProfile profile, AirportRunway? ownRunway = null)
+    {
+        var taxiNodes = Nodes.Take(Nodes.Count - LineUpNodes.Count).ToList();
+        var crossings = new List<TaxiCrossing>();
+        AirportRunway? previous = null;
+        var fromS = 0.0;
+        for (var i = 0; i < taxiNodes.Count; i++)
+        {
+            var node = graph.Nodes[taxiNodes[i]];
+            var runway = node.IsParking ? null : graph.RunwayAt(node.EastM, node.NorthM);
+            if (runway is null || runway == ownRunway || runway == previous || i == 0)
+            {
+                previous = runway;
+                continue;
+            }
+
+            previous = runway;
+            if (RunwayEnd.Find(graph.Icao, graph.Runways, runway.Primary) is not { } end
+                || FindStop(graph, end, taxiNodes.Take(i + 1).ToList(), profile) is not { } stop)
+            {
+                continue;
+            }
+
+            var s = TaxiPath.NearestS(stop.East, stop.North, fromS);
+            if (s <= fromS + 1 || s >= TaxiPath.LengthM - 1)
+            {
+                continue;
+            }
+
+            crossings.Add(new TaxiCrossing(runway.Primary + "/" + runway.Secondary, stop.Hold.Taxiway, Math.Round(s, 1), stop.Hold.CenterlineM));
+            fromS = s;
+        }
+
+        return this with { Crossings = crossings };
+    }
+
     /// <summary>Rollen nach der Landung: hier (entlang ab der Schwelle, auf der Mittellinie) übernimmt das Rollen von der Landung.</summary>
     public double? HandoverAlongM { get; init; }
 
@@ -449,3 +494,9 @@ public sealed record TaxiRoute(
 /// <summary>Halt vor der Bahn: auf dem Abschnitt hinter Knoten <paramref name="Segment"/> der Route, an der Stelle (Ost, Nord).</summary>
 /// <param name="Hold">Der Haltepunkt (oder der Knoten davor mit dem Abstand des nächsten Haltepunkts, wenn am Zubringer keiner im Netz ist).</param>
 public sealed record TaxiStop(int Segment, double East, double North, TaxiHold Hold);
+
+/// <summary>Kreuzung einer Bahn auf dem Rollweg: Halt bei <paramref name="StopS"/> Metern auf dem Rollweg, bis die Bahn frei ist.</summary>
+/// <param name="Runway">Die gekreuzte Bahn ("05R/23L").</param>
+/// <param name="Taxiway">Rollweg am Halt.</param>
+/// <param name="CenterlineM">Abstand des Halts (der Haltelinie) zur Mittellinie.</param>
+public sealed record TaxiCrossing(string Runway, string Taxiway, double StopS, double CenterlineM);

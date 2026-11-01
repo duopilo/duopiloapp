@@ -40,9 +40,9 @@ Duopilo's own AI traffic instead of the simulator's, built step by step with the
 - [x] **Overflights at cruise altitude** (beta.18, in beta) – aircraft crossing your area at their flight level, flown by the waypoint AI
 - [x] **Airport rules** (beta.19, in beta) – which aircraft may use which airport and runway, for all airports: military airfields only military traffic (A400M, Super Hornet), heliports and closed fields none, small fields general aviation only, runway rules (EDDF 07L/25R landings only without B747, A380, MD-11), traffic mix per airport (Finkenwerder mostly Belugas)
 - [x] **Rotation on takeoff** (beta.21, in beta) – Duopilo flies the takeoff itself (kinematic, like the final): takeoff roll, rotation at Vr with 3°/s, liftoff at 8°, climb at about 15°; tested with A400M, MD-11 and A320
-- [x] **Taxi to the runway** (beta.22 to beta.28, in beta) – Duopilo moves the aircraft over the airport's taxiways (MSFS taxiway network): gate chosen by size and type, pushback along the route to the next junction, taxi at 15 kt and slower in turns, around parked aircraft (beta.23), stop at the holding line of the taxiway it enters the runway from (beta.28)
+- [x] **Taxi to the runway** (beta.22 to beta.28, in beta) – Duopilo moves the aircraft over the airport's taxiways (MSFS taxiway network): gate chosen by size and type, pushback along the route to the next junction, taxi at 15 kt and slower in turns, around parked aircraft (beta.23), stop at the holding line of the taxiway it enters the runway from (beta.28), hold short of crossed runways until they are free (beta.30)
 - [x] **Departure from the gate** (beta.24, in beta) – pushback, taxi, line-up on the centerline and kinematic takeoff in one run; tested at EDDL 23R from gate A15
-- [ ] **Taxi after landing** (beta.29) – landing, leave the runway at a suitable exit while still rolling, taxi to a free gate
+- [x] **Taxi after landing** (beta.29, in beta) – landing, leave the runway at a suitable exit while still rolling, taxi to a free gate; tested at EDDL 23R to gate C2
 - [ ] **Departure queue** – several aircraft one after another at the holding point, line-up only when the runway is free
 - [ ] **Helicopters** – kinematic: approach, hover, vertical landing and takeoff on heliports and airports
 - [ ] **Schedule traffic** – flights mapped to the installed models by ICAO type
