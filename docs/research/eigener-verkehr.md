@@ -454,6 +454,12 @@ schiebt das Flugzeug selbst: Pushback rückwärts mit 2,5 kt im Bogen auf den Ro
 15 kt geradeaus, Kurven mit 30 m gerundet und höchstens 0,8 m/s² quer, Halt 12 m vor dem Haltepunkt. Offen: ob die Achsen und die
 Indizes (TAXI_PATH START/END, Parkpositionen) so stimmen – `traffic_taxi_info` zeigt es vorher.
 
+**beta.22 in Düsseldorf (1.11.2026):** Das Netz kommt sauber an – 1390 Rollpunkte, 139 Parkpositionen, 1135 Abschnitte, Achsen
+x = Ost, z = Nord (Bahn-Abschnitte im Mittel 0,7 m neben den Mittellinien). A320 von der Frachtposition V39 über T, L3, L2 und K1 zum
+Haltepunkt der 23R (1,9 km, über die 23L): Pushback und Rollen mit 15 kt liefen, aber **das Flugzeug rollte durch ein geparktes
+KI-Flugzeug** – die Gates in EDDL stehen voll mit KI-Verkehr. Für beta.23: andere Flugzeuge am Boden als Hindernisse (Abfrage wie
+get_traffic), belegte Parkpositionen überspringen, Abschnitte näher als 25 m (GA 12 m) an einem Flugzeug sperren.
+
 **Fahrplan des eigenen Verkehrs (Stand 1.11.2026):**
 
 1. Anflug und Landung – erledigt bis beta.14 (Wegpunkte, Fahrwerk bis 2500 ft, Lichter, Freigabeliste, Geschwindigkeit).

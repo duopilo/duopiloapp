@@ -59,6 +59,8 @@ public sealed class TaxiGraph
     private readonly List<TaxiEdge> _edges = [];
     private readonly List<List<TaxiEdge>> _adjacency = [];
     private readonly List<AirportRunway> _runways;
+    private readonly HashSet<TaxiEdge> _blocked = [];
+    private List<(double EastM, double NorthM)> _obstacles = [];
 
     private TaxiGraph(string icao, double latitude, double longitude, double elevationFt, IReadOnlyList<AirportRunway> runways)
     {
@@ -94,6 +96,60 @@ public sealed class TaxiGraph
     public int BrokenPaths { get; private set; }
 
     public IReadOnlyList<TaxiEdge> EdgesOf(int node) => _adjacency[node];
+
+    /// <summary>Andere Flugzeuge am Boden (Meter östlich/nördlich), <see cref="SetObstacles"/>.</summary>
+    public IReadOnlyList<(double EastM, double NorthM)> Obstacles => _obstacles;
+
+    /// <summary>Abschnitte, die zu nah an einem anderen Flugzeug vorbeiführen.</summary>
+    public int BlockedEdges => _blocked.Count;
+
+    /// <summary>Mindestabstand der Abschnitte zu anderen Flugzeugen (<see cref="SetObstacles"/>).</summary>
+    public double ClearanceM { get; private set; }
+
+    /// <summary>
+    /// Andere Flugzeuge am Boden (KI-Verkehr an den Gates, das eigene Flugzeug): Abschnitte, die näher als <paramref name="clearanceM"/>
+    /// an einem vorbeiführen, sind für Routen gesperrt; besetzte Parkpositionen zeigt <see cref="IsOccupied"/>. Der Abstand gilt zum
+    /// Bezugspunkt des anderen Flugzeugs – die Flügel reichen bei Verkehrsflugzeugen 15–30 m weit.
+    /// </summary>
+    public void SetObstacles(IEnumerable<(double Latitude, double Longitude)> positions, double clearanceM)
+    {
+        _obstacles = [.. positions.Select(p => ToLocal(p.Latitude, p.Longitude))];
+        ClearanceM = clearanceM;
+        _blocked.Clear();
+        if (_obstacles.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var edge in _edges)
+        {
+            var (a, b) = (_nodes[edge.From], _nodes[edge.To]);
+            if (_obstacles.Any(o => SegmentDistance(o.EastM, o.NorthM, a.EastM, a.NorthM, b.EastM, b.NorthM) < clearanceM))
+            {
+                _blocked.Add(edge);
+            }
+        }
+    }
+
+    /// <summary>Ob ein Abschnitt zu nah an einem anderen Flugzeug vorbeiführt.</summary>
+    public bool IsBlocked(TaxiEdge edge) => _blocked.Contains(edge);
+
+    /// <summary>Ob ein anderes Flugzeug näher als <paramref name="radiusM"/> an einem Punkt steht.</summary>
+    public bool IsOccupied(double eastM, double northM, double radiusM) =>
+        _obstacles.Any(o => Math.Sqrt(((o.EastM - eastM) * (o.EastM - eastM)) + ((o.NorthM - northM) * (o.NorthM - northM))) < radiusM);
+
+    /// <summary>Ob eine Parkposition belegt ist: ein anderes Flugzeug innerhalb ihres Radius (mindestens 10 m).</summary>
+    public bool IsOccupied(TaxiNode parking) => IsOccupied(parking.EastM, parking.NorthM, Math.Max(10, parking.Parking?.RadiusM ?? 10));
+
+    /// <summary>Kleinster Abstand eines Punkts zur Strecke A–B.</summary>
+    public static double SegmentDistance(double px, double py, double ax, double ay, double bx, double by)
+    {
+        var (dx, dy) = (bx - ax, by - ay);
+        var lengthSquared = (dx * dx) + (dy * dy);
+        var t = lengthSquared > 0 ? Math.Clamp((((px - ax) * dx) + ((py - ay) * dy)) / lengthSquared, 0, 1) : 0;
+        var (cx, cy) = (ax + (t * dx) - px, ay + (t * dy) - py);
+        return Math.Sqrt((cx * cx) + (cy * cy));
+    }
 
     /// <summary>Netz aus den Daten des Sims; <paramref name="runways"/> dienen der Zuordnung der Achsen und der Haltepunkte.</summary>
     public static TaxiGraph Build(AirportTaxiData data, IReadOnlyList<AirportRunway> runways)
@@ -159,7 +215,8 @@ public sealed class TaxiGraph
 
     /// <summary>
     /// Kürzeste Route (Dijkstra) von <paramref name="from"/> nach <paramref name="to"/>: Bahn-Abschnitte kosten
-    /// <see cref="RunwayCostFactor"/>-mal mehr, durch Parkpositionen geht es nicht hindurch (nur am Anfang und am Ende). Null = keine.
+    /// <see cref="RunwayCostFactor"/>-mal mehr, durch Parkpositionen geht es nicht hindurch (nur am Anfang und am Ende), an anderen
+    /// Flugzeugen nicht zu nah vorbei (<see cref="SetObstacles"/>). Null = keine.
     /// </summary>
     public IReadOnlyList<int>? Route(int from, int to)
     {
@@ -194,6 +251,11 @@ public sealed class TaxiGraph
 
             foreach (var edge in _adjacency[node])
             {
+                if (_blocked.Contains(edge))
+                {
+                    continue;
+                }
+
                 var next = edge.Other(node);
                 if (_nodes[next].IsParking && next != to)
                 {

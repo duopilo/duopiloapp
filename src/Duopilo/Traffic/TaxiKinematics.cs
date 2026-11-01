@@ -28,19 +28,21 @@ public enum TaxiPhase
 /// <param name="PushbackRadiusM">Kurvenradius beim Pushback.</param>
 /// <param name="PushbackLengthM">So weit hinter den Rollweg-Punkt schiebt der Schlepper das Flugzeug.</param>
 /// <param name="StopShortM">So weit vor dem Haltepunkt bleibt der Bezugspunkt stehen (die Nase steht davor).</param>
+/// <param name="ClearanceM">So weit führt die Route mindestens an anderen Flugzeugen am Boden vorbei (zu deren Bezugspunkt).</param>
 public sealed record TaxiProfile(
     double TaxiKt,
     double TurnRadiusM,
     double LateralMps2,
     double PushbackRadiusM,
     double PushbackLengthM,
-    double StopShortM)
+    double StopShortM,
+    double ClearanceM)
 {
-    /// <summary>Verkehrsflugzeuge: 15 kt geradeaus, in 30-m-Kurven rund 9 kt.</summary>
-    public static readonly TaxiProfile Airliner = new(15, 30, 0.8, 20, 40, 12);
+    /// <summary>Verkehrsflugzeuge: 15 kt geradeaus, in 30-m-Kurven rund 9 kt, 25 m Abstand zu anderen Flugzeugen.</summary>
+    public static readonly TaxiProfile Airliner = new(15, 30, 0.8, 20, 40, 12, 25);
 
-    /// <summary>Allgemeine Luftfahrt: 10 kt, enge Kurven.</summary>
-    public static readonly TaxiProfile GeneralAviation = new(10, 10, 0.8, 8, 15, 4);
+    /// <summary>Allgemeine Luftfahrt: 10 kt, enge Kurven, 12 m Abstand.</summary>
+    public static readonly TaxiProfile GeneralAviation = new(10, 10, 0.8, 8, 15, 4, 12);
 
     public static TaxiProfile For(TrafficCategory category) =>
         category == TrafficCategory.GeneralAviation ? GeneralAviation : Airliner;
