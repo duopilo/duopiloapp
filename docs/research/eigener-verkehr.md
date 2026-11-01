@@ -319,7 +319,26 @@ dem Test fest, bis dahin erkennt Duopilo sie an Titelwörtern (z. B. „Caravan�
 **Lichter (ab beta.13):** beim Spawn Nav, Beacon, Strobes, Landelicht, Taxi und Logo an; nach dem Aufsetzen unter 60 kt Landelicht
 und Strobes aus. Über die `…_SET`-Events und die `LIGHT …`-SimVars zugleich; `LIGHT STATES` wird mitgeschrieben.
 
-Nächste Schritte: Lichter im Sim prüfen (EDDL 05L/05R, A2), Kandidaten ansehen und freigeben, danach Speed über den Schub und Stufe B. Sieht es dann immer noch komisch aus, in Frankfurt
+**KI-Verkehrsmodelle (1.11.2026, beta.13, A2, EDDL 05L/05R):** Beim vollen A320neo V2 stehen die LIGHT-Werte auf an, zu sehen ist
+aber kein Licht – seine Lichter hängen an der eigenen Elektrik, die als KI nicht läuft (wie Fahrwerk und Triebwerke bei FBW/Headwind).
+Aufsetzen 1581 m und 1399 m. Die **PassiveAircraft-Modelle** von MSFS 2024 sind für KI-Verkehr gebaut, rund 250 Typen mit gut 1000
+Lackierungen:
+
+| Modell | Fahrwerk draußen | Aufsetzen | Licht | im Sim |
+|---|---|---|---|---|
+| Asobo PassiveAircraft A320 NEO | 2900 ft | 1048 m, 1414 ft/min | ja | Fahrwerk draußen, Aufsetzpunkt passt |
+| Asobo PassiveAircraft B737-800 | 2890 ft | 719 m, 1387 ft/min | ja | wie oben |
+| Asobo PassiveAircraft A350-900 | 2890 ft | 604 m, 1415 ft/min | ja | – |
+| Asobo PassiveAircraft ATR72-600 | 2900 ft | 1654 m mit 129 kt | ja | weit zu hoch über dem Minimum |
+
+**Entscheidung:** Für den Verkehr die PassiveAircraft-Modelle. Die Freigabeliste ordnet ihre Titel ICAO-Typen zu (A320 NEO → A20N,
+B737-800 → B738 …), mit Anfluggeschwindigkeit je Typ; die vollen Modelle bleiben als Notlösung.
+
+**Geschwindigkeit:** Alle Modelle flogen 160–169 kt, auch die ATR – die KI beachtet die Wegpunkt-Geschwindigkeit nicht. Ab beta.14 setzt
+Duopilo im Anflug `AI DESIRED SPEED` auf die Geschwindigkeit des nächsten Wegpunkts (aus Vapp des Typs: ab 6 NM Vapp + 25, darunter
+Vapp + 5, an der Schwelle Vapp). Fallback, falls die KI das auch ignoriert: Schub über `THROTTLE_REQUESTED` regeln.
+
+Nächste Schritte: Geschwindigkeitsregelung testen (ATR, A320 NEO, C172), danach Stufe B. Sieht es dann immer noch komisch aus, in Frankfurt
 testen. Danach Speed über den Schub (`THROTTLE_REQUESTED`) und Stufe B.
 
 **Entscheidung danach:**

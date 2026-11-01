@@ -13,6 +13,8 @@ namespace Duopilo.Traffic;
 /// <param name="Gear">Wie das Fahrwerk ausgefahren wird (Event GEAR_DOWN, GEAR_SET, Hebel-SimVar oder alles).</param>
 /// <param name="FinalLowFt">Wie weit die letzte Meile unter dem Gleitpfad liegt; leer = <see cref="TrafficTestPlan.DefaultFinalLowFt"/>.</param>
 /// <param name="TouchdownM">Erster Boden-Wegpunkt hinter der Schwelle (davor negativ); leer = <see cref="TrafficTestPlan.DefaultTouchdownM"/>.</param>
+/// <param name="ApproachKt">Anfluggeschwindigkeit (Vapp); leer = aus der Freigabeliste, sonst <see cref="TrafficTestPlan.DefaultApproachKt"/>.</param>
+/// <param name="SpeedControl">Geschwindigkeit im Anflug über AI DESIRED SPEED regeln (die Wegpunkt-Geschwindigkeit beachtet die KI nicht).</param>
 public sealed record TrafficTestRequest(
     string Airport,
     string Runway,
@@ -22,7 +24,9 @@ public sealed record TrafficTestRequest(
     double? SpawnNm = null,
     AiGearMethod Gear = AiGearMethod.All,
     double? FinalLowFt = null,
-    double? TouchdownM = null);
+    double? TouchdownM = null,
+    double? ApproachKt = null,
+    bool SpeedControl = true);
 
 /// <summary>Zeitpunkt und Text eines Ereignisses der Testlinie.</summary>
 public sealed record TrafficTestEvent(double Seconds, string Text);
@@ -45,7 +49,8 @@ public sealed record TrafficTestLast(
     double AlongM,
     double CrossM,
     string? AiState,
-    string Lights);
+    string Lights,
+    double DesiredKt);
 
 /// <summary>Zustand eines Testanflugs für Tool und Browser.</summary>
 /// <param name="State">running oder ended.</param>
@@ -64,6 +69,8 @@ public sealed record TrafficTestStatus(
     string ModelStatus,
     string Gear,
     double FinalLowFt,
+    double ApproachKt,
+    bool SpeedControl,
     uint ObjectId,
     DateTimeOffset StartedUtc,
     double ElapsedSeconds,
@@ -206,7 +213,8 @@ public sealed class TrafficTestService : IHostedService, IDisposable
 
             var slot = Enumerable.Range(0, MaxConcurrent).First(i => running.All(r => r.Slot != i));
             var (title, livery) = await ResolveModelAsync(request, ct);
-            var plan = TrafficTestPlan.Build(runway, request.Variant, request.SpawnNm, request.TouchdownM, request.FinalLowFt);
+            var approachKt = request.ApproachKt ?? TrafficModels.TypeOf(title, livery)?.ApproachKt;
+            var plan = TrafficTestPlan.Build(runway, request.Variant, request.SpawnNm, request.TouchdownM, request.FinalLowFt, approachKt);
             var spawnUtc = DateTimeOffset.UtcNow;
             var csv = OpenCsv(plan, spawnUtc);
 
@@ -221,7 +229,10 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 throw;
             }
 
-            var run = new TrafficTestRun(plan, slot, title, livery, request.Gear, objectId, spawnUtc, csv?.Path, csv?.Writer, _options.TrafficTest.MaxMinutes);
+            var run = new TrafficTestRun(plan, slot, title, livery, request.Gear, objectId, spawnUtc, csv?.Path, csv?.Writer, _options.TrafficTest.MaxMinutes)
+            {
+                SpeedControl = request.SpeedControl,
+            };
             run.AddEvent(0, string.Create(CultureInfo.InvariantCulture, $"spawn {plan.SpawnNm:0.#} NM, {plan.Spawn.AltitudeFt:0} ft, {plan.Spawn.AirspeedKt} kt, object {objectId}, {run.Tail}"));
             foreach (var warning in plan.Warnings)
             {
@@ -383,6 +394,8 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             TrafficModels.StatusName(run.Title, run.Livery),
             GearName(run.GearMethod),
             plan.FinalLowFt,
+            plan.ApproachKt,
+            run.SpeedControl,
             run.ObjectId,
             run.SpawnUtc,
             Math.Round(((run.EndedUtc ?? now) - run.SpawnUtc).TotalSeconds),
@@ -448,7 +461,8 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 Math.Round(point.AlongM),
                 Math.Round(point.CrossM, 1),
                 sample.AiState,
-                AiLights.Describe(sample.LightStates));
+                AiLights.Describe(sample.LightStates),
+                Math.Round(sample.DesiredKt));
             foreach (var e in point.Events)
             {
                 run.AddEvent(point.Seconds, e);
@@ -478,6 +492,21 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             run.GearCommands++;
             run.AddEvent(point.Seconds, "gear_down_resent " + GearName(run.GearMethod));
             Fire(_sim.SetAiGearAsync(run.ObjectId, true, run.GearMethod, CancellationToken.None), "gear");
+        }
+
+        // Geschwindigkeit: die KI beachtet die Wegpunkt-Geschwindigkeit nicht – Wunschgeschwindigkeit des nächsten Wegpunkts setzen,
+        // bei Änderung sofort, sonst alle 5 s (in der Luft bis zum Aufsetzen)
+        if (run.SpeedControl && !sample.OnGround && !run.Analysis.TouchedDown
+            && (run.DesiredSentKt != point.TargetKt || point.Seconds >= run.DesiredSentSeconds + 5))
+        {
+            if (run.DesiredSentKt != point.TargetKt)
+            {
+                run.AddEvent(point.Seconds, string.Create(CultureInfo.InvariantCulture, $"speed_target {point.TargetKt:0} kt (ias {sample.IndicatedKt:0})"));
+            }
+
+            run.DesiredSentKt = point.TargetKt;
+            run.DesiredSentSeconds = point.Seconds;
+            Fire(_sim.SetAiDesiredSpeedAsync(run.ObjectId, point.TargetKt, CancellationToken.None), "speed");
         }
 
         // Lichter einmal nachschicken, falls das Modell sie beim Spawn noch nicht angenommen hat
@@ -554,7 +583,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             var name = string.Create(CultureInfo.InvariantCulture, $"{spawnUtc:yyyyMMdd-HHmmss}-{plan.Runway.Airport}{plan.Runway.Designation}-{plan.Variant}.csv");
             var path = Path.Combine(Directory, name);
             var writer = new StreamWriter(path, append: false) { AutoFlush = true };
-            writer.WriteLine("utc,t_s,lat,lon,alt_ft,agl_ft,ias_kt,target_kt,gs_kt,vs_fpm,hdg_true,pitch_deg,bank_deg,on_ground,gear_handle,gear_total_pct,gear_center_pct,gear_left_pct,gear_right_pct,lights,ai_state,along_m,cross_m,dist_thr_nm,events");
+            writer.WriteLine("utc,t_s,lat,lon,alt_ft,agl_ft,ias_kt,target_kt,gs_kt,vs_fpm,hdg_true,pitch_deg,bank_deg,on_ground,gear_handle,gear_total_pct,gear_center_pct,gear_left_pct,gear_right_pct,lights,desired_kt,ai_state,along_m,cross_m,dist_thr_nm,events");
             return (path, writer);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -574,7 +603,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         try
         {
             writer.WriteLine(string.Create(CultureInfo.InvariantCulture,
-                $"{s.Utc:O},{p.Seconds:0.0},{s.Latitude:0.000000},{s.Longitude:0.000000},{s.AltitudeFt:0},{s.AltitudeAglFt:0},{s.IndicatedKt:0},{p.TargetKt:0},{s.GroundSpeedKt:0},{s.VerticalSpeedFpm:0},{s.HeadingTrueDeg:0},{s.PitchDeg:0.0},{s.BankDeg:0.0},{(s.OnGround ? 1 : 0)},{(s.GearHandleDown ? 1 : 0)},{s.GearTotalPercent:0.0},{s.GearCenterPercent:0.0},{s.GearLeftPercent:0.0},{s.GearRightPercent:0.0},{Csv(AiLights.Describe(s.LightStates))},{Csv(s.AiState)},{p.AlongM:0},{p.CrossM:0.0},{p.DistanceToThresholdNm:0.00},{Csv(string.Join(' ', p.Events))}"));
+                $"{s.Utc:O},{p.Seconds:0.0},{s.Latitude:0.000000},{s.Longitude:0.000000},{s.AltitudeFt:0},{s.AltitudeAglFt:0},{s.IndicatedKt:0},{p.TargetKt:0},{s.GroundSpeedKt:0},{s.VerticalSpeedFpm:0},{s.HeadingTrueDeg:0},{s.PitchDeg:0.0},{s.BankDeg:0.0},{(s.OnGround ? 1 : 0)},{(s.GearHandleDown ? 1 : 0)},{s.GearTotalPercent:0.0},{s.GearCenterPercent:0.0},{s.GearLeftPercent:0.0},{s.GearRightPercent:0.0},{Csv(AiLights.Describe(s.LightStates))},{s.DesiredKt:0},{Csv(s.AiState)},{p.AlongM:0},{p.CrossM:0.0},{p.DistanceToThresholdNm:0.00},{Csv(string.Join(' ', p.Events))}"));
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException)
         {
@@ -611,7 +640,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                     gear = GearName(run.GearMethod),
                     spawnUtc = run.SpawnUtc,
                     endReason = run.EndReason,
-                    plan = new { plan.SpawnNm, plan.GearAtSpawn, plan.GearDownFt, plan.GearDownNm, plan.TouchdownM, plan.StopM, plan.FinalLowFt, waypoints = plan.Waypoints },
+                    plan = new { plan.SpawnNm, plan.GearAtSpawn, plan.GearDownFt, plan.GearDownNm, plan.TouchdownM, plan.StopM, plan.FinalLowFt, plan.ApproachKt, speedControl = run.SpeedControl, waypoints = plan.Waypoints },
                     summary,
                     events = run.Events,
                 },
@@ -699,6 +728,13 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         public bool LightsChecked { get; set; }
 
         public bool RolloutLightsSent { get; set; }
+
+        /// <summary>Ob die Geschwindigkeit über AI DESIRED SPEED geregelt wird.</summary>
+        public bool SpeedControl { get; init; }
+
+        public double? DesiredSentKt { get; set; }
+
+        public double DesiredSentSeconds { get; set; }
 
         public IReadOnlyList<TrafficTestEvent> Events
         {

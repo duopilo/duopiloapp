@@ -424,10 +424,15 @@ public sealed class TrafficTestTests
     }
 
     [Theory]
-    [InlineData("A330-300 (RR)", "Lufthansa", "A333", "verified")]
-    [InlineData("a330-300 (ge)", "", "A333", "verified")]
-    [InlineData("A320neo V2", "", "A20N", "verified")]
-    [InlineData("Asobo PassiveAircraft B737-800", "B737_800_SUNEXPRESS", "B738", "candidate")]
+    [InlineData("Asobo PassiveAircraft A320 NEO", "", "A20N", "verified")]
+    [InlineData("Asobo PassiveAircraft B737-800", "B737_800_SUNEXPRESS", "B738", "verified")]
+    [InlineData("Asobo PassiveAircraft A350-900", "", "A359", "untested")]
+    [InlineData("Asobo PassiveAircraft MD11F", "", "MD11", "untested")]
+    [InlineData("Microsoft PassiveAircraft S340B Passenger", "", "SF34", "untested")]
+    [InlineData("Asobo PassiveAircraft A330-900", "", "A339", "untested")]
+    [InlineData("A330-300 (RR)", "Lufthansa", "A333", "candidate")]
+    [InlineData("a330-300 (ge)", "", "A333", "candidate")]
+    [InlineData("A320neo V2", "", "A20N", "candidate")]
     [InlineData("A330-300 VIP (RR)", "", null, "unknown")]
     [InlineData("A330-300P2F (RR)", "", null, "unknown")]
     [InlineData("Airbus A330-900neo Condor Beach", "", null, "excluded")]
@@ -458,13 +463,20 @@ public sealed class TrafficTestTests
             TrafficModels.Approved.First(t => t.MatchesExactly(title)).IcaoType,
             TrafficModels.TypeOf(title)!.IcaoType));
 
-        var ga = TrafficModels.Approved.Where(t => t.Category == TrafficCategory.GeneralAviation).ToList();
-        Assert.NotEmpty(ga);
-        Assert.All(ga, t =>
+        // Typen ohne exakte Titel sind die vollen GA-Modelle aus MSFS 2024: ungetestet, an Titelwörtern erkannt
+        var byWords = TrafficModels.Approved.Where(t => t.Titles.Count == 0).ToList();
+        Assert.NotEmpty(byWords);
+        Assert.All(byWords, t =>
         {
             Assert.Equal(TrafficModelStatus.Untested, t.Status);
+            Assert.Equal(TrafficCategory.GeneralAviation, t.Category);
             Assert.NotEmpty(t.TitleWords);
         });
+
+        // Ein Passive-Titel gewinnt gegen die Titelwörter der vollen GA-Modelle
+        Assert.Equal("C172", TrafficModels.TypeOf("Asobo PassiveAircraft C172")!.IcaoType);
+        Assert.True(TrafficModels.TypeOf("Asobo PassiveAircraft C172")!.Passive);
+        Assert.Equal("C72R", TrafficModels.TypeOf("Asobo PassiveAircraft C172RG")!.IcaoType);
     }
 
     [Fact]
@@ -474,11 +486,51 @@ public sealed class TrafficTestTests
         [
             new("A310", "Lufthansa"),
             new("Cessna 172 Skyhawk", ""),
-            new("Asobo A320neo", "Default"),
             new("A320neo V2", ""),
+            new("Asobo PassiveAircraft A320 NEO", "Lufthansa"),
         ];
 
-        Assert.Equal("A320neo V2", TrafficTestService.PickDefaultModel(models)!.Title);
+        // Geprüft sind die Passive-Modelle – der volle A320neo V2 zeigt als KI keine Lichter
+        Assert.Equal("Asobo PassiveAircraft A320 NEO", TrafficTestService.PickDefaultModel(models)!.Title);
+        Assert.Equal("A320neo V2", TrafficTestService.PickDefaultModel(models[..3])!.Title);
+    }
+
+    [Theory]
+    [InlineData("Asobo PassiveAircraft ATR72-600", 115, TrafficCategory.Airliner)]
+    [InlineData("Asobo PassiveAircraft A320 NEO", 135, TrafficCategory.Airliner)]
+    [InlineData("Asobo PassiveAircraft C172", 65, TrafficCategory.GeneralAviation)]
+    [InlineData("Asobo PassiveAircraft Citation CJ4", 115, TrafficCategory.GeneralAviation)]
+    public void Freigabeliste_Anfluggeschwindigkeit_und_Kategorie(string title, double approachKt, TrafficCategory category)
+    {
+        var type = TrafficModels.TypeOf(title)!;
+        Assert.Equal(approachKt, type.ApproachKt);
+        Assert.Equal(category, type.Category);
+    }
+
+    [Fact]
+    public void Plan_Geschwindigkeiten_aus_der_Anfluggeschwindigkeit()
+    {
+        var end = End("23L");
+
+        // Standard 135 kt: wie bisher 160 / 140 / 135 / 130
+        var standard = TrafficTestPlan.Build(end, TrafficTestVariant.A2);
+        Assert.Equal(135, standard.ApproachKt);
+        Assert.Equal(160, standard.Waypoints.Single(w => w.Name == "12nm").Waypoint.SpeedKt);
+        Assert.Equal(140, standard.Waypoints.Single(w => w.Name == "4nm").Waypoint.SpeedKt);
+
+        // ATR 72: 140 ab 6 NM, 120 darunter, 115 an der Schwelle, 110 beim Aufsetzen
+        var atr = TrafficTestPlan.Build(end, TrafficTestVariant.A2, approachKt: 115);
+        Assert.Equal(140, atr.Waypoints.Single(w => w.Name == "8nm").Waypoint.SpeedKt);
+        Assert.Equal(120, atr.Waypoints.Single(w => w.Name == "2nm").Waypoint.SpeedKt);
+        Assert.Equal(115, atr.Waypoints.Single(w => w.Name == "threshold").Waypoint.SpeedKt);
+        Assert.Equal(110, atr.Waypoints.Single(w => w.Name == "touchdown").Waypoint.SpeedKt);
+        Assert.Equal(140u, atr.Spawn.AirspeedKt);
+
+        // Cessna 172: Ausrollen beginnt unter der Aufsetzgeschwindigkeit
+        var cessna = TrafficTestPlan.Build(end, TrafficTestVariant.A2, spawnNm: 8, approachKt: 65);
+        Assert.Equal(60, cessna.Waypoints.Single(w => w.Name == "touchdown").Waypoint.SpeedKt);
+        Assert.Equal(55, cessna.Waypoints.Single(w => w.Name == "rollout1").Waypoint.SpeedKt);
+        Assert.Equal(90u, cessna.Spawn.AirspeedKt);
     }
 
     [Fact]
