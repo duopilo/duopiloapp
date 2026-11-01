@@ -316,6 +316,10 @@ public sealed class TrafficTestTests
         Assert.Equal(AiProbeVariables.Numeric.Count, doubles);
         Assert.Contains(AiProbeVariables.Numeric, v => v.Name == "PLANE PITCH DEGREES");
         Assert.Contains(AiProbeVariables.Numeric, v => v.Name == "PLANE BANK DEGREES");
+        Assert.Contains(AiProbeVariables.Numeric, v => v.Name == "STATIC CG TO GROUND");
+
+        // Kinematik: was jeden Frame gesetzt wird
+        Assert.Equal(AiPoseVariables.All.Count, typeof(AiPoseData).GetFields().Count(f => f.FieldType == typeof(double)));
     }
 
     [Theory]
@@ -551,6 +555,10 @@ public sealed class TrafficTestTests
         Assert.False(TrafficLights.Rollout.MatchedBy(0)); // im Schlafzustand alles aus
         Assert.True(TrafficLights.Rollout.MatchedBy(0x010B));
         Assert.False(TrafficLights.Rollout.MatchedBy(0x011F));
+
+        // Nachschicken nur, wenn Nav oder Beacon fehlen – ein Taxilicht haben die PassiveAircraft nicht
+        Assert.True(TrafficLights.RolloutRequired.MatchedBy(0x0103));
+        Assert.False(TrafficLights.RolloutRequired.MatchedBy(0x0100));
     }
 
     [Fact]
@@ -922,6 +930,104 @@ public sealed class TrafficTestTests
     [InlineData(250, 10000, 300)]
     public void Wahre_Fluggeschwindigkeit_zwei_Prozent_je_1000_ft(double ias, double altitudeFt, double tas) =>
         Assert.Equal(tas, TrafficTestPlan.TrueAirspeedKt(ias, altitudeFt), 1);
+
+    /// <summary>Kinematik vom Übernahmepunkt bis zum Halt durchrechnen (30 Schritte pro Sekunde, wie Frames).</summary>
+    private static List<(KinematicPhase Phase, double AlongM, double HeightFt, double SpeedKt, double PitchDeg)> Fly(TrafficKinematics kin)
+    {
+        var track = new List<(KinematicPhase, double, double, double, double)>();
+        for (var i = 0; i < 30 * 600 && kin.Phase != KinematicPhase.Stopped; i++)
+        {
+            kin.Advance(1.0 / 30);
+            track.Add((kin.Phase, kin.AlongM, kin.HeightFt, kin.SpeedKt, kin.PitchDeg));
+        }
+
+        return track;
+    }
+
+    [Fact]
+    public void Kinematik_von_4_NM_auf_den_Pfad_abfangen_aufsetzen_halten()
+    {
+        var end = End("23L");
+        var plan = TrafficTestPlan.Build(end, TrafficTestVariant.A2, approachKt: 135);
+        var along = -4 * RunwayEnd.MetersPerNm;
+
+        // Übernahme wie im Sim: 169 kt, 45 ft über dem Pfad, Nase leicht runter, 0,4 m neben der Mittellinie
+        var kin = new TrafficKinematics(plan, KinematicProfile.Airliner, along, 0.4, TrafficKinematics.GlidePathHeightFt(along) + 45, 169, -3.3, end.ElevationFt, 9);
+        var track = Fly(kin);
+
+        Assert.Equal(KinematicPhase.Stopped, kin.Phase);
+        var at2Nm = track.First(t => t.AlongM >= -2 * RunwayEnd.MetersPerNm);
+        Assert.InRange(at2Nm.HeightFt - TrafficKinematics.GlidePathHeightFt(at2Nm.AlongM), -3, 3);
+        Assert.Equal(140, at2Nm.SpeedKt, 0);
+        Assert.InRange(at2Nm.PitchDeg, 2.3, 2.7);
+        var atThreshold = track.First(t => t.AlongM >= 0);
+        Assert.InRange(atThreshold.HeightFt, 47, 53);
+        Assert.Equal(135, atThreshold.SpeedKt, 0);
+
+        // Abfangen ab 30 ft, weich und in der Aufsetzzone
+        Assert.InRange(kin.FlareAlongM!.Value, 90, 140);
+        var (touchdownAlong, touchdownKt, sinkFpm, pitch) = kin.Touchdown!.Value;
+        Assert.InRange(touchdownAlong, 380, 550);
+        Assert.InRange(sinkFpm, 140, 160);
+        Assert.InRange(touchdownKt, 129, 135);
+        Assert.InRange(pitch, 4.5, 5.6);
+
+        // Halt am Haltepunkt des Plans, Nase unten, Räder auf der Bahn
+        Assert.InRange(kin.AlongM, plan.StopM - 80, plan.StopM + 80);
+        Assert.Equal(0, kin.PitchDeg, 1);
+        Assert.Equal(0, kin.HeightFt);
+        Assert.Equal(0, kin.CrossM, 2);
+        Assert.True(kin.OnGround);
+    }
+
+    [Fact]
+    public void Kinematik_Lage_fuer_den_Sim_Bezugspunkt_ueber_den_Raedern()
+    {
+        var end = End("23L");
+        var plan = TrafficTestPlan.Build(end, TrafficTestVariant.A2);
+        var kin = new TrafficKinematics(plan, KinematicProfile.Airliner, -1852, 10, 300, 140, 2.5, end.ElevationFt + 2, 9);
+
+        var pose = kin.Pose();
+        Assert.Equal(end.ElevationFt + 2 + 9 + 300, pose.AltitudeFt, 3);
+        Assert.Equal(end.HeadingTrueDeg, pose.HeadingTrueDeg, 3);
+        Assert.Equal(2.5, pose.PitchUpDeg);
+        var (along, cross) = end.Offsets(pose.Latitude, pose.Longitude);
+        Assert.Equal(-1852, along, 0);
+        Assert.Equal(10, cross, 0);
+    }
+
+    [Fact]
+    public void Kinematik_Allgemeine_Luftfahrt_langsam_kurz_abfangen()
+    {
+        var end = End("23L");
+        var plan = TrafficTestPlan.Build(end, TrafficTestVariant.A1, approachKt: 65);
+        var along = -2 * RunwayEnd.MetersPerNm;
+        var kin = new TrafficKinematics(plan, KinematicProfile.GeneralAviation, along, 0, TrafficKinematics.GlidePathHeightFt(along), 90, 0, end.ElevationFt, 4);
+        Fly(kin);
+
+        Assert.Equal(KinematicPhase.Stopped, kin.Phase);
+        Assert.InRange(kin.FlareAlongM!.Value, 150, 260);
+        Assert.InRange(kin.Touchdown!.Value.AlongM, 250, 450);
+        Assert.InRange(kin.Touchdown!.Value.SpeedKt, 59, 66);
+        Assert.InRange(kin.Touchdown!.Value.SinkFpm, 110, 130);
+    }
+
+    [Fact]
+    public void Kinematik_steht_still_ohne_Zeit_und_nach_dem_Halt()
+    {
+        var end = End("23L");
+        var plan = TrafficTestPlan.Build(end, TrafficTestVariant.A2);
+        var kin = new TrafficKinematics(plan, KinematicProfile.Airliner, -3000, 0, 500, 150, 2.5, end.ElevationFt, 9);
+
+        kin.Advance(0);
+        Assert.Equal(-3000, kin.AlongM);
+        Assert.Equal(150, kin.SpeedKt);
+        Fly(kin);
+        var stop = kin.AlongM;
+        kin.Advance(5);
+        Assert.Equal(stop, kin.AlongM);
+        Assert.Equal(0, kin.VerticalSpeedFpm);
+    }
 
     private static TrafficTestPoint Add(
         TrafficTestAnalysis analysis,
