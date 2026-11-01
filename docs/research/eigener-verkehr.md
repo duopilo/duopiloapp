@@ -572,6 +572,14 @@ DUO03 landet, wartet auf L5 43 m neben dem Weg von DUO02 (`taxi_give_way DUO02 o
 B6. DUO01 bekommt `runway_clear` 19 s nach dem Räumen durch DUO03 und startet in der Lücke (Liftoff 1692 m), DUO04 sieht bei 2 NM
 kurz „DUO01 on the runway“, 6 s später `landing_clear`, landet und rollt zu V40A; danach startet DUO02.
 
+**Überflug nachgetestet und abseits der Flughäfen (beta.36):** C1 mit beta.35 über EDDL 05L, A320neo, 20 NM, Kurs 140 quer zur
+Bahn: FL350 ohne Abweichung, über dem Punkt 2 m neben dem Kurs (höchstens 35 m), 449 kt über Grund, Nav/Beacon/Strobes/Logo,
+Landelicht aus, `passed` nach 321 s. Die IAS des KI-Flugzeugs zeigt auf FL350 448 kt – sie liest offenbar die wahre Fahrt. Neu
+die Variante C2: derselbe Überflug ohne Flughafen, über Koordinaten oder das eigene Flugzeug (Bezugspunkt als gedachtes Bahnende
+ohne Länge, Flughafen OWN bzw. POS, Bezeichnung OVF1–OVF4 nach der Kennung, damit mehrere gleichzeitig laufen), Kurs `trackDeg`
+oder quer zum eigenen Steuerkurs von links, `offsetNm` daneben. Ohne Flugfläche und näher als 3 NM bleibt er mindestens 2000 ft
+über dem eigenen Flugzeug.
+
 **Fahrplan des eigenen Verkehrs (Stand 1.11.2026):**
 
 1. Anflug und Landung – erledigt bis beta.14 (Wegpunkte, Fahrwerk bis 2500 ft, Lichter, Freigabeliste, Geschwindigkeit).
@@ -580,7 +588,7 @@ kurz „DUO01 on the runway“, 6 s später `landing_clear`, landet und rollt zu
    rein, Lichter; Auswertung von Abhebepunkt und Steigflug. Rotieren mit Kinematik – beta.21. Spawn am Rollhalt kommt mit dem Rollen.
 4. Überflüge in Reiseflughöhe – beta.18 (Variante C1, Wegpunkt-KI): Spawn 40 NM vor der Bahnmitte auf FL350 mit 450 kt TAS (ab
    beta.19 als TAS an die KI), geradeaus darüber hinweg, Lichter wie im Reiseflug (Landelicht aus), Ende 40 NM dahinter. Allgemeine
-   Luftfahrt FL85, doppelte Vapp, 15 NM. Flughafenregeln für alle Plätze – beta.19.
+   Luftfahrt FL85, doppelte Vapp, 15 NM. Flughafenregeln für alle Plätze – beta.19. Abseits der Flughäfen (C2) – beta.36.
 5. Rollen – beta.22 (Variante D1): Pushback und Rollen vom Gate zum Haltepunkt über die Rollwege, beta.23 mit Hindernissen; Abflug vom Gate mit Aufreihen und Start – beta.24 (B2), Halt an der richtigen Linie ab beta.28; Rollen nach der Landung – beta.29 (A3); Halt vor gekreuzten Bahnen – beta.30; Abflug-Reihenfolge mit Abstand beim Rollen – beta.31, ohne Deadlock am Haltepunkt ab beta.32, jeder Test endet für sich ab beta.33; Takt der Landungen und Mischbetrieb auf einer Bahn – beta.34; Gegenverkehr beim Rollen und Lücke nach Plan – beta.35.
 6. Helikopter – nach dem Rollen: kinematisch (Anflug, Schweben, senkrecht landen und abheben), auf Heliports und Flughäfen;
    Heliports bekommen dann nur Helis.

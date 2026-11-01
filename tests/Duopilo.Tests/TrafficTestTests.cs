@@ -1586,6 +1586,39 @@ public sealed class TrafficTestTests
     }
 
     [Fact]
+    public void Ueberflug_abseits_der_Flughaefen_ueber_einen_beliebigen_Punkt()
+    {
+        // C2: gedachtes Bahnende ohne Länge – Bezugspunkt und Kurs 140°, Boden 0 ft
+        var point = new RunwayEnd("OWN", "OVF2", 51.5, 7.5, 0, 140, 0, 0);
+        var plan = TrafficTestPlan.BuildOverflight(point, TrafficCategory.Airliner, flightLevel: 370, spawnNm: 20, variant: TrafficTestVariant.C2);
+
+        Assert.Equal(TrafficTestVariant.C2, plan.Variant);
+        Assert.True(plan.IsOverflight);
+        Assert.False(plan.IsTakeoff || plan.IsTaxi);
+        Assert.Equal(37000, plan.CruiseAltitudeFt);
+        Assert.Equal(37000, plan.Spawn.AltitudeFt);
+        Assert.Equal(140, plan.Spawn.HeadingTrueDeg, 1);
+
+        // Spawn 20 NM vor dem Punkt auf dem Kurs, der erste Wegpunkt genau darüber
+        var (along, cross) = point.Offsets(plan.Spawn.Latitude, plan.Spawn.Longitude);
+        Assert.Equal(-20 * RunwayEnd.MetersPerNm, along, 0);
+        Assert.Equal(0, cross, 0);
+        Assert.Equal(0, plan.Waypoints[0].AlongM);
+        Assert.Equal(20 * RunwayEnd.MetersPerNm, plan.ExitM, 0);
+
+        // Ohne Flugfläche: FL350, bei Allgemeiner Luftfahrt FL85 – auch ohne Bahnhöhe mindestens 1500 ft
+        Assert.Equal(35000, TrafficTestPlan.BuildOverflight(point, TrafficCategory.Airliner, variant: TrafficTestVariant.C2).CruiseAltitudeFt);
+        Assert.Equal(8500, TrafficTestPlan.BuildOverflight(point, TrafficCategory.GeneralAviation, approachKt: 65, variant: TrafficTestVariant.C2).CruiseAltitudeFt);
+
+        // Status und Stopp finden ihn über OVF2, "OWN OVF2" oder OWN
+        Assert.True(TrafficTestService.Matches(point, "OVF2"));
+        Assert.True(TrafficTestService.Matches(point, "own ovf2"));
+        Assert.True(TrafficTestService.Matches(point, "OWN"));
+        Assert.False(TrafficTestService.Matches(point, "OVF1"));
+        Assert.False(TrafficTestService.Matches(point, "POS OVF2"));
+    }
+
+    [Fact]
     public void Auswertung_Ueberflug_ueber_dem_Punkt_und_durch()
     {
         var overhead = End("23L").Overhead(null);
