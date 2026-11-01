@@ -38,7 +38,7 @@ public static class TrafficTestTools
         "airport's traffic mix if it has one (EDHI mostly Belugas), the runway must allow landing (A1/A2) or takeoff (B1), category, " +
         "type and wake category (data\\traffic\\airport-rules.json, e.g. EDDF 07L/25R landings only without B747, A380, MD-11; 18 " +
         "takeoffs only), and it must be long enough (landing about 0.075 × Vapp² m, takeoff 1.4 times that) and wide enough (heavy and " +
-        "super 45 m, other airliners 30 m); otherwise the start is refused with the reasons (ignoreRunwayRules to test anyway). Without " +
+        "super 45 m, other airliners 30 m, heavy military 27 m); otherwise the start is refused with the reasons (ignoreRunwayRules to test anyway). Without " +
         "title the model is picked by these rules – by weight from the traffic mix.")]
     public static async Task<string> Start(
         TrafficTestService tests,

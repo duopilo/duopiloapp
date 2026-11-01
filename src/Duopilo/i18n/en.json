@@ -258,6 +258,7 @@
   "traffic.rules.airportCategory": "{airport} is only for {categories}{reason}{note}.",
   "traffic.rules.mix": "{airport}: the {type} isn't part of the traffic mix ({types}){note}.",
   "traffic.rules.military": "military aircraft",
+  "traffic.rules.and": "and",
   "traffic.rules.reason.military": "military airfield",
   "traffic.rules.reason.heliport": "heliport",
   "traffic.rules.reason.seaplane": "seaplane base",

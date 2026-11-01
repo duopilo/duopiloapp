@@ -258,6 +258,7 @@
   "traffic.rules.airportCategory": "{airport} ist nur für {categories}{reason}{note}.",
   "traffic.rules.mix": "{airport}: Die {type} gehört nicht zum Verkehrsmix ({types}){note}.",
   "traffic.rules.military": "Militärflugzeuge",
+  "traffic.rules.and": "und",
   "traffic.rules.reason.military": "Militärflugplatz",
   "traffic.rules.reason.heliport": "Hubschrauberlandeplatz",
   "traffic.rules.reason.seaplane": "Wasserflugplatz",

@@ -183,6 +183,9 @@ public sealed class TrafficRules
     /// <summary>Mindestbreite übrige Verkehrsflugzeuge (ICAO-Code C).</summary>
     public const double AirlinerWidthM = 30;
 
+    /// <summary>Mindestbreite schwerer Militärtransporter (C-17, A400M).</summary>
+    public const double MilitaryHeavyWidthM = 27;
+
     /// <summary>Kategorien eines zivilen Platzes ohne eigene Regeln.</summary>
     private static readonly TrafficCategory[] Civil = [TrafficCategory.Airliner, TrafficCategory.GeneralAviation];
 
@@ -320,9 +323,14 @@ public sealed class TrafficRules
     /// <summary>Nötige Startstrecke in m aus der Anfluggeschwindigkeit.</summary>
     public static double RequiredTakeoffM(double approachKt) => RequiredLandingM(approachKt) * TakeoffFactor;
 
-    /// <summary>Nötige Bahnbreite in m, 0 = keine Prüfung (Allgemeine Luftfahrt).</summary>
+    /// <summary>
+    /// Nötige Bahnbreite in m, 0 = keine Prüfung (Allgemeine Luftfahrt, leichte Militärflugzeuge). Militärtransporter sind für schmale
+    /// Bahnen gebaut (C-17 ab rund 27 m) – der A400M wurde sonst in Wiesbaden (35 m) abgelehnt.
+    /// </summary>
     public static double RequiredWidthM(TrafficWake wake, TrafficCategory category) => wake switch
     {
+        TrafficWake.Super or TrafficWake.Heavy when category == TrafficCategory.Military => MilitaryHeavyWidthM,
+        _ when category == TrafficCategory.Military => 0,
         TrafficWake.Super or TrafficWake.Heavy => WideBodyWidthM,
         _ when category == TrafficCategory.Airliner => AirlinerWidthM,
         _ => 0,
@@ -362,7 +370,7 @@ public sealed class TrafficRules
         }
         else if (!categories.Contains(category))
         {
-            violations.Add(new("airport_category", Loc.T("traffic.rules.airportCategory", runway.Airport, string.Join(", ", categories.Select(CategoryLabel)), reasonText, airportNote)));
+            violations.Add(new("airport_category", Loc.T("traffic.rules.airportCategory", runway.Airport, JoinAnd(categories.Select(CategoryLabel)), reasonText, airportNote)));
         }
 
         if (MixFor(runway.Airport) is { } mix && !InMix(mix, icaoType))
@@ -380,7 +388,7 @@ public sealed class TrafficRules
             {
                 violations.Add(new("operation", operations.Count == 0
                     ? Loc.T("traffic.rules.closed", runway.Designation, note)
-                    : Loc.T("traffic.rules.operation", runway.Designation, string.Join(", ", operations.Select(OperationLabel)), note)));
+                    : Loc.T("traffic.rules.operation", runway.Designation, JoinAnd(operations.Select(OperationLabel)), note)));
             }
 
             if (rule.Categories is { } runwayCategories && !runwayCategories.Any(c => ParseCategory(c) == category))
@@ -417,7 +425,7 @@ public sealed class TrafficRules
     /// <summary>
     /// Modell für einen Test ohne Titel: unter den installierten, freigegebenen Modellen die, die an Platz und Bahn erlaubt sind. Mit
     /// Verkehrsmix wählt <paramref name="random"/> einen Teil nach Gewicht (nur Teile mit passenden Modellen), darin ein Modell mit dem
-    /// besten Status. Ohne Mix: <paramref name="preferred"/>, wenn erlaubt, sonst das erste mit dem besten Status. Keins = null.
+    /// besten Status. Ohne Mix: <paramref name="preferred"/>, wenn erlaubt, sonst ein zufälliges mit dem besten Status. Keins = null.
     /// </summary>
     public AiModel? PickModel(
         IReadOnlyList<AiModel> models,
@@ -470,7 +478,10 @@ public sealed class TrafficRules
             return preferred;
         }
 
-        return allowed.OrderByDescending(m => m.Type.Status).First().Model;
+        // Für Abwechslung (Militärplatz: A400M, C-17, A-10, L-39 …) zufällig unter denen mit dem besten Status
+        var top = allowed.Max(m => m.Type.Status);
+        var bestModels = allowed.Where(m => m.Type.Status == top).ToList();
+        return bestModels[random.Next(bestModels.Count)].Model;
     }
 
     public static string OperationName(TrafficOperation operation) => operation == TrafficOperation.Departure ? "departure" : "arrival";
@@ -496,6 +507,13 @@ public sealed class TrafficRules
         "traffic.rules.reason.noScheduled" => Loc.T("traffic.rules.reason.noScheduled"),
         _ => Loc.T("traffic.rules.reason.rules"),
     };
+
+    /// <summary>"a", "a und b", "a, b und c".</summary>
+    private static string JoinAnd(IEnumerable<string> items)
+    {
+        var list = items.ToList();
+        return list.Count <= 1 ? string.Join("", list) : string.Join(", ", list[..^1]) + " " + Loc.T("traffic.rules.and") + " " + list[^1];
+    }
 
     private static string OperationLabel(string operation) => operation.Trim().ToLowerInvariant() switch
     {

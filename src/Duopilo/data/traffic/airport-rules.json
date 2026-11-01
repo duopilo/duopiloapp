@@ -39,6 +39,13 @@
         { "types": ["A31*", "A32*", "A2*", "BCS*", "A33*", "A35*", "A388"], "weight": 2, "note": "andere Airbus (Auslieferung, Werksflüge)" }
       ]
     },
+    "ETNW": {
+      "note": "Fliegerhorst Wunstorf, Heimat der A400M (LTG 62)",
+      "mix": [
+        { "types": ["A400"], "weight": 9, "note": "A400M" },
+        { "types": ["*"], "weight": 1, "note": "andere Militärflugzeuge" }
+      ]
+    },
     "LFBO": {
       "note": "Toulouse-Blagnac mit Airbus-Werk",
       "mix": [

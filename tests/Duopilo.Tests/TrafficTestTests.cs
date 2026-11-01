@@ -1150,6 +1150,12 @@ public sealed class TrafficTestTests
         Assert.Contains(rules.Check(Eddf("09", 1800), TrafficOperation.Departure, "B738", TrafficCategory.Airliner, 145), v => v.Code == "too_short");
         Assert.Empty(rules.Check(Eddf("09", 600, 18), TrafficOperation.Departure, "C172", TrafficCategory.GeneralAviation, 65));
 
+        // Militär (auf einem Militärplatz): schwere Transporter ab 27 m (A400M in Wiesbaden auf 35 m), leichte ohne Prüfung
+        var military = new TrafficRules(directory: Airports);
+        Assert.Empty(military.Check(At("ETNW", "25", 2100, 35), TrafficOperation.Arrival, "A400", TrafficCategory.Military, 120));
+        Assert.Contains(military.Check(At("ETNW", "25", 2100, 23), TrafficOperation.Arrival, "C17", TrafficCategory.Military, 125), v => v.Code == "too_narrow");
+        Assert.Empty(military.Check(At("ETNW", "25", 2100, 15), TrafficOperation.Arrival, "L39", TrafficCategory.Military, 100));
+
         // Breite: Heavy und Super 45 m, sonst Verkehrsflugzeuge 30 m, Allgemeine Luftfahrt ohne Prüfung; 0 = unbekannt
         Assert.Contains(rules.Check(Eddf("09", 4000, 30), TrafficOperation.Arrival, "B77W", TrafficCategory.Airliner, 150), v => v.Code == "too_narrow");
         Assert.Empty(rules.Check(Eddf("09", 4000, 30), TrafficOperation.Arrival, "A20N", TrafficCategory.Airliner, 135));
@@ -1288,6 +1294,11 @@ public sealed class TrafficTestTests
 
         // Toulouse: "*" lässt alles zu
         Assert.Empty(rules.Check(At("LFBO"), TrafficOperation.Arrival, "B738", TrafficCategory.Airliner, 145));
+
+        // Wunstorf: Militärplatz, im Mix überwiegend A400M, "*" lässt andere Militärflugzeuge zu
+        Assert.Empty(rules.Check(At("ETNW"), TrafficOperation.Arrival, "A400", TrafficCategory.Military, 120));
+        Assert.Empty(rules.Check(At("ETNW"), TrafficOperation.Arrival, "L39", TrafficCategory.Military, 100));
+        Assert.Contains(rules.Check(At("ETNW"), TrafficOperation.Arrival, "A20N", TrafficCategory.Airliner, 135), v => v.Code == "airport_category");
     }
 
     [Fact]
@@ -1333,7 +1344,10 @@ public sealed class TrafficTestTests
         Assert.Equal(TrafficCategory.Military, TrafficModels.TypeOf("FA18E SuperHornet")!.Category);
         Assert.Equal(TrafficWake.Heavy, TrafficRules.WakeOf("A400", TrafficCategory.Military));
 
-        // C-17, A-10 und L-39 an Titelwörtern, ohne die Cessna 170 zu treffen
+        // C-17, A-10 und L-39: Titel aus MSFS, dazu Titelwörter (auch die Reno-L-39 als Passive), ohne die Cessna 170 zu treffen
+        Assert.Equal("C17", TrafficModels.TypeOf("C-17A Military Airlift")!.IcaoType);
+        Assert.Equal(TrafficModelStatus.Candidate, TrafficModels.TypeOf("C-17A Military Airlift")!.Status);
+        Assert.Equal("L39", TrafficModels.TypeOf("Asobo Aero L-39 Albatros Reno Livery 02 Passive")!.IcaoType);
         Assert.Equal("C17", TrafficModels.TypeOf("Boeing C-17A Globemaster III")!.IcaoType);
         Assert.Equal(TrafficWake.Heavy, TrafficRules.WakeOf("C17", TrafficCategory.Military));
         Assert.Equal("A10", TrafficModels.TypeOf("A10C Thunderbolt II")!.IcaoType);
