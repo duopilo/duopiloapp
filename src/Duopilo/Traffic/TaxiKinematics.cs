@@ -17,6 +17,9 @@ public enum TaxiPhase
     /// <summary>Rollt vorwärts über die Rollwege.</summary>
     Taxi,
 
+    /// <summary>Hält vor einer Bahn, die die Route kreuzt, bis sie frei ist.</summary>
+    HoldingShort,
+
     /// <summary>Steht am Haltepunkt (Ende der Route; mit Aufreihen bis zur Freigabe).</summary>
     Holding,
 
@@ -78,6 +81,9 @@ public sealed class TaxiKinematics
     /// <summary>Aufreihen höchstens so schnell.</summary>
     public const double LineUpKt = 10;
 
+    /// <summary>Vor einer gekreuzten Bahn mindestens so lange halten (Freigabe „cross“).</summary>
+    public const double CrossingHoldSeconds = 5;
+
     private const double MetersPerSecondPerKnot = 0.514444;
 
     /// <summary>Anfahren (m/s²).</summary>
@@ -91,14 +97,17 @@ public sealed class TaxiKinematics
 
     private readonly Func<double, double, (double Latitude, double Longitude)> _toLatLon;
     private double _phaseSeconds;
+    private volatile bool _runwayClear;
 
     /// <param name="pushback">Weg des Pushbacks (vorwärts gerechnet, das Flugzeug fährt ihn rückwärts); null = vorwärts los.</param>
     /// <param name="taxi">Weg zum Haltepunkt.</param>
     /// <param name="toLatLon">Meter östlich/nördlich → Breite/Länge (<see cref="TaxiGraph.ToLatLon"/>).</param>
     /// <param name="lineUp">Weg vom Haltepunkt auf die Bahn (Aufreihen); null = am Haltepunkt bleiben.</param>
     /// <param name="rolling">Rollen nach der Landung: gleich in <see cref="TaxiPhase.Taxi"/> mit dieser Geschwindigkeit (kt), ohne an der Parkposition zu stehen; null = erst stehen.</param>
-    public TaxiKinematics(TaxiPath? pushback, TaxiPath taxi, Func<double, double, (double Latitude, double Longitude)> toLatLon, double groundFt, double cgHeightFt, double groundPitchDeg, TaxiPath? lineUp = null, double? rolling = null)
+    /// <param name="crossingStops">Halte vor gekreuzten Bahnen, Meter auf <paramref name="taxi"/> (<see cref="TaxiCrossing.StopS"/>).</param>
+    public TaxiKinematics(TaxiPath? pushback, TaxiPath taxi, Func<double, double, (double Latitude, double Longitude)> toLatLon, double groundFt, double cgHeightFt, double groundPitchDeg, TaxiPath? lineUp = null, double? rolling = null, IReadOnlyList<double>? crossingStops = null)
     {
+        CrossingStops = [.. (crossingStops ?? []).Where(c => c > 0.5 && c < taxi.LengthM - 0.5).Order()];
         Pushback = pushback is { LengthM: > 0.5 } ? pushback : null;
         Taxi = taxi;
         LineUpPath = lineUp is { LengthM: > 0.5 } ? lineUp : null;
@@ -117,6 +126,28 @@ public sealed class TaxiKinematics
     }
 
     public TaxiPath? Pushback { get; }
+
+    /// <summary>Halte vor gekreuzten Bahnen (Meter auf <see cref="Taxi"/>).</summary>
+    public IReadOnlyList<double> CrossingStops { get; }
+
+    /// <summary>So viele Bahnen sind schon gekreuzt (bzw. der Index des nächsten Halts in <see cref="CrossingStops"/>).</summary>
+    public int CrossingsDone { get; private set; }
+
+    /// <summary>
+    /// Die Bahn wird geprüft (<see cref="RunwayClear"/>): vor dem Kreuzen und vor dem Aufreihen erst weiter, wenn sie frei ist.
+    /// false = nur die Mindestzeit warten.
+    /// </summary>
+    public bool CheckRunway { get; init; }
+
+    /// <summary>Die Bahn vor dem Flugzeug ist frei (setzt der Test aus der Verkehrsabfrage – aus einem anderen Thread –, gilt für den aktuellen Halt).</summary>
+    public bool RunwayClear
+    {
+        get => _runwayClear;
+        set => _runwayClear = value;
+    }
+
+    /// <summary>Sekunden in der aktuellen Phase.</summary>
+    public double PhaseSeconds => _phaseSeconds;
 
     public TaxiPath Taxi { get; }
 
@@ -189,15 +220,31 @@ public sealed class TaxiKinematics
                 Next(TaxiPhase.Taxi);
                 break;
             case TaxiPhase.Taxi:
-                Move(Taxi, double.MaxValue, AccelMps2, DecelMps2, reverse: false, dt);
-                if (DistanceM >= Taxi.LengthM - 0.05 || (SpeedKt < 0.1 && Taxi.LengthM - DistanceM < 0.5))
+                double? stop = CrossingsDone < CrossingStops.Count ? CrossingStops[CrossingsDone] : null;
+                Move(Taxi, double.MaxValue, AccelMps2, DecelMps2, reverse: false, dt, stop);
+                if (stop is { } at && (DistanceM >= at - 0.05 || (SpeedKt < 0.1 && at - DistanceM < 0.5)))
+                {
+                    // Vor der Bahn halten – die Strecke auf dem Weg bleibt
+                    SpeedKt = 0;
+                    Phase = TaxiPhase.HoldingShort;
+                    _phaseSeconds = 0;
+                    RunwayClear = false;
+                }
+                else if (DistanceM >= Taxi.LengthM - 0.05 || (SpeedKt < 0.1 && Taxi.LengthM - DistanceM < 0.5))
                 {
                     SpeedKt = 0;
                     Next(TaxiPhase.Holding);
+                    RunwayClear = false;
                 }
 
                 break;
-            case TaxiPhase.Holding when LineUpPath is not null && _phaseSeconds >= HoldBeforeLineUpSeconds:
+            case TaxiPhase.HoldingShort when _phaseSeconds >= CrossingHoldSeconds && (RunwayClear || !CheckRunway):
+                CrossingsDone++;
+                RunwayClear = false;
+                Phase = TaxiPhase.Taxi;
+                _phaseSeconds = 0;
+                break;
+            case TaxiPhase.Holding when LineUpPath is not null && _phaseSeconds >= HoldBeforeLineUpSeconds && (RunwayClear || !CheckRunway):
                 Next(TaxiPhase.LineUp);
                 break;
             case TaxiPhase.LineUp:
@@ -226,19 +273,25 @@ public sealed class TaxiKinematics
         DistanceM = 0;
     }
 
-    private void Move(TaxiPath path, double maxMps, double accel, double decel, bool reverse, double dt)
+    private void Move(TaxiPath path, double maxMps, double accel, double decel, bool reverse, double dt, double? stopAt = null)
     {
+        var end = Math.Min(stopAt ?? path.LengthM, path.LengthM);
         var speed = SpeedKt * MetersPerSecondPerKnot;
         var allowed = Math.Min(maxMps, path.AllowedMps(DistanceM, decel));
+        if (stopAt is not null)
+        {
+            allowed = Math.Min(allowed, Math.Sqrt(2 * decel * Math.Max(0, end - DistanceM)));
+        }
+
         speed = Math.Min(speed + (accel * dt), allowed);
 
         // Am Anfang eines Wegs mit Grenze 0 nicht stehen bleiben: kriechen, bis die Bremsgrenze greift
-        if (speed <= 0 && path.LengthM - DistanceM > 0.05)
+        if (speed <= 0 && end - DistanceM > 0.05)
         {
-            speed = Math.Min(0.2, path.LengthM - DistanceM);
+            speed = Math.Min(0.2, end - DistanceM);
         }
 
-        var step = Math.Min(speed * dt, Math.Max(0, path.LengthM - DistanceM));
+        var step = Math.Min(speed * dt, Math.Max(0, end - DistanceM));
         DistanceM += step;
         TotalM += step;
         SpeedKt = speed / MetersPerSecondPerKnot;

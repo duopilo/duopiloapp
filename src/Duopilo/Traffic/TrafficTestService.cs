@@ -157,7 +157,8 @@ public sealed record TrafficTaxiInfoRoute(
 public sealed record TrafficTaxiInfoPoint(double Latitude, double Longitude, string Kind);
 
 /// <summary>Stand des Rollens (D1, <see cref="TaxiKinematics"/>).</summary>
-/// <param name="Phase">parked, pushback, pushback_done, taxi, holding.</param>
+/// <param name="Phase">parked, pushback, pushback_done, taxi, holding_short (vor einer gekreuzten Bahn), holding; B2 line_up, lined_up; A3 landing bis zum Abrollpunkt.</param>
+/// <param name="Crossings">Gekreuzte Bahnen mit dem Halt davor; <paramref name="CrossingsDone"/> davon schon gekreuzt.</param>
 /// <param name="Taxiways">Rollwege der Route.</param>
 /// <param name="RouteM">Länge der Route im Netz.</param>
 /// <param name="DistanceM">Bisher gerollt (Pushback und Rollen).</param>
@@ -182,7 +183,9 @@ public sealed record TrafficTestTaxi(
     double? MappingErrorM,
     double? LineUpAlongM = null,
     double? ExitAlongM = null,
-    double? ExitKt = null);
+    double? ExitKt = null,
+    IReadOnlyList<string>? Crossings = null,
+    int CrossingsDone = 0);
 
 /// <summary>Stand der Kinematik eines Tests (<see cref="TrafficKinematics"/>).</summary>
 /// <param name="Phase">approach, flare, rollout, stopped; Start: lineup, takeoff_roll, rotation, climb.</param>
@@ -261,6 +264,12 @@ public sealed class TrafficTestService : IHostedService, IDisposable
 
     /// <summary>Rollen: Flugzeuge so weit um den Bezugspunkt des Flughafens zählen als Hindernisse (und so viel Rand bekommt die Abfrage).</summary>
     private const double TaxiObstacleMarginM = 6000;
+
+    /// <summary>Rollen: Verkehr so weit um den Flughafen abfragen, bevor eine Bahn gekreuzt wird (Endanflug bis 4 NM plus Bahnlänge).</summary>
+    private const double RunwayScanRadiusM = 15000;
+
+    /// <summary>Rollen: Liefert die Verkehrsabfrage nichts, nach so vielen Sekunden am Halt trotzdem weiter.</summary>
+    private const double RunwayCheckGiveUpSeconds = 30;
 
     /// <summary>A3: Aufsetzpunkt der Kinematik hinter der Schwelle (für den frühesten Abrollpunkt).</summary>
     private const double TaxiInTouchdownM = 450;
@@ -439,6 +448,16 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 taxiRoute = PlanTaxiIn(taxiGraph, runway, request.Parking, category, TrafficRules.WakeOf(modelType?.IcaoType, category), approachKt ?? TrafficTestPlan.DefaultApproachKt);
                 taxiEvents.Add(string.Create(CultureInfo.InvariantCulture,
                     $"taxi_in_planned exit {taxiRoute.EntryAlongM:0} m ({taxiRoute.Hold.Taxiway}) at {taxiRoute.HandoverKt:0} kt, route {string.Join(' ', taxiRoute.Taxiways)} {taxiRoute.LengthM:0} m to parking {taxiRoute.Parking.Parking?.Label} ({taxiRoute.Parking.Parking?.TypeName})"));
+            }
+
+            // Rollen: gekreuzte Bahnen mit Halt davor (A3: ohne die Landebahn, auf der der Weg beginnt)
+            if (taxiRoute is not null && taxiGraph is not null)
+            {
+                var landing = request.Variant == TrafficTestVariant.A3 ? RunwayOf(runways, runway.Designation) : null;
+                taxiRoute = taxiRoute.WithCrossings(taxiGraph, TaxiProfile.For(category), landing);
+                taxiEvents.Add(taxiRoute.Crossings.Count == 0
+                    ? "taxi_crossings none"
+                    : "taxi_crossings " + string.Join(", ", taxiRoute.Crossings.Select(c => string.Create(CultureInfo.InvariantCulture, $"{c.Runway} hold on {c.Taxiway} at {c.StopS:0} m ({c.CenterlineM:0} m from the centerline)"))));
             }
 
             // Ein Test je Bahn: den alten auf dieser Bahn ersetzen, auf anderen Bahnen höchstens MaxConcurrent
@@ -747,7 +766,9 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                     run.TaxiGraph?.MappingErrorM,
                     run.InitialPlan.TakeoffAfterTaxi ? route.LineUpAlongM : null,
                     route.HandoverAlongM is not null ? route.EntryAlongM : null,
-                    route.HandoverAlongM is not null ? route.HandoverKt : null)
+                    route.HandoverAlongM is not null ? route.HandoverKt : null,
+                    [.. route.Crossings.Select(c => string.Create(CultureInfo.InvariantCulture, $"{c.Runway} on {c.Taxiway} at {c.StopS:0} m"))],
+                    run.TaxiKinematics?.CrossingsDone ?? 0)
                 : null);
     }
 
@@ -927,6 +948,12 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 var at = plan.Runway.Airport + " " + plan.Runway.Designation;
                 _ = Task.Run(() => StopTestAsync("parked", CancellationToken.None, at));
             }
+        }
+
+        // Rollen: vor einer gekreuzten Bahn und vor dem Aufreihen (B2) erst weiter, wenn die Bahn frei ist
+        if (run.TaxiKinematics is { CheckRunway: true } held && (run.InitialPlan.Variant != TrafficTestVariant.A3 || run.TaxiActive))
+        {
+            CheckRunwayWhileHolding(run, held, point.Seconds);
         }
 
         // Überflug (C1): Ende hinter dem Ausflugpunkt
@@ -1130,7 +1157,10 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         {
             kin.ExitAlongM = handover;
             kin.ExitKt = route.HandoverKt;
-            after = new TaxiKinematics(null, route.TaxiPath, graph.ToLatLon, ground, cg, kin.GroundPitchDeg, rolling: route.HandoverKt);
+            after = new TaxiKinematics(null, route.TaxiPath, graph.ToLatLon, ground, cg, kin.GroundPitchDeg, rolling: route.HandoverKt, crossingStops: [.. route.Crossings.Select(c => c.StopS)])
+            {
+                CheckRunway = true,
+            };
             run.TaxiKinematics = after;
         }
 
@@ -1172,7 +1202,10 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         var cg = sample.CgHeightFt > 0.5 ? sample.CgHeightFt : DefaultCgHeightFt;
         var measured = sample.AltitudeFt - sample.AltitudeAglFt;
         var ground = sample.AltitudeAglFt > 0 && Math.Abs(measured - plan.Runway.ElevationFt) < MaxGroundCorrectionFt ? measured : plan.Runway.ElevationFt;
-        var taxi = new TaxiKinematics(route.PushbackPath, route.TaxiPath, graph.ToLatLon, ground, cg, GroundPitch(sample.StaticPitchDeg), plan.TakeoffAfterTaxi ? route.LineUpPath : null);
+        var taxi = new TaxiKinematics(route.PushbackPath, route.TaxiPath, graph.ToLatLon, ground, cg, GroundPitch(sample.StaticPitchDeg), plan.TakeoffAfterTaxi ? route.LineUpPath : null, crossingStops: [.. route.Crossings.Select(c => c.StopS)])
+        {
+            CheckRunway = true,
+        };
         run.TaxiKinematics = taxi;
         _sim.StartAiPose(run.ObjectId, dt =>
         {
@@ -1273,6 +1306,106 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             .ToList();
         graph.SetObstacles(parked, TaxiProfile.For(category).ClearanceM);
         return (parked.Count, scan.Error);
+    }
+
+    /// <summary>Die Bahn mit dem Ende <paramref name="designation"/>, sonst null.</summary>
+    private static AirportRunway? RunwayOf(IReadOnlyList<AirportRunway> runways, string designation)
+    {
+        var wanted = AirportRunway.Normalize(designation);
+        return runways.FirstOrDefault(r => AirportRunway.Normalize(r.Primary) == wanted || AirportRunway.Normalize(r.Secondary) == wanted);
+    }
+
+    /// <summary>
+    /// Rollen: Steht das Flugzeug vor einer gekreuzten Bahn (oder B2 vor dem Aufreihen) und ist die Mindestzeit fast um, fragt der Test
+    /// den Verkehr ab (höchstens eine Abfrage zugleich) und gibt die Bahn frei, wenn nichts auf ihr oder im Endanflug ist
+    /// (<see cref="RunwayOccupancy"/>). Ohne Antwort aus der Abfrage nach <see cref="RunwayCheckGiveUpSeconds"/> trotzdem.
+    /// </summary>
+    private void CheckRunwayWhileHolding(TrafficTestRun run, TaxiKinematics held, double seconds)
+    {
+        if (run.TaxiGraph is not { } graph || run.InitialPlan.Taxi is not { } route || held.RunwayClear || run.RunwayScanBusy)
+        {
+            return;
+        }
+
+        string? label = null;
+        AirportRunway? runway = null;
+        if (held.Phase == TaxiPhase.HoldingShort && held.CrossingsDone < route.Crossings.Count)
+        {
+            var crossing = route.Crossings[held.CrossingsDone];
+            label = crossing.Runway;
+            runway = RunwayOf(graph.Runways, crossing.Runway.Split('/')[0]);
+            if (run.HoldShortAnnounced != held.CrossingsDone)
+            {
+                run.HoldShortAnnounced = held.CrossingsDone;
+                run.AddEvent(seconds, "holding_short " + crossing.Runway + " on " + crossing.Taxiway);
+            }
+
+            if (held.PhaseSeconds < TaxiKinematics.CrossingHoldSeconds - 1)
+            {
+                return;
+            }
+        }
+        else if (held.Phase == TaxiPhase.Holding && held.LineUpPath is not null)
+        {
+            label = run.InitialPlan.Runway.Designation;
+            runway = RunwayOf(graph.Runways, label);
+            if (held.PhaseSeconds < TaxiKinematics.HoldBeforeLineUpSeconds - 1)
+            {
+                return;
+            }
+        }
+
+        if (runway is null || label is null)
+        {
+            return;
+        }
+
+        run.RunwayScanBusy = true;
+        var since = held.PhaseSeconds;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var radius = RunwayScanRadiusM;
+                if (_sim.Num("lat") is { } lat && _sim.Num("lon") is { } lon)
+                {
+                    radius += RouteMath.DistanceNm(lat, lon, graph.Latitude, graph.Longitude) * RunwayEnd.MetersPerNm;
+                }
+
+                var scan = await _traffic.ScanAsync((uint)Math.Min(radius, TrafficConnection.MaxScanRadiusMeters), includeHelicopters: true, withText: true, CancellationToken.None);
+                if (scan.Error is not null)
+                {
+                    if (since >= RunwayCheckGiveUpSeconds)
+                    {
+                        held.RunwayClear = true;
+                        run.AddEvent(seconds, "warning:runway_unknown " + label + " (" + scan.Error + "), going on");
+                    }
+
+                    return;
+                }
+
+                var blocker = RunwayOccupancy.Blocker(graph.Icao, runway, scan.Samples, run.ObjectId);
+                if (blocker is null)
+                {
+                    held.RunwayClear = true;
+                    run.LastRunwayBlocker = null;
+                    run.AddEvent(seconds, string.Create(CultureInfo.InvariantCulture, $"runway_clear {label} after {since:0} s"));
+                }
+                else if (blocker != run.LastRunwayBlocker)
+                {
+                    run.LastRunwayBlocker = blocker;
+                    run.AddEvent(seconds, "runway_busy " + label + ": " + blocker);
+                }
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or InvalidOperationException or TimeoutException or ObjectDisposedException)
+            {
+                _log.LogDebug(ex, "Runway check failed");
+            }
+            finally
+            {
+                run.RunwayScanBusy = false;
+            }
+        });
     }
 
     /// <summary>
@@ -1707,6 +1840,21 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             get => _taxiActive;
             set => _taxiActive = value;
         }
+
+        private volatile bool _runwayScanBusy;
+
+        /// <summary>Rollen: Eine Abfrage, ob die Bahn frei ist, läuft gerade.</summary>
+        public bool RunwayScanBusy
+        {
+            get => _runwayScanBusy;
+            set => _runwayScanBusy = value;
+        }
+
+        /// <summary>Rollen: was die Bahn zuletzt belegt hat (für das Ereignis nur bei einer Änderung).</summary>
+        public string? LastRunwayBlocker { get; set; }
+
+        /// <summary>Rollen: für diesen Halt vor einer Bahn ist das Ereignis schon geschrieben (Index der Kreuzung).</summary>
+        public int HoldShortAnnounced { get; set; } = -1;
 
         /// <summary>D1: seit wann das Flugzeug am Haltepunkt steht.</summary>
         public double? HoldingSinceSeconds { get; set; }

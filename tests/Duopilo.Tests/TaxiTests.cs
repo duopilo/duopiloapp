@@ -1,3 +1,4 @@
+using Duopilo.FlightPlan;
 using Duopilo.Sim;
 using Duopilo.Traffic;
 
@@ -610,6 +611,159 @@ public sealed class TaxiTests
         Assert.Equal(TaxiPhase.Holding, kin.Phase);
         Assert.InRange(kin.EastM, -1, 1);
         Assert.InRange(kin.NorthM, 349, 351);
+    }
+
+    // Querbahn 36/18 (1000 m, Mitte 700 m nördlich): Der Weg von der Parkposition im Westen zur 27 kreuzt sie bei Ost 0, mit
+    // Haltepunkten 90 m davor und dahinter; Halt vor der 27 an Punkt 5
+    private static readonly AirportRunway CrossRunway = new(51.0 + (700 / 111_250.0), 7.0, 50, 0, 1000, 45, "36", "18");
+
+    private static TaxiGraph CrossingGraph()
+    {
+        TaxiPointData P(double east, double north, int type = 1) => new(type, 0, east, north);
+        var data = new AirportTaxiData(
+            "EDXT",
+            51.0,
+            7.0,
+            50,
+            [
+                P(-600, 700),      // 0
+                P(-90, 700, 2),    // 1 Haltepunkt vor 36/18
+                P(0, 700),         // 2 auf 36/18
+                P(90, 700, 2),     // 3 Haltepunkt der Gegenrichtung
+                P(300, 700),       // 4
+                P(300, 90, 2),     // 5 Haltepunkt vor 09/27
+                P(300, 0),         // 6 Einmündung auf 09/27
+                P(-1000, 0),       // 7
+                P(1000, 0),        // 8
+                P(0, 200),         // 9 Ende 18
+                P(0, 1200),        // 10 Ende 36
+            ],
+            [new TaxiParkingData(9, 0, 12, 0, 1, 0, 180, 20, -600, 750)],
+            [
+                new TaxiPathData(3, 20, 0, 0, 0, 0, 0),
+                new TaxiPathData(1, 20, 0, 0, 0, 1, 0),
+                new TaxiPathData(1, 20, 0, 0, 1, 2, 0),
+                new TaxiPathData(1, 20, 0, 0, 2, 3, 0),
+                new TaxiPathData(1, 20, 0, 0, 3, 4, 0),
+                new TaxiPathData(1, 20, 0, 0, 4, 5, 1),
+                new TaxiPathData(1, 20, 0, 0, 5, 6, 1),
+                new TaxiPathData(2, 45, 9, 0, 7, 6, 0),
+                new TaxiPathData(2, 45, 9, 0, 6, 8, 0),
+                new TaxiPathData(2, 45, 36, 0, 9, 2, 0),
+                new TaxiPathData(2, 45, 36, 0, 2, 10, 0),
+            ],
+            ["B", "C"]);
+        return TaxiGraph.Build(data, [Runway, CrossRunway]);
+    }
+
+    [Fact]
+    public void Gekreuzte_Bahn_mit_Halt_am_Haltepunkt_davor()
+    {
+        var graph = CrossingGraph();
+        var end = End("27");
+        var route = TaxiRoute.Plan(graph, end, graph.FindParking("A1")!, TaxiProfile.Airliner)!.WithCrossings(graph, TaxiProfile.Airliner);
+
+        // Halt vor der 27 an Punkt 5, davor die Querbahn: Halt 12 m vor dem Haltepunkt 1
+        Assert.Equal(5, route.Hold.Node.Id);
+        var crossing = Assert.Single(route.Crossings);
+        Assert.Equal("36/18", crossing.Runway);
+        Assert.Equal("B", crossing.Taxiway);
+        var (east, north, heading) = route.TaxiPath.At(crossing.StopS);
+        Assert.InRange(east, -90 - TaxiProfile.Airliner.StopShortM - 1, -90 - TaxiProfile.Airliner.StopShortM + 1);
+        Assert.InRange(north, 699, 701);
+        Assert.InRange(heading, 89, 91);
+        Assert.InRange(crossing.CenterlineM, 85, 95);
+
+        // Ohne Querbahn im Netz der Bahnen: keine Kreuzung
+        var plain = TaxiRoute.Plan(Graph(), End("09"), Graph().FindParking("A5")!, TaxiProfile.Airliner)!.WithCrossings(Graph(), TaxiProfile.Airliner);
+        Assert.Empty(plain.Crossings);
+    }
+
+    [Fact]
+    public void Halt_vor_der_gekreuzten_Bahn_bis_sie_frei_ist()
+    {
+        var graph = CrossingGraph();
+        var route = TaxiRoute.Plan(graph, End("27"), graph.FindParking("A1")!, TaxiProfile.Airliner)!.WithCrossings(graph, TaxiProfile.Airliner);
+        var stop = route.Crossings[0].StopS;
+        var kin = new TaxiKinematics(route.PushbackPath, route.TaxiPath, graph.ToLatLon, 164, 9, 0.3, crossingStops: [stop]) { CheckRunway = true };
+
+        void Run(double seconds)
+        {
+            for (var i = 0; i < seconds * 30; i++)
+            {
+                kin.Advance(1.0 / 30);
+            }
+        }
+
+        // Bis zum Halt rollen, dort stehen bleiben, solange die Bahn nicht frei ist
+        for (var i = 0; i < 30 * 600 && kin.Phase != TaxiPhase.HoldingShort; i++)
+        {
+            kin.Advance(1.0 / 30);
+        }
+
+        Assert.Equal(TaxiPhase.HoldingShort, kin.Phase);
+        Assert.InRange(kin.DistanceM, stop - 0.5, stop + 0.05);
+        Run(30);
+        Assert.Equal(TaxiPhase.HoldingShort, kin.Phase);
+        Assert.Equal(0, kin.SpeedKt);
+        Assert.Equal(0, kin.CrossingsDone);
+
+        // Frei: kreuzen und weiter zum Haltepunkt der 27
+        kin.RunwayClear = true;
+        Run(1.0 / 15);
+        Assert.Equal(TaxiPhase.Taxi, kin.Phase);
+        Assert.Equal(1, kin.CrossingsDone);
+        for (var i = 0; i < 30 * 600 && kin.Phase != TaxiPhase.Holding; i++)
+        {
+            kin.Advance(1.0 / 30);
+            Assert.NotEqual(TaxiPhase.HoldingShort, kin.Phase);
+        }
+
+        Assert.Equal(TaxiPhase.Holding, kin.Phase);
+
+        // Ohne Prüfung der Bahn nur die Mindestzeit
+        var simple = new TaxiKinematics(route.PushbackPath, route.TaxiPath, graph.ToLatLon, 164, 9, 0.3, crossingStops: [stop]);
+        var held = 0.0;
+        for (var i = 0; i < 30 * 900 && simple.Phase != TaxiPhase.Holding; i++)
+        {
+            simple.Advance(1.0 / 30);
+            if (simple.Phase == TaxiPhase.HoldingShort)
+            {
+                held += 1.0 / 30;
+            }
+        }
+
+        Assert.InRange(held, TaxiKinematics.CrossingHoldSeconds - 0.1, TaxiKinematics.CrossingHoldSeconds + 0.1);
+    }
+
+    [Fact]
+    public void Bahn_belegt_auf_der_Bahn_oder_im_Endanflug()
+    {
+        var end27 = End("27");
+        AircraftSample At(uint id, double alongM, double crossM, double heightFt, double heading)
+        {
+            var (lat, lon) = end27.Point(alongM);
+            if (crossM != 0)
+            {
+                (lat, lon) = RouteMath.Destination(lat, lon, TrafficMath.Normalize(end27.HeadingTrueDeg + 90), crossM / RunwayEnd.MetersPerNm);
+            }
+
+            return new AircraftSample(id, "aircraft", "DUO0" + id, null, null, null, lat, lon, end27.ElevationFt + heightFt, heading, heading, 140, 0, heightFt < 1, false);
+        }
+
+        string? Blocker(params AircraftSample[] samples) => RunwayOccupancy.Blocker("EDXT", Runway, samples, 1);
+
+        Assert.Null(Blocker());
+        Assert.Equal("DUO02 on the runway", Blocker(At(2, 1200, 0, 0, 270)));
+        Assert.Equal("DUO02 on final 27 3.0 NM", Blocker(At(2, -3 * RunwayEnd.MetersPerNm, 0, 950, 270)));
+        Assert.Equal("DUO02 on final 09 2.0 NM", Blocker(At(2, 2000 + (2 * RunwayEnd.MetersPerNm), 0, 650, 90)));
+
+        // Nicht belegt: das wartende Flugzeug selbst, ein Abflug, zu hoch, zu weit draußen, am Gate
+        Assert.Null(Blocker(At(1, 1200, 0, 0, 270)));
+        Assert.Null(Blocker(At(2, -3 * RunwayEnd.MetersPerNm, 0, 950, 90)));
+        Assert.Null(Blocker(At(2, -3 * RunwayEnd.MetersPerNm, 0, 5000, 270)));
+        Assert.Null(Blocker(At(2, -6 * RunwayEnd.MetersPerNm, 0, 1800, 270)));
+        Assert.Null(Blocker(At(2, 1000, 200, 0, 0)));
     }
 
     [Fact]

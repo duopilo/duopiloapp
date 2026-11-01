@@ -373,6 +373,24 @@ public sealed class TaxiGraph
         return prefix + number.ToString(CultureInfo.InvariantCulture) + tail;
     }
 
+    /// <summary>Die Bahnen des Flughafens.</summary>
+    public IReadOnlyList<AirportRunway> Runways => _runways;
+
+    /// <summary>Bahn, auf der ein Punkt liegt (höchstens halbe Breite plus 3 m neben der Mittellinie, innerhalb der Länge plus 20 m), sonst null.</summary>
+    public AirportRunway? RunwayAt(double eastM, double northM)
+    {
+        foreach (var runway in _runways)
+        {
+            var (along, cross) = RunwayOffsets(runway, eastM, northM);
+            if (Math.Abs(along) <= (runway.LengthM / 2) + 20 && Math.Abs(cross) <= (Math.Max(runway.WidthM, 20) / 2) + 3)
+            {
+                return runway;
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>Nächste Bahn zu einem Punkt mit Abstand zur Mittellinie (innerhalb der Länge plus 300 m), sonst null.</summary>
     public (AirportRunway Runway, double CrossM)? NearestRunway(double eastM, double northM)
     {

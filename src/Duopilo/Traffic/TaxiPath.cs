@@ -132,6 +132,36 @@ public sealed class TaxiPath
         return allowed;
     }
 
+    /// <summary>Stelle des Wegs (Meter ab dem Anfang), die einem Punkt am nächsten liegt, gesucht ab <paramref name="fromS"/>.</summary>
+    public double NearestS(double east, double north, double fromS = 0)
+    {
+        double Distance2(double s)
+        {
+            var (x, y, _) = At(s);
+            return ((x - east) * (x - east)) + ((y - north) * (y - north));
+        }
+
+        var start = Math.Clamp(fromS, 0, LengthM);
+        var (best, bestD) = (start, Distance2(start));
+        for (var s = start; s <= LengthM; s += 1)
+        {
+            if (Distance2(s) is var d && d < bestD)
+            {
+                (best, bestD) = (s, d);
+            }
+        }
+
+        for (var s = Math.Max(start, best - 1); s <= Math.Min(LengthM, best + 1); s += 0.05)
+        {
+            if (Distance2(s) is var d && d < bestD)
+            {
+                (best, bestD) = (s, d);
+            }
+        }
+
+        return best;
+    }
+
     /// <summary>Kompasskurs einer Richtung (Ost, Nord).</summary>
     public static double Heading(double east, double north)
     {
