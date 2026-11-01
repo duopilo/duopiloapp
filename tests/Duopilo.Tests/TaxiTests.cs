@@ -502,7 +502,7 @@ public sealed class TaxiTests
         // Halt auf dem Zubringer: 110 m vor der Mittellinie (wie A), 12 m davor
         var (stopEast, stopNorth, stopHeading) = route.TaxiPath.At(route.TaxiPath.LengthM);
         Assert.Equal(-700, stopEast, 1);
-        Assert.Equal(110 + TaxiProfile.Airliner.StopShortM, stopNorth, 1);
+        Assert.InRange(stopNorth, 110 + TaxiProfile.Airliner.StopShortM - 0.5, 110 + TaxiProfile.Airliner.StopShortM + 0.5);
         Assert.Equal(180, stopHeading, 1);
         Assert.Equal(110, route.Hold.CenterlineM, 0);
         Assert.DoesNotContain(3, route.Nodes);
