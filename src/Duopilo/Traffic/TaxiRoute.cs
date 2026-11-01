@@ -90,6 +90,9 @@ public sealed record TaxiRoute(
     /// <summary>Der Rollweg hinter dem Pushback-Punkt zählt, wenn er höchstens so weit (Grad) von der Gegenrichtung abweicht.</summary>
     private const double PushbackLineDeg = 45;
 
+    /// <summary>So weit darf der innere Haltepunkt hinter dem ersten liegen (<see cref="InnerHold"/>).</summary>
+    public const double MaxInnerHoldM = 250;
+
     /// <summary>So weit schiebt der Schlepper höchstens zurück, bis die Route abbiegt (lange Einfahrlinien).</summary>
     public const double MaxPushbackM = 250;
 
@@ -110,11 +113,45 @@ public sealed record TaxiRoute(
         {
             if (graph.Route(parking.Id, hold.Node.Id) is { Count: >= 2 } nodes)
             {
+                // Liegt dahinter näher an der Bahn noch ein Haltepunkt (die Linie vor "RWY AHEAD" statt der ILS-Linie), dort halten
+                if (InnerHold(graph, end, hold) is { } inner && graph.Route(parking.Id, inner.Node.Id) is { Count: >= 2 } innerNodes)
+                {
+                    return Build(graph, parking, inner, innerNodes, profile);
+                }
+
                 return Build(graph, parking, hold, nodes, profile);
             }
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Der Haltepunkt derselben Bahn, der hinter <paramref name="hold"/> auf dem Weg zur Bahn liegt und am nächsten an der Mittellinie:
+    /// höchstens <see cref="MaxInnerHoldM"/> weit, ohne Bahn-Abschnitte, und der Weg nicht viel länger als der Unterschied der Abstände
+    /// zur Mittellinie (sonst läge er an einem anderen Zubringer). In EDDL liegt an K1 erst die ILS-Haltelinie (Leiter), gut 100 m
+    /// weiter die Linie vor "RWY AHEAD 23R" – gehalten wird an der zweiten. Null = keiner.
+    /// </summary>
+    public static TaxiHold? InnerHold(TaxiGraph graph, RunwayEnd end, TaxiHold hold)
+    {
+        TaxiHold? best = null;
+        foreach (var other in graph.DepartureHolds(end))
+        {
+            var closer = hold.CenterlineM - other.CenterlineM;
+            if (other.Node.Id == hold.Node.Id || closer < 10 || (best is not null && other.CenterlineM >= best.CenterlineM))
+            {
+                continue;
+            }
+
+            if (graph.Route(hold.Node.Id, other.Node.Id) is { Count: >= 2 } path
+                && graph.LengthM(path) <= Math.Min(MaxInnerHoldM, (closer * 1.5) + 30)
+                && path.Zip(path.Skip(1)).All(p => graph.Edge(p.First, p.Second)?.Type != 2))
+            {
+                best = other;
+            }
+        }
+
+        return best;
     }
 
     /// <summary>
