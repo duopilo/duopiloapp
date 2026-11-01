@@ -285,8 +285,10 @@ Titelmuster oder den Paketpfad.
 zumindest sicher vor dem Aufsetzen draußen ist – auch wenn dabei mal etwas leicht im Boden steckt. Dazu kommt: Bei diesen Modellen
 drehen als KI die Triebwerke nicht (ihre Systeme laufen offenbar nur, wenn man sie selbst fliegt).
 
-Nächste Schritte: harte Aufsetzer angehen (Sinkrate um 1400 ft/min), `touchdownM` um 150 testen, Sperrliste für FBW- und
-Headwind-Modelle. Sieht es dann immer noch komisch aus, in Frankfurt
+**Harte Aufsetzer zurückgestellt:** Sie sehen hart aus, fallen aber nur auf, wenn man direkt an der Schwelle zuschaut – das
+ist im normalen Flug selten.
+
+Nächste Schritte: `touchdownM` um 150 testen, Sperrliste für FBW- und Headwind-Modelle. Sieht es dann immer noch komisch aus, in Frankfurt
 testen. Danach Speed über den Schub (`THROTTLE_REQUESTED`) und Stufe B.
 
 **Entscheidung danach:**
