@@ -756,6 +756,8 @@ public sealed class TaxiTests
         Assert.Null(Blocker());
         Assert.Equal("DUO02 on the runway", Blocker(At(2, 1200, 0, 0, 270)));
         Assert.Equal("DUO02 on final 27 3.0 NM", Blocker(At(2, -3 * RunwayEnd.MetersPerNm, 0, 950, 270)));
+        Assert.Equal("DUO02 on final 27", RunwayOccupancy.Key("DUO02 on final 27 3.0 NM"));
+        Assert.Equal("DUO02 on the runway", RunwayOccupancy.Key("DUO02 on the runway"));
         Assert.Equal("DUO02 on final 09 2.0 NM", Blocker(At(2, 2000 + (2 * RunwayEnd.MetersPerNm), 0, 650, 90)));
 
         // Nicht belegt: das wartende Flugzeug selbst, ein Abflug, zu hoch, zu weit draußen, am Gate

@@ -28,6 +28,19 @@ public static class RunwayOccupancy
     /// <summary>Endanflug: Kurs höchstens so weit (Grad) vom Landekurs.</summary>
     public const double FinalHeadingDeg = 45;
 
+    /// <summary>Grund ohne Entfernung („DUO02 on final 23L“) – zum Vergleich, ob sich etwas geändert hat.</summary>
+    public static string Key(string blocker)
+    {
+        var at = blocker.LastIndexOf(" NM", StringComparison.Ordinal);
+        if (at < 0)
+        {
+            return blocker;
+        }
+
+        var space = blocker.LastIndexOf(' ', at - 1);
+        return space > 0 ? blocker[..space] : blocker;
+    }
+
     /// <summary>
     /// Was die Bahn <paramref name="runway"/> belegt („DUO02 on final 23L 2.4 NM“), null = frei. <paramref name="ownObjectId"/> (das
     /// wartende Flugzeug selbst) zählt nicht.

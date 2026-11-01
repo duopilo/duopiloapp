@@ -1391,9 +1391,10 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                     run.LastRunwayBlocker = null;
                     run.AddEvent(seconds, string.Create(CultureInfo.InvariantCulture, $"runway_clear {label} after {since:0} s"));
                 }
-                else if (blocker != run.LastRunwayBlocker)
+                else if (RunwayOccupancy.Key(blocker) != run.LastRunwayBlocker)
                 {
-                    run.LastRunwayBlocker = blocker;
+                    // Nur bei einem neuen Grund (anderes Flugzeug, anderer Ort) – nicht bei jeder neuen Entfernung
+                    run.LastRunwayBlocker = RunwayOccupancy.Key(blocker);
                     run.AddEvent(seconds, "runway_busy " + label + ": " + blocker);
                 }
             }
