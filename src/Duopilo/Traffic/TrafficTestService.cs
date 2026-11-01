@@ -223,6 +223,12 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 run.AddEvent(0, "warning:" + warning);
             }
 
+            // Gesperrte Modelle (FBW, Headwind) gehen im Test trotzdem, aber mit Hinweis
+            if (TrafficModels.ExcludedBy(title, livery) is { } excludedBy)
+            {
+                run.AddEvent(0, "warning:excludedModel " + excludedBy);
+            }
+
             lock (_lock)
             {
                 _runs.RemoveAll(r => r.EndReason is not null && r.SameRunway(runway));
@@ -316,10 +322,13 @@ public sealed class TrafficTestService : IHostedService, IDisposable
     /// <summary>Name der Fahrwerks-Methode wie im Tool-Parameter (all, down, set, handle).</summary>
     public static string GearName(AiGearMethod method) => method.ToString().ToLowerInvariant();
 
-    /// <summary>Standardmodell: ein A320 aus dem FSLTL-Paket, sonst irgendein A320.</summary>
-    public static AiModel? PickDefaultModel(IReadOnlyList<AiModel> models) =>
-        models.FirstOrDefault(m => m.Title.Contains("A320", StringComparison.OrdinalIgnoreCase) && m.Title.Contains("FSLTL", StringComparison.OrdinalIgnoreCase))
-        ?? models.FirstOrDefault(m => m.Title.Contains("A320", StringComparison.OrdinalIgnoreCase));
+    /// <summary>Standardmodell: ein A320 aus dem FSLTL-Paket, sonst irgendein A320 – ohne gesperrte Modelle (<see cref="TrafficModels"/>).</summary>
+    public static AiModel? PickDefaultModel(IReadOnlyList<AiModel> models)
+    {
+        var usable = models.Where(m => !TrafficModels.IsExcluded(m.Title, m.Livery)).ToList();
+        return usable.FirstOrDefault(m => m.Title.Contains("A320", StringComparison.OrdinalIgnoreCase) && m.Title.Contains("FSLTL", StringComparison.OrdinalIgnoreCase))
+            ?? usable.FirstOrDefault(m => m.Title.Contains("A320", StringComparison.OrdinalIgnoreCase));
+    }
 
     // ------------------------------------------------------------------ intern
 

@@ -102,9 +102,10 @@ public sealed class TrafficTestTests
         Assert.Equal(-5 * RunwayEnd.MetersPerNm, spawnAlong, 0);
 
         var names = plan.Waypoints.Select(w => w.Name).ToList();
-        // Erster Boden-Wegpunkt an der Schwelle, deshalb dort kein Luft-Wegpunkt – gemessen wird die Schwelle trotzdem
-        Assert.Equal(["4nm", "3nm", "2nm", "1nm", "0.5nm", "touchdown", "rollout1", "rollout2", "stop", "beyondStop"], names);
-        Assert.Equal(0, plan.Waypoints.Single(w => w.Name == "touchdown").AlongM);
+        // Erster Boden-Wegpunkt 150 m hinter der Schwelle, der Luft-Wegpunkt an der Schwelle liegt 150 m davor
+        Assert.Equal(["4nm", "3nm", "2nm", "1nm", "0.5nm", "threshold", "touchdown", "rollout1", "rollout2", "stop", "beyondStop"], names);
+        Assert.Equal(TrafficTestPlan.DefaultTouchdownM, plan.Waypoints.Single(w => w.Name == "touchdown").AlongM);
+        Assert.Equal(150, TrafficTestPlan.DefaultTouchdownM);
         Assert.Equal(["4nm", "3nm", "2nm", "1nm", "0.5nm", "threshold"], plan.Checkpoints.Select(c => c.Name));
 
         // Entlang der Mittellinie aufsteigend, in der Luft fallende Höhe
@@ -246,6 +247,11 @@ public sealed class TrafficTestTests
 
         var behind = TrafficTestPlan.Build(end, TrafficTestVariant.A1, touchdownM: 300);
         Assert.Contains(behind.Waypoints, w => w.Name == "threshold");
+
+        // An der Schwelle: dort kein Luft-Wegpunkt, gemessen wird die Schwelle trotzdem
+        var atThreshold = TrafficTestPlan.Build(end, TrafficTestVariant.A1, touchdownM: 0);
+        Assert.DoesNotContain(atThreshold.Waypoints, w => w.Name == "threshold");
+        Assert.Contains(atThreshold.Checkpoints, c => c.Name == "threshold");
 
         Assert.Equal(TrafficTestPlan.MinTouchdownM, TrafficTestPlan.Build(end, TrafficTestVariant.A1, touchdownM: -2000).TouchdownM);
         Assert.Equal(TrafficTestPlan.MaxTouchdownM, TrafficTestPlan.Build(end, TrafficTestVariant.A1, touchdownM: 5000).TouchdownM);
@@ -391,6 +397,30 @@ public sealed class TrafficTestTests
         Assert.Equal("FSLTL A320 CFM", TrafficTestService.PickDefaultModel(models)!.Title);
         Assert.Equal("Asobo A320neo", TrafficTestService.PickDefaultModel(models[..1])!.Title);
         Assert.Null(TrafficTestService.PickDefaultModel([models[2]]));
+    }
+
+    [Theory]
+    [InlineData("FlyByWire A380X", "", "FlyByWire")]
+    [InlineData("Pride A380X", "", "A380X")]
+    [InlineData("Airbus A330-900neo Condor Beach", "", "A330-900neo")]
+    [InlineData("Headwind A339", "Condor", "Headwind")]
+    [InlineData("A330-300 (RR)", "Lufthansa", null)]
+    [InlineData("Asobo PassiveAircraft A330-900", "A330_900_CONDOR", null)]
+    [InlineData("FSLTL A320 CFM", "Lufthansa", null)]
+    public void Gesperrte_Modelle_FBW_und_Headwind(string title, string livery, string? pattern) =>
+        Assert.Equal(pattern, TrafficModels.ExcludedBy(title, livery));
+
+    [Fact]
+    public void Standardmodell_ueberspringt_gesperrte()
+    {
+        AiModel[] models =
+        [
+            new("FlyByWire A32NX A320", "Lufthansa"),
+            new("Asobo A320neo", "Default"),
+        ];
+
+        Assert.Equal("Asobo A320neo", TrafficTestService.PickDefaultModel(models)!.Title);
+        Assert.Null(TrafficTestService.PickDefaultModel(models[..1]));
     }
 
     [Fact]

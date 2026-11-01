@@ -113,7 +113,7 @@ public sealed record TrafficTestCheckpoint(string Name, double AlongM, double Gl
 ///
 /// Erfahrungen aus EDDL 05L/05R (31.10./1.11.2026): Die KI geht rund 1 km vor dem ersten Boden-Wegpunkt in ihren Landemodus
 /// (STATE_SIMPLE_LANDING), hebt die Nase, kreuzt die Schwelle 170–190 ft zu hoch und setzt 200–700 m hinter dem Boden-Wegpunkt auf.
-/// Deshalb liegt er jetzt an der Schwelle statt 300 m dahinter. Die Wegpunkte der letzten Meile liegen um <see cref="FinalLowFt"/>
+/// Deshalb liegt er jetzt 150 m hinter der Schwelle statt 300 m (an der Schwelle setzte die A330-900 schon nach gut 100 m auf). Die Wegpunkte der letzten Meile liegen um <see cref="FinalLowFt"/>
 /// tiefer als der Gleitpfad (1 NM ein Viertel, 0,5 NM 60 %, Schwelle voll); im Landemodus ignoriert die KI sie allerdings.
 /// </summary>
 /// <param name="GearDownFt">A2: Höhe über der Bahn, bei der der Fahrwerksbefehl rausgeht (damit es bei <see cref="GearDownByFt"/> draußen ist).</param>
@@ -144,8 +144,11 @@ public sealed record TrafficTestPlan(
 
     public const double ThresholdCrossingFt = 50;
 
-    /// <summary>Erster Boden-Wegpunkt an der Schwelle.</summary>
-    public const double DefaultTouchdownM = 0;
+    /// <summary>
+    /// Erster Boden-Wegpunkt 150 m hinter der Schwelle: Mit 0 setzten die A330 105–330 m dahinter auf (EDDL, 1.11.2026), mit 150 m
+    /// sollte das in der Aufsetzzone (rund 300–450 m) landen.
+    /// </summary>
+    public const double DefaultTouchdownM = 150;
 
     public const double MinTouchdownM = -500;
 
