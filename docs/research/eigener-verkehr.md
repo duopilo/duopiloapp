@@ -380,10 +380,27 @@ losrollt und abhebt (`STATE_SIMPLE_TAKEOFF`?) – sonst `rollM`: ein Boden-Wegpu
 Losrollen nach 90 s (`no_roll`). Auswertung: Losrollen, Abhebepunkt, -speed, Längsneigung (rotiert die KI?), Startstrecke,
 Querablage im Startlauf, Höhe über dem Bahnende, Steigrate, Längs- und Querneigung bis 1500 ft, Fahrwerk rein, Lichter.
 
+**Frankfurt (1.11.2026, beta.15, A2, EDDF 07L/07C/07R):** wie Düsseldorf – ATR +153 ft (durchgestartet), A320 +152 ft
+(durchgestartet, sackte dabei auf 113 ft durch, Fahrwerk erst nach 33 s drin), 737 +129 ft (gelandet bei 780 m, 1415 ft/min). Die KI
+kreuzt die Schwelle gleichmäßig 130–165 ft zu hoch, die 150-ft-Grenze entscheidet damit fast zufällig.
+
+**beta.16 in Frankfurt (1.11.2026):** Start A320 von der 18: rollt sofort los (`STATE_SIMPLE_TAKEOFF`), hebt nach 592 m mit 135 kt ab
+– ohne Rotieren (0,3°) –, steigt mit rund 1100 ft/min, Fahrwerk bei 390 ft drin, über dem Bahnende 720 ft, nach 149 s auf 2800 ft.
+Speed-Versuche: `throttle` 30 % (ATR) → 248 kt, Wunschgeschwindigkeit sprang auf 250 kt; `velocity` (A320) → ab 4 NM aus dem Pfad
+geworfen, über der Schwelle gut 5000 ft mit +6400 ft/min; `desired` (737) → 169 kt wie gehabt. Beim Start nahm die KI aber 185 kt an:
+**Die Wunschgeschwindigkeit wirkt nur nach oben, im Flug nie unter rund 169 kt; im Landemodus setzt die KI fest 133 kt, egal welcher
+Typ.** Lichter: Die PassiveAircraft haben kein Taxilicht – das Nachschicken nach der Landung verbrauchte sich daran.
+
+**Entscheidung (1.11.2026):** Endanflug und Landung macht Duopilo selbst (Kinematik, ab beta.17, `kinematicNm`): KI abgeben
+(`AIReleaseControl`), Position, Höhe und Lage einfrieren (`FREEZE_LATITUDE_LONGITUDE_SET`, `FREEZE_ALTITUDE_SET`,
+`FREEZE_ATTITUDE_SET`) und jeden Frame setzen (Systemereignis `Frame`) – wie vPilot. Fahrt je Typ, 3°-Pfad, Abfangen ab 30 ft
+(GA 15 ft) auf 150 ft/min, Aufsetzen um 450 m, bremsen bis zum Haltepunkt. Die Wegpunkt-KI bleibt für das normale Fliegen: Anflug
+bis zur Übernahme, Start, Steigflug, Durchstarten.
+
 **Fahrplan des eigenen Verkehrs (Stand 1.11.2026):**
 
 1. Anflug und Landung – erledigt bis beta.14 (Wegpunkte, Fahrwerk bis 2500 ft, Lichter, Freigabeliste, Geschwindigkeit).
-2. Durchstarten – beta.15.
+2. Durchstarten – beta.15 (klappt). Endanflug und Landung mit Kinematik – beta.17.
 3. Starts – beta.16 (der Start aus Stufe B, Variante B1): Spawn auf der Bahn, Startlauf, Rotieren, Steigflug auf 3000 ft, Fahrwerk
    rein, Lichter; Auswertung von Abhebepunkt und Steigflug. Spawn am Rollhalt kommt mit dem Rollen.
 4. Überflüge in Reiseflughöhe – danach: Flugzeuge, die über den Bereich des Spielers hinweg auf ihrer Flugfläche ziehen.
