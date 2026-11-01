@@ -183,7 +183,8 @@ public sealed class TrafficRules
     /// <summary>Mindestbreite übrige Verkehrsflugzeuge (ICAO-Code C).</summary>
     public const double AirlinerWidthM = 30;
 
-    private static readonly TrafficCategory[] AllCategories = [TrafficCategory.Airliner, TrafficCategory.GeneralAviation];
+    /// <summary>Kategorien eines zivilen Platzes ohne eigene Regeln.</summary>
+    private static readonly TrafficCategory[] Civil = [TrafficCategory.Airliner, TrafficCategory.GeneralAviation];
 
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -259,33 +260,34 @@ public sealed class TrafficRules
     public IReadOnlyList<TrafficMixEntry>? MixFor(string airport) => RuleFor(airport)?.Mix is { Count: > 0 } mix ? mix : null;
 
     /// <summary>
-    /// Welche Kategorien am Platz verkehren dürfen, und warum es weniger als alle sind (Schlüssel eines Grundtexts, null = alle).
+    /// Welche Kategorien am Platz verkehren dürfen, und warum (Schlüssel eines Grundtexts, null = ziviler Platz mit Linienverkehr oder
+    /// unbekannt): eigene Regeln, sonst Militärplatz → nur Militär, Heliport/Wasser/Ballon/geschlossen → nichts, kleiner Platz oder ohne
+    /// Linienverkehr → Allgemeine Luftfahrt, sonst Verkehrsflugzeuge und Allgemeine Luftfahrt.
     /// </summary>
     public (IReadOnlyList<TrafficCategory> Categories, string? Reason) AirportTraffic(string airport)
     {
         var rule = RuleFor(airport);
         if (rule?.Categories is { } names)
         {
-            var categories = names.Select(ParseCategory).OfType<TrafficCategory>().Distinct().ToList();
-            return (categories, categories.Count == AllCategories.Length ? null : "traffic.rules.reason.rules");
+            return ([.. names.Select(ParseCategory).OfType<TrafficCategory>().Distinct()], "traffic.rules.reason.rules");
         }
 
         var info = Directory.Find(airport);
         if (rule?.Military ?? info?.Military ?? false)
         {
-            return ([], "traffic.rules.reason.military");
+            return ([TrafficCategory.Military], "traffic.rules.reason.military");
         }
 
         return info?.Kind switch
         {
-            null => (AllCategories, null),
+            null => (Civil, null),
             TrafficAirportKind.Heliport => ([], "traffic.rules.reason.heliport"),
             TrafficAirportKind.Seaplane => ([], "traffic.rules.reason.seaplane"),
             TrafficAirportKind.Balloon => ([], "traffic.rules.reason.balloon"),
             TrafficAirportKind.Closed => ([], "traffic.rules.reason.closed"),
             TrafficAirportKind.Small => ([TrafficCategory.GeneralAviation], "traffic.rules.reason.small"),
             _ when !info.Scheduled => ([TrafficCategory.GeneralAviation], "traffic.rules.reason.noScheduled"),
-            _ => (AllCategories, null),
+            _ => (Civil, null),
         };
     }
 
@@ -349,7 +351,7 @@ public sealed class TrafficRules
 
         // Platz: Militär, Heliport, geschlossen, nur Allgemeine Luftfahrt …
         var (categories, reason) = AirportTraffic(runway.Airport);
-        var reasonText = reason is null ? "" : Reason(reason);
+        var reasonText = reason is null ? "" : " – " + Reason(reason);
         if (categories.Count == 0)
         {
             violations.Add(new("airport", Loc.T("traffic.rules.airportNone", runway.Airport, reasonText, airportNote)));
@@ -469,13 +471,13 @@ public sealed class TrafficRules
 
     public static string OperationName(TrafficOperation operation) => operation == TrafficOperation.Departure ? "departure" : "arrival";
 
-    public static string CategoryName(TrafficCategory category) =>
-        category == TrafficCategory.GeneralAviation ? "generalaviation" : "airliner";
+    public static string CategoryName(TrafficCategory category) => category.ToString().ToLowerInvariant();
 
     private static TrafficCategory? ParseCategory(string? name) => name?.Trim().ToLowerInvariant() switch
     {
         "airliner" => TrafficCategory.Airliner,
         "generalaviation" or "general_aviation" or "ga" => TrafficCategory.GeneralAviation,
+        "military" => TrafficCategory.Military,
         _ => null,
     };
 
@@ -498,8 +500,12 @@ public sealed class TrafficRules
         _ => operation,
     };
 
-    private static string CategoryLabel(TrafficCategory category) =>
-        category == TrafficCategory.GeneralAviation ? Loc.T("traffic.rules.generalAviation") : Loc.T("traffic.rules.airliners");
+    private static string CategoryLabel(TrafficCategory category) => category switch
+    {
+        TrafficCategory.GeneralAviation => Loc.T("traffic.rules.generalAviation"),
+        TrafficCategory.Military => Loc.T("traffic.rules.military"),
+        _ => Loc.T("traffic.rules.airliners"),
+    };
 
     private static TrafficWake? ParseWake(string? value) =>
         Enum.TryParse<TrafficWake>(value?.Trim(), ignoreCase: true, out var wake) ? wake : null;

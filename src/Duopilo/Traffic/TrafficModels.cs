@@ -22,6 +22,9 @@ public enum TrafficCategory
 
     /// <summary>Allgemeine Luftfahrt: Kolben, Turboprop, Business-Jets.</summary>
     GeneralAviation,
+
+    /// <summary>Militär: Transporter und Kampfjets – verkehren auf Militärplätzen (TrafficRules).</summary>
+    Military,
 }
 
 /// <summary>Ein freigegebener Flugzeugtyp mit den Modelltiteln, die ihn im Sim darstellen.</summary>
@@ -240,6 +243,9 @@ public static class TrafficModels
         Full("A310", "Airbus A310 (full)", 140, "A310", "EDDL 31.10.2026: landed."),
         Full("A337", "Airbus A330 BelugaXL (full)", 140, "A330-BelugaXL", "EDDL 31.10.2026: landed, touchdown 897 m."),
         Full("B748", "Boeing 747-8 (full)", 155, "747-8i", "EDDL 31.10.2026: landed."),
+        Military("A400", "Airbus A400M Atlas (full)", 120, "A400M Cargo", TrafficModelStatus.Candidate,
+            "EDDF 1.11.2026: landed kinematically (438 m, 115 kt); gear after 24 s, lights visible only some seconds after spawn."),
+        Military("F18S", "Boeing F/A-18E Super Hornet (full)", 135, "FA18E SuperHornet", TrafficModelStatus.Untested, "MSFS 2024 aircraft, not tested as AI yet."),
 
         // Volle GA-Modelle aus MSFS 2024 – ungetestet, erkannt an Titelwörtern (die Passive-Titel oben gehen vor)
         Ga("C152", "Cessna 152", 60, [["152"]]),
@@ -283,6 +289,10 @@ public static class TrafficModels
 
     private static TrafficModelType Full(string icaoType, string name, double approachKt, string[] titles, string note) =>
         new(icaoType, name, TrafficCategory.Airliner, titles, TrafficModelStatus.Candidate, note) { ApproachKt = approachKt };
+
+    /// <summary>Volles Militärmodell (kein PassiveAircraft-Dummy vorhanden).</summary>
+    private static TrafficModelType Military(string icaoType, string name, double approachKt, string title, TrafficModelStatus status, string note) =>
+        new(icaoType, name, TrafficCategory.Military, [title], status, note) { ApproachKt = approachKt };
 
     /// <summary>Ungetesteter voller GA-Typ, erkannt an Titelwörtern.</summary>
     private static TrafficModelType Ga(string icaoType, string name, double approachKt, IReadOnlyList<string[]> titleWords) =>
