@@ -19,6 +19,9 @@ namespace Duopilo.Traffic;
 /// <param name="GoAround">Durchstarten, wenn die KI zu hoch oder zu schnell über die Schwelle kommt oder zu lange nicht aufsetzt (<see cref="TrafficGoAround"/>).</param>
 /// <param name="RollM">B1: Boden-Wegpunkt so weit vor dem Spawn, mit Startgeschwindigkeit; leer oder 0 = keiner (<see cref="TrafficTestPlan.BuildTakeoff"/>).</param>
 /// <param name="KinematicNm">Ab dieser Entfernung zur Schwelle bewegt Duopilo das Flugzeug selbst (<see cref="TrafficKinematics"/>); leer = Wegpunkt-KI bis zum Halt.</param>
+/// <param name="TrackDeg">C1: Kurs des Überflugs (rechtweisend); leer = Richtung der Bahn.</param>
+/// <param name="FlightLevel">C1: Flugfläche; leer = 350 (GA 85).</param>
+/// <param name="CruiseKt">C1: wahre Reisegeschwindigkeit; leer = 450 kt (GA doppelte Vapp).</param>
 public sealed record TrafficTestRequest(
     string Airport,
     string Runway,
@@ -34,7 +37,10 @@ public sealed record TrafficTestRequest(
     bool GoAround = true,
     double? RollM = null,
     double? ThrottlePercent = null,
-    double? KinematicNm = null);
+    double? KinematicNm = null,
+    double? TrackDeg = null,
+    double? FlightLevel = null,
+    double? CruiseKt = null);
 
 /// <summary>Zeitpunkt und Text eines Ereignisses der Testlinie.</summary>
 public sealed record TrafficTestEvent(double Seconds, string Text);
@@ -263,9 +269,13 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             var (title, livery) = await ResolveModelAsync(request, ct);
             var approachKt = request.ApproachKt ?? TrafficModels.TypeOf(title, livery)?.ApproachKt;
             double? throttle = request.SpeedMethod == TrafficSpeedMethod.Throttle ? request.ThrottlePercent ?? TrafficTestPlan.DefaultThrottlePercent : null;
-            var plan = request.Variant == TrafficTestVariant.B1
-                ? TrafficTestPlan.BuildTakeoff(runway, approachKt, request.RollM, throttle)
-                : TrafficTestPlan.Build(runway, request.Variant, request.SpawnNm, request.TouchdownM, request.FinalLowFt, approachKt, throttle);
+            var category = TrafficModels.TypeOf(title, livery)?.Category ?? TrafficCategory.Airliner;
+            var plan = request.Variant switch
+            {
+                TrafficTestVariant.B1 => TrafficTestPlan.BuildTakeoff(runway, approachKt, request.RollM, throttle),
+                TrafficTestVariant.C1 => TrafficTestPlan.BuildOverflight(runway.Overhead(request.TrackDeg), category, approachKt, request.FlightLevel, request.CruiseKt, request.SpawnNm),
+                _ => TrafficTestPlan.Build(runway, request.Variant, request.SpawnNm, request.TouchdownM, request.FinalLowFt, approachKt, throttle),
+            };
             var spawnUtc = DateTimeOffset.UtcNow;
             var csv = OpenCsv(plan, spawnUtc);
 
@@ -284,11 +294,14 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             {
                 SpeedMethod = request.SpeedMethod,
                 GoAroundEnabled = request.GoAround,
-                KinematicNm = plan.IsTakeoff || request.KinematicNm is null ? null : Math.Clamp(request.KinematicNm.Value, MinKinematicNm, MaxKinematicNm),
-                Category = TrafficModels.TypeOf(title, livery)?.Category ?? TrafficCategory.Airliner,
+                KinematicNm = plan.IsTakeoff || plan.IsOverflight || request.KinematicNm is null ? null : Math.Clamp(request.KinematicNm.Value, MinKinematicNm, MaxKinematicNm),
+                Category = category,
+                Lights = plan.IsOverflight ? TrafficLights.Cruise : TrafficLights.Approach,
             };
             run.AddEvent(0, plan.IsTakeoff
                 ? string.Create(CultureInfo.InvariantCulture, $"spawn on the runway {TrafficTestPlan.LineUpM:0} m behind its start, takeoff speed {plan.TakeoffKt:0} kt, object {objectId}, {run.Tail}")
+                : plan.IsOverflight
+                ? string.Create(CultureInfo.InvariantCulture, $"spawn {plan.SpawnNm:0.#} NM before overhead, {plan.CruiseAltitudeFt:0} ft, track {plan.Runway.HeadingTrueDeg:000}, {plan.CruiseKt:0} kt ias ({plan.CruiseTasKt:0} tas), object {objectId}, {run.Tail}")
                 : string.Create(CultureInfo.InvariantCulture, $"spawn {plan.SpawnNm:0.#} NM, {plan.Spawn.AltitudeFt:0} ft, {plan.Spawn.AirspeedKt} kt, object {objectId}, {run.Tail}"));
             run.AddEvent(0, "speed_method " + SpeedMethodName(request.SpeedMethod)
                 + (plan.ThrottlePercent is { } t ? string.Create(CultureInfo.InvariantCulture, $" {t:0} %") : ""));
@@ -327,8 +340,8 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                     run.AddEvent(0, "gear_down_sent " + GearName(request.Gear));
                 }
 
-                await _sim.SetAiLightsAsync(objectId, TrafficLights.Approach, ct);
-                run.AddEvent(0, "lights_sent approach");
+                await _sim.SetAiLightsAsync(objectId, run.Lights, ct);
+                run.AddEvent(0, plan.IsOverflight ? "lights_sent cruise" : "lights_sent approach");
 
                 await _sim.SetAiWaypointsAsync(objectId, [.. plan.Waypoints.Select(w => w.Waypoint)], ct);
                 run.AddEvent(0, string.Create(CultureInfo.InvariantCulture, $"waypoints_sent {plan.Waypoints.Count}"));
@@ -574,7 +587,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
 
         // Durchstarten: zu hoch oder zu schnell über der Schwelle, oder zu lange nicht aufgesetzt – neue Wegpunkte geradeaus,
         // Steigflug auf 3000 ft, schneller werden; das Fahrwerk kommt bei positiver Steigrate rein (nicht mit Kinematik: die fliegt den Pfad)
-        if (run.GoAroundEnabled && !plan.IsTakeoff && run.Kinematics is null && run.Analysis.GoAroundPlan is null
+        if (run.GoAroundEnabled && !plan.IsTakeoff && !plan.IsOverflight && run.Kinematics is null && run.Analysis.GoAroundPlan is null
             && TrafficGoAround.Check(plan, run.PreviousAlongM, point.AlongM, sample.AltitudeFt, sample.IndicatedKt, sample.OnGround, run.Analysis.TouchedDown) is { } reason)
         {
             var goAround = TrafficGoAroundPlan.Build(plan, point.AlongM);
@@ -614,6 +627,14 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 var at = plan.Runway.Airport + " " + plan.Runway.Designation;
                 _ = Task.Run(() => StopTestAsync(reached ? "go_around" : "go_around_timeout", CancellationToken.None, at));
             }
+        }
+
+        // Überflug (C1): Ende hinter dem Ausflugpunkt
+        if (plan.IsOverflight && point.AlongM >= plan.ExitM && !run.StopScheduled)
+        {
+            run.StopScheduled = true;
+            var at = plan.Runway.Airport + " " + plan.Runway.Designation;
+            _ = Task.Run(() => StopTestAsync("passed", CancellationToken.None, at));
         }
 
         // Start (B1): Fahrwerk rein bei positiver Steigrate; Ende bei 2800 ft, am Boden über das Bahnende oder ohne Losrollen
@@ -692,10 +713,10 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         if (!run.LightsChecked && point.Seconds >= 5 && !sample.OnGround)
         {
             run.LightsChecked = true;
-            if (!TrafficLights.Approach.MatchedBy(sample.LightStates))
+            if (!run.Lights.MatchedBy(sample.LightStates))
             {
                 run.AddEvent(point.Seconds, "lights_resent approach (were: " + AiLights.Describe(sample.LightStates) + ")");
-                Fire(_sim.SetAiLightsAsync(run.ObjectId, TrafficLights.Approach, CancellationToken.None), "lights");
+                Fire(_sim.SetAiLightsAsync(run.ObjectId, run.Lights, CancellationToken.None), "lights");
             }
         }
 
@@ -1011,6 +1032,9 @@ public sealed class TrafficTestService : IHostedService, IDisposable
 
         /// <summary>Kategorie des Typs (Kennwerte der Kinematik).</summary>
         public TrafficCategory Category { get; init; }
+
+        /// <summary>Lichter beim Spawn (Anflug oder Reiseflug), auch beim Nachschicken.</summary>
+        public AiLights Lights { get; init; } = TrafficLights.Approach;
 
         /// <summary>Kinematik ab der Übernahme, sonst null (nur auf dem SimConnect-Thread verändert).</summary>
         public TrafficKinematics? Kinematics { get; set; }

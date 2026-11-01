@@ -324,6 +324,9 @@ public static class TrafficModels
 /// <summary>Lichter der Testflugzeuge (NonATC-Flugzeuge schaltet der Sim nicht selbst).</summary>
 public static class TrafficLights
 {
+    /// <summary>Im Reiseflug (über FL100): Nav, Beacon, Strobes und Logo an, Lande- und Taxilicht aus.</summary>
+    public static readonly AiLights Cruise = new(Nav: true, Beacon: true, Strobe: true, Landing: false, Taxi: false, Logo: true);
+
     /// <summary>Im Anflug: Nav, Beacon, Strobes, Landelicht, Bug-/Taxilicht und Logo an.</summary>
     public static readonly AiLights Approach = new(Nav: true, Beacon: true, Strobe: true, Landing: true, Taxi: true, Logo: true);
 

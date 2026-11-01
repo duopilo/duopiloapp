@@ -22,7 +22,9 @@ public static class TrafficTestTools
         "command at 3000 ft above the runway so it is down by 2500 ft (the evaluation checks that). Variant B1 is a takeoff instead: spawn " +
         "lined up 60 m behind the start of the runway, takeoff roll, liftoff, climb straight ahead to 3000 ft above the runway, gear up at a " +
         "positive climb rate; the test ends at 2800 ft (climbed), on the ground past the runway end (no_liftoff) or without rolling within " +
-        "90 s (no_roll). Up to 4 tests at the same time, one per runway (e.g. a parallel approach: one call for 05L, one for 05R); starting a " +
+        "90 s (no_roll). Variant C1 is an overflight at cruise altitude flown by the waypoint AI: spawn spawnNm (default 40, general " +
+        "aviation 15) before the middle of the runway at FL350 (general aviation FL85), straight over it on the runway's direction or " +
+        "trackDeg, nav/beacon/strobes/logo on, landing light off; the test ends the same distance behind it (passed). Up to 4 tests at the same time, one per runway (e.g. a parallel approach: one call for 05L, one for 05R); starting a " +
         "test on a runway that already has one replaces it. Pick runways the pilot is not using right now. Samples (1 per second) go to one CSV " +
         "per test in the data folder (traffic-tests). Follow with traffic_test_status, end with traffic_test_stop (the aircraft is removed; " +
         "after MaxMinutes, default 15, also without stop). Lights: nav, beacon, strobes, landing, taxi and logo on at spawn; after touchdown " +
@@ -35,10 +37,10 @@ public static class TrafficTestTools
         TrafficTestService tests,
         [Description("ICAO code of the airport, e.g. EDDL. Must be within 80 NM of the pilot's aircraft.")] string airport,
         [Description("Runway end to land on or take off from, e.g. 23L (5L and 05L are the same).")] string runway,
-        [Description("A1 (gear down from spawn, 5 NM), A2 (spawn 15 NM with the gear up, gear down at 3000 ft above the runway) or B1 (takeoff from the runway). Default A1.")] string variant = "A1",
+        [Description("A1 (gear down from spawn, 5 NM), A2 (spawn 15 NM with the gear up, gear down at 3000 ft above the runway), B1 (takeoff from the runway) or C1 (overflight at cruise altitude). Default A1.")] string variant = "A1",
         [Description("Aircraft title as listed by traffic_test_models. Empty = automatic (an FSLTL A320 if installed, else a verified model of the approval list – a PassiveAircraft model –, else any A320; FlyByWire and Headwind models are skipped).")] string? title = null,
         [Description("Livery name for the title (MSFS 2024 modular aircraft). Empty = default livery.")] string? livery = null,
-        [Description("Spawn distance before the threshold in NM (2–30). Empty = default of the variant.")] double? spawnNm = null,
+        [Description("Spawn distance before the threshold in NM (2–30; C1: before the overflight point, 5–75). Empty = default of the variant.")] double? spawnNm = null,
         [Description(
             "How the gear is lowered: 'all' (default: event GEAR_DOWN, event GEAR_SET 1 and the simvar GEAR HANDLE POSITION together), " +
             "'down' (only GEAR_DOWN), 'set' (only GEAR_SET 1) or 'handle' (only GEAR HANDLE POSITION) – to find out which one the model obeys.")] string gear = "all",
@@ -67,6 +69,9 @@ public static class TrafficTestTools
             "0.5 NM, onto the 3° path, flare from 30 ft (general aviation 15 ft) to about 150 ft/min, touchdown around 450 m behind the " +
             "threshold, then braking to the stop point. Needed because the waypoint AI flies no slower than about 169 kt and lands at a " +
             "fixed 133 kt. Empty = waypoint AI to the stop, as before.")] double? kinematicNm = null,
+        [Description("C1: track of the overflight in degrees true. Empty = direction of the runway.")] double? trackDeg = null,
+        [Description("C1: flight level, e.g. 350. Empty = 350 (general aviation 85).")] double? flightLevel = null,
+        [Description("C1: true cruise speed in kt. Empty = 450 (general aviation twice the approach speed, at most 300); the AI gets it as IAS.")] double? cruiseKt = null,
         [Description(
             "Go around when the approach doesn't fit (default true): too high or too fast at the threshold, or no touchdown by 900 m. " +
             "false = always land, as before.")] bool goAround = true,
@@ -92,7 +97,7 @@ public static class TrafficTestTools
 
         try
         {
-            var status = await tests.StartTestAsync(new TrafficTestRequest(airport, runway, parsed, title, livery, spawnNm, gearMethod, finalLowFt, touchdownM, approachKt, speed, goAround, rollM, throttlePercent, kinematicNm), cancellationToken);
+            var status = await tests.StartTestAsync(new TrafficTestRequest(airport, runway, parsed, title, livery, spawnNm, gearMethod, finalLowFt, touchdownM, approachKt, speed, goAround, rollM, throttlePercent, kinematicNm, trackDeg, flightLevel, cruiseKt), cancellationToken);
             return Json.Serialize(new { ok = true, status });
         }
         catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or TimeoutException or ArgumentException)
@@ -108,7 +113,9 @@ public static class TrafficTestTools
         "ground speed, vertical speed, pitch – nose up positive –, bank, gear, lights, " +
         "distance to the threshold, position relative to the centerline, AI state), events (spawn, gear, touchdown, stopped …) and the " +
         "evaluation: verdict (stopped, landed, floated = hovered above the runway without touching down, airborne, go_around, " +
-        "go_around_ignored = went around but touched down anyway; takeoff B1: climbed, climbing, rolling, no_roll, no_liftoff), go-around " +
+        "go_around_ignored = went around but touched down anyway; takeoff B1: climbed, climbing, rolling, no_roll, no_liftoff; overflight C1: " +
+        "passed, cruising), overflight (when overhead, distance off track, altitude and speed there, max track and altitude deviation, " +
+        "mean IAS and ground speed), go-around " +
         "(reason, where, height, lowest and highest point after it, seconds until the gear was up, whether 2800 ft were reached), takeoff " +
         "(roll start, liftoff point, speed and pitch, roll distance, height over the runway end, climb rate, pitch and bank up to 1500 ft, " +
         "gear up, lights at liftoff), kinematics (phase, where Duopilo took over, flare, touchdown, ground height), speed deviation, height " +

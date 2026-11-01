@@ -94,12 +94,34 @@ public sealed record TrafficTestTakeoff(
     double HighestFt,
     string? LightsAtLiftoff);
 
+/// <summary>Überflug (Variante <see cref="TrafficTestVariant.C1"/>).</summary>
+/// <param name="OverheadSeconds">Wann das Flugzeug über dem Überflugpunkt war, sonst null.</param>
+/// <param name="OverheadCrossM">Seitlicher Abstand zum Überflugpunkt dabei.</param>
+/// <param name="OverheadAltitudeFt">Höhe (MSL) dabei.</param>
+/// <param name="MaxCrossM">Größte Abweichung vom Kurs (Betrag).</param>
+/// <param name="MeanAltitudeDeviationFt">Mittlere Abweichung von der Reiseflughöhe (positiv = zu hoch).</param>
+/// <param name="MaxAltitudeDeviationFt">Größte Abweichung von der Reiseflughöhe (Vorzeichen wie oben).</param>
+/// <param name="MeanSpeedKt">Mittlere IAS.</param>
+/// <param name="MeanGroundSpeedKt">Mittlere Groundspeed.</param>
+/// <param name="Lights">Eingeschaltete Lichter des letzten Messpunkts.</param>
+public sealed record TrafficTestOverflight(
+    double? OverheadSeconds,
+    double? OverheadCrossM,
+    double? OverheadAltitudeFt,
+    double? OverheadKt,
+    double? MaxCrossM,
+    double? MeanAltitudeDeviationFt,
+    double? MaxAltitudeDeviationFt,
+    double? MeanSpeedKt,
+    double? MeanGroundSpeedKt,
+    string? Lights);
+
 /// <summary>Auswertung eines Testanflugs.</summary>
 /// <param name="Verdict">
 /// stopped (gelandet und angehalten), landed, floated (schwebt über der Bahn), airborne, go_around (durchgestartet, nicht gelandet),
 /// go_around_ignored (durchgestartet, aber doch aufgesetzt), no_data. Beim Start (B1): climbed (auf
 /// <see cref="TrafficTestPlan.ClimbEndFt"/> gestiegen), climbing, rolling, no_roll (nicht losgerollt), no_liftoff (am Boden über das
-/// Bahnende).
+/// Bahnende). Beim Überflug (C1): passed (hinter dem Ausflugpunkt), cruising.
 /// </param>
 /// <param name="MeanSpeedDeviationKt">Mittlere Abweichung IAS minus Wunsch im Anflug (positiv = zu schnell).</param>
 /// <param name="GearExtendedAtNm">Entfernung zur Schwelle, als das Fahrwerk ganz draußen war (0 = erst hinter der Schwelle).</param>
@@ -116,6 +138,7 @@ public sealed record TrafficTestTakeoff(
 /// <param name="LightsAfterLanding">Eingeschaltete Lichter des letzten Messpunkts am Boden nach dem Aufsetzen.</param>
 /// <param name="GoAround">Durchstarten, falls die KI durchgestartet ist.</param>
 /// <param name="Takeoff">Start, nur bei Variante B1.</param>
+/// <param name="Overflight">Überflug, nur bei Variante C1.</param>
 public sealed record TrafficTestSummary(
     string Verdict,
     int Samples,
@@ -139,7 +162,8 @@ public sealed record TrafficTestSummary(
     string? LightsAfterLanding,
     IReadOnlyList<string> AiStates,
     TrafficTestGoAround? GoAround = null,
-    TrafficTestTakeoff? Takeoff = null);
+    TrafficTestTakeoff? Takeoff = null,
+    TrafficTestOverflight? Overflight = null);
 
 /// <summary>
 /// Wertet die Messpunkte eines Testanflugs aus (rein rechnerisch, ohne SimConnect): Lage zur Mittellinie, Geschwindigkeit gegenüber
@@ -216,6 +240,18 @@ public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spa
     private double? _takeoffGearUpFt;
     private double _highestFt;
     private bool _backOnGround;
+    private double? _overheadSeconds;
+    private double _overheadCross;
+    private double _overheadAltitude;
+    private double _overheadKt;
+    private double? _maxCross;
+    private double _altitudeDeviationSum;
+    private double? _maxAltitudeDeviation;
+    private double _cruiseSpeedSum;
+    private double _cruiseGroundSpeedSum;
+    private int _cruiseSamples;
+    private bool _exited;
+    private int _lastLights;
 
     public int Samples { get; private set; }
 
@@ -274,6 +310,14 @@ public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spa
         }
 
         var heightFt = s.OnGround ? 0 : Math.Max(0, s.AltitudeFt - plan.Runway.ElevationFt);
+        if (plan.IsOverflight)
+        {
+            AddOverflight(s, seconds, along, cross, events);
+            _previousAlong = along;
+            _previousSeconds = seconds;
+            return new TrafficTestPoint(Math.Round(seconds, 1), along, cross, null, targetKt, events);
+        }
+
         if (plan.IsTakeoff)
         {
             AddTakeoff(s, seconds, along, cross, heightFt, events);
@@ -410,6 +454,7 @@ public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spa
     public TrafficTestSummary Summary()
     {
         var verdict = Samples == 0 ? "no_data"
+            : plan.IsOverflight ? (_exited ? "passed" : "cruising")
             : plan.IsTakeoff ? (_liftoffSeconds is null
                 ? (_overran ? "no_liftoff" : _rollStartSeconds is null ? "no_roll" : "rolling")
                 : _highestFt >= TrafficTestPlan.ClimbEndFt ? "climbed" : "climbing")
@@ -471,7 +516,52 @@ public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spa
                     _takeoffGearUpFt,
                     Math.Round(_highestFt),
                     _liftoffSeconds is null ? null : AiLights.Describe(_lightsAtLiftoff))
+                : null,
+            plan.IsOverflight
+                ? new TrafficTestOverflight(
+                    _overheadSeconds,
+                    _overheadSeconds is null ? null : Math.Round(_overheadCross),
+                    _overheadSeconds is null ? null : Math.Round(_overheadAltitude),
+                    _overheadSeconds is null ? null : Math.Round(_overheadKt),
+                    _maxCross is { } mc ? Math.Round(mc) : null,
+                    _cruiseSamples > 0 ? Math.Round(_altitudeDeviationSum / _cruiseSamples) : null,
+                    _maxAltitudeDeviation is { } ad ? Math.Round(ad) : null,
+                    _cruiseSamples > 0 ? Math.Round(_cruiseSpeedSum / _cruiseSamples) : null,
+                    _cruiseSamples > 0 ? Math.Round(_cruiseGroundSpeedSum / _cruiseSamples) : null,
+                    Samples > 0 ? AiLights.Describe(_lastLights) : null)
                 : null);
+    }
+
+    /// <summary>Überflug: Kurs, Höhe und Fahrt mitschreiben, Überflug- und Ausflugpunkt.</summary>
+    private void AddOverflight(AiProbeSample s, double seconds, double along, double cross, List<string> events)
+    {
+        _lastLights = s.LightStates;
+        _maxCross = Math.Max(_maxCross ?? 0, Math.Abs(cross));
+        var deviation = s.AltitudeFt - plan.CruiseAltitudeFt;
+        _altitudeDeviationSum += deviation;
+        if (_maxAltitudeDeviation is null || Math.Abs(deviation) > Math.Abs(_maxAltitudeDeviation.Value))
+        {
+            _maxAltitudeDeviation = deviation;
+        }
+
+        _cruiseSpeedSum += s.IndicatedKt;
+        _cruiseGroundSpeedSum += s.GroundSpeedKt;
+        _cruiseSamples++;
+
+        if (_overheadSeconds is null && _previousAlong is < 0 && along >= 0)
+        {
+            _overheadSeconds = Math.Round(seconds, 1);
+            _overheadCross = cross;
+            _overheadAltitude = s.AltitudeFt;
+            _overheadKt = s.IndicatedKt;
+            events.Add(string.Create(CultureInfo.InvariantCulture, $"overhead at {s.AltitudeFt:0} ft, {cross:0} m off track, {s.IndicatedKt:0} kt"));
+        }
+
+        if (!_exited && along >= plan.ExitM)
+        {
+            _exited = true;
+            events.Add("exit");
+        }
     }
 
     /// <summary>Start: Losrollen, Startlauf, Abheben, Bahnende, Steigflug bis 1500 ft, Fahrwerk rein.</summary>
