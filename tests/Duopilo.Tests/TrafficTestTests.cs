@@ -1293,6 +1293,11 @@ public sealed class TrafficTestTests
 
         // Toulouse: "*" lässt alles zu
         Assert.Empty(rules.Check(At("LFBO"), TrafficOperation.Arrival, "B738", TrafficCategory.Airliner, 145));
+
+        // Wunstorf: Militärplatz, im Mix überwiegend A400M, "*" lässt andere Militärflugzeuge zu
+        Assert.Empty(rules.Check(At("ETNW"), TrafficOperation.Arrival, "A400", TrafficCategory.Military, 120));
+        Assert.Empty(rules.Check(At("ETNW"), TrafficOperation.Arrival, "L39", TrafficCategory.Military, 100));
+        Assert.Contains(rules.Check(At("ETNW"), TrafficOperation.Arrival, "A20N", TrafficCategory.Airliner, 135), v => v.Code == "airport_category");
     }
 
     [Fact]

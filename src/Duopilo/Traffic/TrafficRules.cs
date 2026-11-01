@@ -425,7 +425,7 @@ public sealed class TrafficRules
     /// <summary>
     /// Modell für einen Test ohne Titel: unter den installierten, freigegebenen Modellen die, die an Platz und Bahn erlaubt sind. Mit
     /// Verkehrsmix wählt <paramref name="random"/> einen Teil nach Gewicht (nur Teile mit passenden Modellen), darin ein Modell mit dem
-    /// besten Status. Ohne Mix: <paramref name="preferred"/>, wenn erlaubt, sonst das erste mit dem besten Status. Keins = null.
+    /// besten Status. Ohne Mix: <paramref name="preferred"/>, wenn erlaubt, sonst ein zufälliges mit dem besten Status. Keins = null.
     /// </summary>
     public AiModel? PickModel(
         IReadOnlyList<AiModel> models,
@@ -478,7 +478,10 @@ public sealed class TrafficRules
             return preferred;
         }
 
-        return allowed.OrderByDescending(m => m.Type.Status).First().Model;
+        // Für Abwechslung (Militärplatz: A400M, C-17, A-10, L-39 …) zufällig unter denen mit dem besten Status
+        var top = allowed.Max(m => m.Type.Status);
+        var best = allowed.Where(m => m.Type.Status == top).ToList();
+        return best[random.Next(best.Count)].Model;
     }
 
     public static string OperationName(TrafficOperation operation) => operation == TrafficOperation.Departure ? "departure" : "arrival";
