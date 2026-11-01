@@ -278,9 +278,13 @@ public sealed class TrafficRules
             return ([TrafficCategory.Military], "traffic.rules.reason.military");
         }
 
-        return info?.Kind switch
+        if (info is null)
         {
-            null => (Civil, null),
+            return (Civil, null);
+        }
+
+        return info.Kind switch
+        {
             TrafficAirportKind.Heliport => ([], "traffic.rules.reason.heliport"),
             TrafficAirportKind.Seaplane => ([], "traffic.rules.reason.seaplane"),
             TrafficAirportKind.Balloon => ([], "traffic.rules.reason.balloon"),
@@ -347,7 +351,7 @@ public sealed class TrafficRules
         var wake = WakeOf(icaoType, category);
         var label = icaoType is { Length: > 0 } ? icaoType.ToUpperInvariant() : CategoryLabel(category);
         var airport = RuleFor(runway.Airport);
-        var airportNote = string.IsNullOrWhiteSpace(airport?.Note) ? "" : $" ({airport.Note.Trim()})";
+        var airportNote = airport?.Note is { } airportText && !string.IsNullOrWhiteSpace(airportText) ? $" ({airportText.Trim()})" : "";
 
         // Platz: Militär, Heliport, geschlossen, nur Allgemeine Luftfahrt …
         var (categories, reason) = AirportTraffic(runway.Airport);
