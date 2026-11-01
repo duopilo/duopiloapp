@@ -327,8 +327,11 @@ public static class TrafficLights
     /// <summary>Im Anflug: Nav, Beacon, Strobes, Landelicht, Bug-/Taxilicht und Logo an.</summary>
     public static readonly AiLights Approach = new(Nav: true, Beacon: true, Strobe: true, Landing: true, Taxi: true, Logo: true);
 
-    /// <summary>Nach dem Aufsetzen beim Abbremsen: Landelicht und Strobes aus, Taxilicht bleibt an.</summary>
-    public static readonly AiLights Rollout = new(Strobe: false, Landing: false, Taxi: true);
+    /// <summary>
+    /// Nach dem Aufsetzen beim Abbremsen: Landelicht und Strobes aus, Taxilicht bleibt an. Nav, Beacon und Logo stehen mit drin, weil
+    /// die KI im Schlafzustand nach der Landung alle Lichter ausschaltet (beta.14) und der Test sie dann nachschickt.
+    /// </summary>
+    public static readonly AiLights Rollout = new(Nav: true, Beacon: true, Strobe: false, Landing: false, Taxi: true, Logo: true);
 
     /// <summary>Unter dieser Geschwindigkeit am Boden schaltet der Test auf <see cref="Rollout"/>.</summary>
     public const double RolloutBelowKt = 60;

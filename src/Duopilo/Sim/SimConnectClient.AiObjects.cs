@@ -44,6 +44,7 @@ public sealed partial class SimConnectClient
     private uint _aiProbeDefId;
     private uint _aiGearDefId;
     private uint _aiSpeedDefId;
+    private uint _aiVelocityDefId;
     private readonly Dictionary<string, uint> _aiLightDefIds = new(StringComparer.Ordinal);
     private bool _aiModelsAvailable;
 
@@ -252,6 +253,23 @@ public sealed partial class SimConnectClient
             }
 
             sc.SetDataOnSimObject((SimDefinitionId)_aiSpeedDefId, objectId, SIMCONNECT_DATA_SET_FLAG.DEFAULT, knots);
+        }, ct);
+
+    /// <summary>
+    /// Versuch: Längsgeschwindigkeit eines eigenen KI-Flugzeugs direkt setzen (VELOCITY BODY Z, Fuß pro Sekunde) – laut Entwicklerforum
+    /// reagieren Flugzeuge darauf. Die KI rechnet ihre eigene Geschwindigkeit jeden Frame nach, deshalb ruft der Test das oft auf.
+    /// </summary>
+    public Task SetAiVelocityAsync(uint objectId, double feetPerSecond, CancellationToken ct) =>
+        RunOnSimThreadAsync(sc =>
+        {
+            if (_aiVelocityDefId == 0)
+            {
+                _aiVelocityDefId = ++_nextDefId;
+                sc.AddToDataDefinition((SimDefinitionId)_aiVelocityDefId, "VELOCITY BODY Z", "feet per second", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
+                sc.RegisterDataDefineStruct<double>((SimDefinitionId)_aiVelocityDefId);
+            }
+
+            sc.SetDataOnSimObject((SimDefinitionId)_aiVelocityDefId, objectId, SIMCONNECT_DATA_SET_FLAG.DEFAULT, feetPerSecond);
         }, ct);
 
     /// <summary>Event an ein eigenes KI-Objekt (nicht an das eigene Flugzeug, daher ohne die Sperrliste des Eingabe-Moduls).</summary>
@@ -566,6 +584,7 @@ public sealed partial class SimConnectClient
         _aiProbeDefId = 0;
         _aiGearDefId = 0;
         _aiSpeedDefId = 0;
+        _aiVelocityDefId = 0;
         _aiLightDefIds.Clear();
         _aiModelsAvailable = false;
         _aiProbes.Clear();

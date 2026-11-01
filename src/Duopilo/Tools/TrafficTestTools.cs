@@ -19,7 +19,10 @@ public static class TrafficTestTools
         "Developer test tool (off by default, Duopilo:TrafficTest:Enabled): spawns an AI aircraft (tail DUO01–DUO04, no ATC control) that " +
         "flies a final approach to a runway by waypoints, lands and stops on the runway – to find out whether Duopilo can run its own traffic. " +
         "Variant A1: spawn 5 NM out on the extended centerline with the gear already down. Variant A2: spawn 15 NM out with the gear up, gear " +
-        "command at 3000 ft above the runway so it is down by 2500 ft (the evaluation checks that). Up to 4 tests at the same time, one per runway (e.g. a parallel approach: one call for 05L, one for 05R); starting a " +
+        "command at 3000 ft above the runway so it is down by 2500 ft (the evaluation checks that). Variant B1 is a takeoff instead: spawn " +
+        "lined up 60 m behind the start of the runway, takeoff roll, liftoff, climb straight ahead to 3000 ft above the runway, gear up at a " +
+        "positive climb rate; the test ends at 2800 ft (climbed), on the ground past the runway end (no_liftoff) or without rolling within " +
+        "90 s (no_roll). Up to 4 tests at the same time, one per runway (e.g. a parallel approach: one call for 05L, one for 05R); starting a " +
         "test on a runway that already has one replaces it. Pick runways the pilot is not using right now. Samples (1 per second) go to one CSV " +
         "per test in the data folder (traffic-tests). Follow with traffic_test_status, end with traffic_test_stop (the aircraft is removed; " +
         "after MaxMinutes, default 15, also without stop). Lights: nav, beacon, strobes, landing, taxi and logo on at spawn; after touchdown " +
@@ -31,8 +34,8 @@ public static class TrafficTestTools
     public static async Task<string> Start(
         TrafficTestService tests,
         [Description("ICAO code of the airport, e.g. EDDL. Must be within 80 NM of the pilot's aircraft.")] string airport,
-        [Description("Runway end to land on, e.g. 23L (5L and 05L are the same).")] string runway,
-        [Description("A1 (gear down from spawn, 5 NM) or A2 (spawn 15 NM with the gear up, gear down at 3000 ft above the runway). Default A1.")] string variant = "A1",
+        [Description("Runway end to land on or take off from, e.g. 23L (5L and 05L are the same).")] string runway,
+        [Description("A1 (gear down from spawn, 5 NM), A2 (spawn 15 NM with the gear up, gear down at 3000 ft above the runway) or B1 (takeoff from the runway). Default A1.")] string variant = "A1",
         [Description("Aircraft title as listed by traffic_test_models. Empty = automatic (an FSLTL A320 if installed, else a verified model of the approval list – a PassiveAircraft model –, else any A320; FlyByWire and Headwind models are skipped).")] string? title = null,
         [Description("Livery name for the title (MSFS 2024 modular aircraft). Empty = default livery.")] string? livery = null,
         [Description("Spawn distance before the threshold in NM (2–30). Empty = default of the variant.")] double? spawnNm = null,
@@ -49,13 +52,21 @@ public static class TrafficTestTools
             "switches to its landing mode about 1 km before it and touched down 100–700 m behind it in the tests. Empty = 150.")] double? touchdownM = null,
         [Description(
             "Approach speed (Vapp) in kt, e.g. 115 for an ATR 72 or 65 for a Cessna 172. The waypoints get Vapp + 25 from 6 NM, Vapp + 5 " +
-            "below, Vapp at the threshold. Empty = from the approval list (traffic_test_models: approachKt), else 135.")] double? approachKt = null,
+            "below, Vapp at the threshold. B1: takeoff speed about V2 = Vapp + 10, climb waypoints + 10, + 40 and + 60 kt on top. Empty = " +
+            "from the approval list (traffic_test_models: approachKt), else 135.")] double? approachKt = null,
         [Description(
-            "Control the speed on approach via the simvar AI DESIRED SPEED (default true) – the AI ignores the speed in the waypoints and " +
-            "flew 160–169 kt with every model. false = waypoint speeds only, as before.")] bool speedControl = true,
+            "How the speed is controlled – the AI ignores the speed in the waypoints (every model flew 160–169 kt) and overwrote AI DESIRED " +
+            "SPEED in beta.14 (stayed at 169 kt). 'desired' (default): AI DESIRED SPEED to the speed of the next waypoint. 'throttle' " +
+            "(experiment): waypoints in the air with THROTTLE_REQUESTED and a fixed throttle (throttlePercent) instead of the speed. " +
+            "'velocity' (experiment): VELOCITY BODY Z five times a second to the wanted speed as TAS, plus AI DESIRED SPEED. 'off': waypoint " +
+            "speeds only.")] string speedMethod = "desired",
+        [Description("Throttle in % (0–100) of the waypoints in the air for speedMethod 'throttle'. Empty = 30.")] double? throttlePercent = null,
         [Description(
             "Go around when the approach doesn't fit (default true): too high or too fast at the threshold, or no touchdown by 900 m. " +
             "false = always land, as before.")] bool goAround = true,
+        [Description(
+            "B1 only: an extra ground waypoint this many m ahead of the spawn with the takeoff speed, in case the AI doesn't start rolling " +
+            "or accelerating towards a first waypoint in the air (0–60 % of the runway). Empty or 0 = none.")] double? rollM = null,
         CancellationToken cancellationToken = default)
     {
         if (!Enum.TryParse<TrafficTestVariant>(variant?.Trim(), ignoreCase: true, out var parsed) || !Enum.IsDefined(parsed))
@@ -68,9 +79,14 @@ public static class TrafficTestTools
             return Json.Serialize(new { ok = false, error = Loc.T("tools.trafficTest.gearUnknown", gear ?? "") });
         }
 
+        if (!Enum.TryParse<TrafficSpeedMethod>(speedMethod?.Trim(), ignoreCase: true, out var speed) || !Enum.IsDefined(speed))
+        {
+            return Json.Serialize(new { ok = false, error = Loc.T("tools.trafficTest.speedMethodUnknown", speedMethod ?? "") });
+        }
+
         try
         {
-            var status = await tests.StartTestAsync(new TrafficTestRequest(airport, runway, parsed, title, livery, spawnNm, gearMethod, finalLowFt, touchdownM, approachKt, speedControl, goAround), cancellationToken);
+            var status = await tests.StartTestAsync(new TrafficTestRequest(airport, runway, parsed, title, livery, spawnNm, gearMethod, finalLowFt, touchdownM, approachKt, speed, goAround, rollM, throttlePercent), cancellationToken);
             return Json.Serialize(new { ok = true, status });
         }
         catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or TimeoutException or ArgumentException)
@@ -86,8 +102,10 @@ public static class TrafficTestTools
         "ground speed, vertical speed, pitch – nose up positive –, bank, gear, lights, " +
         "distance to the threshold, position relative to the centerline, AI state), events (spawn, gear, touchdown, stopped …) and the " +
         "evaluation: verdict (stopped, landed, floated = hovered above the runway without touching down, airborne, go_around, " +
-        "go_around_ignored = went around but touched down anyway), go-around (reason, where, height, lowest and highest point after it, " +
-        "seconds until the gear was up, whether 2800 ft were reached), speed deviation, height " +
+        "go_around_ignored = went around but touched down anyway; takeoff B1: climbed, climbing, rolling, no_roll, no_liftoff), go-around " +
+        "(reason, where, height, lowest and highest point after it, seconds until the gear was up, whether 2800 ft were reached), takeoff " +
+        "(roll start, liftoff point, speed and pitch, roll distance, height over the runway end, climb rate, pitch and bank up to 1500 ft, " +
+        "gear up, lights at liftoff), speed deviation, height " +
         "above the runway when the gear was down and whether that was by 2500 ft, values " +
         "at the approach gates (altitude deviation from the glide path, pitch), approach pitch, touchdown point, speed, sink rate, pitch and " +
         "flare (pitch gain before touchdown), max bank on final, lights on final and after landing, float seconds, stop point. Paths of " +

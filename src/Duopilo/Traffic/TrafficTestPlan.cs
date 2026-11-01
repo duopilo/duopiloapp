@@ -12,6 +12,28 @@ public enum TrafficTestVariant
 
     /// <summary>Spawn 15 NM vor der Bahn mit Fahrwerk oben, Fahrwerk bei 3000 ft über der Bahn ausfahren (bei 2500 ft draußen).</summary>
     A2,
+
+    /// <summary>Start (Stufe B): Spawn auf der Bahn, Startlauf, Abheben, Steigflug geradeaus auf 3000 ft über der Bahn, Fahrwerk rein.</summary>
+    B1,
+}
+
+/// <summary>
+/// Wie der Test die Geschwindigkeit der KI regelt. Die Geschwindigkeit in den Wegpunkten beachtet sie nicht, und AI DESIRED SPEED
+/// überschreibt sie (beta.14: immer 169 kt) – Throttle und Velocity sind Versuche.
+/// </summary>
+public enum TrafficSpeedMethod
+{
+    /// <summary>Nur die Geschwindigkeit in den Wegpunkten.</summary>
+    Off,
+
+    /// <summary>AI DESIRED SPEED auf die Geschwindigkeit des nächsten Wegpunkts (wirkte in beta.14 nicht).</summary>
+    Desired,
+
+    /// <summary>Wegpunkte in der Luft mit THROTTLE_REQUESTED und festem Schub in Prozent statt SPEED_REQUESTED.</summary>
+    Throttle,
+
+    /// <summary>VELOCITY BODY Z fünfmal pro Sekunde auf die Wunschgeschwindigkeit (als TAS), dazu AI DESIRED SPEED.</summary>
+    Velocity,
 }
 
 /// <summary>Landerichtung einer Bahn: Schwelle, Landekurs, Höhe, Länge.</summary>
@@ -182,7 +204,44 @@ public sealed record TrafficTestPlan(
     /// <summary>Luft-Wegpunkte liegen mindestens so weit vor dem ersten Boden-Wegpunkt.</summary>
     private const double AirBeforeGroundM = 100;
 
+    /// <summary>B1: Spawn so weit hinter dem Bahnanfang, auf der Mittellinie in Startrichtung.</summary>
+    public const double LineUpM = 60;
+
+    /// <summary>B1: Startgeschwindigkeit (etwa V2) über Vapp des Typs – A320 135 + 10, C172 65 + 10 (etwa Vy).</summary>
+    public const double TakeoffMarginKt = 10;
+
+    /// <summary>B1: Ab dieser Höhe über der Bahn ist der Start gelungen und der Test endet.</summary>
+    public const double ClimbEndFt = 2800;
+
     private static readonly double[] Gates = [12, 10, 8, 6, 4, 3, 2, 1, 0.5];
+
+    /// <summary>Ob es ein Start ist (<see cref="TrafficTestVariant.B1"/>) statt eines Anflugs.</summary>
+    public bool IsTakeoff => Variant == TrafficTestVariant.B1;
+
+    /// <summary>B1: Startgeschwindigkeit, etwa V2 (Vapp + <see cref="TakeoffMarginKt"/>).</summary>
+    public double TakeoffKt => ApproachKt + TakeoffMarginKt;
+
+    /// <summary>Geschwindigkeit am ersten Boden-Wegpunkt (Vapp − 5, mindestens 40 kt).</summary>
+    public double TouchdownKt => Math.Max(40, ApproachKt - 5);
+
+    /// <summary>Schub der Wegpunkte in der Luft bei <see cref="TrafficSpeedMethod.Throttle"/>, sonst null.</summary>
+    public double? ThrottlePercent { get; init; }
+
+    /// <summary>Standard-Schub für <see cref="TrafficSpeedMethod.Throttle"/>, wenn die Anfrage keinen nennt.</summary>
+    public const double DefaultThrottlePercent = 30;
+
+    /// <summary>
+    /// Wunschgeschwindigkeit in der Luft an einer Position: die des nächsten Wegpunkts, hinter der Schwelle aber nicht unter
+    /// <see cref="TouchdownKt"/> – sonst bekäme die KI im Abfangen schon die Ausrollgeschwindigkeit (60 kt) vorgegeben.
+    /// </summary>
+    public double AirborneTargetKt(double alongM)
+    {
+        var next = Next(alongM).Waypoint.SpeedKt;
+        return IsTakeoff || alongM < 0 ? next : Math.Max(next, TouchdownKt);
+    }
+
+    /// <summary>Wahre Fluggeschwindigkeit (TAS) zu einer angezeigten (IAS) in einer Höhe: Faustregel 2 % je 1000 ft.</summary>
+    public static double TrueAirspeedKt(double indicatedKt, double altitudeFt) => indicatedKt * (1 + (0.02 * Math.Max(0, altitudeFt) / 1000));
 
     public static double DefaultSpawnNm(TrafficTestVariant variant) => variant == TrafficTestVariant.A2 ? 15 : 5;
 
@@ -210,8 +269,14 @@ public sealed record TrafficTestPlan(
         double? spawnNm = null,
         double? touchdownM = null,
         double? finalLowFt = null,
-        double? approachKt = null)
+        double? approachKt = null,
+        double? throttlePercent = null)
     {
+        if (variant == TrafficTestVariant.B1)
+        {
+            return BuildTakeoff(runway, approachKt, throttlePercent: throttlePercent);
+        }
+
         if (runway.LengthM < MinRunwayM)
         {
             throw new ArgumentException(string.Create(CultureInfo.InvariantCulture, $"Runway {runway.Designation} is {runway.LengthM:0} m long, at least {MinRunwayM:0} m are needed."), nameof(runway));
@@ -241,7 +306,8 @@ public sealed record TrafficTestPlan(
 
         var waypoints = new List<TrafficTestWaypoint>();
         var checkpoints = new List<TrafficTestCheckpoint>();
-        var air = AiWaypointFlags.SpeedRequested | AiWaypointFlags.ComputeVerticalSpeed;
+        var throttle = Throttle(throttlePercent);
+        var air = AirFlags(throttle);
         foreach (var gate in Gates.Where(g => g < spawn - 0.5).Append(0))
         {
             var along = -gate * RunwayEnd.MetersPerNm;
@@ -256,7 +322,7 @@ public sealed record TrafficTestPlan(
 
             var (lat, lon) = runway.Point(along);
             var drop = low * FinalLowShare(gate);
-            waypoints.Add(new(name, along, new AiWaypoint(lat, lon, path - drop, speed, air), drop > 0 ? path : null));
+            waypoints.Add(new(name, along, new AiWaypoint(lat, lon, path - drop, speed, air, throttle ?? 0), drop > 0 ? path : null));
         }
 
         var ground = AiWaypointFlags.SpeedRequested | AiWaypointFlags.OnGround;
@@ -275,16 +341,70 @@ public sealed record TrafficTestPlan(
             OnGround: false,
             AirspeedKt: (uint)(spawn >= 6 ? intermediateKt : gateKt));
 
-        return new TrafficTestPlan(variant, runway, initial, spawn, gearAtSpawn, gearDownFt, gearDownNm, touchdown, stop, low, vapp, waypoints, checkpoints, warnings);
+        return new TrafficTestPlan(variant, runway, initial, spawn, gearAtSpawn, gearDownFt, gearDownNm, touchdown, stop, low, vapp, waypoints, checkpoints, warnings)
+        {
+            ThrottlePercent = throttle,
+        };
+    }
+
+    /// <summary>
+    /// Start (B1): Spawn <see cref="LineUpM"/> hinter dem Bahnanfang am Boden, Fahrwerk unten; dann Wegpunkte in der Luft geradeaus:
+    /// 1 NM hinter dem Bahnende 1000 ft, 4 NM weiter 3000 ft über der Bahn, dann geradeaus weiter. Geschwindigkeiten aus der
+    /// Startgeschwindigkeit (etwa V2 = Vapp + 10): + 10, + 40, + 60 kt. Mit <paramref name="rollM"/> liegt vorher ein Boden-Wegpunkt
+    /// so weit voraus, mit Startgeschwindigkeit – falls die KI ohne ihn nicht losrollt oder nicht beschleunigt.
+    /// </summary>
+    public static TrafficTestPlan BuildTakeoff(RunwayEnd runway, double? approachKt = null, double? rollM = null, double? throttlePercent = null)
+    {
+        if (runway.LengthM < MinRunwayM)
+        {
+            throw new ArgumentException(string.Create(CultureInfo.InvariantCulture, $"Runway {runway.Designation} is {runway.LengthM:0} m long, at least {MinRunwayM:0} m are needed."), nameof(runway));
+        }
+
+        var warnings = new List<string>();
+        if (runway.LengthM < ShortRunwayM)
+        {
+            warnings.Add("shortRunway");
+        }
+
+        var vapp = Math.Clamp(approachKt ?? DefaultApproachKt, 50, 180);
+        var v2 = vapp + TakeoffMarginKt;
+        var waypoints = new List<TrafficTestWaypoint>();
+        var roll = Math.Clamp(rollM ?? 0, 0, runway.LengthM * 0.6);
+        if (roll > 0)
+        {
+            Add(waypoints, runway, "roll", LineUpM + roll, runway.ElevationFt, v2, AiWaypointFlags.SpeedRequested | AiWaypointFlags.OnGround);
+        }
+
+        var throttle = Throttle(throttlePercent);
+        var air = AirFlags(throttle);
+        var dep1 = runway.LengthM + RunwayEnd.MetersPerNm;
+        Add(waypoints, runway, "dep1", dep1, runway.ElevationFt + 1000, v2 + 10, air, throttle);
+        Add(waypoints, runway, "dep2", dep1 + (4 * RunwayEnd.MetersPerNm), runway.ElevationFt + 3000, Math.Min(v2 + 40, 250), air, throttle);
+        Add(waypoints, runway, "dep3", dep1 + (10 * RunwayEnd.MetersPerNm), runway.ElevationFt + 3000, Math.Min(v2 + 60, 250), air, throttle);
+        Add(waypoints, runway, "dep4", dep1 + (20 * RunwayEnd.MetersPerNm), runway.ElevationFt + 3000, Math.Min(v2 + 60, 250), air, throttle);
+
+        var (lat, lon) = runway.Point(LineUpM);
+        var spawn = new AiInitPosition(lat, lon, runway.ElevationFt, runway.HeadingTrueDeg, OnGround: true, AirspeedKt: 0);
+        return new TrafficTestPlan(TrafficTestVariant.B1, runway, spawn, 0, true, null, null, 0, 0, 0, vapp, waypoints, [], warnings)
+        {
+            ThrottlePercent = throttle,
+        };
     }
 
     /// <summary>Der nächste Wegpunkt vor einer Position (entlang der Mittellinie), am Ende der letzte.</summary>
     public TrafficTestWaypoint Next(double alongM) =>
         Waypoints.FirstOrDefault(w => w.AlongM > alongM + 1) ?? Waypoints[^1];
 
-    private static void Add(List<TrafficTestWaypoint> list, RunwayEnd runway, string name, double alongM, double altitudeFt, double speedKt, AiWaypointFlags flags)
+    private static void Add(List<TrafficTestWaypoint> list, RunwayEnd runway, string name, double alongM, double altitudeFt, double speedKt, AiWaypointFlags flags, double? throttlePercent = null)
     {
         var (lat, lon) = runway.Point(alongM);
-        list.Add(new TrafficTestWaypoint(name, alongM, new AiWaypoint(lat, lon, altitudeFt, speedKt, flags)));
+        list.Add(new TrafficTestWaypoint(name, alongM, new AiWaypoint(lat, lon, altitudeFt, speedKt, flags, throttlePercent ?? 0)));
     }
+
+    /// <summary>Schub 0–100 %, null bleibt null (dann gilt die Geschwindigkeit der Wegpunkte).</summary>
+    private static double? Throttle(double? percent) => percent is { } p ? Math.Clamp(p, 0, 100) : null;
+
+    /// <summary>Wegpunkte in der Luft: Geschwindigkeit oder (Versuch) fester Schub, Sinkrate jeweils berechnet.</summary>
+    private static AiWaypointFlags AirFlags(double? throttle) =>
+        (throttle is null ? AiWaypointFlags.SpeedRequested : AiWaypointFlags.ThrottleRequested) | AiWaypointFlags.ComputeVerticalSpeed;
 }

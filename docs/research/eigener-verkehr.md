@@ -338,6 +338,29 @@ B737-800 → B738 …), mit Anfluggeschwindigkeit je Typ; die vollen Modelle ble
 Duopilo im Anflug `AI DESIRED SPEED` auf die Geschwindigkeit des nächsten Wegpunkts (aus Vapp des Typs: ab 6 NM Vapp + 25, darunter
 Vapp + 5, an der Schwelle Vapp). Fallback, falls die KI das auch ignoriert: Schub über `THROTTLE_REQUESTED` regeln.
 
+**Geschwindigkeitsregelung (1.11.2026, beta.14, A2, EDDL):** ATR 72-600 auf 05L, A320 NEO auf 05R. `AI DESIRED SPEED` las
+sich die ganze Zeit als 169 kt zurück, obwohl Duopilo alle 5 s 140/120 kt (ATR) bzw. 160/140 kt (A320) setzte – die KI überschreibt
+den Wert. Beide flogen 169 kt bis 0,5 NM, erst im Landemodus fiel die Fahrt auf 135–145 kt.
+
+| | ATR 72-600 (05L) | A320 NEO (05R) |
+|---|---|---|
+| Fahrwerk draußen | 2900 ft | 2900 ft |
+| Schwelle | +164 ft, 145 kt | +149 ft, 142 kt |
+| Aufsetzen | 1725 m, 63 ft/min | 896 m, 1405 ft/min |
+| danach | `STATE_SLEEP` mit 55 kt bei 2188 m (alle Boden-Wegpunkte lagen schon dahinter) | Halt bei rund 1500 m |
+| Lichter nach der Landung | alle aus | alle aus |
+
+Im Schlafzustand nach der Landung schaltet die KI alle Lichter aus, auch Nav und Beacon. Folge (beta.16): Speed-Versuche
+`throttle` (fester Schub in den Wegpunkten) und `velocity` (`VELOCITY BODY Z` mit 5 Hz), Rollout-Lichter mit Nav/Beacon/Logo und
+Nachschicken.
+
+**Durchstarten im Sim (1.11.2026, beta.15, A2, EDDL):** Die ATR kreuzte die Schwelle 163 ft zu hoch (142 kt) → `go_around`.
+Die neue Wegpunktliste nahm sie an (MSFS 2024 übernimmt im Flug also eine zweite Liste – der Bug aus SU14 trifft hier nicht zu):
+Zustand von `STATE_SIMPLE_LANDING` zurück auf `STATE_SIMPLE_FLIGHT`, tiefster Punkt 211 ft (beim Durchstarten 213 ft), Steigflug
+mit 1250–1425 ft/min, Fahrwerksbefehl bei 221 ft, Fahrwerk drin bei 420 ft (13 s), 2800 ft nach 2 Minuten → Test endete mit
+`go_around`. Die Fahrt blieb auch dabei bei 169 kt. Der A320 lag mit +141 ft und 144 kt unter den Grenzen und landete normal
+(792 m, 1412 ft/min), hielt 13 m vor dem letzten Wegpunkt; im Schlafzustand danach wieder alle Lichter aus.
+
 **Durchstarten (ab beta.15):** Die ATR kam weit zu hoch über die Schwelle (auch wegen 160 kt statt 115 kt), die C172 setzte spät auf.
 Duopilo startet deshalb durch, wenn das Flugzeug an der Schwelle mehr als 150 ft über dem Gleitpfad oder mehr als Vapp + 20 kt ist oder
 bis 900 m hinter der Schwelle (kurze Bahnen: ein Drittel der Länge, mindestens 300 m hinter dem Boden-Wegpunkt) nicht aufgesetzt hat.
@@ -349,12 +372,20 @@ ihren Landemodus (`STATE_SIMPLE_LANDING`) verlässt – setzt sie trotzdem auf, 
 Nächste Schritte: Geschwindigkeitsregelung testen (ATR, A320 NEO, C172) und das Durchstarten (beta.15). Sieht es dann immer noch komisch
 aus, in Frankfurt testen; Speed notfalls über den Schub (`THROTTLE_REQUESTED`).
 
+**Start B1 (ab beta.16):** Spawn am Boden 60 m hinter dem Bahnanfang auf der Mittellinie, Fahrwerk unten, Lichter wie im Anflug
+(alle an). Wegpunkte in der Luft geradeaus: 1 NM hinter dem Bahnende 1000 ft, 4 NM weiter 3000 ft über der Bahn, dann geradeaus
+weiter; Geschwindigkeit aus V2 ≈ Vapp + 10 des Typs (+ 10, + 40, + 60 kt). Offen: ob die KI zu einem ersten Wegpunkt in der Luft
+losrollt und abhebt (`STATE_SIMPLE_TAKEOFF`?) – sonst `rollM`: ein Boden-Wegpunkt mit Startgeschwindigkeit voraus. Fahrwerk rein ab
+30 ft bei mehr als 300 ft/min Steigen. Ende bei 2800 ft (`climbed`), am Boden hinter dem Bahnende (`no_liftoff`) oder ohne
+Losrollen nach 90 s (`no_roll`). Auswertung: Losrollen, Abhebepunkt, -speed, Längsneigung (rotiert die KI?), Startstrecke,
+Querablage im Startlauf, Höhe über dem Bahnende, Steigrate, Längs- und Querneigung bis 1500 ft, Fahrwerk rein, Lichter.
+
 **Fahrplan des eigenen Verkehrs (Stand 1.11.2026):**
 
 1. Anflug und Landung – erledigt bis beta.14 (Wegpunkte, Fahrwerk bis 2500 ft, Lichter, Freigabeliste, Geschwindigkeit).
 2. Durchstarten – beta.15.
-3. Starts – beta.16 (der Start aus Stufe B): Spawn auf der Bahn oder am Rollhalt, Startlauf, Rotieren, Steigflug auf 3000 ft, Fahrwerk rein, Lichter;
-   Auswertung von Abhebepunkt und Steigflug.
+3. Starts – beta.16 (der Start aus Stufe B, Variante B1): Spawn auf der Bahn, Startlauf, Rotieren, Steigflug auf 3000 ft, Fahrwerk
+   rein, Lichter; Auswertung von Abhebepunkt und Steigflug. Spawn am Rollhalt kommt mit dem Rollen.
 4. Überflüge in Reiseflughöhe – danach: Flugzeuge, die über den Bereich des Spielers hinweg auf ihrer Flugfläche ziehen.
 5. Rollen – irgendwann: Pushback und Rollen zwischen Gate und Bahn über die Rollwege (aus Stufe C).
 
