@@ -29,7 +29,7 @@ public static class TrafficTestTools
         [Description("ICAO code of the airport, e.g. EDDL. Must be within 80 NM of the pilot's aircraft.")] string airport,
         [Description("Runway end to land on, e.g. 23L (5L and 05L are the same).")] string runway,
         [Description("A1 (gear down from spawn, 5 NM) or A2 (spawn 15 NM with the gear up, gear down at 3000 ft above the runway). Default A1.")] string variant = "A1",
-        [Description("Aircraft title as listed by traffic_test_models. Empty = automatic (an FSLTL A320 if installed, else a verified model of the approval list, else any A320; FlyByWire and Headwind models are skipped).")] string? title = null,
+        [Description("Aircraft title as listed by traffic_test_models. Empty = automatic (an FSLTL A320 if installed, else a verified model of the approval list – a PassiveAircraft model –, else any A320; FlyByWire and Headwind models are skipped).")] string? title = null,
         [Description("Livery name for the title (MSFS 2024 modular aircraft). Empty = default livery.")] string? livery = null,
         [Description("Spawn distance before the threshold in NM (2–30). Empty = default of the variant.")] double? spawnNm = null,
         [Description(
@@ -43,6 +43,12 @@ public static class TrafficTestTools
         [Description(
             "Where the first ground waypoint lies, in m behind the threshold (−500 to 600, negative = before the threshold). The AI " +
             "switches to its landing mode about 1 km before it and touched down 100–700 m behind it in the tests. Empty = 150.")] double? touchdownM = null,
+        [Description(
+            "Approach speed (Vapp) in kt, e.g. 115 for an ATR 72 or 65 for a Cessna 172. The waypoints get Vapp + 25 from 6 NM, Vapp + 5 " +
+            "below, Vapp at the threshold. Empty = from the approval list (traffic_test_models: approachKt), else 135.")] double? approachKt = null,
+        [Description(
+            "Control the speed on approach via the simvar AI DESIRED SPEED (default true) – the AI ignores the speed in the waypoints and " +
+            "flew 160–169 kt with every model. false = waypoint speeds only, as before.")] bool speedControl = true,
         CancellationToken cancellationToken = default)
     {
         if (!Enum.TryParse<TrafficTestVariant>(variant?.Trim(), ignoreCase: true, out var parsed) || !Enum.IsDefined(parsed))
@@ -57,7 +63,7 @@ public static class TrafficTestTools
 
         try
         {
-            var status = await tests.StartTestAsync(new TrafficTestRequest(airport, runway, parsed, title, livery, spawnNm, gearMethod, finalLowFt, touchdownM), cancellationToken);
+            var status = await tests.StartTestAsync(new TrafficTestRequest(airport, runway, parsed, title, livery, spawnNm, gearMethod, finalLowFt, touchdownM, approachKt, speedControl), cancellationToken);
             return Json.Serialize(new { ok = true, status });
         }
         catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or TimeoutException or ArgumentException)
@@ -140,6 +146,8 @@ public static class TrafficTestTools
                     type = t.IcaoType,
                     name = t.Name,
                     category = t.Category.ToString().ToLowerInvariant(),
+                    approachKt = t.ApproachKt,
+                    passive = t.Passive,
                     titles = t.Titles,
                     titleWords = t.TitleWords,
                     status = t.Status.ToString().ToLowerInvariant(),
@@ -151,6 +159,7 @@ public static class TrafficTestTools
                     livery = m.Livery,
                     type = TrafficModels.TypeOf(m.Title, m.Livery)?.IcaoType,
                     category = TrafficModels.TypeOf(m.Title, m.Livery)?.Category.ToString().ToLowerInvariant(),
+                    approachKt = TrafficModels.TypeOf(m.Title, m.Livery)?.ApproachKt,
                     status = TrafficModels.StatusName(m.Title, m.Livery),
                     excluded = TrafficModels.IsExcluded(m.Title, m.Livery),
                 }),

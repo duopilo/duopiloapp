@@ -43,6 +43,7 @@ public sealed partial class SimConnectClient
     private uint _aiWaypointDefId;
     private uint _aiProbeDefId;
     private uint _aiGearDefId;
+    private uint _aiSpeedDefId;
     private readonly Dictionary<string, uint> _aiLightDefIds = new(StringComparer.Ordinal);
     private bool _aiModelsAvailable;
 
@@ -236,6 +237,23 @@ public sealed partial class SimConnectClient
             }
         }, ct);
 
+    /// <summary>
+    /// Wunschgeschwindigkeit eines eigenen KI-Flugzeugs über die SimVar AI DESIRED SPEED (Knoten). Die Geschwindigkeit in den
+    /// Wegpunkten beachtet die KI nicht (alle flogen im Test 160–169 kt, auch die ATR).
+    /// </summary>
+    public Task SetAiDesiredSpeedAsync(uint objectId, double knots, CancellationToken ct) =>
+        RunOnSimThreadAsync(sc =>
+        {
+            if (_aiSpeedDefId == 0)
+            {
+                _aiSpeedDefId = ++_nextDefId;
+                sc.AddToDataDefinition((SimDefinitionId)_aiSpeedDefId, "AI DESIRED SPEED", "knots", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
+                sc.RegisterDataDefineStruct<double>((SimDefinitionId)_aiSpeedDefId);
+            }
+
+            sc.SetDataOnSimObject((SimDefinitionId)_aiSpeedDefId, objectId, SIMCONNECT_DATA_SET_FLAG.DEFAULT, knots);
+        }, ct);
+
     /// <summary>Event an ein eigenes KI-Objekt (nicht an das eigene Flugzeug, daher ohne die Sperrliste des Eingabe-Moduls).</summary>
     private void TransmitToObject(SimConnect sc, uint objectId, string eventName, uint data)
     {
@@ -348,6 +366,7 @@ public sealed partial class SimConnectClient
                 PitchDeg = -d.PitchDeg,
                 BankDeg = d.BankDeg,
                 LightStates = (int)d.LightStates,
+                DesiredKt = d.DesiredKt,
             };
             try
             {
@@ -546,6 +565,7 @@ public sealed partial class SimConnectClient
         _aiWaypointDefId = 0;
         _aiProbeDefId = 0;
         _aiGearDefId = 0;
+        _aiSpeedDefId = 0;
         _aiLightDefIds.Clear();
         _aiModelsAvailable = false;
         _aiProbes.Clear();
@@ -646,6 +666,9 @@ public sealed record AiProbeSample(
 
     /// <summary>Eingeschaltete Lichter (LIGHT STATES, Bits siehe <see cref="AiLights"/>).</summary>
     public int LightStates { get; init; }
+
+    /// <summary>Wunschgeschwindigkeit der KI (AI DESIRED SPEED) in Knoten.</summary>
+    public double DesiredKt { get; init; }
 }
 
 /// <summary>SimVars der KI-Abfrage, in dieser Reihenfolge in der Data Definition (siehe <see cref="AiProbeData"/>).</summary>
@@ -670,13 +693,14 @@ public static class AiProbeVariables
         ("PLANE PITCH DEGREES", "degrees"),
         ("PLANE BANK DEGREES", "degrees"),
         ("LIGHT STATES", "mask"),
+        ("AI DESIRED SPEED", "knots"),
     ];
 
     /// <summary>Zustand der KI (z. B. „SIMPLE_LANDING“), als STRING64 hinter den Zahlen.</summary>
     public const string State = "AI TRAFFIC STATE";
 }
 
-/// <summary>Struktur zu <see cref="AiProbeVariables"/>: siebzehn FLOAT64, dann STRING64.</summary>
+/// <summary>Struktur zu <see cref="AiProbeVariables"/>: achtzehn FLOAT64, dann STRING64.</summary>
 [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
 public struct AiProbeData
 {
@@ -713,6 +737,8 @@ public struct AiProbeData
     public double BankDeg;
 
     public double LightStates;
+
+    public double DesiredKt;
 
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
     public string State;
