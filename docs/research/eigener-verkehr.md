@@ -403,7 +403,9 @@ bis zur Übernahme, Start, Steigflug, Durchstarten.
 2. Durchstarten – beta.15 (klappt). Endanflug und Landung mit Kinematik – beta.17.
 3. Starts – beta.16 (der Start aus Stufe B, Variante B1): Spawn auf der Bahn, Startlauf, Rotieren, Steigflug auf 3000 ft, Fahrwerk
    rein, Lichter; Auswertung von Abhebepunkt und Steigflug. Spawn am Rollhalt kommt mit dem Rollen.
-4. Überflüge in Reiseflughöhe – danach: Flugzeuge, die über den Bereich des Spielers hinweg auf ihrer Flugfläche ziehen.
+4. Überflüge in Reiseflughöhe – beta.18 (Variante C1, Wegpunkt-KI): Spawn 40 NM vor der Bahnmitte auf FL350 mit 450 kt TAS (als IAS
+   an die KI, die Wunschgeschwindigkeit wirkt nach oben), geradeaus darüber hinweg, Lichter wie im Reiseflug (Landelicht aus), Ende
+   40 NM dahinter. Allgemeine Luftfahrt FL85, doppelte Vapp, 15 NM.
 5. Rollen – irgendwann: Pushback und Rollen zwischen Gate und Bahn über die Rollwege (aus Stufe C).
 
 **Entscheidung danach:**

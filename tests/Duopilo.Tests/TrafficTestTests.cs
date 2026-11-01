@@ -1029,6 +1029,89 @@ public sealed class TrafficTestTests
         Assert.Equal(0, kin.VerticalSpeedFpm);
     }
 
+    [Fact]
+    public void Ueberflug_ueber_die_Bahnmitte_auf_FL350_geradeaus()
+    {
+        var end = End("23L");
+        var overhead = end.Overhead(null);
+        Assert.Equal(0, RouteMath.DistanceNm(Runway.Latitude, Runway.Longitude, overhead.ThresholdLatitude, overhead.ThresholdLongitude), 3);
+        Assert.Equal(end.HeadingTrueDeg, overhead.HeadingTrueDeg, 3);
+        Assert.Equal(90, end.Overhead(450).HeadingTrueDeg, 3);
+
+        var plan = TrafficTestPlan.BuildOverflight(overhead, TrafficCategory.Airliner, approachKt: 135);
+        Assert.True(plan.IsOverflight);
+        Assert.Equal(35000, plan.CruiseAltitudeFt);
+        Assert.Equal(450, plan.CruiseTasKt);
+        Assert.Equal(265, plan.CruiseKt);
+        Assert.Equal(40, plan.SpawnNm);
+        Assert.Equal(40 * RunwayEnd.MetersPerNm, plan.ExitM, 0);
+        Assert.Equal(["overhead", "exit", "beyond"], plan.Waypoints.Select(w => w.Name));
+        Assert.Equal(new double[] { 0, 40 * 1852, 70 * 1852 }, plan.Waypoints.Select(w => Math.Round(w.AlongM)));
+        Assert.All(plan.Waypoints, w =>
+        {
+            Assert.Equal(35000, w.Waypoint.AltitudeFt);
+            Assert.Equal(265, w.Waypoint.SpeedKt);
+            Assert.False(w.Waypoint.Flags.HasFlag(AiWaypointFlags.OnGround));
+        });
+
+        Assert.False(plan.Spawn.OnGround);
+        Assert.False(plan.GearAtSpawn);
+        Assert.Equal(35000, plan.Spawn.AltitudeFt);
+        Assert.Equal(265u, plan.Spawn.AirspeedKt);
+        var (spawnAlong, spawnCross) = overhead.Offsets(plan.Spawn.Latitude, plan.Spawn.Longitude);
+        Assert.Equal(-40 * 1852, spawnAlong, 0);
+        Assert.Equal(0, spawnCross, 0);
+        Assert.Equal(265, plan.AirborneTargetKt(-1000));
+
+        // Allgemeine Luftfahrt: FL85, doppelte Vapp, kürzer
+        var ga = TrafficTestPlan.BuildOverflight(overhead, TrafficCategory.GeneralAviation, approachKt: 65);
+        Assert.Equal(8500, ga.CruiseAltitudeFt);
+        Assert.Equal(130, ga.CruiseTasKt);
+        Assert.Equal(111, ga.CruiseKt);
+        Assert.Equal(15, ga.SpawnNm);
+
+        // Eigene Werte, Spawn höchstens 75 NM vor dem Punkt
+        var custom = TrafficTestPlan.BuildOverflight(overhead, TrafficCategory.Airliner, flightLevel: 240, cruiseTasKt: 400, spawnNm: 200);
+        Assert.Equal(24000, custom.CruiseAltitudeFt);
+        Assert.Equal(TrafficTestPlan.MaxOverflightNm, custom.SpawnNm);
+    }
+
+    [Fact]
+    public void Auswertung_Ueberflug_ueber_dem_Punkt_und_durch()
+    {
+        var overhead = End("23L").Overhead(null);
+        var plan = TrafficTestPlan.BuildOverflight(overhead, TrafficCategory.Airliner, spawnNm: 10);
+        var start = DateTimeOffset.UtcNow;
+        var analysis = new TrafficTestAnalysis(plan, start);
+
+        Add(analysis, overhead, start, 0, -2000, 35100, ias: 262, gs: 445, onGround: false, agl: 34900, vs: 0, gear: 0, lights: 0x0113);
+        var over = Add(analysis, overhead, start, 1, 200, 34950, ias: 265, gs: 450, onGround: false, agl: 34800, vs: 0, gear: 0, lights: 0x0113);
+        var exit = Add(analysis, overhead, start, 60, plan.ExitM + 100, 35000, ias: 265, gs: 450, onGround: false, agl: 34800, vs: 0, gear: 0, lights: 0x0113);
+
+        Assert.Contains(over.Events, e => e.StartsWith("overhead at 34950 ft", StringComparison.Ordinal));
+        Assert.Contains("exit", exit.Events);
+        Assert.Equal(265, over.TargetKt);
+
+        var summary = analysis.Summary();
+        Assert.Equal("passed", summary.Verdict);
+        var overflight = summary.Overflight!;
+        Assert.Equal(1, overflight.OverheadSeconds);
+        Assert.Equal(34950, overflight.OverheadAltitudeFt);
+        Assert.Equal(265, overflight.OverheadKt);
+        Assert.Equal(100, overflight.MaxAltitudeDeviationFt);
+        Assert.Equal(17, overflight.MeanAltitudeDeviationFt);
+        Assert.Equal(264, overflight.MeanSpeedKt);
+        Assert.Equal(AiLights.Describe(0x0113), overflight.Lights);
+        Assert.Null(summary.Takeoff);
+        Assert.Null(summary.Touchdown);
+        Assert.Empty(summary.Gates);
+        Assert.Null(summary.GearDownInTime);
+
+        // Reiseflug-Lichter: Landelicht aus, Strobes an
+        Assert.True(TrafficLights.Cruise.MatchedBy(0x0113));
+        Assert.False(TrafficLights.Cruise.MatchedBy(0x0117));
+    }
+
     private static TrafficTestPoint Add(
         TrafficTestAnalysis analysis,
         RunwayEnd end,

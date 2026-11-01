@@ -15,6 +15,9 @@ public enum TrafficTestVariant
 
     /// <summary>Start (Stufe B): Spawn auf der Bahn, Startlauf, Abheben, Steigflug geradeaus auf 3000 ft über der Bahn, Fahrwerk rein.</summary>
     B1,
+
+    /// <summary>Überflug in Reiseflughöhe: geradeaus über den Flughafen hinweg, von der Wegpunkt-KI geflogen.</summary>
+    C1,
 }
 
 /// <summary>
@@ -93,6 +96,21 @@ public sealed record RunwayEnd(
             heading,
             runway.LengthM,
             runway.WidthM);
+    }
+
+    /// <summary>
+    /// Überflug: Bezugspunkt in der Mitte der Bahn, Kurs <paramref name="trackDeg"/> (rechtweisend) oder der der Bahn. Point und
+    /// Offsets rechnen dann entlang dieses Kurses ab dem Überflugpunkt.
+    /// </summary>
+    public RunwayEnd Overhead(double? trackDeg)
+    {
+        var (lat, lon) = Point(LengthM / 2);
+        return this with
+        {
+            ThresholdLatitude = lat,
+            ThresholdLongitude = lon,
+            HeadingTrueDeg = trackDeg is { } t ? TrafficMath.Normalize(t) : HeadingTrueDeg,
+        };
     }
 
     /// <summary>Punkt auf der verlängerten Mittellinie: positiv in Landerichtung hinter der Schwelle, negativ davor (Meter).</summary>
@@ -218,6 +236,37 @@ public sealed record TrafficTestPlan(
     /// <summary>Ob es ein Start ist (<see cref="TrafficTestVariant.B1"/>) statt eines Anflugs.</summary>
     public bool IsTakeoff => Variant == TrafficTestVariant.B1;
 
+    /// <summary>Ob es ein Überflug ist (<see cref="TrafficTestVariant.C1"/>).</summary>
+    public bool IsOverflight => Variant == TrafficTestVariant.C1;
+
+    /// <summary>Überflug: Reiseflughöhe (MSL, Fuß; Flugfläche bei Standarddruck gleichgesetzt).</summary>
+    public double CruiseAltitudeFt { get; init; }
+
+    /// <summary>Überflug: Reisegeschwindigkeit als IAS (aus der TAS umgerechnet).</summary>
+    public double CruiseKt { get; init; }
+
+    /// <summary>Überflug: wahre Reisegeschwindigkeit.</summary>
+    public double CruiseTasKt { get; init; }
+
+    /// <summary>Überflug: Ab hier hinter dem Überflugpunkt ist der Test durch.</summary>
+    public double ExitM { get; init; }
+
+    /// <summary>Überflug, Verkehrsflugzeuge: Flugfläche und wahre Geschwindigkeit (etwa Mach 0,78).</summary>
+    public const double AirlinerFlightLevel = 350;
+
+    public const double AirlinerCruiseTasKt = 450;
+
+    /// <summary>Überflug, Allgemeine Luftfahrt: Flugfläche; die TAS ist doppelte Vapp (C172 130 kt), höchstens 300 kt.</summary>
+    public const double GeneralAviationFlightLevel = 85;
+
+    /// <summary>Überflug: Spawn so weit vor dem Überflugpunkt (Verkehrsflugzeuge, GA kürzer – sonst dauert es länger als MaxMinutes).</summary>
+    public const double AirlinerOverflightNm = 40;
+
+    public const double GeneralAviationOverflightNm = 15;
+
+    /// <summary>Überflug: höchstens so weit vor dem Überflugpunkt – der Sim erzeugt Objekte nur bis rund 80 NM um den Spieler.</summary>
+    public const double MaxOverflightNm = 75;
+
     /// <summary>B1: Startgeschwindigkeit, etwa V2 (Vapp + <see cref="TakeoffMarginKt"/>).</summary>
     public double TakeoffKt => ApproachKt + TakeoffMarginKt;
 
@@ -237,7 +286,7 @@ public sealed record TrafficTestPlan(
     public double AirborneTargetKt(double alongM)
     {
         var next = Next(alongM).Waypoint.SpeedKt;
-        return IsTakeoff || alongM < 0 ? next : Math.Max(next, TouchdownKt);
+        return IsOverflight ? CruiseKt : IsTakeoff || alongM < 0 ? next : Math.Max(next, TouchdownKt);
     }
 
     /// <summary>Wahre Fluggeschwindigkeit (TAS) zu einer angezeigten (IAS) in einer Höhe: Faustregel 2 % je 1000 ft.</summary>
@@ -275,6 +324,11 @@ public sealed record TrafficTestPlan(
         if (variant == TrafficTestVariant.B1)
         {
             return BuildTakeoff(runway, approachKt, throttlePercent: throttlePercent);
+        }
+
+        if (variant == TrafficTestVariant.C1)
+        {
+            return BuildOverflight(runway.Overhead(null), TrafficCategory.Airliner, approachKt);
         }
 
         if (runway.LengthM < MinRunwayM)
@@ -388,6 +442,45 @@ public sealed record TrafficTestPlan(
         return new TrafficTestPlan(TrafficTestVariant.B1, runway, spawn, 0, true, null, null, 0, 0, 0, vapp, waypoints, [], warnings)
         {
             ThrottlePercent = throttle,
+        };
+    }
+
+    /// <summary>
+    /// Überflug (C1): Spawn <paramref name="spawnNm"/> vor dem Überflugpunkt auf Reiseflughöhe in Kursrichtung, Fahrwerk oben; Wegpunkte
+    /// über dem Punkt, gleich weit dahinter (Ende des Tests) und 30 NM weiter, alle auf Reiseflughöhe mit der Reisegeschwindigkeit als
+    /// IAS. <paramref name="overhead"/> ist der Überflugpunkt mit Kurs (<see cref="RunwayEnd.Overhead"/>).
+    /// </summary>
+    public static TrafficTestPlan BuildOverflight(
+        RunwayEnd overhead,
+        TrafficCategory category,
+        double? approachKt = null,
+        double? flightLevel = null,
+        double? cruiseTasKt = null,
+        double? spawnNm = null)
+    {
+        var ga = category == TrafficCategory.GeneralAviation;
+        var vapp = Math.Clamp(approachKt ?? DefaultApproachKt, 50, 180);
+        var level = Math.Clamp(flightLevel ?? (ga ? GeneralAviationFlightLevel : AirlinerFlightLevel), 30, 450);
+        var altitude = Math.Max(level * 100, overhead.ElevationFt + 1500);
+        var tas = Math.Clamp(cruiseTasKt ?? (ga ? Math.Min(vapp * 2, 300) : AirlinerCruiseTasKt), 80, 600);
+        var ias = Math.Round(tas / (1 + (0.02 * altitude / 1000)));
+        var distance = Math.Clamp(spawnNm ?? (ga ? GeneralAviationOverflightNm : AirlinerOverflightNm), 5, MaxOverflightNm);
+        var exit = distance * RunwayEnd.MetersPerNm;
+
+        var waypoints = new List<TrafficTestWaypoint>();
+        var flags = AiWaypointFlags.SpeedRequested;
+        Add(waypoints, overhead, "overhead", 0, altitude, ias, flags);
+        Add(waypoints, overhead, "exit", exit, altitude, ias, flags);
+        Add(waypoints, overhead, "beyond", exit + (30 * RunwayEnd.MetersPerNm), altitude, ias, flags);
+
+        var (lat, lon) = overhead.Point(-exit);
+        var spawn = new AiInitPosition(lat, lon, altitude, overhead.HeadingTrueDeg, OnGround: false, AirspeedKt: (uint)ias);
+        return new TrafficTestPlan(TrafficTestVariant.C1, overhead, spawn, distance, false, null, null, 0, 0, 0, vapp, waypoints, [], [])
+        {
+            CruiseAltitudeFt = altitude,
+            CruiseKt = ias,
+            CruiseTasKt = tas,
+            ExitM = exit,
         };
     }
 
