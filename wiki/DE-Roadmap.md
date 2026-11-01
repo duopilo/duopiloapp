@@ -31,14 +31,16 @@
 
 ## Eigener Verkehr
 
-Eigener KI-Verkehr von Duopilo statt des Verkehrs aus dem Simulator, Schritt für Schritt mit dem Verkehrstest aufgebaut und in EDDL getestet ([Recherche](https://github.com/duopilo/duopiloapp/blob/main/docs/research/eigener-verkehr.md), [Verkehr](DE-Verkehr)):
+Eigener KI-Verkehr von Duopilo statt des Verkehrs aus dem Simulator, Schritt für Schritt mit dem Verkehrstest aufgebaut und in EDDL und EDDF getestet ([Recherche](https://github.com/duopilo/duopiloapp/blob/main/docs/research/eigener-verkehr.md), [Verkehr](DE-Verkehr)):
 
 - [x] **Anflug und Landung** (Betas von v0.10) – KI-Verkehrsmodelle fliegen den Endanflug über Wegpunkte und halten auf der Bahn: Fahrwerk bis 2500 ft draußen, Lichter, Freigabeliste der KI-Verkehrsmodelle aus MSFS 2024 (rund 250 Typen) mit Anfluggeschwindigkeit je Typ, Geschwindigkeitsregelung, bis zu 4 gleichzeitig
-- [ ] **Durchstarten** (beta.15) – über der Schwelle mehr als 150 ft zu hoch oder Vapp + 20 kt zu schnell, oder bis 900 m nicht am Boden: geradeaus Steigflug auf 3000 ft, Fahrwerk rein
-- [ ] **Start** (beta.16) – Spawn auf der Bahn, Startlauf, Rotieren, Steigflug auf 3000 ft, Fahrwerk rein, Lichter; Auswertung von Abhebepunkt und Steigflug
-- [ ] **Überflüge in Reiseflughöhe** – Flugzeuge, die auf ihrer Flugfläche über deine Gegend ziehen
+- [x] **Durchstarten** (beta.15, in der Beta) – über der Schwelle mehr als 150 ft zu hoch oder Vapp + 20 kt zu schnell, oder bis 900 m nicht am Boden: geradeaus Steigflug auf 3000 ft, Fahrwerk rein; die KI nimmt die neuen Wegpunkte im Flug an
+- [x] **Start** (beta.16, in der Beta) – Spawn auf der Bahn, Startlauf, Abheben, Steigflug auf 3000 ft, Fahrwerk rein, Lichter; Auswertung von Abhebepunkt und Steigflug (rotieren tut die KI noch nicht)
+- [x] **Kinematik im Endanflug** (beta.17, im Test) – die Wegpunkt-KI fliegt nicht langsamer als rund 169 kt und landet mit festen 133 kt, deshalb bewegt Duopilo das Flugzeug die letzten Meilen selbst: Geschwindigkeit je Typ, 3°-Pfad, Abfangen, weiches Aufsetzen, Bremsen bis zum Halt
+- [ ] **Überflüge in Reiseflughöhe** (beta.18) – Flugzeuge, die auf ihrer Flugfläche über deine Gegend ziehen, geflogen von der Wegpunkt-KI
 - [ ] **Rollen** – Pushback und Rollen zwischen Gate und Bahn über die Rollwege des Flughafens
 - [ ] **Fahrplan-Verkehr** – Flüge, über den ICAO-Typ den installierten Modellen zugeordnet
-- [ ] Auch in Frankfurt testen; weichere Landungen (die KI setzt mit rund 1400 ft/min auf)
+- [x] Auch in Frankfurt testen (drei Parallelbahnen und die Startbahn West)
+- [ ] Rotieren beim Start (Kinematik wie im Endanflug)
 
 Ideen und Wünsche: [Issues](https://github.com/duopilo/duopiloapp/issues).
