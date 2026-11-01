@@ -1139,6 +1139,7 @@
   "dashboard.settings.updates.lastCheck": "zuletzt geprüft {time}",
   "dashboard.settings.updates.noInstaller": "kein Installer in diesem Release – siehe Release-Seite",
   "dashboard.settings.updates.notInstalled": "nicht mit dem Installer installiert – Download auf der Release-Seite",
+  "dashboard.settings.updates.pending": "Update auf {version} verfügbar.",
   "dashboard.settings.updates.install": "{version} installieren",
   "dashboard.settings.updates.confirm": "Duopilo {version} jetzt installieren? Duopilo beendet sich (auch die Instanz von Claude Desktop), installiert das Update und startet neu.",
   "simconnect.sdk.windowsOnly": "Das MSFS-SDK lässt sich nur unter Windows installieren.",

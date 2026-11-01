@@ -1367,6 +1367,7 @@
   "dashboard.settings.updates.lastCheck": "last check {time}",
   "dashboard.settings.updates.noInstaller": "no installer in this release – see the release page",
   "dashboard.settings.updates.notInstalled": "not installed with the installer – download from the release page",
+  "dashboard.settings.updates.pending": "Update to {version} available.",
   "dashboard.settings.updates.install": "Install {version}",
   "dashboard.settings.updates.confirm": "Install Duopilo {version} now? Duopilo closes (the Claude Desktop instance too), installs the update and starts again.",
   "log.update.selfBuilt": "Update check: self-built version {Version} (not from the release pipeline) – update with update.cmd.",
