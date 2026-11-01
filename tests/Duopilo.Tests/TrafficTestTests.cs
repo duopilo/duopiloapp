@@ -431,6 +431,10 @@ public sealed class TrafficTestTests
     [InlineData("A330-300 VIP (RR)", "", null, "unknown")]
     [InlineData("A330-300P2F (RR)", "", null, "unknown")]
     [InlineData("Airbus A330-900neo Condor Beach", "", null, "excluded")]
+    [InlineData("Cessna 172 Skyhawk (G1000)", "", "C172", "untested")]
+    [InlineData("Beechcraft King Air 350i", "", "B350", "untested")]
+    [InlineData("King Air C90 GTX", "", "BE9L", "untested")]
+    [InlineData("Pilatus PC12 NGX", "", "PC12", "untested")]
     public void Freigabeliste_exakte_Titel_mit_ICAO_Typ(string title, string livery, string? type, string status)
     {
         Assert.Equal(type, TrafficModels.TypeOf(title, livery)?.IcaoType);
@@ -447,11 +451,29 @@ public sealed class TrafficTestTests
     }
 
     [Fact]
+    public void GA_Titelwoerter_uebernehmen_keine_exakten_Titel()
+    {
+        var exact = TrafficModels.Approved.SelectMany(t => t.Titles);
+        Assert.All(exact, title => Assert.Equal(
+            TrafficModels.Approved.First(t => t.MatchesExactly(title)).IcaoType,
+            TrafficModels.TypeOf(title)!.IcaoType));
+
+        var ga = TrafficModels.Approved.Where(t => t.Category == TrafficCategory.GeneralAviation).ToList();
+        Assert.NotEmpty(ga);
+        Assert.All(ga, t =>
+        {
+            Assert.Equal(TrafficModelStatus.Untested, t.Status);
+            Assert.NotEmpty(t.TitleWords);
+        });
+    }
+
+    [Fact]
     public void Standardmodell_nimmt_ohne_FSLTL_ein_gepruefte_Modell()
     {
         AiModel[] models =
         [
             new("A310", "Lufthansa"),
+            new("Cessna 172 Skyhawk", ""),
             new("Asobo A320neo", "Default"),
             new("A320neo V2", ""),
         ];

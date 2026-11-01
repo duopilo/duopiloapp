@@ -51,7 +51,7 @@ public sealed record TrafficTestLast(
 /// <param name="State">running oder ended.</param>
 /// <param name="Tail">Kennzeichen des Testflugzeugs (DUO01 bis DUO04).</param>
 /// <param name="Type">ICAO-Typ laut Freigabeliste, sonst null.</param>
-/// <param name="ModelStatus">verified, candidate, excluded oder unknown (<see cref="TrafficModels"/>).</param>
+/// <param name="ModelStatus">verified, candidate, untested, excluded oder unknown (<see cref="TrafficModels"/>).</param>
 public sealed record TrafficTestStatus(
     string State,
     string Tail,

@@ -109,14 +109,15 @@ public static class TrafficTestTools
     [Description(
         "Aircraft models installed in MSFS 2024 that can be spawned (title and livery, from EnumerateSimObjectsAndLiveries), for " +
         "traffic_test_start. Filter by words, e.g. 'A320 FSLTL' or 'Lufthansa'. 'suggested' is the model traffic_test_start takes without a title. " +
-        "Each model has 'type' (ICAO type from Duopilo's approval list) and 'status': 'verified' (gear and landing checked in the sim), " +
-        "'candidate' (landed in a test, not looked at yet), 'excluded' (FlyByWire, Headwind: as AI their gear only comes half out and the " +
-        "engines don't spin) or 'unknown' (not tested). 'approved' lists the approval list itself.")]
+        "Each model has 'type' (ICAO type from Duopilo's approval list), 'category' (airliner, generalaviation) and 'status': 'verified' " +
+        "(gear and landing checked in the sim), 'candidate' (landed in a test, not looked at yet), 'untested' (on the list, e.g. the MSFS " +
+        "2024 GA aircraft, not tested yet), 'excluded' (FlyByWire, Headwind: as AI their gear only comes half out and the engines don't " +
+        "spin) or 'unknown' (not on the list). 'approved' lists the approval list itself.")]
     public static async Task<string> Models(
         TrafficTestService tests,
         [Description("Words that must all appear in title or livery, case-insensitive. Empty = all.")] string? filter = null,
         [Description("Maximum number of models in the answer. Default 50.")] int limit = DefaultModelLimit,
-        [Description("Only models of the approval list (verified and candidate).")] bool approvedOnly = false,
+        [Description("Only models of the approval list (verified, candidate and untested).")] bool approvedOnly = false,
         CancellationToken cancellationToken = default)
     {
         try
@@ -134,12 +135,22 @@ public static class TrafficTestTools
                 matched = matched.Count,
                 truncated = matched.Count > max,
                 suggested = suggested is null ? null : new { title = suggested.Title, livery = suggested.Livery },
-                approved = TrafficModels.Approved.Select(t => new { type = t.IcaoType, name = t.Name, titles = t.Titles, status = t.Status.ToString().ToLowerInvariant(), note = t.Note }),
+                approved = TrafficModels.Approved.Select(t => new
+                {
+                    type = t.IcaoType,
+                    name = t.Name,
+                    category = t.Category.ToString().ToLowerInvariant(),
+                    titles = t.Titles,
+                    titleWords = t.TitleWords,
+                    status = t.Status.ToString().ToLowerInvariant(),
+                    note = t.Note,
+                }),
                 models = matched.Take(max).Select(m => new
                 {
                     title = m.Title,
                     livery = m.Livery,
                     type = TrafficModels.TypeOf(m.Title, m.Livery)?.IcaoType,
+                    category = TrafficModels.TypeOf(m.Title, m.Livery)?.Category.ToString().ToLowerInvariant(),
                     status = TrafficModels.StatusName(m.Title, m.Livery),
                     excluded = TrafficModels.IsExcluded(m.Title, m.Livery),
                 }),

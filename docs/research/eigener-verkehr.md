@@ -309,8 +309,12 @@ Frachtvarianten nicht ungeprüft mitrutschen):
 | A337 | A330-BelugaXL | Kandidat (gelandet) |
 | B748 | 747-8i | Kandidat (gelandet) |
 | B738 | Asobo PassiveAircraft B737-800 | Kandidat (gelandet) |
+| GA | C152, C172, C208, COL4, C404, C408, C25C, C700, BE36, BE58, BE9L, B350, SR22, SF50, TBM9, DA40, DA62, DV20, PC6T, PC12, PC24, DR40, DHC2, DHC6 | ungetestet, erkannt an Titelwörtern |
 
 Über den ICAO-Typ ordnet der spätere Fahrplan-Verkehr Flüge den installierten Modellen zu. Gesperrt bleiben FBW und Headwind.
+Die GA-Typen stammen aus der Flugzeugliste von MSFS 2024 (Standard, Deluxe, Premium Deluxe); nicht aufgenommen sind Hubschrauber,
+Segelflugzeuge, Kunstflug-, Wasser- und Agrarflugzeuge, Militär, historische Muster und eVTOL. Ihre genauen Titel stehen erst nach
+dem Test fest, bis dahin erkennt Duopilo sie an Titelwörtern (z. B. „Caravan“, „King Air“ + „350“).
 
 **Lichter (ab beta.13):** beim Spawn Nav, Beacon, Strobes, Landelicht, Taxi und Logo an; nach dem Aufsetzen unter 60 kt Landelicht
 und Strobes aus. Über die `…_SET`-Events und die `LIGHT …`-SimVars zugleich; `LIGHT STATES` wird mitgeschrieben.
