@@ -5,8 +5,9 @@ namespace Duopilo.Traffic;
 
 /// <summary>
 /// Ist eine Bahn frei? Für das Rollen: vor dem Kreuzen einer Bahn und vor dem Aufreihen. Belegt ist sie durch ein Flugzeug auf der Bahn
-/// (bis <see cref="OnRunwayMaxHeightFt"/> darüber, mit Rand an den Enden) oder im Endanflug auf eines ihrer Enden (bis
-/// <see cref="FinalNm"/> davor, nahe der verlängerten Mittellinie, tief genug und in Richtung der Bahn unterwegs).
+/// (bis <see cref="OnRunwayMaxHeightFt"/> darüber, mit Rand an den Enden) oder im Endanflug auf eines ihrer Enden (in der Luft, bis
+/// <see cref="FinalNm"/> davor, nahe der verlängerten Mittellinie, tief genug und in Richtung der Bahn unterwegs). Wer am Boden vor der
+/// Schwelle steht oder rollt (die Warteschlange am Haltepunkt), ist nicht im Endanflug.
 /// </summary>
 public static class RunwayOccupancy
 {
@@ -68,6 +69,11 @@ public static class RunwayOccupancy
             if (Math.Abs(cross) <= halfWidth && along >= -EndMarginM && along <= first.LengthM + EndMarginM && height < OnRunwayMaxHeightFt)
             {
                 return name + " on the runway";
+            }
+
+            if (s.OnGround)
+            {
+                continue;
             }
 
             foreach (var end in ends)

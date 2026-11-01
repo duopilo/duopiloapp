@@ -518,6 +518,12 @@ Bezugspunkt zu Bezugspunkt). Warten zwei aufeinander, fährt das mit der kleiner
 Reihenfolge der Ankunft auf; solange ein anderer Abflug derselben Bahn aufreiht, aufgereiht steht oder unter 400 ft ist, wartet der
 nächste. Neue Tests nehmen nicht die Parkpositionen laufender Tests.
 
+**beta.31 in Düsseldorf (1.11.2026):** drei B2 auf die 23R (DUO01 von A9, DUO02 von V38, DUO03 von V42A). Abstand auf L2 klappt
+(DUO01 folgt DUO02 mit 11 kt), alle drei halten vor 05R/23L, DUO01 wartet dort 15 s auf „DUO02 on the runway“. DUO02 wartet am
+Haltepunkt 23R 14 s, reiht auf, hebt bei 1556 m mit 148 kt ab; DUO01 rückt nach und meldet `line_up_wait DUO02 departing`. Dann ein
+Deadlock: DUO03 steht hinter DUO01 auf K, 150 m vor der Schwelle und in Richtung der Bahn – die Bahnprüfung zählt es als „DUO03 on
+final 23R 0.1 NM“, DUO01 reiht nicht auf, DUO03 wartet auf DUO01. Fix in beta.32: im Endanflug zählt nur, wer in der Luft ist.
+
 **Fahrplan des eigenen Verkehrs (Stand 1.11.2026):**
 
 1. Anflug und Landung – erledigt bis beta.14 (Wegpunkte, Fahrwerk bis 2500 ft, Lichter, Freigabeliste, Geschwindigkeit).
@@ -527,7 +533,7 @@ nächste. Neue Tests nehmen nicht die Parkpositionen laufender Tests.
 4. Überflüge in Reiseflughöhe – beta.18 (Variante C1, Wegpunkt-KI): Spawn 40 NM vor der Bahnmitte auf FL350 mit 450 kt TAS (ab
    beta.19 als TAS an die KI), geradeaus darüber hinweg, Lichter wie im Reiseflug (Landelicht aus), Ende 40 NM dahinter. Allgemeine
    Luftfahrt FL85, doppelte Vapp, 15 NM. Flughafenregeln für alle Plätze – beta.19.
-5. Rollen – beta.22 (Variante D1): Pushback und Rollen vom Gate zum Haltepunkt über die Rollwege, beta.23 mit Hindernissen; Abflug vom Gate mit Aufreihen und Start – beta.24 (B2), Halt an der richtigen Linie ab beta.28; Rollen nach der Landung – beta.29 (A3); Halt vor gekreuzten Bahnen – beta.30; Abflug-Reihenfolge mit Abstand beim Rollen – beta.31.
+5. Rollen – beta.22 (Variante D1): Pushback und Rollen vom Gate zum Haltepunkt über die Rollwege, beta.23 mit Hindernissen; Abflug vom Gate mit Aufreihen und Start – beta.24 (B2), Halt an der richtigen Linie ab beta.28; Rollen nach der Landung – beta.29 (A3); Halt vor gekreuzten Bahnen – beta.30; Abflug-Reihenfolge mit Abstand beim Rollen – beta.31, ohne Deadlock am Haltepunkt ab beta.32.
 6. Helikopter – nach dem Rollen: kinematisch (Anflug, Schweben, senkrecht landen und abheben), auf Heliports und Flughäfen;
    Heliports bekommen dann nur Helis.
 

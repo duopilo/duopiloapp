@@ -766,6 +766,10 @@ public sealed class TaxiTests
         Assert.Null(Blocker(At(2, -3 * RunwayEnd.MetersPerNm, 0, 5000, 270)));
         Assert.Null(Blocker(At(2, -6 * RunwayEnd.MetersPerNm, 0, 1800, 270)));
         Assert.Null(Blocker(At(2, 1000, 200, 0, 0)));
+
+        // Am Boden vor der Schwelle (Warteschlange am Haltepunkt, in Richtung der Bahn): kein Endanflug
+        Assert.Null(Blocker(At(3, -150, -145, 0, 270)));
+        Assert.Null(Blocker(At(3, -500, 0, 0, 270)));
     }
 
     [Fact]
