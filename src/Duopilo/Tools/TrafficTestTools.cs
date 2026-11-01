@@ -28,7 +28,7 @@ public static class TrafficTestTools
         [Description("ICAO code of the airport, e.g. EDDL. Must be within 80 NM of the pilot's aircraft.")] string airport,
         [Description("Runway end to land on, e.g. 23L (5L and 05L are the same).")] string runway,
         [Description("A1 (gear down from spawn, 5 NM) or A2 (spawn 15 NM with the gear up, gear down at 3000 ft above the runway). Default A1.")] string variant = "A1",
-        [Description("Aircraft title as listed by traffic_test_models. Empty = automatic (an FSLTL A320 if installed, else any A320).")] string? title = null,
+        [Description("Aircraft title as listed by traffic_test_models. Empty = automatic (an FSLTL A320 if installed, else any A320; FlyByWire and Headwind models are skipped).")] string? title = null,
         [Description("Livery name for the title (MSFS 2024 modular aircraft). Empty = default livery.")] string? livery = null,
         [Description("Spawn distance before the threshold in NM (2–30). Empty = default of the variant.")] double? spawnNm = null,
         [Description(
@@ -41,7 +41,7 @@ public static class TrafficTestTools
             "0 = exactly on the glide path, empty = 100.")] double? finalLowFt = null,
         [Description(
             "Where the first ground waypoint lies, in m behind the threshold (−500 to 600, negative = before the threshold). The AI " +
-            "switches to its landing mode about 1 km before it and touched down 200–700 m behind it in the tests. Empty = 0 (at the threshold).")] double? touchdownM = null,
+            "switches to its landing mode about 1 km before it and touched down 100–700 m behind it in the tests. Empty = 150.")] double? touchdownM = null,
         CancellationToken cancellationToken = default)
     {
         if (!Enum.TryParse<TrafficTestVariant>(variant?.Trim(), ignoreCase: true, out var parsed) || !Enum.IsDefined(parsed))
@@ -105,7 +105,9 @@ public static class TrafficTestTools
     [McpServerTool(Name = "traffic_test_models", ReadOnly = true)]
     [Description(
         "Aircraft models installed in MSFS 2024 that can be spawned (title and livery, from EnumerateSimObjectsAndLiveries), for " +
-        "traffic_test_start. Filter by words, e.g. 'A320 FSLTL' or 'Lufthansa'. 'suggested' is the model traffic_test_start takes without a title.")]
+        "traffic_test_start. Filter by words, e.g. 'A320 FSLTL' or 'Lufthansa'. 'suggested' is the model traffic_test_start takes without a title. " +
+        "'excluded' marks models that don't belong in Duopilo's traffic (FlyByWire, Headwind: as AI their gear only comes half out and the " +
+        "engines don't spin) – they can still be tested, the test then shows a warning.")]
     public static async Task<string> Models(
         TrafficTestService tests,
         [Description("Words that must all appear in title or livery, case-insensitive. Empty = all.")] string? filter = null,
@@ -125,7 +127,7 @@ public static class TrafficTestTools
                 matched = matched.Count,
                 truncated = matched.Count > max,
                 suggested = suggested is null ? null : new { title = suggested.Title, livery = suggested.Livery },
-                models = matched.Take(max).Select(m => new { title = m.Title, livery = m.Livery }),
+                models = matched.Take(max).Select(m => new { title = m.Title, livery = m.Livery, excluded = TrafficModels.IsExcluded(m.Title, m.Livery) }),
             });
         }
         catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException)

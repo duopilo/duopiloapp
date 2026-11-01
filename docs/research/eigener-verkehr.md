@@ -288,7 +288,11 @@ drehen als KI die Triebwerke nicht (ihre Systeme laufen offenbar nur, wenn man s
 **Harte Aufsetzer zurückgestellt:** Sie sehen hart aus, fallen aber nur auf, wenn man direkt an der Schwelle zuschaut – das
 ist im normalen Flug selten.
 
-Nächste Schritte: `touchdownM` um 150 testen, Sperrliste für FBW- und Headwind-Modelle. Sieht es dann immer noch komisch aus, in Frankfurt
+**Umgesetzt (nach beta.11):** erster Boden-Wegpunkt standardmäßig 150 m hinter der Schwelle; Sperrliste `TrafficModels` mit den
+Mustern FlyByWire, A32NX, A380X, Headwind und A330-900neo – die automatische Modellwahl überspringt sie, `traffic_test_models`
+markiert sie, ein Test damit zeigt die Warnung `excludedModel`.
+
+Nächste Schritte: `touchdownM` 150 im Sim prüfen (EDDL 05L/05R, A2), danach Speed über den Schub und Stufe B. Sieht es dann immer noch komisch aus, in Frankfurt
 testen. Danach Speed über den Schub (`THROTTLE_REQUESTED`) und Stufe B.
 
 **Entscheidung danach:**
