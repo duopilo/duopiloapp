@@ -1332,6 +1332,14 @@ public sealed class TrafficTestTests
         Assert.Equal(TrafficCategory.Military, TrafficModels.TypeOf("A400M Cargo")!.Category);
         Assert.Equal(TrafficCategory.Military, TrafficModels.TypeOf("FA18E SuperHornet")!.Category);
         Assert.Equal(TrafficWake.Heavy, TrafficRules.WakeOf("A400", TrafficCategory.Military));
+
+        // C-17, A-10 und L-39 an Titelwörtern, ohne die Cessna 170 zu treffen
+        Assert.Equal("C17", TrafficModels.TypeOf("Boeing C-17A Globemaster III")!.IcaoType);
+        Assert.Equal(TrafficWake.Heavy, TrafficRules.WakeOf("C17", TrafficCategory.Military));
+        Assert.Equal("A10", TrafficModels.TypeOf("A-10C Warthog")!.IcaoType);
+        Assert.Equal("L39", TrafficModels.TypeOf("Aero L-39 Albatros")!.IcaoType);
+        Assert.Equal("C170", TrafficModels.TypeOf("Asobo PassiveAircraft C170")!.IcaoType);
+        Assert.All(new[] { "C17", "A10", "L39" }, t => Assert.Equal(TrafficCategory.Military, TrafficModels.Approved.First(a => a.IcaoType == t).Category));
     }
 
     [Fact]
