@@ -32,7 +32,7 @@ public static class TrafficTestTools
         "from the taxiway (2.5 kt, in a curve onto the taxiway), 10 s, then taxi at 15 kt (general aviation 10), slower in turns, stop " +
         "just before the holding point; nav, beacon, taxi and logo lights; the test ends after a minute at the holding point (holding). " +
         "Runways the route crosses (D1, B2, A3): hold short 12 m before their holding line (general aviation 4 m) for at least 5 s and " +
-        "cross only when no aircraft is on that runway or on final to it within 4 NM (traffic scan; after 30 s without an answer anyway). " +
+        "cross only when no aircraft is on that runway or on final to it within 4 NM (airborne; traffic scan; after 30 s without an answer anyway). " +
         "B2 also lines up only when its own runway is free. " +
         "Taxi tests (D1, B2, A3) on the same runway don't replace each other but queue: each keeps 48 m (general aviation 22 m) behind " +
         "another test aircraft ahead on its route, B2 lines up in the order of arrival at the holding points, one departure at a time " +
@@ -189,7 +189,7 @@ public static class TrafficTestTools
         "flare (pitch gain before touchdown), max bank on final, lights on final and after landing, float seconds, stop point; taxi D1: " +
         "'taxi' with phase (parked, pushback, pushback_done, taxi, holding_short before a crossed runway, holding; B2 also line_up, " +
         "lined_up; A3 landing until the exit, then taxi and holding at the parking spot), parking spot, holding point (A3: the exit), " +
-        "taxiways, route length, pushback, turns, distance, speed, crossings (runway, taxiway, stop) and crossingsDone, A3 exitAlongM and " +
+        "taxiways, route length, pushback, turns, distance (with the pushback; crossing stops and taxi_spacing count on the taxi path without it), speed, crossings (runway, taxiway, stop) and crossingsDone, A3 exitAlongM and " +
         "exitKt, waitingFor (the test aircraft it keeps its distance to); events holding_short, runway_busy (what blocks it), runway_clear, " +
         "taxi_spacing, line_up_queue, line_up_wait. Paths of " +
         "the CSV and summary files. The waypoints only with details: true.")]
