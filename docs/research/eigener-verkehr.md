@@ -261,11 +261,32 @@ misst weiter gegen den Gleitpfad. Pitch und Bank werden aufgezeichnet, das Abfan
 A2 schickt den Fahrwerksbefehl bei 3000 ft über der Bahn, die Auswertung meldet die Höhe, in der es draußen war, und ob das bis
 2500 ft geklappt hat.
 
-**Rückfallebene:** Klappt das weiterhin nicht, die Modelle von FlyByWire und Headwind aus dem Verkehr nehmen, damit das Fahrwerk
+**Parallelanflug mit A2 (1.11.2026, beta.11, EDDL 05R/05L, Boden-Wegpunkt an der Schwelle):**
+
+| | A330-300 (RR, Lufthansa) auf 05R | A330-900 (Headwind, Condor) auf 05L |
+|---|---|---|
+| Fahrwerksbefehl / laut Sim draußen | 3037 ft / 2720 ft | 3034 ft / 2870 ft |
+| Schwelle über Gleitpfad (vorher A1) | +54 ft (+180) | −17 ft (+192) |
+| Aufsetzen hinter der Schwelle (vorher A1) | 330 m (936) | 105 m (880) |
+| IAS, Sinkrate | 131 kt, 1415 ft/min | 128 kt, 1392 ft/min |
+
+- **Boden-Wegpunkt an der Schwelle wirkt:** Aufsetzen rund 600–800 m früher, Schwelle nahe am Gleitpfad.
+- **Weiter hart:** um 1400 ft/min. Die A330-900 kommt mit gut 100 m etwas kurz (Vorschlag: `touchdownM` 150).
+- **Fahrwerk A330-300:** sichtbar draußen, steckt am Boden leicht in der Bahn (keine Physik, kein Einfedern) – in Ordnung.
+- **Fahrwerk A330-900 (Headwind):** sichtbar nur halb draußen, die Hauptfahrwerke schräg, der Rumpf zu tief – obwohl alle
+  Fahrwerkswerte 100 % melden. Auch mit `gear: down` (nur GEAR_DOWN) und `gear: handle` (nur der Hebel) in einem zweiten
+  Doppelanflug halb. Die Messung kann das nicht sehen.
+
+**Rückfallebene greift:** FlyByWire- und Headwind-Modelle kommen nicht in den Verkehr (Fahrwerk halb, Triebwerke drehen nicht).
+Die Titel im Sim nennen den Hersteller nicht immer (Headwind: „Airbus A330-900neo Condor Beach“), die Sperrliste braucht also
+Titelmuster oder den Paketpfad.
+
+**Rückfallebene (ursprüngliche Notiz):** Klappt das weiterhin nicht, die Modelle von FlyByWire und Headwind aus dem Verkehr nehmen, damit das Fahrwerk
 zumindest sicher vor dem Aufsetzen draußen ist – auch wenn dabei mal etwas leicht im Boden steckt. Dazu kommt: Bei diesen Modellen
 drehen als KI die Triebwerke nicht (ihre Systeme laufen offenbar nur, wenn man sie selbst fliegt).
 
-Nächste Schritte: Nachtests in EDDL 05L/05R (gleiche Umgebung wie oben) mit A2. Sieht es dann immer noch komisch aus, in Frankfurt
+Nächste Schritte: harte Aufsetzer angehen (Sinkrate um 1400 ft/min), `touchdownM` um 150 testen, Sperrliste für FBW- und
+Headwind-Modelle. Sieht es dann immer noch komisch aus, in Frankfurt
 testen. Danach Speed über den Schub (`THROTTLE_REQUESTED`) und Stufe B.
 
 **Entscheidung danach:**
