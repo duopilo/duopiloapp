@@ -109,6 +109,9 @@ public sealed class EnrouteTests
         Assert.InRange(kin.HeightFt - TrafficKinematics.GlidePathHeightFt(kin.AlongM), -150, 150);
         Assert.Equal(210, kin.SpeedKt, 0);
         Assert.InRange(kin.MaxBankDeg, 0, 30);
+
+        // Am Eindrehpunkt wieder gerade – der Endanflug fliegt ohne Querneigung weiter
+        Assert.InRange(kin.BankRightDeg, -0.5, 0.5);
         Assert.True(maxAltitude <= leg.CruiseFt + 50);
         Assert.True(minVs > -4000);
         Assert.InRange(below10000Kt, 0, 251);
@@ -118,6 +121,34 @@ public sealed class EnrouteTests
         Assert.Null(final.Arrival);
         Assert.Equal(TrafficTestPlan.GearCommandFt, final.GearDownFt);
         Assert.Equal(TrafficTestVariant.A4, final.Variant);
+    }
+
+    [Fact]
+    public void Endanflug_nach_dem_Eindrehen_erst_Vapp_plus_25_ab_4_NM_Vapp_plus_5()
+    {
+        var end = End("23L");
+        var plan = TrafficTestPlan.BuildArrival(end, TrafficCategory.Airliner, approachKt: 135).FinalAfterJoin();
+        var along = -10 * Nm;
+        var kin = new TrafficKinematics(plan, KinematicProfile.Airliner, along, 0, TrafficKinematics.GlidePathHeightFt(along), 210, -0.5, end.ElevationFt, 9);
+        double? at6 = null;
+        double? at2 = null;
+        for (var i = 0; i < 30 * 600 && kin.Touchdown is null; i++)
+        {
+            kin.Advance(1.0 / 30);
+            if (at6 is null && kin.AlongM >= -6 * Nm)
+            {
+                at6 = kin.SpeedKt;
+            }
+
+            if (at2 is null && kin.AlongM >= -2 * Nm)
+            {
+                at2 = kin.SpeedKt;
+            }
+        }
+
+        Assert.Equal(160, at6!.Value, 0);
+        Assert.Equal(140, at2!.Value, 0);
+        Assert.NotNull(kin.Touchdown);
     }
 
     [Fact]
