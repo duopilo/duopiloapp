@@ -1,6 +1,12 @@
-// Bahnregeln für Duopilos eigenen Verkehr (Verkehrstest). Eigene Regeln: dieselbe Datei im Datenordner unter data\traffic\ –
-// ein Flughafen dort ersetzt die Regeln hier. Felder je Regel: runways (Bahnen), operations ("arrival", "departure"; fehlt = alle,
-// leer = gesperrt), categories ("airliner", "generalaviation"), excludeTypes (ICAO-Typen, "*" am Ende als Präfix), maxWake
+// Flughafenregeln für Duopilos eigenen Verkehr (Verkehrstest). Ohne Eintrag ordnet Duopilo jeden Platz nach OurAirports ein
+// (data\ourairports\airports.csv): Militärplätze nur Militär, Heliports, Wasser- und Ballonplätze und geschlossene Plätze keinen
+// Verkehr, kleine Plätze und Plätze ohne Linienverkehr nur Allgemeine Luftfahrt, sonst Verkehrsflugzeuge und Allgemeine Luftfahrt.
+// Eigene Regeln: dieselbe Datei im Datenordner unter data\traffic\ – ein Flughafen dort ersetzt die Regeln hier.
+//
+// Je Flughafen: categories ("airliner", "generalaviation", "military"; ersetzt die Einordnung, leer = kein Verkehr), military
+// (true/false statt der Erkennung am Namen), mix (Verkehrsmix: types mit weight, "*" = jeder Typ, "B74*" = Präfix), runways
+// (Bahnregeln), note.
+// Je Bahnregel: runways, operations ("arrival", "departure"; fehlt = alle, leer = gesperrt), categories, excludeTypes, maxWake
 // ("light", "medium", "heavy", "super"), note. Länge und Breite prüft Duopilo zusätzlich selbst.
 {
   "airports": {
@@ -23,6 +29,21 @@
           "operations": [],
           "note": "Startbahn West: nur Starts nach Süden"
         }
+      ]
+    },
+    "EDHI": {
+      "note": "Airbus-Werk Hamburg-Finkenwerder",
+      "categories": ["airliner"],
+      "mix": [
+        { "types": ["A337", "A3ST"], "weight": 8, "note": "Beluga" },
+        { "types": ["A31*", "A32*", "A2*", "BCS*", "A33*", "A35*", "A388"], "weight": 2, "note": "andere Airbus (Auslieferung, Werksflüge)" }
+      ]
+    },
+    "LFBO": {
+      "note": "Toulouse-Blagnac mit Airbus-Werk",
+      "mix": [
+        { "types": ["*"], "weight": 95 },
+        { "types": ["A337", "A3ST"], "weight": 5, "note": "Beluga" }
       ]
     }
   }

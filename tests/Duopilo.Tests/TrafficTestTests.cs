@@ -1080,17 +1080,17 @@ public sealed class TrafficTestTests
     private static RunwayEnd Eddf(string designation, double lengthM = 4000, double widthM = 45) =>
         new("EDDF", designation, 50.03, 8.53, 360, designation.StartsWith('1') ? 180 : 70, lengthM, widthM);
 
-    private static TrafficRunwayRules ShippedRules()
+    private static TrafficRules ShippedRules(TrafficAirportDirectory? directory = null)
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "src", "Duopilo", "data", TrafficRunwayRules.Folder, TrafficRunwayRules.FileName)))
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "src", "Duopilo", "data", TrafficRules.Folder, TrafficRules.FileName)))
         {
             dir = dir.Parent;
         }
 
         Assert.NotNull(dir);
         var messages = new List<string>();
-        var rules = TrafficRunwayRules.Load([Path.Combine(dir.FullName, "src", "Duopilo", "data")], messages);
+        var rules = TrafficRules.Load([Path.Combine(dir.FullName, "src", "Duopilo", "data")], messages, directory);
         Assert.Empty(messages);
         return rules;
     }
@@ -1142,7 +1142,7 @@ public sealed class TrafficTestTests
     [Fact]
     public void Bahnregeln_Laenge_und_Breite_aus_den_Bahndaten()
     {
-        var rules = new TrafficRunwayRules();
+        var rules = new TrafficRules();
 
         // 737-800 braucht rund 1580 m zum Landen und 2200 m zum Starten, eine C172 rund 320 m
         Assert.Contains(rules.Check(Eddf("09", 1200), TrafficOperation.Arrival, "B738", TrafficCategory.Airliner, 145), v => v.Code == "too_short");
@@ -1166,12 +1166,12 @@ public sealed class TrafficTestTests
     [InlineData("C172", TrafficCategory.GeneralAviation, TrafficWake.Light)]
     [InlineData(null, TrafficCategory.Airliner, TrafficWake.Medium)]
     public void Wirbelschleppen_Kategorie_aus_dem_Typ(string? type, TrafficCategory category, TrafficWake wake) =>
-        Assert.Equal(wake, TrafficRunwayRules.WakeOf(type, category));
+        Assert.Equal(wake, TrafficRules.WakeOf(type, category));
 
     [Fact]
     public void Bahnregeln_eigene_Datei_mit_Kategorie_und_Wirbelschleppe()
     {
-        var rules = TrafficRunwayRules.Parse("""
+        var rules = TrafficRules.Parse("""
             // Kommentar
             { "airports": { "edxx": { "runways": [
               { "runways": ["09", "27"], "categories": ["generalaviation"], "note": "Gras" },
@@ -1193,27 +1193,165 @@ public sealed class TrafficTestTests
         var shipped = Path.Combine(root, "shipped");
         try
         {
-            Directory.CreateDirectory(Path.Combine(own, TrafficRunwayRules.Folder));
-            Directory.CreateDirectory(Path.Combine(shipped, TrafficRunwayRules.Folder));
-            File.WriteAllText(Path.Combine(shipped, TrafficRunwayRules.Folder, TrafficRunwayRules.FileName),
+            Directory.CreateDirectory(Path.Combine(own, TrafficRules.Folder));
+            Directory.CreateDirectory(Path.Combine(shipped, TrafficRules.Folder));
+            File.WriteAllText(Path.Combine(shipped, TrafficRules.Folder, TrafficRules.FileName),
                 """{ "airports": { "EDDF": { "runways": [ { "runways": ["18"], "operations": ["departure"] } ] }, "EDDL": { "runways": [ { "runways": ["05R"], "operations": [] } ] } } }""");
-            File.WriteAllText(Path.Combine(own, TrafficRunwayRules.Folder, TrafficRunwayRules.FileName),
+            File.WriteAllText(Path.Combine(own, TrafficRules.Folder, TrafficRules.FileName),
                 """{ "airports": { "EDDF": { "runways": [] } } }""");
 
             var messages = new List<string>();
-            var rules = TrafficRunwayRules.Load([own, shipped], messages);
+            var rules = TrafficRules.Load([own, shipped], messages);
             Assert.Empty(messages);
             Assert.Empty(rules.Check(Eddf("18"), TrafficOperation.Arrival, "A20N", TrafficCategory.Airliner, 135));
             Assert.Contains(rules.Check(Eddf("05R") with { Airport = "EDDL" }, TrafficOperation.Arrival, "A20N", TrafficCategory.Airliner, 135), v => v.Code == "operation");
 
-            File.WriteAllText(Path.Combine(own, TrafficRunwayRules.Folder, TrafficRunwayRules.FileName), "{ kaputt");
-            TrafficRunwayRules.Load([own, shipped], messages);
+            File.WriteAllText(Path.Combine(own, TrafficRules.Folder, TrafficRules.FileName), "{ kaputt");
+            TrafficRules.Load([own, shipped], messages);
             Assert.Single(messages);
         }
         finally
         {
             Directory.Delete(root, recursive: true);
         }
+    }
+
+
+    private static TrafficAirportDirectory Classified(string csv) => TrafficAirportDirectory.Parse(new StringReader(csv));
+
+    private static readonly TrafficAirportDirectory Airports = Classified("""
+        # Test
+        ident,kind,scheduled,military
+        EDDF,L,1,0
+        EDHI,M,0,0
+        ETNW,M,0,1
+        EDKB,S,0,0
+        EDMA,M,0,0
+        EDDH,L,1,0
+        DE-0001,H,0,0
+        EDXX,C,0,0
+        kaputt
+        """);
+
+    private static RunwayEnd At(string airport, string designation = "09", double lengthM = 3000, double widthM = 45) =>
+        Eddf(designation, lengthM, widthM) with { Airport = airport };
+
+    [Fact]
+    public void Flugplatz_Verzeichnis_liest_Art_Linienverkehr_Militaer()
+    {
+        Assert.Equal(8, Airports.Count);
+        Assert.Equal(new TrafficAirportInfo(TrafficAirportKind.Medium, false, true), Airports.Find("etnw"));
+        Assert.Equal(new TrafficAirportInfo(TrafficAirportKind.Large, true, false), Airports.Find("EDDF"));
+        Assert.Null(Airports.Find("ZZZZ"));
+    }
+
+    [Theory]
+    [InlineData("EDDF", "Airliner,GeneralAviation")]
+    [InlineData("ZZZZ", "Airliner,GeneralAviation")]
+    [InlineData("ETNW", "Military")]
+    [InlineData("EDKB", "GeneralAviation")]
+    [InlineData("EDMA", "GeneralAviation")]
+    [InlineData("DE-0001", "")]
+    [InlineData("EDXX", "")]
+    public void Flugplatz_Einordnung_bestimmt_die_Kategorien(string airport, string expected)
+    {
+        var (categories, _) = new TrafficRules(directory: Airports).AirportTraffic(airport);
+        Assert.Equal(expected, string.Join(",", categories));
+    }
+
+    [Fact]
+    public void Militaerplatz_nur_Militaer_Zivilplatz_kein_Militaer()
+    {
+        var rules = new TrafficRules(directory: Airports);
+        Assert.Empty(rules.Check(At("ETNW"), TrafficOperation.Arrival, "A400", TrafficCategory.Military, 120));
+        Assert.Contains(rules.Check(At("ETNW"), TrafficOperation.Arrival, "A20N", TrafficCategory.Airliner, 135), v => v.Code == "airport_category");
+        Assert.Contains(rules.Check(At("EDDF"), TrafficOperation.Arrival, "A400", TrafficCategory.Military, 120), v => v.Code == "airport_category");
+        Assert.Contains(rules.Check(At("DE-0001"), TrafficOperation.Arrival, "C172", TrafficCategory.GeneralAviation, 65), v => v.Code == "airport");
+        Assert.Contains(rules.Check(At("EDKB"), TrafficOperation.Arrival, "A20N", TrafficCategory.Airliner, 135), v => v.Code == "airport_category");
+        Assert.Empty(rules.Check(At("EDKB"), TrafficOperation.Arrival, "C172", TrafficCategory.GeneralAviation, 65));
+
+        // Eigene Regel schlägt die Einordnung: Militär auf einem Zivilplatz, Militärplatz als zivil
+        var own = TrafficRules.Parse("""{ "airports": { "EDDF": { "categories": ["airliner", "military"] }, "ETNW": { "military": false } } }""", Airports);
+        Assert.Empty(own.Check(At("EDDF"), TrafficOperation.Arrival, "A400", TrafficCategory.Military, 120));
+        Assert.Contains(own.Check(At("EDDF"), TrafficOperation.Arrival, "C172", TrafficCategory.GeneralAviation, 65), v => v.Code == "airport_category");
+        Assert.Equal("GeneralAviation", string.Join(",", own.AirportTraffic("ETNW").Categories));
+    }
+
+    [Fact]
+    public void Finkenwerder_nur_Airbus_aus_dem_Mix()
+    {
+        var rules = ShippedRules(Airports);
+        Assert.Empty(rules.Check(At("EDHI"), TrafficOperation.Arrival, "A337", TrafficCategory.Airliner, 140));
+        Assert.Empty(rules.Check(At("EDHI"), TrafficOperation.Departure, "A20N", TrafficCategory.Airliner, 135));
+        Assert.Contains(rules.Check(At("EDHI"), TrafficOperation.Arrival, "B738", TrafficCategory.Airliner, 145), v => v.Code == "mix");
+        Assert.Contains(rules.Check(At("EDHI"), TrafficOperation.Arrival, "C172", TrafficCategory.GeneralAviation, 65), v => v.Code == "airport_category");
+
+        // Toulouse: "*" lässt alles zu
+        Assert.Empty(rules.Check(At("LFBO"), TrafficOperation.Arrival, "B738", TrafficCategory.Airliner, 145));
+    }
+
+    [Fact]
+    public void Modellwahl_nach_Mix_ueberwiegend_Beluga()
+    {
+        var rules = ShippedRules(Airports);
+        AiModel[] models =
+        [
+            new("A330-BelugaXL", ""),
+            new("Asobo PassiveAircraft A320 NEO", ""),
+            new("Asobo PassiveAircraft B737-800", ""),
+            new("Asobo PassiveAircraft C172", ""),
+        ];
+        var random = new Random(7);
+        var picks = Enumerable.Range(0, 200).Select(_ => rules.PickModel(models, At("EDHI"), TrafficOperation.Arrival, random)!.Title).ToList();
+        var beluga = picks.Count(t => t == "A330-BelugaXL");
+        Assert.InRange(beluga, 140, 180);
+        Assert.Equal(200 - beluga, picks.Count(t => t == "Asobo PassiveAircraft A320 NEO"));
+    }
+
+    [Fact]
+    public void Modellwahl_ohne_Mix_nach_Platz_und_Status()
+    {
+        var rules = new TrafficRules(directory: Airports);
+        AiModel[] models =
+        [
+            new("Asobo PassiveAircraft A320 NEO", ""),
+            new("Asobo PassiveAircraft C172", ""),
+            new("A400M Cargo", ""),
+        ];
+
+        // Linienplatz: der bevorzugte (A320), kleiner Platz: Allgemeine Luftfahrt, Militärplatz: A400M, Heliport: keins
+        Assert.Equal("Asobo PassiveAircraft A320 NEO", rules.PickModel(models, At("EDDF"), TrafficOperation.Arrival, new Random(1), models[0])!.Title);
+        Assert.Equal("Asobo PassiveAircraft C172", rules.PickModel(models, At("EDKB", lengthM: 900, widthM: 20), TrafficOperation.Arrival, new Random(1), models[0])!.Title);
+        Assert.Equal("A400M Cargo", rules.PickModel(models, At("ETNW"), TrafficOperation.Departure, new Random(1), models[0])!.Title);
+        Assert.Null(rules.PickModel(models, At("DE-0001"), TrafficOperation.Arrival, new Random(1), models[0]));
+    }
+
+    [Fact]
+    public void Freigabeliste_kennt_A400M_und_Super_Hornet_als_Militaer()
+    {
+        Assert.Equal(TrafficCategory.Military, TrafficModels.TypeOf("A400M Cargo")!.Category);
+        Assert.Equal(TrafficCategory.Military, TrafficModels.TypeOf("FA18E SuperHornet")!.Category);
+        Assert.Equal(TrafficWake.Heavy, TrafficRules.WakeOf("A400", TrafficCategory.Military));
+    }
+
+    [Fact]
+    public void Mitgeliefertes_Flugplatz_Verzeichnis_ordnet_echte_Plaetze_ein()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "src", "Duopilo", "data", TrafficAirportDirectory.Folder, TrafficAirportDirectory.FileName)))
+        {
+            dir = dir.Parent;
+        }
+
+        Assert.NotNull(dir);
+        var messages = new List<string>();
+        var airports = TrafficAirportDirectory.Load([Path.Combine(dir.FullName, "src", "Duopilo", "data")], messages);
+        Assert.Empty(messages);
+        Assert.True(airports.Count > 40000);
+        Assert.True(airports.Find("ETNN")!.Military);
+        Assert.False(airports.Find("EDDF")!.Military);
+        Assert.True(airports.Find("EDDF")!.Scheduled);
+        Assert.False(airports.Find("EDHI")!.Scheduled);
     }
 
     [Fact]
@@ -1229,7 +1367,8 @@ public sealed class TrafficTestTests
         Assert.True(plan.IsOverflight);
         Assert.Equal(35000, plan.CruiseAltitudeFt);
         Assert.Equal(450, plan.CruiseTasKt);
-        Assert.Equal(265, plan.CruiseKt);
+        Assert.Equal(450, plan.CruiseKt);
+        Assert.Equal(265, plan.CruiseIasKt);
         Assert.Equal(40, plan.SpawnNm);
         Assert.Equal(40 * RunwayEnd.MetersPerNm, plan.ExitM, 0);
         Assert.Equal(["overhead", "exit", "beyond"], plan.Waypoints.Select(w => w.Name));
@@ -1237,24 +1376,25 @@ public sealed class TrafficTestTests
         Assert.All(plan.Waypoints, w =>
         {
             Assert.Equal(35000, w.Waypoint.AltitudeFt);
-            Assert.Equal(265, w.Waypoint.SpeedKt);
+            Assert.Equal(450, w.Waypoint.SpeedKt);
             Assert.False(w.Waypoint.Flags.HasFlag(AiWaypointFlags.OnGround));
         });
 
         Assert.False(plan.Spawn.OnGround);
         Assert.False(plan.GearAtSpawn);
         Assert.Equal(35000, plan.Spawn.AltitudeFt);
-        Assert.Equal(265u, plan.Spawn.AirspeedKt);
+        Assert.Equal(450u, plan.Spawn.AirspeedKt);
         var (spawnAlong, spawnCross) = overhead.Offsets(plan.Spawn.Latitude, plan.Spawn.Longitude);
         Assert.Equal(-40 * 1852, spawnAlong, 0);
         Assert.Equal(0, spawnCross, 0);
-        Assert.Equal(265, plan.AirborneTargetKt(-1000));
+        Assert.Equal(450, plan.AirborneTargetKt(-1000));
 
         // Allgemeine Luftfahrt: FL85, doppelte Vapp, kürzer
         var ga = TrafficTestPlan.BuildOverflight(overhead, TrafficCategory.GeneralAviation, approachKt: 65);
         Assert.Equal(8500, ga.CruiseAltitudeFt);
         Assert.Equal(130, ga.CruiseTasKt);
-        Assert.Equal(111, ga.CruiseKt);
+        Assert.Equal(130, ga.CruiseKt);
+        Assert.Equal(111, ga.CruiseIasKt);
         Assert.Equal(15, ga.SpawnNm);
 
         // Eigene Werte, Spawn höchstens 75 NM vor dem Punkt

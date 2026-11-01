@@ -242,8 +242,14 @@ public sealed record TrafficTestPlan(
     /// <summary>Überflug: Reiseflughöhe (MSL, Fuß; Flugfläche bei Standarddruck gleichgesetzt).</summary>
     public double CruiseAltitudeFt { get; init; }
 
-    /// <summary>Überflug: Reisegeschwindigkeit als IAS (aus der TAS umgerechnet).</summary>
+    /// <summary>
+    /// Überflug: Geschwindigkeit, die die KI bekommt (Wegpunkte, Wunschgeschwindigkeit, Spawn) – die wahre Reisegeschwindigkeit. Die KI
+    /// nimmt sie als TAS: beta.18 in EDDF flog die A320 auf FL350 mit 265 kt gewünscht 265 kt über Grund statt 450.
+    /// </summary>
     public double CruiseKt { get; init; }
+
+    /// <summary>Überflug: die IAS dazu (nur zur Anzeige).</summary>
+    public double CruiseIasKt { get; init; }
 
     /// <summary>Überflug: wahre Reisegeschwindigkeit.</summary>
     public double CruiseTasKt { get; init; }
@@ -469,16 +475,17 @@ public sealed record TrafficTestPlan(
 
         var waypoints = new List<TrafficTestWaypoint>();
         var flags = AiWaypointFlags.SpeedRequested;
-        Add(waypoints, overhead, "overhead", 0, altitude, ias, flags);
-        Add(waypoints, overhead, "exit", exit, altitude, ias, flags);
-        Add(waypoints, overhead, "beyond", exit + (30 * RunwayEnd.MetersPerNm), altitude, ias, flags);
+        Add(waypoints, overhead, "overhead", 0, altitude, tas, flags);
+        Add(waypoints, overhead, "exit", exit, altitude, tas, flags);
+        Add(waypoints, overhead, "beyond", exit + (30 * RunwayEnd.MetersPerNm), altitude, tas, flags);
 
         var (lat, lon) = overhead.Point(-exit);
-        var spawn = new AiInitPosition(lat, lon, altitude, overhead.HeadingTrueDeg, OnGround: false, AirspeedKt: (uint)ias);
+        var spawn = new AiInitPosition(lat, lon, altitude, overhead.HeadingTrueDeg, OnGround: false, AirspeedKt: (uint)Math.Round(tas));
         return new TrafficTestPlan(TrafficTestVariant.C1, overhead, spawn, distance, false, null, null, 0, 0, 0, vapp, waypoints, [], [])
         {
             CruiseAltitudeFt = altitude,
-            CruiseKt = ias,
+            CruiseKt = tas,
+            CruiseIasKt = ias,
             CruiseTasKt = tas,
             ExitM = exit,
         };

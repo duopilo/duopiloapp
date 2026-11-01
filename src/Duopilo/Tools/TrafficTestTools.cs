@@ -32,11 +32,14 @@ public static class TrafficTestTools
         "Vapp + 20 kt at the threshold, or not on the ground 900 m behind it (short runways: a third of the length) – then new waypoints " +
         "straight ahead, climb to 3000 ft above the runway, gear up at a positive climb rate, landing light stays on; the test ends at " +
         "2800 ft (reason go_around) or 5 minutes after the go-around (go_around_timeout). " +
-        "Models outside the approval list (traffic_test_models: status) get a warning. Runway rules: the aircraft must fit the runway – " +
-        "landing (A1/A2) or takeoff (B1) allowed there, category, ICAO type and wake category not excluded (data\\traffic\\runway-rules.json, " +
-        "e.g. EDDF 07L/25R landings only without B747, A380, MD-11; 18 takeoffs only), long enough (landing about 0.075 × Vapp² m, " +
-        "takeoff 1.4 times that) and wide enough (heavy and super 45 m, other airliners 30 m); otherwise the start is refused with the " +
-        "reasons (ignoreRunwayRules to test anyway).")]
+        "Models outside the approval list (traffic_test_models: status) get a warning. Airport rules for every airport: the category " +
+        "must fit the airport (OurAirports classification: military airfields only military aircraft, heliports, seaplane bases and " +
+        "closed fields nothing, small fields and fields without scheduled service general aviation only), the type must be in the " +
+        "airport's traffic mix if it has one (EDHI mostly Belugas), the runway must allow landing (A1/A2) or takeoff (B1), category, " +
+        "type and wake category (data\\traffic\\airport-rules.json, e.g. EDDF 07L/25R landings only without B747, A380, MD-11; 18 " +
+        "takeoffs only), and it must be long enough (landing about 0.075 × Vapp² m, takeoff 1.4 times that) and wide enough (heavy and " +
+        "super 45 m, other airliners 30 m); otherwise the start is refused with the reasons (ignoreRunwayRules to test anyway). Without " +
+        "title the model is picked by these rules – by weight from the traffic mix.")]
     public static async Task<string> Start(
         TrafficTestService tests,
         [Description("ICAO code of the airport, e.g. EDDL. Must be within 80 NM of the pilot's aircraft.")] string airport,
@@ -75,7 +78,7 @@ public static class TrafficTestTools
             "fixed 133 kt. Empty = waypoint AI to the stop, as before.")] double? kinematicNm = null,
         [Description("C1: track of the overflight in degrees true. Empty = direction of the runway.")] double? trackDeg = null,
         [Description("C1: flight level, e.g. 350. Empty = 350 (general aviation 85).")] double? flightLevel = null,
-        [Description("C1: true cruise speed in kt. Empty = 450 (general aviation twice the approach speed, at most 300); the AI gets it as IAS.")] double? cruiseKt = null,
+        [Description("C1: true cruise speed in kt. Empty = 450 (general aviation twice the approach speed, at most 300); the AI takes it as true airspeed.")] double? cruiseKt = null,
         [Description("Start even if the aircraft doesn't fit the runway (runway rules, length, width) – the reasons go into the events. Default false.")] bool ignoreRunwayRules = false,
         [Description(
             "Go around when the approach doesn't fit (default true): too high or too fast at the threshold, or no touchdown by 900 m. " +
@@ -103,7 +106,7 @@ public static class TrafficTestTools
         try
         {
             var status = await tests.StartTestAsync(new TrafficTestRequest(airport, runway, parsed, title, livery, spawnNm, gearMethod, finalLowFt, touchdownM, approachKt, speed, goAround, rollM, throttlePercent, kinematicNm, trackDeg, flightLevel, cruiseKt, ignoreRunwayRules), cancellationToken);
-            return Json.Serialize(new { ok = true, status });
+            return Json.Serialize(new { ok = true, status = Brief(status) });
         }
         catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or TimeoutException or ArgumentException)
         {
@@ -127,19 +130,29 @@ public static class TrafficTestTools
         "above the runway when the gear was down and whether that was by 2500 ft, values " +
         "at the approach gates (altitude deviation from the glide path, pitch), approach pitch, touchdown point, speed, sink rate, pitch and " +
         "flare (pitch gain before touchdown), max bank on final, lights on final and after landing, float seconds, stop point. Paths of " +
-        "the CSV and summary files.")]
+        "the CSV and summary files. The waypoints only with details: true.")]
     public static string Status(
         TrafficTestService tests,
-        [Description("Only the test on this runway, e.g. 05L or 'EDDL 05L'. Empty = all tests.")] string? runway = null)
+        [Description("Only the test on this runway, e.g. 05L or 'EDDL 05L'. Empty = all tests.")] string? runway = null,
+        [Description("Include the waypoints of each test (long). Default false.")] bool details = false)
     {
         var all = tests.Status(runway);
-        return Json.Serialize(new { ok = true, enabled = tests.Enabled, running = all.Count(t => t.State == "running"), tests = all });
+        return Json.Serialize(new
+        {
+            ok = true,
+            enabled = tests.Enabled,
+            running = all.Count(t => t.State == "running"),
+            tests = details ? all : all.Select(Brief).ToList(),
+        });
     }
+
+    /// <summary>Status ohne Wegpunkte – die stehen schon in der Antwort auf den Start nicht mehr, sonst wird jede Abfrage sehr lang.</summary>
+    private static TrafficTestStatus Brief(TrafficTestStatus status) => status with { Waypoints = [] };
 
     [McpServerTool(Name = "traffic_test_stop", ReadOnly = false, Destructive = false, Idempotent = true)]
     [Description(
         "Ends traffic tests: removes the test aircraft from the sim and writes the evaluation next to the CSV. Without runway all tests " +
-        "end. Returns the final state of all tests.")]
+        "end. Returns the final state of the ended tests (without waypoints) and how many are still running.")]
     public static async Task<string> Stop(
         TrafficTestService tests,
         [Description("Only the test on this runway, e.g. 05L or 'EDDL 05L'. Empty = all tests.")] string? runway = null,
@@ -148,7 +161,8 @@ public static class TrafficTestTools
         try
         {
             var all = await tests.StopTestAsync("stopped", cancellationToken, runway);
-            return Json.Serialize(new { ok = true, running = all.Count(t => t.State == "running"), tests = all });
+            var ended = string.IsNullOrWhiteSpace(runway) ? all : tests.Status(runway);
+            return Json.Serialize(new { ok = true, running = all.Count(t => t.State == "running"), tests = ended.Select(Brief).ToList() });
         }
         catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
         {
@@ -160,15 +174,16 @@ public static class TrafficTestTools
     [Description(
         "Aircraft models installed in MSFS 2024 that can be spawned (title and livery, from EnumerateSimObjectsAndLiveries), for " +
         "traffic_test_start. Filter by words, e.g. 'A320 FSLTL' or 'Lufthansa'. 'suggested' is the model traffic_test_start takes without a title. " +
-        "Each model has 'type' (ICAO type from Duopilo's approval list), 'category' (airliner, generalaviation) and 'status': 'verified' " +
+        "Each model has 'type' (ICAO type from Duopilo's approval list), 'category' (airliner, generalaviation, military) and 'status': 'verified' " +
         "(gear and landing checked in the sim), 'candidate' (landed in a test, not looked at yet), 'untested' (on the list, e.g. the MSFS " +
         "2024 GA aircraft, not tested yet), 'excluded' (FlyByWire, Headwind: as AI their gear only comes half out and the engines don't " +
-        "spin) or 'unknown' (not on the list). 'approved' lists the approval list itself.")]
+        "spin) or 'unknown' (not on the list). 'approved' lists the approval list itself, only with approvalList: true (long).")]
     public static async Task<string> Models(
         TrafficTestService tests,
         [Description("Words that must all appear in title or livery, case-insensitive. Empty = all.")] string? filter = null,
         [Description("Maximum number of models in the answer. Default 50.")] int limit = DefaultModelLimit,
         [Description("Only models of the approval list (verified, candidate and untested).")] bool approvedOnly = false,
+        [Description("Include the approval list itself (about 160 types, long). Default false.")] bool approvalList = false,
         CancellationToken cancellationToken = default)
     {
         try
@@ -186,7 +201,7 @@ public static class TrafficTestTools
                 matched = matched.Count,
                 truncated = matched.Count > max,
                 suggested = suggested is null ? null : new { title = suggested.Title, livery = suggested.Livery },
-                approved = TrafficModels.Approved.Select(t => new
+                approved = !approvalList ? null : TrafficModels.Approved.Select(t => new
                 {
                     type = t.IcaoType,
                     name = t.Name,
