@@ -22,13 +22,14 @@ public static class TrafficTestTools
         "command at 3000 ft above the runway so it is down by 2500 ft (the evaluation checks that). Up to 4 tests at the same time, one per runway (e.g. a parallel approach: one call for 05L, one for 05R); starting a " +
         "test on a runway that already has one replaces it. Pick runways the pilot is not using right now. Samples (1 per second) go to one CSV " +
         "per test in the data folder (traffic-tests). Follow with traffic_test_status, end with traffic_test_stop (the aircraft is removed; " +
-        "after MaxMinutes, default 15, also without stop).")]
+        "after MaxMinutes, default 15, also without stop). Lights: nav, beacon, strobes, landing, taxi and logo on at spawn; after touchdown " +
+        "below 60 kt landing lights and strobes off. Models outside the approval list (traffic_test_models: status) get a warning.")]
     public static async Task<string> Start(
         TrafficTestService tests,
         [Description("ICAO code of the airport, e.g. EDDL. Must be within 80 NM of the pilot's aircraft.")] string airport,
         [Description("Runway end to land on, e.g. 23L (5L and 05L are the same).")] string runway,
         [Description("A1 (gear down from spawn, 5 NM) or A2 (spawn 15 NM with the gear up, gear down at 3000 ft above the runway). Default A1.")] string variant = "A1",
-        [Description("Aircraft title as listed by traffic_test_models. Empty = automatic (an FSLTL A320 if installed, else any A320; FlyByWire and Headwind models are skipped).")] string? title = null,
+        [Description("Aircraft title as listed by traffic_test_models. Empty = automatic (an FSLTL A320 if installed, else a verified model of the approval list, else any A320; FlyByWire and Headwind models are skipped).")] string? title = null,
         [Description("Livery name for the title (MSFS 2024 modular aircraft). Empty = default livery.")] string? livery = null,
         [Description("Spawn distance before the threshold in NM (2–30). Empty = default of the variant.")] double? spawnNm = null,
         [Description(
@@ -68,12 +69,14 @@ public static class TrafficTestTools
     [McpServerTool(Name = "traffic_test_status", ReadOnly = true)]
     [Description(
         "State of the traffic tests (traffic_test_start), one entry per test in 'tests' (running ones and the last ended ones): running/ended, " +
-        "tail, last sample (altitude, IAS against the requested speed, ground speed, vertical speed, pitch – nose up positive –, bank, gear, " +
+        "tail, ICAO type and model status (verified, candidate, excluded, unknown), last sample (altitude, IAS against the requested speed, " +
+        "ground speed, vertical speed, pitch – nose up positive –, bank, gear, lights, " +
         "distance to the threshold, position relative to the centerline, AI state), events (spawn, gear, touchdown, stopped …) and the " +
         "evaluation: verdict (stopped, landed, floated = hovered above the runway without touching down, airborne), speed deviation, height " +
         "above the runway when the gear was down and whether that was by 2500 ft, values " +
         "at the approach gates (altitude deviation from the glide path, pitch), approach pitch, touchdown point, speed, sink rate, pitch and " +
-        "flare (pitch gain before touchdown), max bank on final, float seconds, stop point. Paths of the CSV and summary files.")]
+        "flare (pitch gain before touchdown), max bank on final, lights on final and after landing, float seconds, stop point. Paths of " +
+        "the CSV and summary files.")]
     public static string Status(
         TrafficTestService tests,
         [Description("Only the test on this runway, e.g. 05L or 'EDDL 05L'. Empty = all tests.")] string? runway = null)
@@ -106,18 +109,22 @@ public static class TrafficTestTools
     [Description(
         "Aircraft models installed in MSFS 2024 that can be spawned (title and livery, from EnumerateSimObjectsAndLiveries), for " +
         "traffic_test_start. Filter by words, e.g. 'A320 FSLTL' or 'Lufthansa'. 'suggested' is the model traffic_test_start takes without a title. " +
-        "'excluded' marks models that don't belong in Duopilo's traffic (FlyByWire, Headwind: as AI their gear only comes half out and the " +
-        "engines don't spin) – they can still be tested, the test then shows a warning.")]
+        "Each model has 'type' (ICAO type from Duopilo's approval list) and 'status': 'verified' (gear and landing checked in the sim), " +
+        "'candidate' (landed in a test, not looked at yet), 'excluded' (FlyByWire, Headwind: as AI their gear only comes half out and the " +
+        "engines don't spin) or 'unknown' (not tested). 'approved' lists the approval list itself.")]
     public static async Task<string> Models(
         TrafficTestService tests,
         [Description("Words that must all appear in title or livery, case-insensitive. Empty = all.")] string? filter = null,
         [Description("Maximum number of models in the answer. Default 50.")] int limit = DefaultModelLimit,
+        [Description("Only models of the approval list (verified and candidate).")] bool approvedOnly = false,
         CancellationToken cancellationToken = default)
     {
         try
         {
             var all = await tests.ModelsAsync(null, cancellationToken);
-            var matched = TrafficTestService.Filter(all, filter);
+            var matched = TrafficTestService.Filter(all, filter)
+                .Where(m => !approvedOnly || TrafficModels.TypeOf(m.Title, m.Livery) is not null)
+                .ToList();
             var max = Math.Clamp(limit, 1, 500);
             var suggested = TrafficTestService.PickDefaultModel(all);
             return Json.Serialize(new
@@ -127,7 +134,15 @@ public static class TrafficTestTools
                 matched = matched.Count,
                 truncated = matched.Count > max,
                 suggested = suggested is null ? null : new { title = suggested.Title, livery = suggested.Livery },
-                models = matched.Take(max).Select(m => new { title = m.Title, livery = m.Livery, excluded = TrafficModels.IsExcluded(m.Title, m.Livery) }),
+                approved = TrafficModels.Approved.Select(t => new { type = t.IcaoType, name = t.Name, titles = t.Titles, status = t.Status.ToString().ToLowerInvariant(), note = t.Note }),
+                models = matched.Take(max).Select(m => new
+                {
+                    title = m.Title,
+                    livery = m.Livery,
+                    type = TrafficModels.TypeOf(m.Title, m.Livery)?.IcaoType,
+                    status = TrafficModels.StatusName(m.Title, m.Livery),
+                    excluded = TrafficModels.IsExcluded(m.Title, m.Livery),
+                }),
             });
         }
         catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException)

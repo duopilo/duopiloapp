@@ -44,11 +44,14 @@ public sealed record TrafficTestLast(
     double? DistanceToThresholdNm,
     double AlongM,
     double CrossM,
-    string? AiState);
+    string? AiState,
+    string Lights);
 
 /// <summary>Zustand eines Testanflugs für Tool und Browser.</summary>
 /// <param name="State">running oder ended.</param>
 /// <param name="Tail">Kennzeichen des Testflugzeugs (DUO01 bis DUO04).</param>
+/// <param name="Type">ICAO-Typ laut Freigabeliste, sonst null.</param>
+/// <param name="ModelStatus">verified, candidate, excluded oder unknown (<see cref="TrafficModels"/>).</param>
 public sealed record TrafficTestStatus(
     string State,
     string Tail,
@@ -57,6 +60,8 @@ public sealed record TrafficTestStatus(
     string Runway,
     string Title,
     string? Livery,
+    string? Type,
+    string ModelStatus,
     string Gear,
     double FinalLowFt,
     uint ObjectId,
@@ -223,10 +228,14 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 run.AddEvent(0, "warning:" + warning);
             }
 
-            // Gesperrte Modelle (FBW, Headwind) gehen im Test trotzdem, aber mit Hinweis
+            // Gesperrte (FBW, Headwind) und nicht freigegebene Modelle gehen im Test trotzdem, aber mit Hinweis
             if (TrafficModels.ExcludedBy(title, livery) is { } excludedBy)
             {
                 run.AddEvent(0, "warning:excludedModel " + excludedBy);
+            }
+            else if (TrafficModels.TypeOf(title, livery) is null)
+            {
+                run.AddEvent(0, "warning:notApproved");
             }
 
             lock (_lock)
@@ -248,6 +257,9 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                     run.GearCommands++;
                     run.AddEvent(0, "gear_down_sent " + GearName(request.Gear));
                 }
+
+                await _sim.SetAiLightsAsync(objectId, TrafficLights.Approach, ct);
+                run.AddEvent(0, "lights_sent approach");
 
                 await _sim.SetAiWaypointsAsync(objectId, [.. plan.Waypoints.Select(w => w.Waypoint)], ct);
                 run.AddEvent(0, string.Create(CultureInfo.InvariantCulture, $"waypoints_sent {plan.Waypoints.Count}"));
@@ -322,11 +334,20 @@ public sealed class TrafficTestService : IHostedService, IDisposable
     /// <summary>Name der Fahrwerks-Methode wie im Tool-Parameter (all, down, set, handle).</summary>
     public static string GearName(AiGearMethod method) => method.ToString().ToLowerInvariant();
 
-    /// <summary>Standardmodell: ein A320 aus dem FSLTL-Paket, sonst irgendein A320 – ohne gesperrte Modelle (<see cref="TrafficModels"/>).</summary>
+    /// <summary>
+    /// Standardmodell: ein A320 aus dem FSLTL-Paket, sonst ein geprüftes Modell der Freigabeliste (in deren Reihenfolge), sonst
+    /// irgendein A320 – nie ein gesperrtes (<see cref="TrafficModels"/>).
+    /// </summary>
     public static AiModel? PickDefaultModel(IReadOnlyList<AiModel> models)
     {
         var usable = models.Where(m => !TrafficModels.IsExcluded(m.Title, m.Livery)).ToList();
+        var verified = TrafficModels.Approved
+            .Where(t => t.Status == TrafficModelStatus.Verified)
+            .SelectMany(t => t.Titles)
+            .Select(title => usable.FirstOrDefault(m => string.Equals(m.Title, title, StringComparison.OrdinalIgnoreCase)))
+            .FirstOrDefault(m => m is not null);
         return usable.FirstOrDefault(m => m.Title.Contains("A320", StringComparison.OrdinalIgnoreCase) && m.Title.Contains("FSLTL", StringComparison.OrdinalIgnoreCase))
+            ?? verified
             ?? usable.FirstOrDefault(m => m.Title.Contains("A320", StringComparison.OrdinalIgnoreCase));
     }
 
@@ -358,6 +379,8 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             plan.Runway.Designation,
             run.Title,
             run.Livery.Length > 0 ? run.Livery : null,
+            TrafficModels.TypeOf(run.Title, run.Livery)?.IcaoType,
+            TrafficModels.StatusName(run.Title, run.Livery),
             GearName(run.GearMethod),
             plan.FinalLowFt,
             run.ObjectId,
@@ -424,7 +447,8 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 point.DistanceToThresholdNm,
                 Math.Round(point.AlongM),
                 Math.Round(point.CrossM, 1),
-                sample.AiState);
+                sample.AiState,
+                AiLights.Describe(sample.LightStates));
             foreach (var e in point.Events)
             {
                 run.AddEvent(point.Seconds, e);
@@ -454,6 +478,25 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             run.GearCommands++;
             run.AddEvent(point.Seconds, "gear_down_resent " + GearName(run.GearMethod));
             Fire(_sim.SetAiGearAsync(run.ObjectId, true, run.GearMethod, CancellationToken.None), "gear");
+        }
+
+        // Lichter einmal nachschicken, falls das Modell sie beim Spawn noch nicht angenommen hat
+        if (!run.LightsChecked && point.Seconds >= 5 && !sample.OnGround)
+        {
+            run.LightsChecked = true;
+            if (!TrafficLights.Approach.MatchedBy(sample.LightStates))
+            {
+                run.AddEvent(point.Seconds, "lights_resent approach (were: " + AiLights.Describe(sample.LightStates) + ")");
+                Fire(_sim.SetAiLightsAsync(run.ObjectId, TrafficLights.Approach, CancellationToken.None), "lights");
+            }
+        }
+
+        // Nach dem Aufsetzen beim Abbremsen: Landelicht und Strobes aus, Taxilicht an
+        if (!run.RolloutLightsSent && run.Analysis.TouchedDown && sample.OnGround && sample.GroundSpeedKt < TrafficLights.RolloutBelowKt)
+        {
+            run.RolloutLightsSent = true;
+            run.AddEvent(point.Seconds, "lights_sent rollout");
+            Fire(_sim.SetAiLightsAsync(run.ObjectId, TrafficLights.Rollout, CancellationToken.None), "lights");
         }
 
         if (point.Seconds > run.MaxMinutes * 60 && !run.StopScheduled)
@@ -511,7 +554,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             var name = string.Create(CultureInfo.InvariantCulture, $"{spawnUtc:yyyyMMdd-HHmmss}-{plan.Runway.Airport}{plan.Runway.Designation}-{plan.Variant}.csv");
             var path = Path.Combine(Directory, name);
             var writer = new StreamWriter(path, append: false) { AutoFlush = true };
-            writer.WriteLine("utc,t_s,lat,lon,alt_ft,agl_ft,ias_kt,target_kt,gs_kt,vs_fpm,hdg_true,pitch_deg,bank_deg,on_ground,gear_handle,gear_total_pct,gear_center_pct,gear_left_pct,gear_right_pct,ai_state,along_m,cross_m,dist_thr_nm,events");
+            writer.WriteLine("utc,t_s,lat,lon,alt_ft,agl_ft,ias_kt,target_kt,gs_kt,vs_fpm,hdg_true,pitch_deg,bank_deg,on_ground,gear_handle,gear_total_pct,gear_center_pct,gear_left_pct,gear_right_pct,lights,ai_state,along_m,cross_m,dist_thr_nm,events");
             return (path, writer);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -531,7 +574,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         try
         {
             writer.WriteLine(string.Create(CultureInfo.InvariantCulture,
-                $"{s.Utc:O},{p.Seconds:0.0},{s.Latitude:0.000000},{s.Longitude:0.000000},{s.AltitudeFt:0},{s.AltitudeAglFt:0},{s.IndicatedKt:0},{p.TargetKt:0},{s.GroundSpeedKt:0},{s.VerticalSpeedFpm:0},{s.HeadingTrueDeg:0},{s.PitchDeg:0.0},{s.BankDeg:0.0},{(s.OnGround ? 1 : 0)},{(s.GearHandleDown ? 1 : 0)},{s.GearTotalPercent:0.0},{s.GearCenterPercent:0.0},{s.GearLeftPercent:0.0},{s.GearRightPercent:0.0},{Csv(s.AiState)},{p.AlongM:0},{p.CrossM:0.0},{p.DistanceToThresholdNm:0.00},{Csv(string.Join(' ', p.Events))}"));
+                $"{s.Utc:O},{p.Seconds:0.0},{s.Latitude:0.000000},{s.Longitude:0.000000},{s.AltitudeFt:0},{s.AltitudeAglFt:0},{s.IndicatedKt:0},{p.TargetKt:0},{s.GroundSpeedKt:0},{s.VerticalSpeedFpm:0},{s.HeadingTrueDeg:0},{s.PitchDeg:0.0},{s.BankDeg:0.0},{(s.OnGround ? 1 : 0)},{(s.GearHandleDown ? 1 : 0)},{s.GearTotalPercent:0.0},{s.GearCenterPercent:0.0},{s.GearLeftPercent:0.0},{s.GearRightPercent:0.0},{Csv(AiLights.Describe(s.LightStates))},{Csv(s.AiState)},{p.AlongM:0},{p.CrossM:0.0},{p.DistanceToThresholdNm:0.00},{Csv(string.Join(' ', p.Events))}"));
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException)
         {
@@ -562,6 +605,8 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                     runwayLengthM = Math.Round(plan.Runway.LengthM),
                     runwayElevationFt = Math.Round(plan.Runway.ElevationFt),
                     title = run.Title,
+                    type = TrafficModels.TypeOf(run.Title, run.Livery)?.IcaoType,
+                    modelStatus = TrafficModels.StatusName(run.Title, run.Livery),
                     livery = run.Livery,
                     gear = GearName(run.GearMethod),
                     spawnUtc = run.SpawnUtc,
@@ -649,6 +694,11 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         public int GearCommands { get; set; }
 
         public bool StopScheduled { get; set; }
+
+        /// <summary>Ob nach dem Spawn geprüft wurde, dass die Anfluglichter an sind.</summary>
+        public bool LightsChecked { get; set; }
+
+        public bool RolloutLightsSent { get; set; }
 
         public IReadOnlyList<TrafficTestEvent> Events
         {

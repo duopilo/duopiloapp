@@ -423,6 +423,80 @@ public sealed class TrafficTestTests
         Assert.Null(TrafficTestService.PickDefaultModel(models[..1]));
     }
 
+    [Theory]
+    [InlineData("A330-300 (RR)", "Lufthansa", "A333", "verified")]
+    [InlineData("a330-300 (ge)", "", "A333", "verified")]
+    [InlineData("A320neo V2", "", "A20N", "verified")]
+    [InlineData("Asobo PassiveAircraft B737-800", "B737_800_SUNEXPRESS", "B738", "candidate")]
+    [InlineData("A330-300 VIP (RR)", "", null, "unknown")]
+    [InlineData("A330-300P2F (RR)", "", null, "unknown")]
+    [InlineData("Airbus A330-900neo Condor Beach", "", null, "excluded")]
+    public void Freigabeliste_exakte_Titel_mit_ICAO_Typ(string title, string livery, string? type, string status)
+    {
+        Assert.Equal(type, TrafficModels.TypeOf(title, livery)?.IcaoType);
+        Assert.Equal(status, TrafficModels.StatusName(title, livery));
+    }
+
+    [Fact]
+    public void Freigabeliste_ohne_gesperrte_und_ohne_doppelte_Titel()
+    {
+        var titles = TrafficModels.Approved.SelectMany(t => t.Titles).ToList();
+        Assert.Equal(titles.Count, titles.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        Assert.All(titles, t => Assert.False(TrafficModels.IsExcluded(t)));
+        Assert.All(TrafficModels.Approved, t => Assert.Matches("^[A-Z0-9]{2,4}$", t.IcaoType));
+    }
+
+    [Fact]
+    public void Standardmodell_nimmt_ohne_FSLTL_ein_gepruefte_Modell()
+    {
+        AiModel[] models =
+        [
+            new("A310", "Lufthansa"),
+            new("Asobo A320neo", "Default"),
+            new("A320neo V2", ""),
+        ];
+
+        Assert.Equal("A320neo V2", TrafficTestService.PickDefaultModel(models)!.Title);
+    }
+
+    [Fact]
+    public void Lichter_Bits_Text_und_Soll()
+    {
+        // LIGHT STATES: nav 0x1, beacon 0x2, landing 0x4, taxi 0x8, strobe 0x10, logo 0x100
+        Assert.Equal("nav beacon landing strobe logo", AiLights.Describe(0x0117));
+        Assert.Equal("", AiLights.Describe(0));
+        Assert.Equal(("STROBES_SET", "LIGHT STROBE"), AiLights.Names(AiLight.Strobe));
+        Assert.Equal(("LANDING_LIGHTS_SET", "LIGHT LANDING"), AiLights.Names(AiLight.Landing));
+
+        Assert.True(TrafficLights.Approach.MatchedBy(0x011F));
+        Assert.False(TrafficLights.Approach.MatchedBy(0x0003));
+        Assert.Equal(6, TrafficLights.Approach.Changes().Count());
+
+        // Nach der Landung nur drei Lichter schalten, der Rest bleibt
+        Assert.Equal([(AiLight.Strobe, false), (AiLight.Landing, false), (AiLight.Taxi, true)], TrafficLights.Rollout.Changes());
+        Assert.True(TrafficLights.Rollout.MatchedBy(0x010B));
+        Assert.False(TrafficLights.Rollout.MatchedBy(0x011F));
+    }
+
+    [Fact]
+    public void Auswertung_Lichter_im_Anflug_und_nach_der_Landung()
+    {
+        var end = End("23L");
+        var plan = TrafficTestPlan.Build(end, TrafficTestVariant.A1);
+        var start = DateTimeOffset.UtcNow;
+        var analysis = new TrafficTestAnalysis(plan, start);
+
+        Add(analysis, end, start, 0, -2 * RunwayEnd.MetersPerNm, TrafficTestPlan.GlidePathFt(end, 2), ias: 140, gs: 140, onGround: false, agl: 600, lights: 0x011F);
+        Add(analysis, end, start, 1, -1 * RunwayEnd.MetersPerNm, TrafficTestPlan.GlidePathFt(end, 1), ias: 140, gs: 140, onGround: false, agl: 300, lights: 0x011F);
+        Add(analysis, end, start, 2, 400, end.ElevationFt, ias: 128, gs: 128, onGround: true, agl: 0, lights: 0x011F);
+        Add(analysis, end, start, 3, 900, end.ElevationFt, ias: 50, gs: 50, onGround: true, agl: 0, lights: 0x010B);
+
+        var summary = analysis.Summary();
+        Assert.True(analysis.TouchedDown);
+        Assert.Equal("nav beacon landing taxi strobe logo", summary.LightsOnFinal);
+        Assert.Equal("nav beacon taxi logo", summary.LightsAfterLanding);
+    }
+
     [Fact]
     public void Modellfilter_alle_Woerter_ohne_Doppelte()
     {
@@ -481,13 +555,15 @@ public sealed class TrafficTestTests
         double vs = -700,
         double gear = 100,
         double pitch = 0,
-        double bank = 0)
+        double bank = 0,
+        int lights = 0)
     {
         var (lat, lon) = end.Point(alongM);
         return analysis.Add(new AiProbeSample(1, start.AddSeconds(seconds), lat, lon, altitudeFt, agl, ias, gs, vs, end.HeadingTrueDeg, onGround, gear > 0, gear, 0, 0, 0, "SIMPLE_LANDING")
         {
             PitchDeg = pitch,
             BankDeg = bank,
+            LightStates = lights,
         });
     }
 }

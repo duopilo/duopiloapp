@@ -105,8 +105,8 @@ public static class HttpHost
 
         // Testwerkzeug für eigenen KI-Verkehr (wie traffic_test_status / traffic_test_models) – nur lesend
         app.MapGet("/traffic-test", (Duopilo.Traffic.TrafficTestService tests) => JsonText(TrafficTestTools.Status(tests))).LocalOnly();
-        app.MapGet("/traffic-test/models", async (Duopilo.Traffic.TrafficTestService tests, string? filter, int? limit, CancellationToken ct) =>
-            JsonText(await TrafficTestTools.Models(tests, filter, limit ?? TrafficTestTools.DefaultModelLimit, ct))).LocalOnly();
+        app.MapGet("/traffic-test/models", async (Duopilo.Traffic.TrafficTestService tests, string? filter, int? limit, bool? approved, CancellationToken ct) =>
+            JsonText(await TrafficTestTools.Models(tests, filter, limit ?? TrafficTestTools.DefaultModelLimit, approved ?? false, ct))).LocalOnly();
 
         if (remote.OAuthEnabled)
         {
