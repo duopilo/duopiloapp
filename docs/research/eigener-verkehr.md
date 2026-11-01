@@ -460,6 +460,11 @@ Haltepunkt der 23R (1,9 km, über die 23L): Pushback und Rollen mit 15 kt liefen
 KI-Flugzeug** – die Gates in EDDL stehen voll mit KI-Verkehr. Für beta.23: andere Flugzeuge am Boden als Hindernisse (Abfrage wie
 get_traffic), belegte Parkpositionen überspringen, Abschnitte näher als 25 m (GA 12 m) an einem Flugzeug sperren.
 
+**Abflug vom Gate (beta.24, Variante B2):** D1 bis zum Haltepunkt, 15 s warten, dann aufreihen: vom Haltepunkt über die Rollpunkte zum
+nächsten Punkt auf der Mittellinie (höchstens 8 m daneben, in der ersten Bahnhälfte, Weg unter 600 m), im Bogen in Startrichtung und
+40 m weiter, höchstens 10 kt. Von dort übernimmt die Start-Kinematik (B1, Vr bis 60 % der Bahn ab ihrem Anfang gerechnet), die
+Auswertung wechselt auf die des Starts, Landelicht und Strobes gehen an.
+
 **Fahrplan des eigenen Verkehrs (Stand 1.11.2026):**
 
 1. Anflug und Landung – erledigt bis beta.14 (Wegpunkte, Fahrwerk bis 2500 ft, Lichter, Freigabeliste, Geschwindigkeit).
@@ -469,7 +474,7 @@ get_traffic), belegte Parkpositionen überspringen, Abschnitte näher als 25 m (
 4. Überflüge in Reiseflughöhe – beta.18 (Variante C1, Wegpunkt-KI): Spawn 40 NM vor der Bahnmitte auf FL350 mit 450 kt TAS (ab
    beta.19 als TAS an die KI), geradeaus darüber hinweg, Lichter wie im Reiseflug (Landelicht aus), Ende 40 NM dahinter. Allgemeine
    Luftfahrt FL85, doppelte Vapp, 15 NM. Flughafenregeln für alle Plätze – beta.19.
-5. Rollen – beta.22 (Variante D1): Pushback und Rollen vom Gate zum Haltepunkt über die Rollwege; Aufreihen und Rollen nach der Landung danach.
+5. Rollen – beta.22 (Variante D1): Pushback und Rollen vom Gate zum Haltepunkt über die Rollwege, beta.23 mit Hindernissen; Abflug vom Gate mit Aufreihen und Start – beta.24 (B2); Rollen nach der Landung danach.
 6. Helikopter – nach dem Rollen: kinematisch (Anflug, Schweben, senkrecht landen und abheben), auf Heliports und Flughäfen;
    Heliports bekommen dann nur Helis.
 

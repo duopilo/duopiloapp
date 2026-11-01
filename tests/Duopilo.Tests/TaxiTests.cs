@@ -265,6 +265,69 @@ public sealed class TaxiTests
     }
 
     [Fact]
+    public void Aufreihen_vom_Haltepunkt_auf_die_Mittellinie_in_Startrichtung()
+    {
+        var graph = Graph();
+        var route = TaxiRoute.Plan(graph, End("09"), graph.FindParking("A5")!, TaxiProfile.Airliner)!
+            .WithLineUp(graph, End("09"), TaxiProfile.Airliner);
+
+        // Über A1 auf die Bahn (Punkt 12, gut 200 m hinter dem Bahnanfang), im Bogen nach Osten, 40 m weiter
+        Assert.Equal([H1, 12], route.LineUpNodes);
+        Assert.InRange(route.LineUpAlongM!.Value, 235, 250);
+        var path = route.LineUpPath!;
+        Assert.Equal(1, path.Turns);
+        var (startEast, startNorth, _) = path.At(0);
+        Assert.Equal(-800, startEast, 1);
+        Assert.Equal(90 + TaxiProfile.Airliner.StopShortM, startNorth, 1);
+        var (endEast, endNorth, endHeading) = path.At(path.LengthM);
+        Assert.Equal(-760, endEast, 0);
+        Assert.Equal(0, endNorth, 0);
+        Assert.Equal(90, endHeading, 1);
+
+        // Kinematik: am Haltepunkt warten, aufreihen, stehen
+        var kin = new TaxiKinematics(route.PushbackPath, route.TaxiPath, graph.ToLatLon, 164, 9, 0.3, route.LineUpPath);
+        var phases = new List<TaxiPhase>();
+        var holdingSeconds = 0.0;
+        for (var i = 0; i < 30 * 900 && kin.Phase != TaxiPhase.LinedUp; i++)
+        {
+            kin.Advance(1.0 / 30);
+            if (phases.Count == 0 || phases[^1] != kin.Phase)
+            {
+                phases.Add(kin.Phase);
+            }
+
+            if (kin.Phase == TaxiPhase.Holding)
+            {
+                holdingSeconds += 1.0 / 30;
+            }
+
+            Assert.True(kin.Phase != TaxiPhase.LineUp || kin.SpeedKt <= TaxiKinematics.LineUpKt + 0.01);
+        }
+
+        Assert.Equal([TaxiPhase.Parked, TaxiPhase.Pushback, TaxiPhase.PushbackDone, TaxiPhase.Taxi, TaxiPhase.Holding, TaxiPhase.LineUp, TaxiPhase.LinedUp], phases);
+        Assert.InRange(holdingSeconds, TaxiKinematics.HoldBeforeLineUpSeconds - 0.1, TaxiKinematics.HoldBeforeLineUpSeconds + 0.1);
+        Assert.Equal(-760, kin.EastM, 0);
+        Assert.Equal(0, kin.NorthM, 0);
+        Assert.Equal(90, kin.HeadingDeg, 1);
+        Assert.Equal(0, kin.SpeedKt);
+    }
+
+    [Fact]
+    public void Ohne_Aufreihen_bleibt_es_am_Haltepunkt()
+    {
+        var graph = Graph();
+        var route = TaxiRoute.Plan(graph, End("09"), graph.FindParking("A5")!, TaxiProfile.Airliner)!;
+        var kin = new TaxiKinematics(route.PushbackPath, route.TaxiPath, graph.ToLatLon, 164, 9, 0.3);
+        for (var i = 0; i < 30 * 900; i++)
+        {
+            kin.Advance(1.0 / 30);
+        }
+
+        Assert.Equal(TaxiPhase.Holding, kin.Phase);
+        Assert.Null(route.LineUpPath);
+    }
+
+    [Fact]
     public void Andere_Flugzeuge_sperren_Abschnitte_und_Parkpositionen()
     {
         var graph = Graph();

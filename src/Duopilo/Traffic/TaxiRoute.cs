@@ -15,6 +15,75 @@ public sealed record TaxiRoute(
     TaxiPath? PushbackPath,
     TaxiPath TaxiPath)
 {
+    /// <summary>Aufreihen: so weit rollt das Flugzeug hinter dem Einmündungspunkt auf der Mittellinie in Startrichtung.</summary>
+    public const double LineUpAheadM = 40;
+
+    /// <summary>Punkte gelten als auf der Bahn, wenn sie so nah an der Mittellinie liegen.</summary>
+    private const double OnCenterlineM = 8;
+
+    /// <summary>Aufreihen: Weg vom Ende des Rollens (kurz vor dem Haltepunkt) auf die Mittellinie, null = nicht geplant.</summary>
+    public TaxiPath? LineUpPath { get; init; }
+
+    /// <summary>Aufreihen: wo das Flugzeug danach steht, entlang ab dem Bahnanfang.</summary>
+    public double? LineUpAlongM { get; init; }
+
+    /// <summary>Aufreihen: Rollpunkte vom Haltepunkt bis zur Einmündung auf die Bahn.</summary>
+    public IReadOnlyList<int> LineUpNodes { get; init; } = [];
+
+    /// <summary>
+    /// Plant das Aufreihen dazu: vom Haltepunkt über die Rollpunkte zum nächsten Punkt auf der Mittellinie von <paramref name="end"/>
+    /// (Bahn-Abschnitt oder höchstens <see cref="OnCenterlineM"/> daneben), dort im Bogen in Startrichtung und
+    /// <see cref="LineUpAheadM"/> weiter. Ohne Weg auf die Bahn bleibt es bei der Route ohne Aufreihen.
+    /// </summary>
+    public TaxiRoute WithLineUp(TaxiGraph graph, RunwayEnd end, TaxiProfile profile)
+    {
+        var holdNode = Hold.Node.Id;
+        IReadOnlyList<int>? best = null;
+        var bestLength = double.MaxValue;
+        foreach (var node in graph.Nodes)
+        {
+            if (node.IsParking || node.Id == holdNode)
+            {
+                continue;
+            }
+
+            var (along, cross) = end.Offsets(node.Latitude, node.Longitude);
+            if (Math.Abs(cross) > OnCenterlineM || along < -200 || along > end.LengthM * 0.5)
+            {
+                continue;
+            }
+
+            if (graph.Route(holdNode, node.Id) is { Count: >= 2 } path && graph.LengthM(path) < bestLength && graph.LengthM(path) < 600)
+            {
+                best = path;
+                bestLength = graph.LengthM(path);
+            }
+        }
+
+        if (best is null)
+        {
+            return this;
+        }
+
+        // Einmündung auf der Mittellinie, dann geradeaus in Startrichtung
+        var entry = graph.Nodes[best[^1]];
+        var (entryAlong, _) = end.Offsets(entry.Latitude, entry.Longitude);
+        var aheadAlong = Math.Max(entryAlong, 0) + LineUpAheadM;
+        var (aheadLat, aheadLon) = end.Point(aheadAlong);
+        var (aheadEast, aheadNorth) = graph.ToLocal(aheadLat, aheadLon);
+        var (centerLat, centerLon) = end.Point(entryAlong);
+        var (centerEast, centerNorth) = graph.ToLocal(centerLat, centerLon);
+
+        var start = TaxiPath.At(TaxiPath.LengthM);
+        var points = new List<(double East, double North)> { (start.East, start.North) };
+        points.AddRange(best.Take(best.Count - 1).Select(n => (graph.Nodes[n].EastM, graph.Nodes[n].NorthM)));
+        points.Add((centerEast, centerNorth));
+        points.Add((aheadEast, aheadNorth));
+        var straight = Math.Min(profile.TaxiKt, TaxiKinematics.LineUpKt) * MetersPerSecondPerKnot;
+        var path = TaxiPath.Build(points, profile.TurnRadiusM, straight, profile.LateralMps2, Math.Min(straight, MinTurnMps));
+        return this with { LineUpPath = path, LineUpAlongM = Math.Round(aheadAlong), LineUpNodes = best };
+    }
+
     /// <summary>Zeigt die Nase so weit vom Rollweg weg (Grad), schiebt ein Schlepper das Flugzeug zurück.</summary>
     public const double PushbackAboveDeg = 90;
 

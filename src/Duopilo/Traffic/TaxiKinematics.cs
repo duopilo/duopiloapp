@@ -17,8 +17,14 @@ public enum TaxiPhase
     /// <summary>Rollt vorwärts über die Rollwege.</summary>
     Taxi,
 
-    /// <summary>Steht am Haltepunkt (Ende der Route).</summary>
+    /// <summary>Steht am Haltepunkt (Ende der Route; mit Aufreihen bis zur Freigabe).</summary>
     Holding,
+
+    /// <summary>Rollt vom Haltepunkt auf die Bahn und reiht sich auf der Mittellinie in Startrichtung auf.</summary>
+    LineUp,
+
+    /// <summary>Steht aufgereiht auf der Bahn – bereit zum Start.</summary>
+    LinedUp,
 }
 
 /// <summary>Kennwerte des Rollens je Kategorie.</summary>
@@ -66,6 +72,12 @@ public sealed class TaxiKinematics
     /// <summary>Nach dem Pushback so lange stehen (Schlepper ab, Triebwerke).</summary>
     public const double PushbackDoneSeconds = 10;
 
+    /// <summary>Mit Aufreihen: so lange am Haltepunkt warten (Freigabe „line up“).</summary>
+    public const double HoldBeforeLineUpSeconds = 15;
+
+    /// <summary>Aufreihen höchstens so schnell.</summary>
+    public const double LineUpKt = 10;
+
     private const double MetersPerSecondPerKnot = 0.514444;
 
     /// <summary>Anfahren (m/s²).</summary>
@@ -83,10 +95,12 @@ public sealed class TaxiKinematics
     /// <param name="pushback">Weg des Pushbacks (vorwärts gerechnet, das Flugzeug fährt ihn rückwärts); null = vorwärts los.</param>
     /// <param name="taxi">Weg zum Haltepunkt.</param>
     /// <param name="toLatLon">Meter östlich/nördlich → Breite/Länge (<see cref="TaxiGraph.ToLatLon"/>).</param>
-    public TaxiKinematics(TaxiPath? pushback, TaxiPath taxi, Func<double, double, (double Latitude, double Longitude)> toLatLon, double groundFt, double cgHeightFt, double groundPitchDeg)
+    /// <param name="lineUp">Weg vom Haltepunkt auf die Bahn (Aufreihen); null = am Haltepunkt bleiben.</param>
+    public TaxiKinematics(TaxiPath? pushback, TaxiPath taxi, Func<double, double, (double Latitude, double Longitude)> toLatLon, double groundFt, double cgHeightFt, double groundPitchDeg, TaxiPath? lineUp = null)
     {
         Pushback = pushback is { LengthM: > 0.5 } ? pushback : null;
         Taxi = taxi;
+        LineUpPath = lineUp is { LengthM: > 0.5 } ? lineUp : null;
         _toLatLon = toLatLon;
         GroundFt = groundFt;
         CgHeightFt = Math.Max(0, cgHeightFt);
@@ -99,6 +113,9 @@ public sealed class TaxiKinematics
     public TaxiPath? Pushback { get; }
 
     public TaxiPath Taxi { get; }
+
+    /// <summary>Weg vom Haltepunkt auf die Bahn, null = kein Aufreihen.</summary>
+    public TaxiPath? LineUpPath { get; }
 
     public TaxiPhase Phase { get; private set; } = TaxiPhase.Parked;
 
@@ -171,6 +188,18 @@ public sealed class TaxiKinematics
                 {
                     SpeedKt = 0;
                     Next(TaxiPhase.Holding);
+                }
+
+                break;
+            case TaxiPhase.Holding when LineUpPath is not null && _phaseSeconds >= HoldBeforeLineUpSeconds:
+                Next(TaxiPhase.LineUp);
+                break;
+            case TaxiPhase.LineUp:
+                Move(LineUpPath!, LineUpKt * MetersPerSecondPerKnot, AccelMps2, DecelMps2, reverse: false, dt);
+                if (DistanceM >= LineUpPath!.LengthM - 0.05 || (SpeedKt < 0.1 && LineUpPath.LengthM - DistanceM < 0.5))
+                {
+                    SpeedKt = 0;
+                    Next(TaxiPhase.LinedUp);
                 }
 
                 break;
