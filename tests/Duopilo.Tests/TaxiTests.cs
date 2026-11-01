@@ -524,15 +524,16 @@ public sealed class TaxiTests
         var route = TaxiRoute.PlanArrival(graph, End("09"), gate, TaxiProfile.Airliner, 1000)!;
         Assert.Equal(15, route.Hold.Node.Id);
         Assert.Equal("A9", route.Hold.Taxiway);
-        Assert.InRange(route.EntryAlongM!.Value, 1798, 1802);
-        Assert.InRange(route.HandoverAlongM!.Value, 1798 - TaxiRoute.ExitLeadM, 1802 - TaxiRoute.ExitLeadM);
+        // Bezugspunkt und Schwelle rechnen kugelförmig, das Netz nach WGS84: ein paar Meter Spiel
+        Assert.InRange(route.EntryAlongM!.Value, 1795, 1805);
+        Assert.Equal(route.EntryAlongM!.Value - TaxiRoute.ExitLeadM, route.HandoverAlongM!.Value, 0);
         Assert.Equal(15, route.Nodes[0]);
         Assert.Null(route.PushbackPath);
         Assert.InRange(route.HandoverKt, 5, TaxiProfile.Airliner.TaxiKt);
 
         // Der Weg beginnt auf der Mittellinie in Landerichtung und endet auf der Parkposition
         var (startEast, startNorth, startHeading) = route.TaxiPath.At(0);
-        Assert.InRange(startEast, 800 - TaxiRoute.ExitLeadM - 2, 800 - TaxiRoute.ExitLeadM + 2);
+        Assert.InRange(startEast, 800 - TaxiRoute.ExitLeadM - 5, 800 - TaxiRoute.ExitLeadM + 5);
         Assert.InRange(startNorth, -1, 1);
         Assert.InRange(startHeading, 89, 91);
         var (endEast, endNorth, _) = route.TaxiPath.At(route.TaxiPath.LengthM);
@@ -582,7 +583,7 @@ public sealed class TaxiTests
 
         var route = TaxiRoute.PlanArrival(graph, End("09"), graph.FindParking("A1")!, TaxiProfile.Airliner, 1000)!;
         Assert.Equal(2, route.Hold.Node.Id);
-        Assert.InRange(route.EntryAlongM!.Value, 1498, 1502);
+        Assert.InRange(route.EntryAlongM!.Value, 1495, 1505);
     }
 
     [Fact]
