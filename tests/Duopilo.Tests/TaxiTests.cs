@@ -375,6 +375,40 @@ public sealed class TaxiTests
     }
 
     [Fact]
+    public void Halten_an_der_Linie_vor_der_Bahn_nicht_an_der_ILS_Linie()
+    {
+        // Zubringer wie K1 in EDDL: erst die ILS-Haltelinie 160 m vor der Mittellinie, dann die normale 90 m davor, dann die Bahn
+        TaxiPointData P(double east, double north, int type = 1) => new(type, 0, east, north);
+        var data = new AirportTaxiData(
+            "EDXT",
+            51.0,
+            7.0,
+            50,
+            [P(-800, 250), P(-800, 160, 4), P(-800, 90, 2), P(-800, 0), P(-1000, 0), P(1000, 0)],
+            [new TaxiParkingData(9, 0, 12, 0, 1, 0, 0, 20, -800, 320)],
+            [
+                new TaxiPathData(3, 20, 0, 0, 0, 0, 0),
+                new TaxiPathData(1, 20, 0, 0, 0, 1, 0),
+                new TaxiPathData(1, 20, 0, 0, 1, 2, 0),
+                new TaxiPathData(1, 20, 0, 0, 2, 3, 0),
+                new TaxiPathData(2, 45, 9, 0, 4, 3, 0),
+                new TaxiPathData(2, 45, 9, 0, 3, 5, 0),
+            ],
+            ["K1"]);
+        var graph = TaxiGraph.Build(data, [Runway]);
+        var end = End("09");
+        Assert.Equal(2, graph.DepartureHolds(end).Count);
+
+        var route = TaxiRoute.Plan(graph, end, graph.FindParking("A1")!, TaxiProfile.Airliner)!;
+
+        Assert.Equal(2, route.Hold.Node.PointType);
+        Assert.Equal(90, route.Hold.CenterlineM, 0);
+        var (_, endNorth, _) = route.TaxiPath.At(route.TaxiPath.LengthM);
+        Assert.Equal(90 + TaxiProfile.Airliner.StopShortM, endNorth, 1);
+        Assert.Equal(route.Hold, TaxiRoute.InnerHold(graph, end, graph.DepartureHolds(end).Single(h => h.Node.PointType == 4)));
+    }
+
+    [Fact]
     public void Andere_Flugzeuge_sperren_Abschnitte_und_Parkpositionen()
     {
         var graph = Graph();

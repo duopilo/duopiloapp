@@ -471,6 +471,11 @@ Einfahrlinie (gut 110 m bis zum Rollweg), die Route ging vom ersten Rollpunkt ge
 Punkt und dann zurück Richtung Parkposition, das Flugzeug drehte sich um. Für beta.25: rückwärts die Route entlang bis zu dem Punkt, an
 dem sie abbiegt und hinter dem ein Rollweg in Gegenrichtung liegt (höchstens 250 m), dorthin schwenkt das Heck; sonst quer zur Einfahrt.
 
+**beta.24 in Düsseldorf (1.11.2026):** Abflug vom Gate B3 (B2) bis in die Luft: Pushback 111 m, 2,8 km über P3, T, P2, M, L2 und
+K1, Aufreihen, Startlauf ab 40 m. Gehalten hat die A320 aber an der falschen Linie: An K1 liegt erst die ILS-Haltelinie (Leiter), gut
+100 m weiter die Linie vor "RWY AHEAD 23R" – die Route endete an der ersten. Für beta.26: liegt hinter dem gewählten Haltepunkt auf dem
+Weg zur Bahn ein weiterer näher an der Mittellinie, wird dort gehalten.
+
 **Fahrplan des eigenen Verkehrs (Stand 1.11.2026):**
 
 1. Anflug und Landung – erledigt bis beta.14 (Wegpunkte, Fahrwerk bis 2500 ft, Lichter, Freigabeliste, Geschwindigkeit).
