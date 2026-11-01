@@ -27,6 +27,9 @@ public enum TrafficTestVariant
 
     /// <summary>Landung mit Rollen zur Parkposition: wie A1 mit Kinematik ab dem Spawn, auf Rollgeschwindigkeit bremsen, abrollen, zur Parkposition.</summary>
     A3,
+
+    /// <summary>Überflug abseits der Flughäfen: wie C1, aber über einen beliebigen Punkt (Koordinaten oder das eigene Flugzeug) in beliebiger Richtung.</summary>
+    C2,
 }
 
 /// <summary>
@@ -246,7 +249,7 @@ public sealed record TrafficTestPlan(
     public bool IsTakeoff => Variant == TrafficTestVariant.B1;
 
     /// <summary>Ob es ein Überflug ist (<see cref="TrafficTestVariant.C1"/>).</summary>
-    public bool IsOverflight => Variant == TrafficTestVariant.C1;
+    public bool IsOverflight => Variant is TrafficTestVariant.C1 or TrafficTestVariant.C2;
 
     /// <summary>Ob es mit Rollen beginnt (<see cref="TrafficTestVariant.D1"/>, <see cref="TrafficTestVariant.B2"/>).</summary>
     public bool IsTaxi => Variant is TrafficTestVariant.D1 or TrafficTestVariant.B2;
@@ -475,7 +478,7 @@ public sealed record TrafficTestPlan(
     }
 
     /// <summary>
-    /// Überflug (C1): Spawn <paramref name="spawnNm"/> vor dem Überflugpunkt auf Reiseflughöhe in Kursrichtung, Fahrwerk oben; Wegpunkte
+    /// Überflug (C1, C2 mit <paramref name="variant"/>): Spawn <paramref name="spawnNm"/> vor dem Überflugpunkt auf Reiseflughöhe in Kursrichtung, Fahrwerk oben; Wegpunkte
     /// über dem Punkt, gleich weit dahinter (Ende des Tests) und 30 NM weiter, alle auf Reiseflughöhe mit der Reisegeschwindigkeit als
     /// IAS. <paramref name="overhead"/> ist der Überflugpunkt mit Kurs (<see cref="RunwayEnd.Overhead"/>).
     /// </summary>
@@ -485,7 +488,8 @@ public sealed record TrafficTestPlan(
         double? approachKt = null,
         double? flightLevel = null,
         double? cruiseTasKt = null,
-        double? spawnNm = null)
+        double? spawnNm = null,
+        TrafficTestVariant variant = TrafficTestVariant.C1)
     {
         var ga = category == TrafficCategory.GeneralAviation;
         var vapp = Math.Clamp(approachKt ?? DefaultApproachKt, 50, 180);
@@ -504,7 +508,7 @@ public sealed record TrafficTestPlan(
 
         var (lat, lon) = overhead.Point(-exit);
         var spawn = new AiInitPosition(lat, lon, altitude, overhead.HeadingTrueDeg, OnGround: false, AirspeedKt: (uint)Math.Round(tas));
-        return new TrafficTestPlan(TrafficTestVariant.C1, overhead, spawn, distance, false, null, null, 0, 0, 0, vapp, waypoints, [], [])
+        return new TrafficTestPlan(variant, overhead, spawn, distance, false, null, null, 0, 0, 0, vapp, waypoints, [], [])
         {
             CruiseAltitudeFt = altitude,
             CruiseKt = tas,

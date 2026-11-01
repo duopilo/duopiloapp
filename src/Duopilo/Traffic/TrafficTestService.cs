@@ -25,6 +25,9 @@ namespace Duopilo.Traffic;
 /// <param name="CruiseKt">C1: wahre Reisegeschwindigkeit; leer = 450 kt (GA doppelte Vapp).</param>
 /// <param name="Parking">D1: Parkposition, z. B. "A12"; leer = passend zum Typ zufällig.</param>
 /// <param name="KinematicTakeoff">B1: Duopilo fliegt den Start selbst (Startlauf, Rotieren, Steigflug, <see cref="TrafficKinematics.Takeoff"/>); false = Wegpunkt-KI wie bis beta.20.</param>
+/// <param name="Latitude">C2: Überflugpunkt (Breite); leer = das eigene Flugzeug.</param>
+/// <param name="Longitude">C2: Überflugpunkt (Länge).</param>
+/// <param name="OffsetNm">C2: so weit neben dem Punkt vorbei (rechts vom Kurs positiv); leer = genau darüber.</param>
 public sealed record TrafficTestRequest(
     string Airport,
     string Runway,
@@ -46,7 +49,10 @@ public sealed record TrafficTestRequest(
     double? CruiseKt = null,
     bool IgnoreRunwayRules = false,
     bool KinematicTakeoff = true,
-    string? Parking = null);
+    string? Parking = null,
+    double? Latitude = null,
+    double? Longitude = null,
+    double? OffsetNm = null);
 
 /// <summary>Zeitpunkt und Text eines Ereignisses der Testlinie.</summary>
 public sealed record TrafficTestEvent(double Seconds, string Text);
@@ -260,6 +266,12 @@ public sealed class TrafficTestService : IHostedService, IDisposable
     /// <summary>Landung: ein Ergebnis der Bahnprüfung gilt so lange.</summary>
     private const double LandingCheckValidSeconds = 8;
 
+    /// <summary>C2: so viel höher als das eigene Flugzeug fliegt ein Überflug ohne genannte Flugfläche mindestens, wenn er darüber führt.</summary>
+    private const double OverflightSeparationFt = 2000;
+
+    /// <summary>C2: führt der Überflug mindestens so weit daneben vorbei, bleibt die Standard-Flugfläche.</summary>
+    private const double OverflightSeparationNm = 3;
+
     /// <summary>Rolltests (D1, B2, A3) laufen mindestens so lange – in der Warteschlange brauchte ein Abflug in EDDL gut 13 min.</summary>
     private const int TaxiMaxMinutes = 30;
 
@@ -375,24 +387,34 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         await _gate.WaitAsync(ct);
         try
         {
+            // C2: kein Flughafen – ein gedachter Überflugpunkt mit Kurs (Koordinaten oder das eigene Flugzeug)
+            var overflightEvents = new List<string>();
+            IReadOnlyList<AirportRunway> runways;
+            RunwayEnd runway;
             var airport = request.Airport.Trim().ToUpperInvariant();
-            var runways = await _sim.RequestAirportRunwaysAsync(airport, ct);
-            if (runways.Count == 0)
+            if (request.Variant == TrafficTestVariant.C2)
             {
-                throw new InvalidOperationException(Loc.T("tools.trafficTest.airportUnknown", airport));
+                runways = [];
+                runway = OverflightPoint(request, overflightEvents);
+                airport = runway.Airport;
             }
-
-            var runway = RunwayEnd.Find(airport, runways, request.Runway);
-            if (runway is null)
+            else
             {
-                var wanted = request.Runway.Trim().ToUpperInvariant();
-                var available = string.Join(", ", runways.SelectMany(r => new[] { r.Primary, r.Secondary }).Where(d => d.Length > 0));
-                throw new InvalidOperationException(Loc.T("tools.trafficTest.runwayUnknown", wanted, airport, available));
-            }
+                runways = await _sim.RequestAirportRunwaysAsync(airport, ct);
+                if (runways.Count == 0)
+                {
+                    throw new InvalidOperationException(Loc.T("tools.trafficTest.airportUnknown", airport));
+                }
 
-            if (runway.LengthM < TrafficTestPlan.MinRunwayM)
-            {
-                throw new InvalidOperationException(Loc.T("tools.trafficTest.runwayTooShort", runway.Designation, runway.LengthM));
+                runway = RunwayEnd.Find(airport, runways, request.Runway) ?? throw new InvalidOperationException(Loc.T(
+                    "tools.trafficTest.runwayUnknown",
+                    request.Runway.Trim().ToUpperInvariant(),
+                    airport,
+                    string.Join(", ", runways.SelectMany(r => new[] { r.Primary, r.Secondary }).Where(d => d.Length > 0))));
+                if (runway.LengthM < TrafficTestPlan.MinRunwayM)
+                {
+                    throw new InvalidOperationException(Loc.T("tools.trafficTest.runwayTooShort", runway.Designation, runway.LengthM));
+                }
             }
 
             if (_sim.Num("lat") is { } lat && _sim.Num("lon") is { } lon)
@@ -407,7 +429,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             // Modell und Flughafenregeln vor dem Ersetzen: passt das Flugzeug nicht zu Platz oder Bahn, bleibt der laufende Test.
             // Ohne Titel wählen die Regeln das Modell (Verkehrsmix, Militärplatz, nur Allgemeine Luftfahrt …)
             var ruleMessages = new List<string>();
-            var rules = request.Variant == TrafficTestVariant.C1 ? null : LoadRules(ruleMessages);
+            var rules = request.Variant is TrafficTestVariant.C1 or TrafficTestVariant.C2 ? null : LoadRules(ruleMessages);
             var operation = request.Variant is TrafficTestVariant.B1 or TrafficTestVariant.D1 or TrafficTestVariant.B2 ? TrafficOperation.Departure : TrafficOperation.Arrival;
             var (title, livery) = await ResolveModelAsync(request, rules, runway, operation, ct);
             var modelType = TrafficModels.TypeOf(title, livery);
@@ -535,6 +557,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 TrafficTestVariant.D1 => TrafficTestPlan.BuildTaxi(runway, approachKt, taxiRoute!, taxiGraph!),
                 TrafficTestVariant.B2 => TrafficTestPlan.BuildTaxi(runway, approachKt, taxiRoute!, taxiGraph!, takeoff: true),
                 TrafficTestVariant.C1 => TrafficTestPlan.BuildOverflight(runway.Overhead(request.TrackDeg), category, approachKt, request.FlightLevel, request.CruiseKt, request.SpawnNm),
+                TrafficTestVariant.C2 => TrafficTestPlan.BuildOverflight(runway, category, approachKt, OverflightLevel(request, category, overflightEvents), request.CruiseKt, request.SpawnNm, TrafficTestVariant.C2),
                 _ => TrafficTestPlan.Build(runway, request.Variant, spawnNm, request.TouchdownM, request.FinalLowFt, approachKt, throttle),
             };
             if (request.Variant == TrafficTestVariant.A3)
@@ -595,7 +618,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 run.AddEvent(0, "warning:" + warning);
             }
 
-            foreach (var taxiEvent in taxiEvents)
+            foreach (var taxiEvent in taxiEvents.Concat(overflightEvents))
             {
                 run.AddEvent(0, taxiEvent);
             }
@@ -1588,6 +1611,65 @@ public sealed class TrafficTestService : IHostedService, IDisposable
     }
 
     /// <summary>
+    /// C2: Überflugpunkt abseits der Flughäfen als gedachtes Bahnende (Bezugspunkt und Kurs, Länge 0): die Koordinaten der Anfrage, sonst
+    /// das eigene Flugzeug; Kurs aus der Anfrage, sonst quer zum eigenen Kurs (von links nach rechts); mit <see cref="TrafficTestRequest.OffsetNm"/>
+    /// so weit daneben (rechts vom Kurs positiv). Bezeichnung OVF und die Nummer der Kennung (OVF1 für DUO01), Flughafen POS bzw. OWN.
+    /// </summary>
+    private RunwayEnd OverflightPoint(TrafficTestRequest request, List<string> events)
+    {
+        double lat;
+        double lon;
+        string label;
+        if (request.Latitude is { } wantedLat && request.Longitude is { } wantedLon)
+        {
+            (lat, lon, label) = (Math.Clamp(wantedLat, -89.9, 89.9), wantedLon, "POS");
+        }
+        else if (_sim.Num("lat") is { } ownLat && _sim.Num("lon") is { } ownLon)
+        {
+            (lat, lon, label) = (ownLat, ownLon, "OWN");
+        }
+        else
+        {
+            throw new InvalidOperationException(Loc.T("tools.trafficTest.noPosition"));
+        }
+
+        var track = TrafficMath.Normalize(request.TrackDeg ?? ((_sim.Num("hdgTrue") ?? 0) + 90));
+        if (request.OffsetNm is { } offset && Math.Abs(offset) > 0.01)
+        {
+            (lat, lon) = RouteMath.Destination(lat, lon, TrafficMath.Normalize(track + (offset > 0 ? 90 : -90)), Math.Abs(offset));
+        }
+
+        var running = Running();
+        var slot = Enumerable.Range(0, MaxConcurrent).FirstOrDefault(i => running.All(r => r.Slot != i));
+        var where = label == "OWN" ? "over your aircraft" : "over the given position";
+        var beside = request.OffsetNm is { } o && Math.Abs(o) > 0.01 ? string.Create(CultureInfo.InvariantCulture, $", {o:0.#} NM beside") : "";
+        events.Add(string.Create(CultureInfo.InvariantCulture, $"overflight_point {where} {lat:0.0000} {lon:0.0000}, track {track:000}{beside}"));
+        return new RunwayEnd(label, "OVF" + (slot + 1).ToString(CultureInfo.InvariantCulture), lat, lon, 0, track, 0, 0);
+    }
+
+    /// <summary>
+    /// C2: Flugfläche – die der Anfrage, sonst die Standard-Flugfläche (FL350, Allgemeine Luftfahrt FL85); liegt die näher als
+    /// <see cref="OverflightSeparationFt"/> an der Höhe des eigenen Flugzeugs und führt der Überflug nicht mindestens
+    /// <see cref="OverflightSeparationNm"/> daneben vorbei, so weit darüber (auf volle 1000 ft).
+    /// </summary>
+    private double? OverflightLevel(TrafficTestRequest request, TrafficCategory category, List<string> events)
+    {
+        if (request.FlightLevel is { } wanted)
+        {
+            return wanted;
+        }
+
+        var level = category == TrafficCategory.GeneralAviation ? TrafficTestPlan.GeneralAviationFlightLevel : TrafficTestPlan.AirlinerFlightLevel;
+        if (_sim.Num("altTrue") is { } own && Math.Abs(request.OffsetNm ?? 0) < OverflightSeparationNm && Math.Abs((level * 100) - own) < OverflightSeparationFt)
+        {
+            level = Math.Ceiling((own + OverflightSeparationFt) / 1000) * 10;
+            events.Add(string.Create(CultureInfo.InvariantCulture, $"overflight_separated FL{level:000}, at least {OverflightSeparationFt:0} ft above your aircraft ({own:0} ft)"));
+        }
+
+        return level;
+    }
+
+    /// <summary>
     /// B2: In so vielen Sekunden steht der Abflug am Haltepunkt bereit zum Aufreihen – Rest von Parken, Pushback und Warten danach, der
     /// Rollweg mit <see cref="AverageTaxiMps"/> und das Warten am Haltepunkt; 0 = bereit.
     /// </summary>
@@ -2352,25 +2434,20 @@ public sealed class TrafficTestService : IHostedService, IDisposable
 
     /// <summary>
     /// Ob <paramref name="filter"/> die Bahn <paramref name="runway"/> meint: "05L"/"5L" (Bahn an jedem Flughafen), "EDDL 05L" oder
-    /// "EDDL" (alle Bahnen dort); leer passt immer.
+    /// "EDDL" (alle Bahnen dort); C2 "OVF1", "OWN OVF1" oder "OWN"; leer passt immer.
     /// </summary>
     public static bool Matches(RunwayEnd runway, string? filter)
     {
         var text = (filter ?? "").Trim();
-        if (text.Length == 0)
+        if (text.Length == 0 || AirportRunway.Normalize(text) == AirportRunway.Normalize(runway.Designation))
         {
             return true;
         }
 
         var space = text.IndexOf(' ');
         var first = space < 0 ? text : text[..space];
-        if (first.Length == 4 && char.IsLetter(first[0]) && first.All(char.IsLetterOrDigit))
-        {
-            var rest = space < 0 ? "" : text[(space + 1)..].Trim();
-            return string.Equals(first, runway.Airport, StringComparison.OrdinalIgnoreCase)
-                && (rest.Length == 0 || AirportRunway.Normalize(rest) == AirportRunway.Normalize(runway.Designation));
-        }
-
-        return AirportRunway.Normalize(text) == AirportRunway.Normalize(runway.Designation);
+        var rest = space < 0 ? "" : text[(space + 1)..].Trim();
+        return string.Equals(first, runway.Airport, StringComparison.OrdinalIgnoreCase)
+            && (rest.Length == 0 || AirportRunway.Normalize(rest) == AirportRunway.Normalize(runway.Designation));
     }
 }

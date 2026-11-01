@@ -25,7 +25,11 @@ public static class TrafficTestTools
         "positive climb rate; the test ends at 2800 ft (climbed), on the ground past the runway end (no_liftoff) or without rolling within " +
         "90 s (no_roll). Variant C1 is an overflight at cruise altitude flown by the waypoint AI: spawn spawnNm (default 40, general " +
         "aviation 15) before the middle of the runway at FL350 (general aviation FL85), straight over it on the runway's direction or " +
-        "trackDeg, nav/beacon/strobes/logo on, landing light off; the test ends the same distance behind it (passed). Variant D1 is taxiing, " +
+        "trackDeg, nav/beacon/strobes/logo on, landing light off; the test ends the same distance behind it (passed). Variant C2 is the " +
+        "same overflight away from airports (no airport or runway needed): over latitude/longitude or – without them – right over the " +
+        "pilot's aircraft, track trackDeg or across the pilot's heading, offsetNm beside it; without flightLevel and less than 3 NM " +
+        "beside the pilot it stays at least 2000 ft above the pilot (event overflight_separated); status runway OVF1–OVF4 by tail, " +
+        "airport OWN or POS. Variant D1 is taxiing, " +
         "flown by Duopilo itself: spawn at a parking spot (parking, else one that fits the type at random – airliners at gates and cargo " +
         "stands, general aviation on GA ramps, military on military stands, big enough by radius), the route over the taxiways (MSFS " +
         "taxiway network, runways only crossed) to the first reachable holding point of the runway, pushback when the nose points away " +
@@ -71,9 +75,9 @@ public static class TrafficTestTools
         "title the model is picked by these rules – by weight from the traffic mix.")]
     public static async Task<string> Start(
         TrafficTestService tests,
-        [Description("ICAO code of the airport, e.g. EDDL. Must be within 80 NM of the pilot's aircraft.")] string airport,
-        [Description("Runway end to land on or take off from, e.g. 23L (5L and 05L are the same).")] string runway,
-        [Description("A1 (gear down from spawn, 5 NM), A2 (spawn 15 NM with the gear up, gear down at 3000 ft above the runway), B1 (takeoff from the runway), C1 (overflight at cruise altitude), D1 (taxi from a parking spot to the holding point of the runway), B2 (departure from the gate: taxi, line up, take off) or A3 (landing with taxi-in to a parking spot). Default A1.")] string variant = "A1",
+        [Description("ICAO code of the airport, e.g. EDDL. Must be within 80 NM of the pilot's aircraft. Not needed for C2.")] string? airport = null,
+        [Description("Runway end to land on or take off from, e.g. 23L (5L and 05L are the same). Not needed for C2.")] string? runway = null,
+        [Description("A1 (gear down from spawn, 5 NM), A2 (spawn 15 NM with the gear up, gear down at 3000 ft above the runway), B1 (takeoff from the runway), C1 (overflight at cruise altitude over an airport), C2 (overflight away from airports: over latitude/longitude or the pilot's aircraft), D1 (taxi from a parking spot to the holding point of the runway), B2 (departure from the gate: taxi, line up, take off) or A3 (landing with taxi-in to a parking spot). Default A1.")] string variant = "A1",
         [Description("Aircraft title as listed by traffic_test_models. Empty = automatic (an FSLTL A320 if installed, else a verified model of the approval list – a PassiveAircraft model –, else any A320; FlyByWire and Headwind models are skipped).")] string? title = null,
         [Description("Livery name for the title (MSFS 2024 modular aircraft). Empty = default livery.")] string? livery = null,
         [Description("Spawn distance before the threshold in NM (2–30; C1: before the overflight point, 5–75). Empty = default of the variant.")] double? spawnNm = null,
@@ -105,9 +109,9 @@ public static class TrafficTestTools
             "0.5 NM, onto the 3° path, flare from 30 ft (general aviation 15 ft) to about 150 ft/min, touchdown around 450 m behind the " +
             "threshold, then braking to the stop point. Needed because the waypoint AI flies no slower than about 169 kt and lands at a " +
             "fixed 133 kt. Empty = waypoint AI to the stop, as before.")] double? kinematicNm = null,
-        [Description("C1: track of the overflight in degrees true. Empty = direction of the runway.")] double? trackDeg = null,
-        [Description("C1: flight level, e.g. 350. Empty = 350 (general aviation 85).")] double? flightLevel = null,
-        [Description("C1: true cruise speed in kt. Empty = 450 (general aviation twice the approach speed, at most 300); the AI takes it as true airspeed.")] double? cruiseKt = null,
+        [Description("C1, C2: track of the overflight in degrees true. Empty = C1 the direction of the runway, C2 across the pilot's heading (from the left).")] double? trackDeg = null,
+        [Description("C1, C2: flight level, e.g. 350. Empty = 350 (general aviation 85); C2 over the pilot's aircraft at least 2000 ft above it.")] double? flightLevel = null,
+        [Description("C1, C2: true cruise speed in kt. Empty = 450 (general aviation twice the approach speed, at most 300); the AI takes it as true airspeed.")] double? cruiseKt = null,
         [Description("Start even if the aircraft doesn't fit the runway (runway rules, length, width) – the reasons go into the events. Default false.")] bool ignoreRunwayRules = false,
         [Description(
             "Go around when the approach doesn't fit (default true): too high or too fast at the threshold, or no touchdown by 900 m. " +
@@ -122,6 +126,9 @@ public static class TrafficTestTools
             "at V2 + 10 (general aviation V2) with 2500 ft/min (general aviation 700), nose up to about 15° (path plus angle of attack), " +
             "from 1500 ft above the runway 1500 ft/min and faster, level at 3000 ft. false = waypoint AI as before.")] bool kinematicTakeoff = true,
         [Description("D1 and B2: parking spot to start from; A3: parking spot to taxi to – e.g. 'A12', 'P5' or 'G3' (traffic_taxi_info lists them). Empty = a free one that fits the type, at random.")] string? parking = null,
+        [Description("C2: latitude of the overflight point. Empty (with longitude) = the pilot's aircraft.")] double? latitude = null,
+        [Description("C2: longitude of the overflight point.")] double? longitude = null,
+        [Description("C2: pass this many NM beside the point (right of the track positive), e.g. 2 to fly past the pilot. Empty = right over it.")] double? offsetNm = null,
         CancellationToken cancellationToken = default)
     {
         if (!Enum.TryParse<TrafficTestVariant>(variant?.Trim(), ignoreCase: true, out var parsed) || !Enum.IsDefined(parsed))
@@ -139,9 +146,19 @@ public static class TrafficTestTools
             return Json.Serialize(new { ok = false, error = Loc.T("tools.trafficTest.speedMethodUnknown", speedMethod ?? "") });
         }
 
+        if (parsed != TrafficTestVariant.C2 && (string.IsNullOrWhiteSpace(airport) || string.IsNullOrWhiteSpace(runway)))
+        {
+            return Json.Serialize(new { ok = false, error = Loc.T("tools.trafficTest.airportRequired") });
+        }
+
+        if (parsed == TrafficTestVariant.C2 && (latitude is null) != (longitude is null))
+        {
+            return Json.Serialize(new { ok = false, error = Loc.T("tools.trafficTest.positionIncomplete") });
+        }
+
         try
         {
-            var status = await tests.StartTestAsync(new TrafficTestRequest(airport, runway, parsed, title, livery, spawnNm, gearMethod, finalLowFt, touchdownM, approachKt, speed, goAround, rollM, throttlePercent, kinematicNm, trackDeg, flightLevel, cruiseKt, ignoreRunwayRules, kinematicTakeoff, parking), cancellationToken);
+            var status = await tests.StartTestAsync(new TrafficTestRequest(airport ?? "", runway ?? "", parsed, title, livery, spawnNm, gearMethod, finalLowFt, touchdownM, approachKt, speed, goAround, rollM, throttlePercent, kinematicNm, trackDeg, flightLevel, cruiseKt, ignoreRunwayRules, kinematicTakeoff, parking, latitude, longitude, offsetNm), cancellationToken);
             return Json.Serialize(new { ok = true, status = Brief(status) });
         }
         catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or TimeoutException or ArgumentException)
@@ -206,7 +223,7 @@ public static class TrafficTestTools
         "the CSV and summary files. The waypoints only with details: true.")]
     public static string Status(
         TrafficTestService tests,
-        [Description("Only the test on this runway, e.g. 05L or 'EDDL 05L'. Empty = all tests.")] string? runway = null,
+        [Description("Only the test on this runway, e.g. 05L or 'EDDL 05L' (C2: OVF1–OVF4, OWN or POS). Empty = all tests.")] string? runway = null,
         [Description("Include the waypoints of each test (long). Default false.")] bool details = false)
     {
         var all = tests.Status(runway);
@@ -229,7 +246,7 @@ public static class TrafficTestTools
         "the final state of the ended tests (without waypoints) and how many are still running.")]
     public static async Task<string> Stop(
         TrafficTestService tests,
-        [Description("Only the tests on this runway, e.g. 05L or 'EDDL 05L'. Empty = all runways.")] string? runway = null,
+        [Description("Only the tests on this runway, e.g. 05L or 'EDDL 05L' (C2: OVF1–OVF4, OWN or POS). Empty = all runways.")] string? runway = null,
         [Description("Only the test with this tail, e.g. DUO02 (one aircraft of a queue). Empty = all on the runway.")] string? tail = null,
         CancellationToken cancellationToken = default)
     {
