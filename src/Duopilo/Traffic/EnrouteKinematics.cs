@@ -338,7 +338,7 @@ public sealed class EnrouteKinematics
 
     public double CgHeightFt { get; }
 
-    public double StartHeightFt { get; private init; }
+    public double StartHeightFt { get; private set; }
 
     /// <summary>Anflug: am Eindrehpunkt angekommen – ab hier fliegt <see cref="TrafficKinematics"/>.</summary>
     public bool Joined => _path is { } p && _distanceM >= p.LengthM;
