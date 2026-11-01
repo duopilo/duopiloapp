@@ -138,7 +138,7 @@ public sealed class TaxiTests
 
         // Von A1 nach A9 ginge es über die Bahn (1600 m) kürzer als über A (1820 m) – die Bahn kostet aber das Achtfache
         var route = graph.Route(H1, H2)!;
-        Assert.DoesNotContain(route, n => graph.Edge(route[Math.Max(0, route.IndexOf(n) - 1)], n)?.Type == 2);
+        Assert.All(route.Zip(route.Skip(1)), p => Assert.NotEqual(2, graph.Edge(p.First, p.Second)!.Type));
         Assert.Contains(5, route);
 
         // Durch eine Parkposition hindurch geht es nicht
