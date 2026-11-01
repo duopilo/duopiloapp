@@ -98,6 +98,7 @@ public sealed class TaxiKinematics
     private readonly Func<double, double, (double Latitude, double Longitude)> _toLatLon;
     private double _phaseSeconds;
     private volatile bool _runwayClear;
+    private double _trafficStopS = double.NaN;
 
     /// <param name="pushback">Weg des Pushbacks (vorwärts gerechnet, das Flugzeug fährt ihn rückwärts); null = vorwärts los.</param>
     /// <param name="taxi">Weg zum Haltepunkt.</param>
@@ -145,6 +146,19 @@ public sealed class TaxiKinematics
         get => _runwayClear;
         set => _runwayClear = value;
     }
+
+    /// <summary>
+    /// Halt hinter anderem Verkehr: bis hierhin (Meter auf <see cref="Taxi"/>) darf das Flugzeug höchstens rollen; NaN = frei. Setzt der Test
+    /// aus den Positionen der anderen Testflugzeuge (aus einem anderen Thread).
+    /// </summary>
+    public double TrafficStopS
+    {
+        get => Interlocked.CompareExchange(ref _trafficStopS, 0, 0);
+        set => Interlocked.Exchange(ref _trafficStopS, value);
+    }
+
+    /// <summary>Steht wegen anderen Verkehrs (vor dem Halt hinter einem anderen Flugzeug).</summary>
+    public bool WaitingForTraffic => Phase == TaxiPhase.Taxi && !double.IsNaN(TrafficStopS) && TrafficStopS - DistanceM < 1 && SpeedKt < 0.5;
 
     /// <summary>Sekunden in der aktuellen Phase.</summary>
     public double PhaseSeconds => _phaseSeconds;
@@ -221,14 +235,26 @@ public sealed class TaxiKinematics
                 break;
             case TaxiPhase.Taxi:
                 double? stop = CrossingsDone < CrossingStops.Count ? CrossingStops[CrossingsDone] : null;
-                Move(Taxi, double.MaxValue, AccelMps2, DecelMps2, reverse: false, dt, stop);
-                if (stop is { } at && (DistanceM >= at - 0.05 || (SpeedKt < 0.1 && at - DistanceM < 0.5)))
+                var traffic = TrafficStopS;
+                var limit = stop;
+                if (!double.IsNaN(traffic) && (limit is null || traffic < limit))
+                {
+                    limit = Math.Max(DistanceM, traffic);
+                }
+
+                Move(Taxi, double.MaxValue, AccelMps2, DecelMps2, reverse: false, dt, limit);
+                if (stop is { } at && (limit is null || at <= limit + 1e-6) && (DistanceM >= at - 0.05 || (SpeedKt < 0.1 && at - DistanceM < 0.5)))
                 {
                     // Vor der Bahn halten – die Strecke auf dem Weg bleibt
                     SpeedKt = 0;
                     Phase = TaxiPhase.HoldingShort;
                     _phaseSeconds = 0;
                     RunwayClear = false;
+                }
+                else if (limit is { } l && l < (stop ?? double.MaxValue) && DistanceM >= l - 0.05)
+                {
+                    // Hinter anderem Verkehr: stehen bleiben, bis der Halt wieder frei gegeben ist
+                    SpeedKt = 0;
                 }
                 else if (DistanceM >= Taxi.LengthM - 0.05 || (SpeedKt < 0.1 && Taxi.LengthM - DistanceM < 0.5))
                 {

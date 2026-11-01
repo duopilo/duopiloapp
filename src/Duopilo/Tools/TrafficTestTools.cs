@@ -34,6 +34,9 @@ public static class TrafficTestTools
         "Runways the route crosses (D1, B2, A3): hold short 12 m before their holding line (general aviation 4 m) for at least 5 s and " +
         "cross only when no aircraft is on that runway or on final to it within 4 NM (traffic scan; after 30 s without an answer anyway). " +
         "B2 also lines up only when its own runway is free. " +
+        "Taxi tests (D1, B2, A3) on the same runway don't replace each other but queue: each keeps 48 m (general aviation 22 m) behind " +
+        "another test aircraft ahead on its route, B2 lines up in the order of arrival at the holding points, one departure at a time " +
+        "(the next lines up once the previous is above 400 ft); new tests skip the parking spots of running ones. " +
         "traffic_taxi_info shows the network and the route without spawning. Variant B2 is a departure from the gate: like D1 to the " +
         "holding point, 15 s there, then line up (over the taxi points onto the centerline, in a curve into the takeoff direction, " +
         "40 m on) and take off like B1 with kinematicTakeoff from there – landing light and strobes on; the evaluation switches to the " +
@@ -187,7 +190,8 @@ public static class TrafficTestTools
         "'taxi' with phase (parked, pushback, pushback_done, taxi, holding_short before a crossed runway, holding; B2 also line_up, " +
         "lined_up; A3 landing until the exit, then taxi and holding at the parking spot), parking spot, holding point (A3: the exit), " +
         "taxiways, route length, pushback, turns, distance, speed, crossings (runway, taxiway, stop) and crossingsDone, A3 exitAlongM and " +
-        "exitKt; events holding_short, runway_busy (what blocks it), runway_clear. Paths of " +
+        "exitKt, waitingFor (the test aircraft it keeps its distance to); events holding_short, runway_busy (what blocks it), runway_clear, " +
+        "taxi_spacing, line_up_queue, line_up_wait. Paths of " +
         "the CSV and summary files. The waypoints only with details: true.")]
     public static string Status(
         TrafficTestService tests,

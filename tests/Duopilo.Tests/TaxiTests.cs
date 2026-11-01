@@ -756,6 +756,8 @@ public sealed class TaxiTests
         Assert.Null(Blocker());
         Assert.Equal("DUO02 on the runway", Blocker(At(2, 1200, 0, 0, 270)));
         Assert.Equal("DUO02 on final 27 3.0 NM", Blocker(At(2, -3 * RunwayEnd.MetersPerNm, 0, 950, 270)));
+        Assert.Equal("DUO02 on final 27", RunwayOccupancy.Key("DUO02 on final 27 3.0 NM"));
+        Assert.Equal("DUO02 on the runway", RunwayOccupancy.Key("DUO02 on the runway"));
         Assert.Equal("DUO02 on final 09 2.0 NM", Blocker(At(2, 2000 + (2 * RunwayEnd.MetersPerNm), 0, 650, 90)));
 
         // Nicht belegt: das wartende Flugzeug selbst, ein Abflug, zu hoch, zu weit draußen, am Gate
@@ -764,6 +766,50 @@ public sealed class TaxiTests
         Assert.Null(Blocker(At(2, -3 * RunwayEnd.MetersPerNm, 0, 5000, 270)));
         Assert.Null(Blocker(At(2, -6 * RunwayEnd.MetersPerNm, 0, 1800, 270)));
         Assert.Null(Blocker(At(2, 1000, 200, 0, 0)));
+    }
+
+    [Fact]
+    public void Abstand_hinter_einem_Flugzeug_auf_dem_eigenen_Weg()
+    {
+        // Gerader Weg 500 m nach Norden, das Flugzeug steht bei 100 m
+        var path = TaxiPath.Build([(0, 0), (0, 500)], 30, 7.7, 0.8, 2.2);
+        double? Stop(double e, double n) => TaxiTraffic.StopBehind(path, 100, [(e, n)], TaxiTraffic.AirlinerSpacingM)?.StopS;
+
+        Assert.Equal(200 - TaxiTraffic.AirlinerSpacingM, Stop(0, 200)!.Value, 0);
+        Assert.Equal(200 - TaxiTraffic.AirlinerSpacingM, Stop(8, 200)!.Value, 0);    // leicht versetzt: zählt
+        Assert.Null(Stop(30, 200));                                                     // daneben: zählt nicht
+        Assert.Null(Stop(0, 50));                                                       // dahinter
+        Assert.Null(Stop(0, 420));                                                      // weiter als 250 m voraus
+        Assert.Equal(100, Stop(0, 120)!.Value, 0);                                      // zu dicht: stehen bleiben
+
+        // Das nächste von mehreren zählt
+        var both = TaxiTraffic.StopBehind(path, 100, [(0, 300), (0, 180)], TaxiTraffic.AirlinerSpacingM)!.Value;
+        Assert.Equal(1, both.Index);
+    }
+
+    [Fact]
+    public void Kinematik_haelt_hinter_anderem_Verkehr_und_rollt_danach_weiter()
+    {
+        var graph = Graph();
+        var route = TaxiRoute.Plan(graph, End("09"), graph.FindParking("A5")!, TaxiProfile.Airliner)!;
+        var kin = new TaxiKinematics(route.PushbackPath, route.TaxiPath, graph.ToLatLon, 164, 9, 0.3) { TrafficStopS = 150 };
+        for (var i = 0; i < 30 * 300; i++)
+        {
+            kin.Advance(1.0 / 30);
+        }
+
+        Assert.Equal(TaxiPhase.Taxi, kin.Phase);
+        Assert.InRange(kin.DistanceM, 149, 150.01);
+        Assert.True(kin.WaitingForTraffic);
+
+        kin.TrafficStopS = double.NaN;
+        for (var i = 0; i < 30 * 600 && kin.Phase != TaxiPhase.Holding; i++)
+        {
+            kin.Advance(1.0 / 30);
+        }
+
+        Assert.Equal(TaxiPhase.Holding, kin.Phase);
+        Assert.False(kin.WaitingForTraffic);
     }
 
     [Fact]
