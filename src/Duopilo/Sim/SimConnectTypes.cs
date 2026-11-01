@@ -101,6 +101,9 @@ public enum SimEventId : uint
     Pause = 1,
     Sim = 2,
     AircraftLoaded = 3,
+
+    /// <summary>Jeder Frame – nur abonniert, solange Duopilo KI-Flugzeuge selbst bewegt.</summary>
+    Frame = 4,
 }
 
 /// <summary>Zustand des Simulators (nicht des Flugzeugs).</summary>

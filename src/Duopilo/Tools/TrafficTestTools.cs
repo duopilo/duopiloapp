@@ -62,6 +62,12 @@ public static class TrafficTestTools
             "speeds only.")] string speedMethod = "desired",
         [Description("Throttle in % (0–100) of the waypoints in the air for speedMethod 'throttle'. Empty = 30.")] double? throttlePercent = null,
         [Description(
+            "A1/A2: distance before the threshold in NM (1–12) from which Duopilo moves the aircraft itself (kinematic): the AI is " +
+            "released, the aircraft frozen and its position, height and attitude set every frame – speed down to Vapp + 5 and Vapp from " +
+            "0.5 NM, onto the 3° path, flare from 30 ft (general aviation 15 ft) to about 150 ft/min, touchdown around 450 m behind the " +
+            "threshold, then braking to the stop point. Needed because the waypoint AI flies no slower than about 169 kt and lands at a " +
+            "fixed 133 kt. Empty = waypoint AI to the stop, as before.")] double? kinematicNm = null,
+        [Description(
             "Go around when the approach doesn't fit (default true): too high or too fast at the threshold, or no touchdown by 900 m. " +
             "false = always land, as before.")] bool goAround = true,
         [Description(
@@ -86,7 +92,7 @@ public static class TrafficTestTools
 
         try
         {
-            var status = await tests.StartTestAsync(new TrafficTestRequest(airport, runway, parsed, title, livery, spawnNm, gearMethod, finalLowFt, touchdownM, approachKt, speed, goAround, rollM, throttlePercent), cancellationToken);
+            var status = await tests.StartTestAsync(new TrafficTestRequest(airport, runway, parsed, title, livery, spawnNm, gearMethod, finalLowFt, touchdownM, approachKt, speed, goAround, rollM, throttlePercent, kinematicNm), cancellationToken);
             return Json.Serialize(new { ok = true, status });
         }
         catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or TimeoutException or ArgumentException)
@@ -105,7 +111,7 @@ public static class TrafficTestTools
         "go_around_ignored = went around but touched down anyway; takeoff B1: climbed, climbing, rolling, no_roll, no_liftoff), go-around " +
         "(reason, where, height, lowest and highest point after it, seconds until the gear was up, whether 2800 ft were reached), takeoff " +
         "(roll start, liftoff point, speed and pitch, roll distance, height over the runway end, climb rate, pitch and bank up to 1500 ft, " +
-        "gear up, lights at liftoff), speed deviation, height " +
+        "gear up, lights at liftoff), kinematics (phase, where Duopilo took over, flare, touchdown, ground height), speed deviation, height " +
         "above the runway when the gear was down and whether that was by 2500 ft, values " +
         "at the approach gates (altitude deviation from the glide path, pitch), approach pitch, touchdown point, speed, sink rate, pitch and " +
         "flare (pitch gain before touchdown), max bank on final, lights on final and after landing, float seconds, stop point. Paths of " +

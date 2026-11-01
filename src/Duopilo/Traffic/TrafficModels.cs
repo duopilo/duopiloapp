@@ -333,6 +333,9 @@ public static class TrafficLights
     /// </summary>
     public static readonly AiLights Rollout = new(Nav: true, Beacon: true, Strobe: false, Landing: false, Taxi: true, Logo: true);
 
+    /// <summary>Was nach der Landung an sein muss, sonst schickt der Test <see cref="Rollout"/> nach (Taxilicht haben die PassiveAircraft nicht).</summary>
+    public static readonly AiLights RolloutRequired = new(Nav: true, Beacon: true);
+
     /// <summary>Unter dieser Geschwindigkeit am Boden schaltet der Test auf <see cref="Rollout"/>.</summary>
     public const double RolloutBelowKt = 60;
 }

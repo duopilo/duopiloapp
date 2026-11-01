@@ -138,6 +138,12 @@ namespace Microsoft.FlightSimulator.SimConnect
         public uint dwData;
     }
 
+    public class SIMCONNECT_RECV_EVENT_FRAME : SIMCONNECT_RECV_EVENT
+    {
+        public float fFrameRate;
+        public float fSimSpeed;
+    }
+
     public class SIMCONNECT_RECV_EVENT_FILENAME : SIMCONNECT_RECV_EVENT
     {
         public string szFileName;
@@ -286,6 +292,8 @@ namespace Microsoft.FlightSimulator.SimConnect
 
         public delegate void RecvEventFilenameEventHandler(SimConnect sender, SIMCONNECT_RECV_EVENT_FILENAME data);
 
+        public delegate void RecvEventFrameEventHandler(SimConnect sender, SIMCONNECT_RECV_EVENT_FRAME data);
+
         public delegate void RecvSystemStateEventHandler(SimConnect sender, SIMCONNECT_RECV_SYSTEM_STATE data);
 
         public delegate void RecvFacilityDataEventHandler(SimConnect sender, SIMCONNECT_RECV_FACILITY_DATA data);
@@ -321,6 +329,8 @@ namespace Microsoft.FlightSimulator.SimConnect
 
         public event RecvEventFilenameEventHandler OnRecvEventFilename;
 
+        public event RecvEventFrameEventHandler OnRecvEventFrame;
+
         public event RecvSystemStateEventHandler OnRecvSystemState;
 
         public event RecvFacilityDataEventHandler OnRecvFacilityData;
@@ -347,6 +357,10 @@ namespace Microsoft.FlightSimulator.SimConnect
         {
         }
 
+        public void AIReleaseControl(uint ObjectID, Enum RequestID)
+        {
+        }
+
         public void RegisterStruct<RECV, T>(Enum dwID)
             where RECV : SIMCONNECT_RECV
         {
@@ -369,6 +383,10 @@ namespace Microsoft.FlightSimulator.SimConnect
         }
 
         public void SubscribeToSystemEvent(Enum EventID, string SystemEventName)
+        {
+        }
+
+        public void UnsubscribeFromSystemEvent(Enum EventID)
         {
         }
 

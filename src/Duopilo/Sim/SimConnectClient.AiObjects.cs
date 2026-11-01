@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -20,6 +21,7 @@ public sealed partial class SimConnectClient
     private const uint AiCreateRequestBase = 4_000_000;
     private const uint AiRemoveRequestBase = 4_100_000;
     private const uint AiModelsRequest = 4_200_000;
+    private const uint AiReleaseRequestBase = 4_300_000;
 
     /// <summary>Abfragen auf KI-Objekten. Unter <see cref="AdHocRequestBase"/>, damit <see cref="OnData"/> sie nicht als Einzelabfrage nimmt.</summary>
     private const uint AiProbeRequestBase = 970_000;
@@ -31,6 +33,7 @@ public sealed partial class SimConnectClient
 
     private readonly ConcurrentDictionary<uint, TaskCompletionSource<uint>> _aiCreateRequests = new();
     private readonly ConcurrentDictionary<uint, AiProbe> _aiProbes = new();
+    private readonly ConcurrentDictionary<uint, Func<double, AiPose?>> _aiPoseSources = new();
     private readonly object _aiModelsGate = new();
     private AiModelEnumeration? _aiModels;
     private uint _nextAiCreateRequest;
@@ -45,6 +48,10 @@ public sealed partial class SimConnectClient
     private uint _aiGearDefId;
     private uint _aiSpeedDefId;
     private uint _aiVelocityDefId;
+    private uint _aiPoseDefId;
+    private uint _nextAiReleaseRequest;
+    private bool _frameSubscribed;
+    private long _lastFrameTicks;
     private readonly Dictionary<string, uint> _aiLightDefIds = new(StringComparer.Ordinal);
     private bool _aiModelsAvailable;
 
@@ -272,6 +279,119 @@ public sealed partial class SimConnectClient
             sc.SetDataOnSimObject((SimDefinitionId)_aiVelocityDefId, objectId, SIMCONNECT_DATA_SET_FLAG.DEFAULT, feetPerSecond);
         }, ct);
 
+    /// <summary>
+    /// Kinematik: Duopilo übernimmt ein eigenes KI-Flugzeug ganz – die KI gibt es ab (AIReleaseControl), Position, Höhe und Lage
+    /// werden eingefroren und jeden Frame aus <paramref name="pose"/> gesetzt (so wie vPilot Flugzeuge bewegt). <paramref name="pose"/>
+    /// bekommt die vergangene Sim-Zeit in Sekunden (0 in der Pause) und läuft auf dem SimConnect-Thread; null = diesen Frame nichts setzen.
+    /// </summary>
+    public void StartAiPose(uint objectId, Func<double, AiPose?> pose)
+    {
+        _aiPoseSources[objectId] = pose;
+        Enqueue(sc =>
+        {
+            if (!_aiPoseSources.ContainsKey(objectId))
+            {
+                return;
+            }
+
+            sc.AIReleaseControl(objectId, (SimRequestId)(AiReleaseRequestBase + (++_nextAiReleaseRequest % 90_000)));
+            Freeze(sc, objectId, true);
+            if (!_frameSubscribed)
+            {
+                sc.SubscribeToSystemEvent(SimEventId.Frame, "Frame");
+                _frameSubscribed = true;
+                _lastFrameTicks = 0;
+            }
+        });
+    }
+
+    /// <summary>Beendet die Kinematik; mit <paramref name="unfreeze"/> steht das Flugzeug danach wieder frei (ohne KI-Pilot).</summary>
+    public void StopAiPose(uint objectId, bool unfreeze)
+    {
+        if (!_aiPoseSources.TryRemove(objectId, out _))
+        {
+            return;
+        }
+
+        Enqueue(sc =>
+        {
+            if (unfreeze)
+            {
+                Freeze(sc, objectId, false);
+            }
+
+            if (_aiPoseSources.IsEmpty && _frameSubscribed)
+            {
+                sc.UnsubscribeFromSystemEvent(SimEventId.Frame);
+                _frameSubscribed = false;
+            }
+        });
+    }
+
+    /// <summary>Ob Duopilo dieses KI-Flugzeug gerade selbst bewegt.</summary>
+    public bool IsAiPoseActive(uint objectId) => _aiPoseSources.ContainsKey(objectId);
+
+    private void Freeze(SimConnect sc, uint objectId, bool on)
+    {
+        TransmitToObject(sc, objectId, "FREEZE_LATITUDE_LONGITUDE_SET", on ? 1u : 0u);
+        TransmitToObject(sc, objectId, "FREEZE_ALTITUDE_SET", on ? 1u : 0u);
+        TransmitToObject(sc, objectId, "FREEZE_ATTITUDE_SET", on ? 1u : 0u);
+    }
+
+    /// <summary>Jeder Frame: Lage aller übernommenen KI-Flugzeuge setzen (SimConnect-Thread).</summary>
+    private void OnAiFrame(SimConnect sender, SIMCONNECT_RECV_EVENT_FRAME data)
+    {
+        if (_aiPoseSources.IsEmpty)
+        {
+            return;
+        }
+
+        var now = Stopwatch.GetTimestamp();
+        var dt = _lastFrameTicks == 0 ? 0 : Stopwatch.GetElapsedTime(_lastFrameTicks, now).TotalSeconds;
+        _lastFrameTicks = now;
+        dt = _simStatus.Paused ? 0 : Math.Clamp(dt, 0, 0.25) * Math.Clamp(data.fSimSpeed, 0, 16);
+
+        if (_aiPoseDefId == 0)
+        {
+            _aiPoseDefId = ++_nextDefId;
+            var def = (SimDefinitionId)_aiPoseDefId;
+            foreach (var (name, unit) in AiPoseVariables.All)
+            {
+                sender.AddToDataDefinition(def, name, unit, SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
+            }
+
+            sender.RegisterDataDefineStruct<AiPoseData>(def);
+        }
+
+        foreach (var (objectId, source) in _aiPoseSources)
+        {
+            AiPose? pose;
+            try
+            {
+                pose = source(dt);
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, Loc.Log("log.sim.aiProbeFailed"), objectId);
+                continue;
+            }
+
+            if (pose is { } p)
+            {
+                sender.SetDataOnSimObject((SimDefinitionId)_aiPoseDefId, objectId, SIMCONNECT_DATA_SET_FLAG.DEFAULT, new AiPoseData
+                {
+                    Latitude = p.Latitude,
+                    Longitude = p.Longitude,
+                    AltitudeFt = p.AltitudeFt,
+                    // Der Sim zählt Nase hoch negativ
+                    PitchDeg = -p.PitchUpDeg,
+                    BankDeg = p.BankDeg,
+                    HeadingTrueDeg = p.HeadingTrueDeg,
+                });
+            }
+        }
+    }
+
     /// <summary>Event an ein eigenes KI-Objekt (nicht an das eigene Flugzeug, daher ohne die Sperrliste des Eingabe-Moduls).</summary>
     private void TransmitToObject(SimConnect sc, uint objectId, string eventName, uint data)
     {
@@ -385,6 +505,7 @@ public sealed partial class SimConnectClient
                 BankDeg = d.BankDeg,
                 LightStates = (int)d.LightStates,
                 DesiredKt = d.DesiredKt,
+                CgHeightFt = d.CgHeightFt,
             };
             try
             {
@@ -420,6 +541,7 @@ public sealed partial class SimConnectClient
     private void RegisterAiHandlers(SimConnect sc)
     {
         sc.OnRecvAssignedObjectId += OnAssignedObjectId;
+        sc.OnRecvEventFrame += OnAiFrame;
     }
 
     private void OnAssignedObjectId(SimConnect sender, SIMCONNECT_RECV_ASSIGNED_OBJECT_ID data)
@@ -585,6 +707,9 @@ public sealed partial class SimConnectClient
         _aiGearDefId = 0;
         _aiSpeedDefId = 0;
         _aiVelocityDefId = 0;
+        _aiPoseDefId = 0;
+        _frameSubscribed = false;
+        _aiPoseSources.Clear();
         _aiLightDefIds.Clear();
         _aiModelsAvailable = false;
         _aiProbes.Clear();
@@ -688,6 +813,45 @@ public sealed record AiProbeSample(
 
     /// <summary>Wunschgeschwindigkeit der KI (AI DESIRED SPEED) in Knoten.</summary>
     public double DesiredKt { get; init; }
+
+    /// <summary>Höhe des Bezugspunkts über dem Boden, wenn das Flugzeug steht (STATIC CG TO GROUND) – die Kinematik setzt es damit auf.</summary>
+    public double CgHeightFt { get; init; }
+}
+
+/// <summary>Lage eines von Duopilo bewegten KI-Flugzeugs (<see cref="SimConnectClient.StartAiPose"/>).</summary>
+/// <param name="AltitudeFt">Höhe des Bezugspunkts über MSL.</param>
+/// <param name="PitchUpDeg">Längsneigung, Nase hoch positiv.</param>
+public readonly record struct AiPose(double Latitude, double Longitude, double AltitudeFt, double PitchUpDeg, double BankDeg, double HeadingTrueDeg);
+
+/// <summary>SimVars, die die Kinematik jeden Frame setzt, in dieser Reihenfolge (siehe <see cref="AiPoseData"/>).</summary>
+public static class AiPoseVariables
+{
+    public static readonly IReadOnlyList<(string Name, string Unit)> All =
+    [
+        ("PLANE LATITUDE", "degrees"),
+        ("PLANE LONGITUDE", "degrees"),
+        ("PLANE ALTITUDE", "feet"),
+        ("PLANE PITCH DEGREES", "degrees"),
+        ("PLANE BANK DEGREES", "degrees"),
+        ("PLANE HEADING DEGREES TRUE", "degrees"),
+    ];
+}
+
+/// <summary>Struktur zu <see cref="AiPoseVariables"/>: sechs FLOAT64.</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
+public struct AiPoseData
+{
+    public double Latitude;
+
+    public double Longitude;
+
+    public double AltitudeFt;
+
+    public double PitchDeg;
+
+    public double BankDeg;
+
+    public double HeadingTrueDeg;
 }
 
 /// <summary>SimVars der KI-Abfrage, in dieser Reihenfolge in der Data Definition (siehe <see cref="AiProbeData"/>).</summary>
@@ -713,13 +877,14 @@ public static class AiProbeVariables
         ("PLANE BANK DEGREES", "degrees"),
         ("LIGHT STATES", "mask"),
         ("AI DESIRED SPEED", "knots"),
+        ("STATIC CG TO GROUND", "feet"),
     ];
 
     /// <summary>Zustand der KI (z. B. „SIMPLE_LANDING“), als STRING64 hinter den Zahlen.</summary>
     public const string State = "AI TRAFFIC STATE";
 }
 
-/// <summary>Struktur zu <see cref="AiProbeVariables"/>: achtzehn FLOAT64, dann STRING64.</summary>
+/// <summary>Struktur zu <see cref="AiProbeVariables"/>: neunzehn FLOAT64, dann STRING64.</summary>
 [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
 public struct AiProbeData
 {
@@ -758,6 +923,8 @@ public struct AiProbeData
     public double LightStates;
 
     public double DesiredKt;
+
+    public double CgHeightFt;
 
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
     public string State;

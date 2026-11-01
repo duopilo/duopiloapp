@@ -18,6 +18,7 @@ namespace Duopilo.Traffic;
 /// <param name="ThrottlePercent">Schub der Wegpunkte in der Luft bei <see cref="TrafficSpeedMethod.Throttle"/>; leer = <see cref="TrafficTestPlan.DefaultThrottlePercent"/>.</param>
 /// <param name="GoAround">Durchstarten, wenn die KI zu hoch oder zu schnell über die Schwelle kommt oder zu lange nicht aufsetzt (<see cref="TrafficGoAround"/>).</param>
 /// <param name="RollM">B1: Boden-Wegpunkt so weit vor dem Spawn, mit Startgeschwindigkeit; leer oder 0 = keiner (<see cref="TrafficTestPlan.BuildTakeoff"/>).</param>
+/// <param name="KinematicNm">Ab dieser Entfernung zur Schwelle bewegt Duopilo das Flugzeug selbst (<see cref="TrafficKinematics"/>); leer = Wegpunkt-KI bis zum Halt.</param>
 public sealed record TrafficTestRequest(
     string Airport,
     string Runway,
@@ -32,7 +33,8 @@ public sealed record TrafficTestRequest(
     TrafficSpeedMethod SpeedMethod = TrafficSpeedMethod.Desired,
     bool GoAround = true,
     double? RollM = null,
-    double? ThrottlePercent = null);
+    double? ThrottlePercent = null,
+    double? KinematicNm = null);
 
 /// <summary>Zeitpunkt und Text eines Ereignisses der Testlinie.</summary>
 public sealed record TrafficTestEvent(double Seconds, string Text);
@@ -89,7 +91,26 @@ public sealed record TrafficTestStatus(
     IReadOnlyList<TrafficTestWaypoint> Waypoints,
     string? CsvFile,
     string? SummaryFile,
-    string? Note);
+    string? Note,
+    double? KinematicNm = null,
+    TrafficTestKinematics? Kinematics = null);
+
+/// <summary>Stand der Kinematik eines Tests (<see cref="TrafficKinematics"/>).</summary>
+/// <param name="Phase">approach, flare, rollout, stopped.</param>
+/// <param name="StartAlongM">Wo Duopilo übernommen hat (vor der Schwelle negativ).</param>
+/// <param name="StartHeightFt">Höhe der Räder über der Bahn bei der Übernahme.</param>
+/// <param name="FlareAlongM">Wo das Abfangen begann.</param>
+public sealed record TrafficTestKinematics(
+    string Phase,
+    double StartAlongM,
+    double StartHeightFt,
+    double StartSpeedKt,
+    double? FlareAlongM,
+    double? TouchdownAlongM,
+    double? TouchdownKt,
+    double? TouchdownSinkFpm,
+    double GroundFt,
+    double CgHeightFt);
 
 /// <summary>
 /// Testwerkzeug für eigenen KI-Verkehr, Stufe A der Testlinie (docs/research/eigener-verkehr.md): NonATC-Flugzeuge fliegen einen
@@ -121,6 +142,14 @@ public sealed class TrafficTestService : IHostedService, IDisposable
     private static readonly TimeSpan VelocityPeriod = TimeSpan.FromMilliseconds(200);
 
     private const double FeetPerSecondPerKnot = 1.68781;
+
+    /// <summary>Kinematik: Übernahme frühestens/spätestens so weit vor der Schwelle.</summary>
+    private const double MinKinematicNm = 1;
+
+    private const double MaxKinematicNm = 12;
+
+    /// <summary>Falls der Sim STATIC CG TO GROUND nicht liefert: Bezugspunkt so hoch über den Rädern (A320 im Test: 9 ft).</summary>
+    private const double DefaultCgHeightFt = 9;
 
     /// <summary>Start: Rollt das Flugzeug so lange nach dem Spawn nicht los, endet der Test (no_roll).</summary>
     private const double NoRollSeconds = 90;
@@ -255,6 +284,8 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             {
                 SpeedMethod = request.SpeedMethod,
                 GoAroundEnabled = request.GoAround,
+                KinematicNm = plan.IsTakeoff || request.KinematicNm is null ? null : Math.Clamp(request.KinematicNm.Value, MinKinematicNm, MaxKinematicNm),
+                Category = TrafficModels.TypeOf(title, livery)?.Category ?? TrafficCategory.Airliner,
             };
             run.AddEvent(0, plan.IsTakeoff
                 ? string.Create(CultureInfo.InvariantCulture, $"spawn on the runway {TrafficTestPlan.LineUpM:0} m behind its start, takeoff speed {plan.TakeoffKt:0} kt, object {objectId}, {run.Tail}")
@@ -442,7 +473,21 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             [.. plan.Waypoints, .. (run.Analysis.GoAroundPlan?.Waypoints ?? [])],
             run.CsvPath,
             run.SummaryPath,
-            note);
+            note,
+            run.KinematicNm,
+            run.Kinematics is { } k
+                ? new TrafficTestKinematics(
+                    k.Phase.ToString().ToLowerInvariant(),
+                    Math.Round(k.StartAlongM),
+                    Math.Round(k.StartHeightFt),
+                    Math.Round(k.StartSpeedKt),
+                    k.FlareAlongM is { } flare ? Math.Round(flare) : null,
+                    k.Touchdown is { } td ? Math.Round(td.AlongM) : null,
+                    k.Touchdown is { } tdKt ? Math.Round(tdKt.SpeedKt) : null,
+                    k.Touchdown is { } tdSink ? Math.Round(tdSink.SinkFpm) : null,
+                    Math.Round(k.GroundFt, 1),
+                    Math.Round(k.CgHeightFt, 1))
+                : null);
     }
 
     private async Task<(string Title, string Livery)> ResolveModelAsync(TrafficTestRequest request, CancellationToken ct)
@@ -479,6 +524,23 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             }
 
             run = current;
+
+            // Kinematik: Übernahme ab KinematicNm vor der Schwelle; danach liefert sie Fahrt, Sinkrate, Neigung und "am Boden" –
+            // eingefroren meldet der Sim dafür nichts Brauchbares
+            StartKinematicsIfDue(run, sample);
+            if (run.Kinematics is { } kin)
+            {
+                CorrectGround(run, kin, sample);
+                sample = sample with
+                {
+                    OnGround = kin.OnGround,
+                    IndicatedKt = kin.SpeedKt,
+                    GroundSpeedKt = kin.OnGround ? kin.SpeedKt : TrafficTestPlan.TrueAirspeedKt(kin.SpeedKt, sample.AltitudeFt),
+                    VerticalSpeedFpm = kin.VerticalSpeedFpm,
+                    PitchDeg = kin.PitchDeg,
+                };
+            }
+
             point = run.Analysis.Add(sample);
             run.LastSampleUtc = sample.Utc;
             run.Last = new TrafficTestLast(
@@ -511,8 +573,8 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         var heightFt = sample.AltitudeFt - plan.Runway.ElevationFt;
 
         // Durchstarten: zu hoch oder zu schnell über der Schwelle, oder zu lange nicht aufgesetzt – neue Wegpunkte geradeaus,
-        // Steigflug auf 3000 ft, schneller werden; das Fahrwerk kommt bei positiver Steigrate rein
-        if (run.GoAroundEnabled && !plan.IsTakeoff && run.Analysis.GoAroundPlan is null
+        // Steigflug auf 3000 ft, schneller werden; das Fahrwerk kommt bei positiver Steigrate rein (nicht mit Kinematik: die fliegt den Pfad)
+        if (run.GoAroundEnabled && !plan.IsTakeoff && run.Kinematics is null && run.Analysis.GoAroundPlan is null
             && TrafficGoAround.Check(plan, run.PreviousAlongM, point.AlongM, sample.AltitudeFt, sample.IndicatedKt, sample.OnGround, run.Analysis.TouchedDown) is { } reason)
         {
             var goAround = TrafficGoAroundPlan.Build(plan, point.AlongM);
@@ -602,7 +664,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         // Durchstarten die Wegpunkte des Durchstartens). Velocity setzt zusätzlich VELOCITY BODY Z (VelocityTick, 5 Hz).
         var targetKt = run.Analysis.GoAroundPlan?.TargetKt(point.AlongM) ?? plan.AirborneTargetKt(point.AlongM);
         var airborne = !sample.OnGround && !run.Analysis.TouchedDown && (!plan.IsTakeoff || run.Analysis.LiftedOff);
-        if (run.SpeedMethod == TrafficSpeedMethod.Velocity)
+        if (run.SpeedMethod == TrafficSpeedMethod.Velocity && run.Kinematics is null)
         {
             var tasKt = TrafficTestPlan.TrueAirspeedKt(targetKt, sample.AltitudeFt);
             if (airborne && run.VelocityFtS is null)
@@ -613,7 +675,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             run.VelocityFtS = airborne ? tasKt * FeetPerSecondPerKnot : null;
         }
 
-        if (run.SpeedMethod is (TrafficSpeedMethod.Desired or TrafficSpeedMethod.Velocity) && airborne
+        if (run.SpeedMethod is (TrafficSpeedMethod.Desired or TrafficSpeedMethod.Velocity) && airborne && run.Kinematics is null
             && (run.DesiredSentKt != targetKt || point.Seconds >= run.DesiredSentSeconds + 5))
         {
             if (run.DesiredSentKt != targetKt)
@@ -646,9 +708,20 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             Fire(_sim.SetAiLightsAsync(run.ObjectId, TrafficLights.Rollout, CancellationToken.None), "lights");
         }
 
-        // Im Schlafzustand nach der Landung schaltet die KI alle Lichter aus (beta.14) – bis zu dreimal im Abstand von 5 s nachschicken
+        // Im Schlafzustand nach der Landung schaltet die KI alle Lichter aus (beta.14) – bis zu dreimal im Abstand von 5 s nachschicken,
+        // nach dem Wechsel in den Schlafzustand noch einmal dreimal. Nur Nav und Beacon zählen: Ein Taxilicht haben die PassiveAircraft nicht
+        if (sample.AiState != run.LastAiState)
+        {
+            if (sample.AiState?.Contains("SLEEP", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                run.RolloutLightResends = 0;
+            }
+
+            run.LastAiState = sample.AiState;
+        }
+
         if (run.RolloutLightsSent && run.RolloutLightResends < 3 && point.Seconds >= run.RolloutLightsSeconds + 5
-            && !TrafficLights.Rollout.MatchedBy(sample.LightStates))
+            && !TrafficLights.RolloutRequired.MatchedBy(sample.LightStates))
         {
             run.RolloutLightResends++;
             run.RolloutLightsSeconds = point.Seconds;
@@ -662,6 +735,56 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             var designation = run.Analysis.Plan.Runway.Airport + " " + run.Analysis.Plan.Runway.Designation;
             _ = Task.Run(() => StopTestAsync("timeout", CancellationToken.None, designation));
         }
+    }
+
+    /// <summary>
+    /// Übernimmt das Flugzeug, sobald es <see cref="TrafficTestRun.KinematicNm"/> vor der Schwelle ist (in der Luft, nicht
+    /// durchgestartet): Kinematik aus dem Messpunkt starten, dann setzt der Client die Lage jeden Frame.
+    /// </summary>
+    private void StartKinematicsIfDue(TrafficTestRun run, AiProbeSample sample)
+    {
+        if (run.KinematicNm is not { } nm || run.Kinematics is not null || sample.OnGround || run.Analysis.GoAroundPlan is not null
+            || run.Analysis.TouchedDown)
+        {
+            return;
+        }
+
+        var plan = run.Analysis.Plan;
+        var (along, cross) = plan.Runway.Offsets(sample.Latitude, sample.Longitude);
+        if (along < -nm * RunwayEnd.MetersPerNm)
+        {
+            return;
+        }
+
+        var cg = sample.CgHeightFt > 0.5 ? sample.CgHeightFt : DefaultCgHeightFt;
+        var ground = plan.Runway.ElevationFt;
+        var kin = new TrafficKinematics(plan, KinematicProfile.For(run.Category), along, cross, sample.AltitudeFt - ground - cg, sample.IndicatedKt, sample.PitchDeg, ground, cg);
+        run.Kinematics = kin;
+        _sim.StartAiPose(run.ObjectId, dt =>
+        {
+            kin.Advance(dt);
+            return kin.Pose();
+        });
+        var seconds = Math.Max(0, (sample.Utc - run.SpawnUtc).TotalSeconds);
+        run.AddEvent(Math.Round(seconds, 1), string.Create(CultureInfo.InvariantCulture,
+            $"kinematic_start at {-along / RunwayEnd.MetersPerNm:0.0} NM, {kin.StartHeightFt:0} ft, {sample.IndicatedKt:0} kt (cg {cg:0.0} ft)"));
+    }
+
+    /// <summary>
+    /// Bahnhöhe nachführen: Über der Bahn misst der Sim die Höhe über Grund; die Kinematik setzt sonst auf die Höhe aus den
+    /// Bahndaten (Mitte) auf. Höchstens 3 ft je Messpunkt, damit das Flugzeug nicht springt.
+    /// </summary>
+    private static void CorrectGround(TrafficTestRun run, TrafficKinematics kin, AiProbeSample sample)
+    {
+        var plan = run.Analysis.Plan;
+        var (along, _) = plan.Runway.Offsets(sample.Latitude, sample.Longitude);
+        if (along < 0 || along > plan.Runway.LengthM || sample.AltitudeAglFt <= 0 || sample.AltitudeAglFt > 500)
+        {
+            return;
+        }
+
+        var measured = sample.AltitudeFt - sample.AltitudeAglFt;
+        kin.GroundFt += Math.Clamp(measured - kin.GroundFt, -3, 3);
     }
 
     /// <summary>Velocity: Längsgeschwindigkeit setzen, solange der Test läuft und die KI in der Luft ist (Timer-Thread).</summary>
@@ -687,6 +810,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         }
 
         _sim.StopAiProbe(run.ObjectId);
+        _sim.StopAiPose(run.ObjectId, unfreeze: false);
         run.VelocityTimer?.Dispose();
         run.VelocityTimer = null;
         if (_sim.Connection.IsConnected)
@@ -722,7 +846,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             var name = string.Create(CultureInfo.InvariantCulture, $"{spawnUtc:yyyyMMdd-HHmmss}-{plan.Runway.Airport}{plan.Runway.Designation}-{plan.Variant}.csv");
             var path = Path.Combine(Directory, name);
             var writer = new StreamWriter(path, append: false) { AutoFlush = true };
-            writer.WriteLine("utc,t_s,lat,lon,alt_ft,agl_ft,ias_kt,target_kt,gs_kt,vs_fpm,hdg_true,pitch_deg,bank_deg,on_ground,gear_handle,gear_total_pct,gear_center_pct,gear_left_pct,gear_right_pct,lights,desired_kt,ai_state,along_m,cross_m,dist_thr_nm,events");
+            writer.WriteLine("utc,t_s,lat,lon,alt_ft,agl_ft,ias_kt,target_kt,gs_kt,vs_fpm,hdg_true,pitch_deg,bank_deg,on_ground,gear_handle,gear_total_pct,gear_center_pct,gear_left_pct,gear_right_pct,lights,desired_kt,ai_state,kin_phase,along_m,cross_m,dist_thr_nm,events");
             return (path, writer);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -742,7 +866,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         try
         {
             writer.WriteLine(string.Create(CultureInfo.InvariantCulture,
-                $"{s.Utc:O},{p.Seconds:0.0},{s.Latitude:0.000000},{s.Longitude:0.000000},{s.AltitudeFt:0},{s.AltitudeAglFt:0},{s.IndicatedKt:0},{p.TargetKt:0},{s.GroundSpeedKt:0},{s.VerticalSpeedFpm:0},{s.HeadingTrueDeg:0},{s.PitchDeg:0.0},{s.BankDeg:0.0},{(s.OnGround ? 1 : 0)},{(s.GearHandleDown ? 1 : 0)},{s.GearTotalPercent:0.0},{s.GearCenterPercent:0.0},{s.GearLeftPercent:0.0},{s.GearRightPercent:0.0},{Csv(AiLights.Describe(s.LightStates))},{s.DesiredKt:0},{Csv(s.AiState)},{p.AlongM:0},{p.CrossM:0.0},{p.DistanceToThresholdNm:0.00},{Csv(string.Join(' ', p.Events))}"));
+                $"{s.Utc:O},{p.Seconds:0.0},{s.Latitude:0.000000},{s.Longitude:0.000000},{s.AltitudeFt:0},{s.AltitudeAglFt:0},{s.IndicatedKt:0},{p.TargetKt:0},{s.GroundSpeedKt:0},{s.VerticalSpeedFpm:0},{s.HeadingTrueDeg:0},{s.PitchDeg:0.0},{s.BankDeg:0.0},{(s.OnGround ? 1 : 0)},{(s.GearHandleDown ? 1 : 0)},{s.GearTotalPercent:0.0},{s.GearCenterPercent:0.0},{s.GearLeftPercent:0.0},{s.GearRightPercent:0.0},{Csv(AiLights.Describe(s.LightStates))},{s.DesiredKt:0},{Csv(s.AiState)},{run.Kinematics?.Phase.ToString().ToLowerInvariant()},{p.AlongM:0},{p.CrossM:0.0},{p.DistanceToThresholdNm:0.00},{Csv(string.Join(' ', p.Events))}"));
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException)
         {
@@ -879,6 +1003,17 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         public double RolloutLightsSeconds { get; set; }
 
         public int RolloutLightResends { get; set; }
+
+        public string? LastAiState { get; set; }
+
+        /// <summary>Ab dieser Entfernung zur Schwelle Kinematik statt KI, sonst null.</summary>
+        public double? KinematicNm { get; init; }
+
+        /// <summary>Kategorie des Typs (Kennwerte der Kinematik).</summary>
+        public TrafficCategory Category { get; init; }
+
+        /// <summary>Kinematik ab der Übernahme, sonst null (nur auf dem SimConnect-Thread verändert).</summary>
+        public TrafficKinematics? Kinematics { get; set; }
 
         public double? DesiredSentKt { get; set; }
 
