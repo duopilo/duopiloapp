@@ -185,7 +185,8 @@ public sealed record TrafficTestTaxi(
     double? ExitAlongM = null,
     double? ExitKt = null,
     IReadOnlyList<string>? Crossings = null,
-    int CrossingsDone = 0);
+    int CrossingsDone = 0,
+    string? WaitingFor = null);
 
 /// <summary>Stand der Kinematik eines Tests (<see cref="TrafficKinematics"/>).</summary>
 /// <param name="Phase">approach, flare, rollout, stopped; Start: lineup, takeoff_roll, rotation, climb.</param>
@@ -415,6 +416,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                     taxiEvents.Add("warning:taxi_obstacles_unknown " + scanError);
                 }
 
+                ReserveOwnParkings(taxiGraph);
                 taxiRoute = PlanTaxi(taxiGraph, runway, request.Parking, category, TrafficRules.WakeOf(modelType?.IcaoType, category));
                 if (taxiGraph.IsOccupied(taxiRoute.Parking))
                 {
@@ -445,6 +447,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                     taxiEvents.Add("warning:taxi_obstacles_unknown " + scanError);
                 }
 
+                ReserveOwnParkings(taxiGraph);
                 taxiRoute = PlanTaxiIn(taxiGraph, runway, request.Parking, category, TrafficRules.WakeOf(modelType?.IcaoType, category), approachKt ?? TrafficTestPlan.DefaultApproachKt);
                 taxiEvents.Add(string.Create(CultureInfo.InvariantCulture,
                     $"taxi_in_planned exit {taxiRoute.EntryAlongM:0} m ({taxiRoute.Hold.Taxiway}) at {taxiRoute.HandoverKt:0} kt, route {string.Join(' ', taxiRoute.Taxiways)} {taxiRoute.LengthM:0} m to parking {taxiRoute.Parking.Parking?.Label} ({taxiRoute.Parking.Parking?.TypeName})"));
@@ -460,8 +463,10 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                     : "taxi_crossings " + string.Join(", ", taxiRoute.Crossings.Select(c => string.Create(CultureInfo.InvariantCulture, $"{c.Runway} hold on {c.Taxiway} at {c.StopS:0} m ({c.CenterlineM:0} m from the centerline)"))));
             }
 
-            // Ein Test je Bahn: den alten auf dieser Bahn ersetzen, auf anderen Bahnen höchstens MaxConcurrent
-            foreach (var old in Running().Where(r => r.SameRunway(runway)))
+            // Ein Test je Bahn: den alten auf dieser Bahn ersetzen, auf anderen Bahnen höchstens MaxConcurrent. Rollende Tests (D1, B2, A3)
+            // ersetzen einander nicht – sie stellen sich an (Abstand beim Rollen, Reihenfolge am Haltepunkt)
+            var rolling = request.Variant is TrafficTestVariant.D1 or TrafficTestVariant.B2 or TrafficTestVariant.A3;
+            foreach (var old in Running().Where(r => r.SameRunway(runway) && !(rolling && (r.InitialPlan.IsTaxi || r.InitialPlan.Variant == TrafficTestVariant.A3))))
             {
                 await StopCoreAsync(old, "replaced");
             }
@@ -768,7 +773,8 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                     route.HandoverAlongM is not null ? route.EntryAlongM : null,
                     route.HandoverAlongM is not null ? route.HandoverKt : null,
                     [.. route.Crossings.Select(c => string.Create(CultureInfo.InvariantCulture, $"{c.Runway} on {c.Taxiway} at {c.StopS:0} m"))],
-                    run.TaxiKinematics?.CrossingsDone ?? 0)
+                    run.TaxiKinematics?.CrossingsDone ?? 0,
+                    run.BlockedBy is { } by ? _runs.FirstOrDefault(r => r.ObjectId == by)?.Tail : null)
                 : null);
     }
 
@@ -953,6 +959,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         // Rollen: vor einer gekreuzten Bahn und vor dem Aufreihen (B2) erst weiter, wenn die Bahn frei ist
         if (run.TaxiKinematics is { CheckRunway: true } held && (run.InitialPlan.Variant != TrafficTestVariant.A3 || run.TaxiActive))
         {
+            UpdateTaxiSpacing(run, held, point.Seconds);
             CheckRunwayWhileHolding(run, held, point.Seconds);
         }
 
@@ -1308,6 +1315,60 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         return (parked.Count, scan.Error);
     }
 
+    /// <summary>Höhe, bis zu der ein Abflug die Bahn für den nächsten belegt.</summary>
+    private const double DepartureClearFt = 400;
+
+    /// <summary>Ein B2-Test reiht sich gerade auf oder startet und ist noch unter <see cref="DepartureClearFt"/>.</summary>
+    private static bool IsDeparting(TrafficTestRun run) =>
+        run.TaxiKinematics is { Phase: TaxiPhase.LineUp or TaxiPhase.LinedUp }
+        && (run.Kinematics is null || run.Kinematics.Phase != KinematicPhase.Climb || run.Kinematics.HeightFt < DepartureClearFt);
+
+    /// <summary>
+    /// Abstand beim Rollen: Halt hinter dem nächsten anderen Testflugzeug auf dem eigenen Weg (<see cref="TaxiTraffic"/>). Warten zwei
+    /// aufeinander (Kreuzung), fährt das mit dem kleineren Platz (DUO01 vor DUO02).
+    /// </summary>
+    private void UpdateTaxiSpacing(TrafficTestRun run, TaxiKinematics taxi, double seconds)
+    {
+        if (run.TaxiGraph is not { } graph || taxi.Phase != TaxiPhase.Taxi)
+        {
+            return;
+        }
+
+        var others = new List<(double East, double North)>();
+        var owners = new List<TrafficTestRun>();
+        foreach (var other in Running())
+        {
+            if (other == run || other.TaxiKinematics is not { } ot || other.TaxiGraph is not { } og || og.Icao != graph.Icao
+                || (other.InitialPlan.Variant == TrafficTestVariant.A3 && !other.TaxiActive)
+                || (other.InitialPlan.TakeoffAfterTaxi && other.Kinematics is not null)
+                || (other.BlockedBy == run.ObjectId && run.Slot < other.Slot))
+            {
+                continue;
+            }
+
+            var (lat, lon) = og.ToLatLon(ot.EastM, ot.NorthM);
+            others.Add(graph.ToLocal(lat, lon));
+            owners.Add(other);
+        }
+
+        var stop = TaxiTraffic.StopBehind(taxi.Taxi, taxi.DistanceM, others, TaxiTraffic.SpacingFor(run.Category));
+        taxi.TrafficStopS = stop?.StopS ?? double.NaN;
+        var blocker = stop is { } st ? owners[st.Index] : null;
+        if (blocker?.ObjectId != run.BlockedBy)
+        {
+            run.BlockedBy = blocker?.ObjectId;
+            run.AddEvent(seconds, blocker is null ? "taxi_spacing_clear" : string.Create(CultureInfo.InvariantCulture, $"taxi_spacing behind {blocker.Tail}, stop at {stop!.Value.StopS:0} m"));
+        }
+    }
+
+    /// <summary>Parkpositionen der laufenden Rolltests (Start bzw. Ziel) für neue Tests sperren.</summary>
+    private void ReserveOwnParkings(TaxiGraph graph)
+    {
+        graph.Reserve(Running()
+            .Where(r => r.InitialPlan.Taxi is not null && r.TaxiGraph?.Icao == graph.Icao)
+            .Select(r => (r.InitialPlan.Taxi!.Parking.Latitude, r.InitialPlan.Taxi.Parking.Longitude)));
+    }
+
     /// <summary>Die Bahn mit dem Ende <paramref name="designation"/>, sonst null.</summary>
     private static AirportRunway? RunwayOf(IReadOnlyList<AirportRunway> runways, string designation)
     {
@@ -1349,8 +1410,26 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         {
             label = run.InitialPlan.Runway.Designation;
             runway = RunwayOf(graph.Runways, label);
+            run.LineUpQueuedUtc ??= DateTimeOffset.UtcNow;
             if (held.PhaseSeconds < TaxiKinematics.HoldBeforeLineUpSeconds - 1)
             {
+                return;
+            }
+
+            // Reihenfolge: zuerst, wer am längsten am Haltepunkt wartet; auf der Bahn höchstens ein Abflug zugleich (bis 400 ft)
+            var others = Running().Where(r => r != run && r.SameRunway(run.InitialPlan.Runway) && r.InitialPlan.TakeoffAfterTaxi).ToList();
+            var ahead = others.Where(r => r.TaxiKinematics is { Phase: TaxiPhase.Holding } && r.LineUpQueuedUtc < run.LineUpQueuedUtc).ToList();
+            var departing = others.FirstOrDefault(IsDeparting);
+            var reason = ahead.Count > 0 ? string.Create(CultureInfo.InvariantCulture, $"line_up_queue position {ahead.Count + 1} behind {string.Join(' ', ahead.OrderBy(r => r.LineUpQueuedUtc).Select(r => r.Tail))}")
+                : departing is not null ? "line_up_wait " + departing.Tail + " departing" : null;
+            if (reason is not null)
+            {
+                if (reason != run.LastQueueEvent)
+                {
+                    run.LastQueueEvent = reason;
+                    run.AddEvent(seconds, reason);
+                }
+
                 return;
             }
         }
@@ -1850,6 +1929,15 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             get => _runwayScanBusy;
             set => _runwayScanBusy = value;
         }
+
+        /// <summary>Rollen: wegen dieses Testflugzeugs steht es gerade (Abstand), sonst null.</summary>
+        public uint? BlockedBy { get; set; }
+
+        /// <summary>B2: seit wann es am Haltepunkt auf das Aufreihen wartet (Reihenfolge).</summary>
+        public DateTimeOffset? LineUpQueuedUtc { get; set; }
+
+        /// <summary>B2: zuletzt gemeldeter Grund für das Warten am Haltepunkt.</summary>
+        public string? LastQueueEvent { get; set; }
 
         /// <summary>Rollen: was die Bahn zuletzt belegt hat (für das Ereignis nur bei einer Änderung).</summary>
         public string? LastRunwayBlocker { get; set; }

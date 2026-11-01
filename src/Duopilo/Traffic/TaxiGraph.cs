@@ -61,6 +61,7 @@ public sealed class TaxiGraph
     private readonly List<AirportRunway> _runways;
     private readonly HashSet<TaxiEdge> _blocked = [];
     private List<(double EastM, double NorthM)> _obstacles = [];
+    private readonly List<(double EastM, double NorthM)> _reserved = [];
 
     private TaxiGraph(string icao, double latitude, double longitude, double elevationFt, IReadOnlyList<AirportRunway> runways)
     {
@@ -135,7 +136,17 @@ public sealed class TaxiGraph
     public bool IsBlocked(TaxiEdge edge) => _blocked.Contains(edge);
 
     /// <summary>Ob ein anderes Flugzeug näher als <paramref name="radiusM"/> an einem Punkt steht.</summary>
+    /// <summary>
+    /// Parkpositionen anderer eigener Testflugzeuge (Start oder Ziel) als belegt merken – ohne Rollwege zu sperren; sie rollen ja selbst
+    /// und halten Abstand (<see cref="TaxiTraffic"/>).
+    /// </summary>
+    public void Reserve(IEnumerable<(double Latitude, double Longitude)> positions)
+    {
+        _reserved.AddRange(positions.Select(p => ToLocal(p.Latitude, p.Longitude)));
+    }
+
     public bool IsOccupied(double eastM, double northM, double radiusM) =>
+        _reserved.Any(p => Math.Sqrt(((p.EastM - eastM) * (p.EastM - eastM)) + ((p.NorthM - northM) * (p.NorthM - northM))) < radiusM) ||
         _obstacles.Any(o => Math.Sqrt(((o.EastM - eastM) * (o.EastM - eastM)) + ((o.NorthM - northM) * (o.NorthM - northM))) < radiusM);
 
     /// <summary>Ob eine Parkposition belegt ist: ein anderes Flugzeug innerhalb ihres Radius (mindestens 10 m).</summary>

@@ -43,7 +43,10 @@ Duopilo's own AI traffic instead of the simulator's, built step by step with the
 - [x] **Taxi to the runway** (beta.22 to beta.28, in beta) – Duopilo moves the aircraft over the airport's taxiways (MSFS taxiway network): gate chosen by size and type, pushback along the route to the next junction, taxi at 15 kt and slower in turns, around parked aircraft (beta.23), stop at the holding line of the taxiway it enters the runway from (beta.28), hold short of crossed runways until they are free (beta.30)
 - [x] **Departure from the gate** (beta.24, in beta) – pushback, taxi, line-up on the centerline and kinematic takeoff in one run; tested at EDDL 23R from gate A15
 - [x] **Taxi after landing** (beta.29, in beta) – landing, leave the runway at a suitable exit while still rolling, taxi to a free gate; tested at EDDL 23R to gate C2
-- [ ] **Departure queue** – several aircraft one after another at the holding point, line-up only when the runway is free
+- [x] **Departure queue** (beta.31, in beta) – several aircraft from different gates to one runway: spacing on the taxiways, line-up in the order of arrival, one departure at a time
+- [ ] **Follow-me** – own vehicle model (van with full checker livery), leads your aircraft from the exit to the gate
+- [ ] **Airport fire service** – European crash tenders on emergencies from the ATC module
+- [ ] **Own passive aircraft models**
 - [ ] **Helicopters** – kinematic: approach, hover, vertical landing and takeoff on heliports and airports
 - [ ] **Schedule traffic** – flights mapped to the installed models by ICAO type
 - [x] Test at Frankfurt as well (three parallel runways and the Startbahn West)

@@ -132,8 +132,8 @@ public sealed class TaxiPath
         return allowed;
     }
 
-    /// <summary>Stelle des Wegs (Meter ab dem Anfang), die einem Punkt am nächsten liegt, gesucht ab <paramref name="fromS"/>.</summary>
-    public double NearestS(double east, double north, double fromS = 0)
+    /// <summary>Stelle des Wegs (Meter ab dem Anfang), die einem Punkt am nächsten liegt, gesucht ab <paramref name="fromS"/> (bis <paramref name="toS"/>).</summary>
+    public double NearestS(double east, double north, double fromS = 0, double toS = double.MaxValue)
     {
         double Distance2(double s)
         {
@@ -142,8 +142,9 @@ public sealed class TaxiPath
         }
 
         var start = Math.Clamp(fromS, 0, LengthM);
+        var end = Math.Clamp(toS, start, LengthM);
         var (best, bestD) = (start, Distance2(start));
-        for (var s = start; s <= LengthM; s += 1)
+        for (var s = start; s <= end; s += 1)
         {
             if (Distance2(s) is var d && d < bestD)
             {
@@ -151,7 +152,7 @@ public sealed class TaxiPath
             }
         }
 
-        for (var s = Math.Max(start, best - 1); s <= Math.Min(LengthM, best + 1); s += 0.05)
+        for (var s = Math.Max(start, best - 1); s <= Math.Min(end, best + 1); s += 0.05)
         {
             if (Distance2(s) is var d && d < bestD)
             {
