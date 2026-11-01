@@ -1210,6 +1210,10 @@
   "tools.trafficTest.noData": "Seit {seconds} s keine Werte vom Testflugzeug – MSFS hat es vielleicht entfernt. Mit traffic_test_stop beenden und neu starten.",
   "tools.trafficTest.gearUnknown": "Unbekannte Fahrwerks-Methode „{gear}“ – all, down (GEAR_DOWN), set (GEAR_SET 1) oder handle (GEAR HANDLE POSITION).",
   "tools.trafficTest.tooMany": "Auf anderen Bahnen laufen schon {max:0} Verkehrstests – erst einen mit traffic_test_stop (runway) beenden.",
-  "tools.trafficTest.variantUnknown": "Unbekannte Variante „{variant}“ – A1 (Fahrwerk ab Spawn), A2 (Fahrwerk bei 3000 ft über der Bahn), B1 (Start von der Bahn) oder C1 (Überflug in Reiseflughöhe).",
+  "tools.trafficTest.variantUnknown": "Unbekannte Variante „{variant}“ – A1 (Fahrwerk ab Spawn), A2 (Fahrwerk bei 3000 ft über der Bahn), B1 (Start von der Bahn), C1 (Überflug in Reiseflughöhe) oder D1 (Rollen von einer Parkposition zum Haltepunkt).",
+  "tools.trafficTest.noTaxiways": "MSFS hat für {airport} keine Rollwege.",
+  "tools.trafficTest.parkingUnknown": "Parkposition „{parking}“ gibt es in {airport} nicht. Einige dort: {labels}.",
+  "tools.trafficTest.noHold": "Für die Bahn {runway} in {airport} gibt es keinen Haltepunkt.",
+  "tools.trafficTest.noTaxiRoute": "Keine Rollroute von der Parkposition {parking} zu einem Haltepunkt der Bahn {runway}.",
   "tools.trafficTest.speedMethodUnknown": "Unbekannte Speed-Methode „{method}“ – desired (AI DESIRED SPEED), throttle (fester Schub in den Wegpunkten), velocity (VELOCITY BODY Z) oder off."
 }

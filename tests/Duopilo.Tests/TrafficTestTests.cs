@@ -431,7 +431,7 @@ public sealed class TrafficTestTests
     [InlineData("Asobo PassiveAircraft A320 NEO", "", "A20N", "verified")]
     [InlineData("Asobo PassiveAircraft B737-800", "B737_800_SUNEXPRESS", "B738", "verified")]
     [InlineData("Asobo PassiveAircraft A350-900", "", "A359", "untested")]
-    [InlineData("Asobo PassiveAircraft MD11F", "", "MD11", "untested")]
+    [InlineData("Asobo PassiveAircraft MD11F", "", "MD11", "candidate")]
     [InlineData("Microsoft PassiveAircraft S340B Passenger", "", "SF34", "untested")]
     [InlineData("Asobo PassiveAircraft A330-900", "", "A339", "untested")]
     [InlineData("A330-300 (RR)", "Lufthansa", "A333", "candidate")]

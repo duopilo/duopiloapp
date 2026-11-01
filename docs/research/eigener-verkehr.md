@@ -442,6 +442,18 @@ Steigrate folgt aus Nase minus Anstellwinkel – der ist beim Abheben die ganze 
 Steigen weich auf. V2 + 10 mit 2500 ft/min (A320 um 15°), ab 1500 ft 1500 ft/min und schneller, waagerecht auf 3000 ft. Rechnerisch: A320
 in EDDL rotiert bei rund 1370 m, hebt bei rund 1560 m mit 148 kt ab, C172 nach gut 400 m mit 59 kt.
 
+**beta.21 (1.11.2026):** Start mit Kinematik sauber – A400M in Wunstorf (26): Rotieren ab 1102 m bei 125 kt, Abheben 1217 m mit 130 kt
+und 8°, 2500 ft/min mit 140 kt, Nase um 16°, über dem Bahnende 730 ft, Fahrwerk nach 24 s drin. MD-11 (Passive) in Düsseldorf (23R,
+2700 m): Beschleunigung 2,2 m/s² (Vr bis 60 % der Bahn), Rotieren ab 1624 m bei 160 kt, Abheben 1852 m mit 169 kt, 2500 ft/min mit
+175 kt, über dem Bahnende 380 ft. Im Sim sah beides gut aus.
+
+**Rollen (beta.22, Variante D1):** Rollweg-Netz über die Facilities-API (AIRPORT → TAXI_POINT, TAXI_PARKING, TAXI_PATH, TAXI_NAME;
+Lage als BIAS_X/BIAS_Z in Metern vom Bezugspunkt – welche Achse Ost ist, prüft das Netz an den Bahn-Abschnitten). Route mit Dijkstra
+(Bahnen kosten das Achtfache, durch Parkpositionen geht es nicht), Ziel ist der erste erreichbare Haltepunkt nahe am Bahnanfang. Duopilo
+schiebt das Flugzeug selbst: Pushback rückwärts mit 2,5 kt im Bogen auf den Rollweg (in Gegenrichtung der Weiterfahrt), 10 s, dann
+15 kt geradeaus, Kurven mit 30 m gerundet und höchstens 0,8 m/s² quer, Halt 12 m vor dem Haltepunkt. Offen: ob die Achsen und die
+Indizes (TAXI_PATH START/END, Parkpositionen) so stimmen – `traffic_taxi_info` zeigt es vorher.
+
 **Fahrplan des eigenen Verkehrs (Stand 1.11.2026):**
 
 1. Anflug und Landung – erledigt bis beta.14 (Wegpunkte, Fahrwerk bis 2500 ft, Lichter, Freigabeliste, Geschwindigkeit).
@@ -451,7 +463,7 @@ in EDDL rotiert bei rund 1370 m, hebt bei rund 1560 m mit 148 kt ab, C172 nach g
 4. Überflüge in Reiseflughöhe – beta.18 (Variante C1, Wegpunkt-KI): Spawn 40 NM vor der Bahnmitte auf FL350 mit 450 kt TAS (ab
    beta.19 als TAS an die KI), geradeaus darüber hinweg, Lichter wie im Reiseflug (Landelicht aus), Ende 40 NM dahinter. Allgemeine
    Luftfahrt FL85, doppelte Vapp, 15 NM. Flughafenregeln für alle Plätze – beta.19.
-5. Rollen – irgendwann: Pushback und Rollen zwischen Gate und Bahn über die Rollwege (aus Stufe C).
+5. Rollen – beta.22 (Variante D1): Pushback und Rollen vom Gate zum Haltepunkt über die Rollwege; Aufreihen und Rollen nach der Landung danach.
 6. Helikopter – nach dem Rollen: kinematisch (Anflug, Schweben, senkrecht landen und abheben), auf Heliports und Flughäfen;
    Heliports bekommen dann nur Helis.
 
