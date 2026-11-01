@@ -1,3 +1,5 @@
+using Duopilo.Sim;
+
 namespace Duopilo.Traffic;
 
 /// <summary>
