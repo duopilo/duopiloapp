@@ -45,6 +45,7 @@ Eigener KI-Verkehr von Duopilo statt des Verkehrs aus dem Simulator, Schritt fü
 - [x] **Rollen nach der Landung** (beta.29, in der Beta) – Landung, noch rollend über einen passenden Abrollweg von der Bahn, Rollen zu einem freien Gate; getestet in EDDL 23R bis Gate C2
 - [x] **Abflug-Reihenfolge** (beta.31, in der Beta) – mehrere Flugzeuge von verschiedenen Gates zu einer Bahn: Abstand auf den Rollwegen, Aufreihen in der Reihenfolge der Ankunft, immer nur ein Abflug; getestet in EDDL 23R mit drei Abflügen (beta.33)
 - [x] **Takt der Landungen und Mischbetrieb** (beta.34, in der Beta) – Landungen nacheinander mit Abstand nach Wirbelschleppen, Lücken für Abflüge, Starts und Landungen auf einer Bahn (wie in Düsseldorf), Durchstarten, wenn die Bahn noch belegt ist
+- [x] **Übergänge zwischen den Phasen** (beta.37, in der Beta) – Anflüge aus dem Reiseflug (Sinkflug und Kurve auf den Final aus jeder Richtung, dann Landung und Rollen) und Abflüge bis in den Reiseflug (Kurve auf einen Kurs, Steigflug auf die Flugfläche), geflogen von Duopilo selbst
 - [ ] **Follow-me** – eigenes Fahrzeugmodell (Bus mit Vollkaro), führt dein Flugzeug vom Abrollweg zum Gate
 - [ ] **Flughafenfeuerwehr** – europäische Löschfahrzeuge bei Notfällen aus dem ATC-Modul
 - [ ] **Eigene Passive-Flugzeugmodelle**

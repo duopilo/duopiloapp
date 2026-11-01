@@ -45,6 +45,7 @@ Duopilo's own AI traffic instead of the simulator's, built step by step with the
 - [x] **Taxi after landing** (beta.29, in beta) – landing, leave the runway at a suitable exit while still rolling, taxi to a free gate; tested at EDDL 23R to gate C2
 - [x] **Departure queue** (beta.31, in beta) – several aircraft from different gates to one runway: spacing on the taxiways, line-up in the order of arrival, one departure at a time; tested at EDDL 23R with three departures (beta.33)
 - [x] **Landing sequence and mixed mode** (beta.34, in beta) – landings one after another with wake spacing, gaps for departures, departures and landings on one runway (like Düsseldorf), go-around when the runway is still occupied
+- [x] **Phase transitions** (beta.37, in beta) – arrivals from cruise (descent and turn onto the final from any direction, then landing and taxi-in) and departures to cruise (turn onto a track, climb to the flight level), flown by Duopilo itself
 - [ ] **Follow-me** – own vehicle model (van with full checker livery), leads your aircraft from the exit to the gate
 - [ ] **Airport fire service** – European crash tenders on emergencies from the ATC module
 - [ ] **Own passive aircraft models**

@@ -30,7 +30,35 @@ public enum TrafficTestVariant
 
     /// <summary>Überflug abseits der Flughäfen: wie C1, aber über einen beliebigen Punkt (Koordinaten oder das eigene Flugzeug) in beliebiger Richtung.</summary>
     C2,
+
+    /// <summary>Anflug aus dem Reiseflug: Spawn weit draußen aus einer Richtung, Sinkflug und Kurve auf den Final, dann wie A3 (Landung, Rollen zur Parkposition).</summary>
+    A4,
+
+    /// <summary>Abflug bis in den Reiseflug: wie B2 (Gate, Rollen, Start), danach Kurve auf einen Kurs und Steigflug auf die Reiseflughöhe.</summary>
+    B3,
 }
+
+/// <summary>A4: der Weg aus dem Reiseflug bis zum Eindrehpunkt auf den Final.</summary>
+/// <param name="FromDeg">Aus dieser Richtung kommt der Anflug (Peilung von der Schwelle, rechtweisend).</param>
+/// <param name="SpawnDistanceNm">Spawn so weit von der Schwelle (Luftlinie).</param>
+/// <param name="CruiseFt">Reiseflughöhe (MSL), höher spawnt er nicht.</param>
+/// <param name="SpawnHeightFt">Höhe der Räder über der Bahn beim Spawn (auf dem Profil).</param>
+/// <param name="SpawnKt">Fahrt beim Spawn (IAS).</param>
+public sealed record ArrivalLeg(
+    ArrivalPath Path,
+    EnrouteProfile Profile,
+    double FromDeg,
+    double SpawnDistanceNm,
+    double CruiseFt,
+    double CruiseTasKt,
+    double SpawnHeightFt,
+    double SpawnKt);
+
+/// <summary>B3: der Abflug nach dem Start bis in den Reiseflug.</summary>
+/// <param name="TrackDeg">Kurs nach der Kurve (rechtweisend), null = geradeaus.</param>
+/// <param name="CruiseFt">Reiseflughöhe (MSL).</param>
+/// <param name="EndNm">Der Test endet so weit von der Bahn.</param>
+public sealed record DepartureLeg(EnrouteProfile Profile, double? TrackDeg, double CruiseFt, double CruiseTasKt, double EndNm);
 
 /// <summary>
 /// Wie der Test die Geschwindigkeit der KI regelt. Die Geschwindigkeit in den Wegpunkten beachtet sie nicht, und AI DESIRED SPEED
@@ -251,11 +279,28 @@ public sealed record TrafficTestPlan(
     /// <summary>Ob es ein Überflug ist (<see cref="TrafficTestVariant.C1"/>).</summary>
     public bool IsOverflight => Variant is TrafficTestVariant.C1 or TrafficTestVariant.C2;
 
-    /// <summary>Ob es mit Rollen beginnt (<see cref="TrafficTestVariant.D1"/>, <see cref="TrafficTestVariant.B2"/>).</summary>
-    public bool IsTaxi => Variant is TrafficTestVariant.D1 or TrafficTestVariant.B2;
+    /// <summary>Ob es mit Rollen beginnt (<see cref="TrafficTestVariant.D1"/>, <see cref="TrafficTestVariant.B2"/>, <see cref="TrafficTestVariant.B3"/>).</summary>
+    public bool IsTaxi => Variant is TrafficTestVariant.D1 or TrafficTestVariant.B2 or TrafficTestVariant.B3;
 
-    /// <summary>Ob nach dem Rollen aufgereiht und gestartet wird (<see cref="TrafficTestVariant.B2"/>).</summary>
-    public bool TakeoffAfterTaxi => Variant == TrafficTestVariant.B2;
+    /// <summary>Ob nach dem Rollen aufgereiht und gestartet wird (<see cref="TrafficTestVariant.B2"/>, <see cref="TrafficTestVariant.B3"/>).</summary>
+    public bool TakeoffAfterTaxi => Variant is TrafficTestVariant.B2 or TrafficTestVariant.B3;
+
+    /// <summary>Ob nach der Landung zur Parkposition gerollt wird (<see cref="TrafficTestVariant.A3"/>, <see cref="TrafficTestVariant.A4"/>).</summary>
+    public bool TaxiAfterLanding => Variant is TrafficTestVariant.A3 or TrafficTestVariant.A4;
+
+    /// <summary>A4: Weg aus dem Reiseflug bis zum Final, solange er noch vor dem Flugzeug liegt; sonst null.</summary>
+    public ArrivalLeg? Arrival { get; init; }
+
+    /// <summary>B3: Abflug nach dem Start bis in den Reiseflug, sonst null.</summary>
+    public DepartureLeg? Departure { get; init; }
+
+    /// <summary>A4: Spawn standardmäßig so weit von der Schwelle, mindestens <see cref="MinArrivalNm"/>, höchstens <see cref="MaxOverflightNm"/>.</summary>
+    public const double DefaultArrivalNm = 40;
+
+    public const double MinArrivalNm = 20;
+
+    /// <summary>B3: Der Test endet standardmäßig so weit von der Bahn (10 bis <see cref="MaxOverflightNm"/>).</summary>
+    public const double DefaultDepartureEndNm = 40;
 
     /// <summary>Rollen: Route von der Parkposition zum Haltepunkt.</summary>
     public TaxiRoute? Taxi { get; init; }
@@ -431,6 +476,94 @@ public sealed record TrafficTestPlan(
         {
             ThrottlePercent = throttle,
         };
+    }
+
+    /// <summary>
+    /// Anflug aus dem Reiseflug (A4): Spawn <paramref name="spawnNm"/> (Luftlinie) von der Schwelle aus <paramref name="fromDeg"/>
+    /// (Peilung von der Schwelle, leer = von hinten auf der verlängerten Mittellinie), Weg geradeaus und im Bogen auf den Final bis zum
+    /// Eindrehpunkt (<see cref="EnrouteProfile.JoinNm"/>), Kurvenradius aus der Fahrt vor der Kurve. Spawn auf dem Profil (3° über den
+    /// Weg bis zur Schwelle), höchstens auf <paramref name="flightLevel"/>, Fahrwerk oben. Ab dem Eindrehpunkt gilt der Endanflug von A3
+    /// (Wegpunkte, Messpunkte, Aufsetzen, Halt) – <see cref="SpawnNm"/> ist hier der Weg bis zur Schwelle.
+    /// </summary>
+    public static TrafficTestPlan BuildArrival(
+        RunwayEnd runway,
+        TrafficCategory category,
+        double? approachKt = null,
+        double? fromDeg = null,
+        double? spawnNm = null,
+        double? flightLevel = null,
+        double? cruiseTasKt = null,
+        double? touchdownM = null,
+        double? finalLowFt = null)
+    {
+        var vapp = Math.Clamp(approachKt ?? DefaultApproachKt, 50, 180);
+        var profile = EnrouteProfile.For(category, vapp);
+        var final = Build(runway, TrafficTestVariant.A3, profile.JoinNm, touchdownM, finalLowFt, vapp);
+        var ga = category == TrafficCategory.GeneralAviation;
+        var level = Math.Clamp(flightLevel ?? (ga ? GeneralAviationFlightLevel : AirlinerFlightLevel), 30, 450);
+        var cruiseFt = Math.Max(level * 100, GlidePathFt(runway, profile.JoinNm) + 500);
+        var tas = Math.Clamp(cruiseTasKt ?? (ga ? Math.Min(vapp * 2, 300) : AirlinerCruiseTasKt), 80, 600);
+        var from = TrafficMath.Normalize(fromDeg ?? (runway.HeadingTrueDeg + 180));
+        var distance = Math.Clamp(spawnNm ?? DefaultArrivalNm, MinArrivalNm, MaxOverflightNm);
+        var (lat, lon) = RouteMath.Destination(runway.ThresholdLatitude, runway.ThresholdLongitude, from, distance);
+        var (along, cross) = runway.Offsets(lat, lon);
+
+        // Kurvenradius aus der Fahrt vor der Kurve, in der Höhe dort (Profil gut 2 NM vor dem Eindrehpunkt)
+        var radius = profile.TurnRadiusM(TrueAirspeedKt(profile.InterceptKt, GlidePathFt(runway, profile.JoinNm + 2)));
+        var joinAlong = -profile.JoinNm * RunwayEnd.MetersPerNm;
+        var path = ArrivalPath.Build(along, cross, joinAlong, radius);
+        var routeM = path.LengthM - joinAlong;
+        var height = Math.Min(cruiseFt - runway.ElevationFt, TrafficKinematics.GlidePathHeightFt(-routeM));
+        var altitude = runway.ElevationFt + height;
+        var speed = path.StraightM / RunwayEnd.MetersPerNm <= EnrouteKinematics.InterceptLeadNm ? profile.InterceptKt
+            : altitude < EnrouteProfile.SpeedLimitFt + 1500 ? profile.LowKt
+            : Math.Min(profile.HighKt, tas / TrueAirspeedKt(1, altitude));
+        var spawn = new AiInitPosition(lat, lon, altitude, TrafficMath.Normalize(runway.HeadingTrueDeg + path.LineHeadingDeg), OnGround: false, AirspeedKt: (uint)Math.Round(speed));
+        return final with
+        {
+            Variant = TrafficTestVariant.A4,
+            Spawn = spawn,
+            SpawnNm = Math.Round(routeM / RunwayEnd.MetersPerNm, 1),
+            GearAtSpawn = false,
+            GearDownFt = null,
+            GearDownNm = null,
+            Arrival = new ArrivalLeg(path, profile, from, distance, cruiseFt, tas, height, Math.Round(speed)),
+        };
+    }
+
+    /// <summary>
+    /// A4 ab dem Eindrehpunkt: der Endanflug ohne den Weg davor, Fahrwerk wie bei A2 bei <see cref="GearCommandFt"/> über der Bahn
+    /// (spätestens am Punkt des Gleitpfads in dieser Höhe).
+    /// </summary>
+    public TrafficTestPlan FinalAfterJoin() => this with
+    {
+        Arrival = null,
+        GearDownFt = GearCommandFt,
+        GearDownNm = Math.Round(GlidePathDistanceNm(GearCommandFt), 1),
+    };
+
+    /// <summary>
+    /// Abflug bis in den Reiseflug (B3): Kurs <paramref name="trackDeg"/> (leer = geradeaus), Flugfläche <paramref name="flightLevel"/>
+    /// (Standard FL350, Allgemeine Luftfahrt FL85), Reise-TAS wie beim Überflug, Ende <paramref name="endNm"/> von der Bahn.
+    /// </summary>
+    public static DepartureLeg DepartureLegFor(
+        TrafficCategory category,
+        double? approachKt = null,
+        double? trackDeg = null,
+        double? flightLevel = null,
+        double? cruiseTasKt = null,
+        double? endNm = null)
+    {
+        var vapp = Math.Clamp(approachKt ?? DefaultApproachKt, 50, 180);
+        var ga = category == TrafficCategory.GeneralAviation;
+        var level = Math.Clamp(flightLevel ?? (ga ? GeneralAviationFlightLevel : AirlinerFlightLevel), 30, 450);
+        var tas = Math.Clamp(cruiseTasKt ?? (ga ? Math.Min(vapp * 2, 300) : AirlinerCruiseTasKt), 80, 600);
+        return new DepartureLeg(
+            EnrouteProfile.For(category, vapp),
+            trackDeg is { } t ? TrafficMath.Normalize(t) : null,
+            level * 100,
+            tas,
+            Math.Clamp(endNm ?? DefaultDepartureEndNm, 10, MaxOverflightNm));
     }
 
     /// <summary>

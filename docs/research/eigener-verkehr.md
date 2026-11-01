@@ -580,6 +580,22 @@ ohne Länge, Flughafen OWN bzw. POS, Bezeichnung OVF1–OVF4 nach der Kennung, d
 oder quer zum eigenen Steuerkurs von links, `offsetNm` daneben. Ohne Flugfläche und näher als 3 NM bleibt er mindestens 2000 ft
 über dem eigenen Flugzeug.
 
+**Übergänge zwischen den Phasen (beta.37):** Bisher begannen Landungen höchstens 30 NM draußen auf der verlängerten Mittellinie und
+Starts endeten bei 3000 ft. Für Fahrplan-Verkehr braucht es ganze Flüge. Weil `AIReleaseControl` nicht umkehrbar ist, fliegt Duopilo
+auch diese Abschnitte selbst (`EnrouteKinematics`), statt sie an die Wegpunkt-KI zurückzugeben.
+- **A4 (Anflug):** Der Weg (`ArrivalPath`) liegt in Bahnkoordinaten, damit er am Eindrehpunkt genau dort endet, wo der Endanflug
+  (`TrafficKinematics`) beginnt. Vom Spawn führt eine Gerade tangential an einen Kreis, der die verlängerte Mittellinie bei 10 NM
+  berührt. Der Kreis liegt auf der Seite des Spawns, der Radius ergibt sich aus 210 kt bei 25°. Von hinter dem Flughafen wird daraus
+  ein Bogen von rund 180°.
+- **A4, Höhe und Fahrt:** Die Höhe folgt 3° über den restlichen Weg zur Schwelle, höchstens bis zur Flugfläche. Sie trifft deshalb am
+  Eindrehpunkt den Gleitpfad. Die Fahrt beträgt 300 kt, unter FL100 250 und 4 NM vor der Kurve 210.
+- **B3 (Abflug):** Ab 1500 ft übernimmt der Steigflug. Er dreht über die Querneigung auf den Kurs (25°, höchstens 3°/s) und steigt mit
+  2500/2000/1200 ft/min bis zur Flugfläche.
+- **Querneigung:** MSFS zählt links positiv. Die Kinematik rechnet rechts positiv und dreht das Vorzeichen beim Setzen um.
+- **Simulation vor dem Test:** In Python nachgerechnet kamen vier Anflugrichtungen am Eindrehpunkt jeweils weniger als 2 ft neben dem
+  Gleitpfad an, mit 210 kt und höchstens 25° Querneigung.
+- **Offen:** A4 ist noch nicht gegen andere Landungen getaktet (Zeit statt Abstand, kommt mit dem Fahrplan-Verkehr).
+
 **Fahrplan des eigenen Verkehrs (Stand 1.11.2026):**
 
 1. Anflug und Landung – erledigt bis beta.14 (Wegpunkte, Fahrwerk bis 2500 ft, Lichter, Freigabeliste, Geschwindigkeit).
@@ -589,7 +605,7 @@ oder quer zum eigenen Steuerkurs von links, `offsetNm` daneben. Ohne Flugfläche
 4. Überflüge in Reiseflughöhe – beta.18 (Variante C1, Wegpunkt-KI): Spawn 40 NM vor der Bahnmitte auf FL350 mit 450 kt TAS (ab
    beta.19 als TAS an die KI), geradeaus darüber hinweg, Lichter wie im Reiseflug (Landelicht aus), Ende 40 NM dahinter. Allgemeine
    Luftfahrt FL85, doppelte Vapp, 15 NM. Flughafenregeln für alle Plätze – beta.19. Abseits der Flughäfen (C2) – beta.36.
-5. Rollen – beta.22 (Variante D1): Pushback und Rollen vom Gate zum Haltepunkt über die Rollwege, beta.23 mit Hindernissen; Abflug vom Gate mit Aufreihen und Start – beta.24 (B2), Halt an der richtigen Linie ab beta.28; Rollen nach der Landung – beta.29 (A3); Halt vor gekreuzten Bahnen – beta.30; Abflug-Reihenfolge mit Abstand beim Rollen – beta.31, ohne Deadlock am Haltepunkt ab beta.32, jeder Test endet für sich ab beta.33; Takt der Landungen und Mischbetrieb auf einer Bahn – beta.34; Gegenverkehr beim Rollen und Lücke nach Plan – beta.35.
+5. Rollen – beta.22 (Variante D1): Pushback und Rollen vom Gate zum Haltepunkt über die Rollwege, beta.23 mit Hindernissen; Abflug vom Gate mit Aufreihen und Start – beta.24 (B2), Halt an der richtigen Linie ab beta.28; Rollen nach der Landung – beta.29 (A3); Halt vor gekreuzten Bahnen – beta.30; Abflug-Reihenfolge mit Abstand beim Rollen – beta.31, ohne Deadlock am Haltepunkt ab beta.32, jeder Test endet für sich ab beta.33; Takt der Landungen und Mischbetrieb auf einer Bahn – beta.34; Gegenverkehr beim Rollen und Lücke nach Plan – beta.35; Anflug aus dem Reiseflug und Abflug bis in den Reiseflug – beta.37.
 6. Helikopter – nach dem Rollen: kinematisch (Anflug, Schweben, senkrecht landen und abheben), auf Heliports und Flughäfen;
    Heliports bekommen dann nur Helis.
 
