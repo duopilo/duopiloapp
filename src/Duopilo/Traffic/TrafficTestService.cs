@@ -320,7 +320,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 KinematicNm = plan.IsTakeoff || plan.IsOverflight || request.KinematicNm is null ? null : Math.Clamp(request.KinematicNm.Value, MinKinematicNm, MaxKinematicNm),
                 Category = category,
                 Lights = plan.IsOverflight ? TrafficLights.Cruise : TrafficLights.Approach,
-                FullModel = !title.Contains("PassiveAircraft", StringComparison.OrdinalIgnoreCase),
+                FullModel = !title.Contains("Passive", StringComparison.OrdinalIgnoreCase),
             };
             run.AddEvent(0, plan.IsTakeoff
                 ? string.Create(CultureInfo.InvariantCulture, $"spawn on the runway {TrafficTestPlan.LineUpM:0} m behind its start, takeoff speed {plan.TakeoffKt:0} kt, object {objectId}, {run.Tail}")

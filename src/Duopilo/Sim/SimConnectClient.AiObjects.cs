@@ -232,6 +232,13 @@ public sealed partial class SimConnectClient
             {
                 var (eventName, simVar) = AiLights.Names(light);
                 TransmitToObject(sc, objectId, eventName, on ? 1u : 0u);
+                if (light == AiLight.Landing)
+                {
+                    // Manche Modelle haben mehrere Landelichter und schalten mit LANDING_LIGHTS_SET nur eins (L-39, A-10 und die
+                    // Passive-C172 ließen es in beta.18/19 an): zusätzlich ON/OFF und LANDING_LIGHTS_SET je Index 1–4
+                    TransmitToObject(sc, objectId, on ? "LANDING_LIGHTS_ON" : "LANDING_LIGHTS_OFF", 0);
+                    TransmitIndexed(sc, objectId, eventName, on ? 1u : 0u, MaxLandingLightIndex);
+                }
 
                 if (!_aiLightDefIds.TryGetValue(simVar, out var defId))
                 {
@@ -393,6 +400,39 @@ public sealed partial class SimConnectClient
     }
 
     /// <summary>Event an ein eigenes KI-Objekt (nicht an das eigene Flugzeug, daher ohne die Sperrliste des Eingabe-Moduls).</summary>
+    /// <summary>So viele Landelichter schaltet Duopilo einzeln (Index 1 bis hier).</summary>
+    private const uint MaxLandingLightIndex = 4;
+
+    /// <summary>
+    /// Event mit zweitem Parameter (Index) an ein Objekt, für Index 1 bis <paramref name="maxIndex"/>. Ältere SimConnect-Bibliotheken
+    /// kennen TransmitClientEvent_EX1 nicht – dann bleibt es beim Event ohne Index.
+    /// </summary>
+    private void TransmitIndexed(SimConnect sc, uint objectId, string eventName, uint data, uint maxIndex)
+    {
+        try
+        {
+            for (var index = 1u; index <= maxIndex; index++)
+            {
+                TransmitToObjectEx(sc, objectId, eventName, data, index);
+            }
+        }
+        catch (MissingMethodException)
+        {
+        }
+    }
+
+    private void TransmitToObjectEx(SimConnect sc, uint objectId, string eventName, uint data0, uint data1)
+    {
+        if (!_eventIds.TryGetValue(eventName, out var id))
+        {
+            id = ClientEventBase + ++_nextEventId;
+            sc.MapClientEventToSimEvent((SimClientEventId)id, eventName);
+            _eventIds[eventName] = id;
+        }
+
+        sc.TransmitClientEvent_EX1(objectId, (SimClientEventId)id, SimGroupId.PriorityHighest, SIMCONNECT_EVENT_FLAG.GROUPID_IS_PRIORITY, data0, data1, 0, 0, 0);
+    }
+
     private void TransmitToObject(SimConnect sc, uint objectId, string eventName, uint data)
     {
         if (!_eventIds.TryGetValue(eventName, out var id))

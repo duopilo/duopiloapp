@@ -418,6 +418,10 @@ namespace Microsoft.FlightSimulator.SimConnect
         {
         }
 
+        public void TransmitClientEvent_EX1(uint ObjectID, Enum EventID, Enum GroupID, SIMCONNECT_EVENT_FLAG Flags, uint dwData0, uint dwData1, uint dwData2, uint dwData3, uint dwData4)
+        {
+        }
+
         public void SetDataOnSimObject(Enum DefineID, uint ObjectID, SIMCONNECT_DATA_SET_FLAG Flags, object pDataSet)
         {
         }
