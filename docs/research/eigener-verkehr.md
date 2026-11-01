@@ -546,6 +546,24 @@ prüft ab 2 NM, ob jemand auf der Bahn ist (die Landung davor beim Ausrollen, ei
 180 ft) noch belegt, startet sie durch (`go_around runway_occupied`, Kinematik wie nach dem Abheben, Steigflug auf 3000 ft, Ende bei
 2800 ft). Dafür spawnen Anflüge bis 30 NM vor der Schwelle und werden ab dort kinematisch geflogen.
 
+**beta.34 in Düsseldorf (1.11.2026), Mischbetrieb auf der 23L:** zwei B2 (DUO01 von B8, DUO02 von V41, Freigabe 5,0 NM) und zwei
+A3 (DUO03 bei 5 NM, DUO04 mit Lücke 8 NM dahinter bei 12,8 NM). Beide Landungen mit `landing_clear` bei 2 NM, Aufsetzen bei
+453/496 m mit 130 kt, über L5 ab, geparkt an C5 und V42A. DUO02 kam erst an den Haltepunkt, als DUO04 schon bei 5,4 NM war, wartete
+(„DUO04 on final 4.7 NM“, dann „on the runway“) und startete 196 s später; DUO01 dahinter mit `line_up_wait`. Kein Durchstarten,
+kein Deadlock. Drei Funde: Die feste Lücke passte nicht zur Ankunft des Abflugs am Haltepunkt (um 5 s zu klein); DUO03 rollte zum
+Gate über M, P2 und T in Gegenrichtung zu DUO01 – sie verpassten sich nur zeitlich, Abstand gab es nur in gleicher Richtung; DUO01
+brauchte gut 13 der 15 Minuten.
+
+**Gegenverkehr und Lücke nach Plan (beta.35):** Rollende Testflugzeuge prüfen 800 m voraus, ob ihr Weg und der Rest des Wegs eines
+anderen ein Stück Rollweg in Gegenrichtung teilen (bis 10 m auseinander, Richtungen mehr als 120° verschieden). Vorfahrt hat, wer
+schon drin ist, sonst wer früher hineinkommt (bei fast gleich die kleinere Kennung); die Entscheidung bleibt, bis das Stück frei ist.
+Der andere wartet davor, wo er 40 m vom Weg des Vorfahrtberechtigten weg ist (`taxi_give_way`). Sind beide schon drin (derselbe
+Korridor in Gegenrichtung), gibt es nur eine Warnung (`warning:taxi_head_on`) – dafür bräuchte es andere Routen. Die Lücke für einen
+Abflug rechnet jetzt mit seiner Ankunft am Haltepunkt (Rest von Pushback und Rollweg mit 5,5 m/s, 15 s Warten): Die Landung ist noch
+seine Freigabe-Entfernung weg, wenn er bereit ist und die Landung davor die Bahn geräumt hat (60 s nach dem Aufsetzen), plus 20 s –
+höchstens 8 NM weiter draußen als ohne Lücke, sonst landet sie zuerst (für DUO02 in beta.34 wären es 13,8 statt 12,8 NM gewesen).
+Rolltests laufen mindestens 30 min.
+
 **Fahrplan des eigenen Verkehrs (Stand 1.11.2026):**
 
 1. Anflug und Landung – erledigt bis beta.14 (Wegpunkte, Fahrwerk bis 2500 ft, Lichter, Freigabeliste, Geschwindigkeit).
@@ -555,7 +573,7 @@ prüft ab 2 NM, ob jemand auf der Bahn ist (die Landung davor beim Ausrollen, ei
 4. Überflüge in Reiseflughöhe – beta.18 (Variante C1, Wegpunkt-KI): Spawn 40 NM vor der Bahnmitte auf FL350 mit 450 kt TAS (ab
    beta.19 als TAS an die KI), geradeaus darüber hinweg, Lichter wie im Reiseflug (Landelicht aus), Ende 40 NM dahinter. Allgemeine
    Luftfahrt FL85, doppelte Vapp, 15 NM. Flughafenregeln für alle Plätze – beta.19.
-5. Rollen – beta.22 (Variante D1): Pushback und Rollen vom Gate zum Haltepunkt über die Rollwege, beta.23 mit Hindernissen; Abflug vom Gate mit Aufreihen und Start – beta.24 (B2), Halt an der richtigen Linie ab beta.28; Rollen nach der Landung – beta.29 (A3); Halt vor gekreuzten Bahnen – beta.30; Abflug-Reihenfolge mit Abstand beim Rollen – beta.31, ohne Deadlock am Haltepunkt ab beta.32, jeder Test endet für sich ab beta.33; Takt der Landungen und Mischbetrieb auf einer Bahn – beta.34.
+5. Rollen – beta.22 (Variante D1): Pushback und Rollen vom Gate zum Haltepunkt über die Rollwege, beta.23 mit Hindernissen; Abflug vom Gate mit Aufreihen und Start – beta.24 (B2), Halt an der richtigen Linie ab beta.28; Rollen nach der Landung – beta.29 (A3); Halt vor gekreuzten Bahnen – beta.30; Abflug-Reihenfolge mit Abstand beim Rollen – beta.31, ohne Deadlock am Haltepunkt ab beta.32, jeder Test endet für sich ab beta.33; Takt der Landungen und Mischbetrieb auf einer Bahn – beta.34; Gegenverkehr beim Rollen und Lücke nach Plan – beta.35.
 6. Helikopter – nach dem Rollen: kinematisch (Anflug, Schweben, senkrecht landen und abheben), auf Heliports und Flughäfen;
    Heliports bekommen dann nur Helis.
 

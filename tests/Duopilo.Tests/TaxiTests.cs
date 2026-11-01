@@ -792,6 +792,35 @@ public sealed class TaxiTests
     }
 
     [Fact]
+    public void Gegenverkehr_auf_einem_gemeinsamen_Stueck_Rollweg()
+    {
+        // Eigener Weg: von Westen zur Kreuzung (0, 0), dann 400 m nach Norden. Der andere kommt von Norden, fährt dasselbe Stück nach
+        // Süden und biegt an der Kreuzung nach Osten ab.
+        var own = TaxiPath.Build([(-300, 0), (0, 0), (0, 400)], 30, 7.7, 0.8, 2.2);
+        var other = TaxiPath.Build([(0, 600), (0, 0), (300, 0)], 30, 7.7, 0.8, 2.2);
+        var conflict = TaxiTraffic.FindHeadOn(own, 0, TaxiTraffic.Sample(other, 0, TaxiTraffic.HeadOnOtherAheadM))!;
+
+        // Das gemeinsame Stück beginnt an der Kreuzung, gewartet wird davor, 40 m vom Weg des anderen weg
+        Assert.InRange(conflict.EntryS, 270, 330);
+        Assert.InRange(conflict.HoldS, 220, conflict.EntryS - 20);
+        var (holdE, holdN, _) = own.At(conflict.HoldS);
+        Assert.True(Math.Sqrt((holdE * holdE) + (holdN * holdN)) >= TaxiTraffic.HeadOnClearM - 8);
+
+        // Der andere fährt bei (0, 400) hinein – 200 m nach seinem Start – und an der Kreuzung hinaus
+        Assert.InRange(conflict.OtherEntryS, 185, 215);
+        Assert.InRange(conflict.OtherExitS, 540, 620);
+
+        // Der andere ist schon durch (hinter der Kreuzung nach Osten): frei
+        Assert.Null(TaxiTraffic.FindHeadOn(own, 0, TaxiTraffic.Sample(other, other.LengthM - 200, TaxiTraffic.HeadOnOtherAheadM)));
+
+        // Dieselbe Richtung ist kein Gegenverkehr, ein Weg weit weg auch nicht
+        var behind = TaxiPath.Build([(0, -200), (0, 400)], 30, 7.7, 0.8, 2.2);
+        Assert.Null(TaxiTraffic.FindHeadOn(own, 0, TaxiTraffic.Sample(behind, 0, TaxiTraffic.HeadOnOtherAheadM)));
+        var far = TaxiPath.Build([(500, 600), (500, -100)], 30, 7.7, 0.8, 2.2);
+        Assert.Null(TaxiTraffic.FindHeadOn(own, 0, TaxiTraffic.Sample(far, 0, TaxiTraffic.HeadOnOtherAheadM)));
+    }
+
+    [Fact]
     public void Kinematik_haelt_hinter_anderem_Verkehr_und_rollt_danach_weiter()
     {
         var graph = Graph();

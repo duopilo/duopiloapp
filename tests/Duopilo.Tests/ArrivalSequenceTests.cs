@@ -43,10 +43,28 @@ public sealed class ArrivalSequenceTests
         Assert.Equal(5, near.SpawnNm);
         Assert.Null(near.Behind);
 
-        // Wartet ein Abflug: Lücke von 8 NM
-        var gap = ArrivalSequence.Plan(5, [("DUO02", 4.2, TrafficWake.Medium)], TrafficWake.Medium, departureWaiting: true);
-        Assert.Equal(12.2, gap.SpawnNm);
+        // Wartet ein Abflug: Lücke, die zu ihm passt – die Landung ist noch 5 NM weg, wenn er bereit ist und die vordere (bei 4,2 NM)
+        // die Bahn geräumt hat (104 s bis zur Schwelle, 60 s auf der Bahn), plus 20 s
+        var gap = ArrivalSequence.Plan(5, [("DUO02", 4.2, TrafficWake.Medium)], TrafficWake.Medium, new WaitingDeparture("DUO01", 60, 5.0));
+        Assert.Equal(12.4, gap.SpawnNm);
         Assert.Equal("departure_gap", gap.Reason);
+        Assert.Equal("DUO01", gap.GapFor);
+        Assert.Equal("DUO02", gap.Behind);
+        Assert.Equal(8.2, gap.SpacingNm);
+
+        // Später bereit (wie DUO02 in beta.34: 199 s): größere Lücke
+        Assert.Equal(13.8, ArrivalSequence.Plan(5, [("DUO02", 4.2, TrafficWake.Medium)], TrafficWake.Medium, new WaitingDeparture("DUO01", 199, 5.0)).SpawnNm);
+
+        // Erst in 10 min bereit: keine Lücke, die Landung kommt zuerst
+        var late = ArrivalSequence.Plan(5, [("DUO02", 4.2, TrafficWake.Medium)], TrafficWake.Medium, new WaitingDeparture("DUO01", 600, 5.0));
+        Assert.Equal(7.2, late.SpawnNm);
+        Assert.Equal("wake", late.Reason);
+
+        // Ohne Landung davor und der Abflug steht schon am Haltepunkt: knapp hinter seiner Freigabe-Entfernung, er startet zuerst
+        var first = ArrivalSequence.Plan(5, [], TrafficWake.Medium, new WaitingDeparture("DUO01", 0, 5.0));
+        Assert.Equal(5.8, first.SpawnNm);
+        Assert.Equal("departure_gap", first.Reason);
+        Assert.Null(first.Behind);
 
         // Rollt gerade ein Abflug auf die Bahn: nicht näher als seine Freigabe-Entfernung
         var departing = ArrivalSequence.Plan(5, [], TrafficWake.Medium, departingReleaseNm: 5.6);
