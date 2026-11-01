@@ -304,6 +304,8 @@ select.btn { padding: 4px 6px; max-width: 190px; }
 .hbtn:hover { border-color: var(--cyan); color: var(--white); }
 .hbtn[aria-current="page"] { border-color: var(--cyan); color: var(--cyan); }
 .hbtn.update { border-color: var(--green); color: var(--green); }
+.card.pending { border-color: var(--green); }
+.upd-notice { border: 1px solid var(--green); color: var(--green); border-radius: 6px; padding: 6px 10px; font-weight: 600; margin: 4px 0 10px; }
 .banner .btn { margin: 6px 8px 0 0; }
 .route a, .hero a { color: var(--cyan); }
 
@@ -776,6 +778,7 @@ dialog.report::backdrop { background: rgba(5, 8, 11, .7); }
 
     <section class="card" id="updCard" aria-labelledby="hUpdates">
       <h2 id="hUpdates" data-i18n="dashboard.settings.updates.title">Updates</h2>
+      <p class="upd-notice" id="updNotice" role="status" hidden></p>
       <p class="hint" data-i18n="dashboard.settings.updates.hint">Duopilo looks for new versions in the GitHub releases. Install downloads the installer, checks it (SHA-256) and installs it silently – Duopilo closes for that (the Claude Desktop instance too) and starts again afterwards.</p>
       <p class="state-line" id="updState"></p>
       <div class="row">
@@ -1847,7 +1850,8 @@ async function requestRestart() {
 /* ------------------------------------------------------------------ Updates (Karte in den Einstellungen) */
 const updateUi = { data: null, timer: null, filled: false };
 async function loadUpdate() {
-  try { renderUpdate(await (await fetch("/api/update", { cache: "no-store" })).json()); } catch { /* nächster Versuch */ }
+  // /api/update liefert { ok, message, error, update } – gezeigt wird update (sonst bleibt der Abschnitt versteckt)
+  try { renderUpdate((await (await fetch("/api/update", { cache: "no-store" })).json()).update); } catch { /* nächster Versuch */ }
 }
 function renderUpdate(u) {
   if (!u) return;
@@ -1856,6 +1860,11 @@ function renderUpdate(u) {
   card.hidden = !u.available;
   if (!u.available) return;
   const selfBuilt = u.state === "selfBuilt";
+  // Ausstehendes Update: Abschnitt hervorheben, Hinweis über den Knöpfen
+  const pending = !!u.updateAvailable;
+  card.classList.toggle("pending", pending);
+  $("updNotice").hidden = !pending;
+  if (pending) setText("updNotice", t("dashboard.settings.updates.pending", { version: u.latest || "" }));
   if (!updateUi.filled) {
     $("updAuto").checked = !!u.check;
     $("updPre").value = u.prereleases || "auto";

@@ -39,6 +39,22 @@ public sealed class DashboardTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Update_Abschnitt_liest_den_Zustand_aus_dem_Feld_update()
+    {
+        // Regression beta.12: loadUpdate gab die ganze Antwort weiter statt "update" – der Abschnitt Updates blieb versteckt
+        using var api = await _app.Local().GetAsync("/api/update");
+        using var json = JsonDocument.Parse(await api.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.OK, api.StatusCode);
+        Assert.True(json.RootElement.GetProperty("update").TryGetProperty("available", out _));
+        Assert.False(json.RootElement.TryGetProperty("available", out _));
+
+        using var page = await _app.Local().GetAsync("/");
+        var html = await page.Content.ReadAsStringAsync();
+        Assert.Contains("renderUpdate((await (await fetch(\"/api/update\"", html);
+        Assert.Contains("id=\"updNotice\"", html);
+    }
+
+    [Fact]
     public async Task Dashboard_ist_ueber_den_Tunnel_nicht_erreichbar()
     {
         using var page = await _app.Remote().GetAsync("/");
