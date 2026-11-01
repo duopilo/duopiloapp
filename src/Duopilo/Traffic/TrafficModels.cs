@@ -247,7 +247,7 @@ public static class TrafficModels
             "EDDF 1.11.2026: landed kinematically (438 m, 115 kt); gear after 24 s, lights visible only some seconds after spawn."),
         Military("F18S", "Boeing F/A-18E Super Hornet (full)", 135, "FA18E SuperHornet", TrafficModelStatus.Untested, "MSFS 2024 aircraft, not tested as AI yet."),
         MilitaryWords("C17", "Boeing C-17 Globemaster III (full)", 125, [["Globemaster"], ["C-17"]]),
-        MilitaryWords("A10", "Fairchild A-10 Thunderbolt II (full)", 125, [["A-10"], ["Warthog"]]),
+        MilitaryWords("A10", "Fairchild A-10C Thunderbolt II (full)", 125, [["A10C"], ["A-10"], ["Thunderbolt II"], ["Warthog"]]),
         MilitaryWords("L39", "Aero L-39 Albatros (full)", 100, [["L-39"], ["L39"], ["Albatros"]]),
 
         // Volle GA-Modelle aus MSFS 2024 – ungetestet, erkannt an Titelwörtern (die Passive-Titel oben gehen vor)
