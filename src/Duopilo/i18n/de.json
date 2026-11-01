@@ -1183,5 +1183,5 @@
   "tools.trafficTest.noData": "Seit {seconds} s keine Werte vom Testflugzeug – MSFS hat es vielleicht entfernt. Mit traffic_test_stop beenden und neu starten.",
   "tools.trafficTest.gearUnknown": "Unbekannte Fahrwerks-Methode „{gear}“ – all, down (GEAR_DOWN), set (GEAR_SET 1) oder handle (GEAR HANDLE POSITION).",
   "tools.trafficTest.tooMany": "Auf anderen Bahnen laufen schon {max:0} Verkehrstests – erst einen mit traffic_test_stop (runway) beenden.",
-  "tools.trafficTest.variantUnknown": "Unbekannte Variante „{variant}“ – A1 (Fahrwerk ab Spawn) oder A2 (Fahrwerk bei 3000 ft über der Bahn)."
+  "tools.trafficTest.variantUnknown": "Unbekannte Variante „{variant}“ – A1 (Fahrwerk ab Spawn), A2 (Fahrwerk bei 3000 ft über der Bahn) oder B1 (Start von der Bahn)."
 }

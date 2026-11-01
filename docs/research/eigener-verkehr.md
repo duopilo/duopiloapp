@@ -349,12 +349,20 @@ ihren Landemodus (`STATE_SIMPLE_LANDING`) verlässt – setzt sie trotzdem auf, 
 Nächste Schritte: Geschwindigkeitsregelung testen (ATR, A320 NEO, C172) und das Durchstarten (beta.15). Sieht es dann immer noch komisch
 aus, in Frankfurt testen; Speed notfalls über den Schub (`THROTTLE_REQUESTED`).
 
+**Start B1 (ab beta.16):** Spawn am Boden 60 m hinter dem Bahnanfang auf der Mittellinie, Fahrwerk unten, Lichter wie im Anflug
+(alle an). Wegpunkte in der Luft geradeaus: 1 NM hinter dem Bahnende 1000 ft, 4 NM weiter 3000 ft über der Bahn, dann geradeaus
+weiter; Geschwindigkeit aus V2 ≈ Vapp + 10 des Typs (+ 10, + 40, + 60 kt). Offen: ob die KI zu einem ersten Wegpunkt in der Luft
+losrollt und abhebt (`STATE_SIMPLE_TAKEOFF`?) – sonst `rollM`: ein Boden-Wegpunkt mit Startgeschwindigkeit voraus. Fahrwerk rein ab
+30 ft bei mehr als 300 ft/min Steigen. Ende bei 2800 ft (`climbed`), am Boden hinter dem Bahnende (`no_liftoff`) oder ohne
+Losrollen nach 90 s (`no_roll`). Auswertung: Losrollen, Abhebepunkt, -speed, Längsneigung (rotiert die KI?), Startstrecke,
+Querablage im Startlauf, Höhe über dem Bahnende, Steigrate, Längs- und Querneigung bis 1500 ft, Fahrwerk rein, Lichter.
+
 **Fahrplan des eigenen Verkehrs (Stand 1.11.2026):**
 
 1. Anflug und Landung – erledigt bis beta.14 (Wegpunkte, Fahrwerk bis 2500 ft, Lichter, Freigabeliste, Geschwindigkeit).
 2. Durchstarten – beta.15.
-3. Starts – beta.16 (der Start aus Stufe B): Spawn auf der Bahn oder am Rollhalt, Startlauf, Rotieren, Steigflug auf 3000 ft, Fahrwerk rein, Lichter;
-   Auswertung von Abhebepunkt und Steigflug.
+3. Starts – beta.16 (der Start aus Stufe B, Variante B1): Spawn auf der Bahn, Startlauf, Rotieren, Steigflug auf 3000 ft, Fahrwerk
+   rein, Lichter; Auswertung von Abhebepunkt und Steigflug. Spawn am Rollhalt kommt mit dem Rollen.
 4. Überflüge in Reiseflughöhe – danach: Flugzeuge, die über den Bereich des Spielers hinweg auf ihrer Flugfläche ziehen.
 5. Rollen – irgendwann: Pushback und Rollen zwischen Gate und Bahn über die Rollwege (aus Stufe C).
 

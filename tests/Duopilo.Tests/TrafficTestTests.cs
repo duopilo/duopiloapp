@@ -760,6 +760,119 @@ public sealed class TrafficTestTests
         Assert.Equal(1020, summary.Touchdown!.AlongM);
     }
 
+    [Fact]
+    public void Start_Spawn_auf_der_Bahn_Wegpunkte_geradeaus_auf_3000_ft()
+    {
+        var end = End("23L");
+        var plan = TrafficTestPlan.BuildTakeoff(end, approachKt: 135);
+
+        Assert.True(plan.IsTakeoff);
+        Assert.Equal(TrafficTestVariant.B1, plan.Variant);
+        Assert.Equal(145, plan.TakeoffKt);
+        Assert.True(plan.Spawn.OnGround);
+        Assert.Equal(0u, plan.Spawn.AirspeedKt);
+        Assert.Equal(end.HeadingTrueDeg, plan.Spawn.HeadingTrueDeg, 3);
+        var (spawnAlong, spawnCross) = end.Offsets(plan.Spawn.Latitude, plan.Spawn.Longitude);
+        Assert.Equal(TrafficTestPlan.LineUpM, spawnAlong, 0);
+        Assert.Equal(0, spawnCross, 0);
+        Assert.Empty(plan.Checkpoints);
+
+        Assert.Equal(["dep1", "dep2", "dep3", "dep4"], plan.Waypoints.Select(w => w.Name));
+        Assert.Equal(3000 + 1852, plan.Waypoints[0].AlongM, 0);
+        Assert.Equal(new double[] { 1000, 3000, 3000, 3000 }, plan.Waypoints.Select(w => Math.Round(w.Waypoint.AltitudeFt - end.ElevationFt)));
+        Assert.Equal(new double[] { 155, 185, 205, 205 }, plan.Waypoints.Select(w => w.Waypoint.SpeedKt));
+        Assert.All(plan.Waypoints, w => Assert.False(w.Waypoint.Flags.HasFlag(AiWaypointFlags.OnGround)));
+
+        // Mit Boden-Wegpunkt: so weit voraus, mit Startgeschwindigkeit, höchstens 60 % der Bahn
+        var rolling = TrafficTestPlan.BuildTakeoff(end, approachKt: 135, rollM: 500);
+        Assert.Equal("roll", rolling.Waypoints[0].Name);
+        Assert.Equal(560, rolling.Waypoints[0].AlongM, 0);
+        Assert.Equal(145, rolling.Waypoints[0].Waypoint.SpeedKt);
+        Assert.True(rolling.Waypoints[0].Waypoint.Flags.HasFlag(AiWaypointFlags.OnGround));
+        Assert.Equal(TrafficTestPlan.LineUpM + 1800, TrafficTestPlan.BuildTakeoff(end, rollM: 9999).Waypoints[0].AlongM, 0);
+
+        // Build mit B1 ist derselbe Start
+        Assert.True(TrafficTestPlan.Build(end, TrafficTestVariant.B1).IsTakeoff);
+    }
+
+    [Fact]
+    public void Auswertung_Start_Abheben_Bahnende_Steigflug_Fahrwerk()
+    {
+        var end = End("23L");
+        var plan = TrafficTestPlan.BuildTakeoff(end, approachKt: 135);
+        var start = DateTimeOffset.UtcNow;
+        var analysis = new TrafficTestAnalysis(plan, start);
+        var t = 0;
+
+        Add(analysis, end, start, t++, 60, end.ElevationFt, ias: 0, gs: 0, onGround: true, agl: 0, vs: 0);
+        var roll = Add(analysis, end, start, t++, 70, end.ElevationFt, ias: 10, gs: 10, onGround: true, agl: 0, vs: 0);
+        Add(analysis, end, start, t++, 600, end.ElevationFt, ias: 90, gs: 90, onGround: true, agl: 0, vs: 0);
+        Add(analysis, end, start, t++, 1300, end.ElevationFt, ias: 135, gs: 135, onGround: true, agl: 0, vs: 0, pitch: 4);
+        var liftoff = Add(analysis, end, start, t++, 1700, end.ElevationFt + 10, ias: 148, gs: 148, onGround: false, agl: 10, vs: 600, pitch: 8, lights: 0x1F);
+        Add(analysis, end, start, t++, 2400, end.ElevationFt + 300, ias: 152, gs: 152, onGround: false, agl: 300, vs: 2000, pitch: 15, bank: 2);
+        var over = Add(analysis, end, start, t++, 3100, end.ElevationFt + 600, ias: 155, gs: 155, onGround: false, agl: 600, vs: 2200, pitch: 16, bank: -3);
+        var gearUp = Add(analysis, end, start, t++, 3800, end.ElevationFt + 900, ias: 158, gs: 158, onGround: false, agl: 900, vs: 2400, pitch: 15, gear: 0);
+        Add(analysis, end, start, t++, 6000, end.ElevationFt + 1800, ias: 170, gs: 170, onGround: false, agl: 1800, vs: 2000, pitch: 12, bank: 10, gear: 0);
+        Add(analysis, end, start, t++, 9000, end.ElevationFt + 2850, ias: 185, gs: 185, onGround: false, agl: 2850, vs: 1500, gear: 0);
+
+        Assert.Contains("roll_start", roll.Events);
+        Assert.Contains("liftoff at 1700 m, 148 kt", liftoff.Events);
+        Assert.Contains("runway_end at 600 ft", over.Events);
+        Assert.Contains("gear_retracted at 900 ft", gearUp.Events);
+        Assert.Equal(155, liftoff.TargetKt);
+
+        var summary = analysis.Summary();
+        Assert.Equal("climbed", summary.Verdict);
+        var takeoff = summary.Takeoff!;
+        Assert.Equal(1, takeoff.RollStartSeconds);
+        Assert.Equal(4, takeoff.LiftoffSeconds);
+        Assert.Equal(1700, takeoff.LiftoffAlongM);
+        Assert.Equal(1640, takeoff.RollDistanceM);
+        Assert.Equal(148, takeoff.LiftoffKt);
+        Assert.Equal(8, takeoff.LiftoffPitchDeg);
+        Assert.Equal(600, takeoff.HeightOverRunwayEndFt);
+        Assert.Equal(2200, takeoff.ClimbFpm); // 2000, 2200, 2400 unter 1500 ft
+        Assert.Equal(16, takeoff.MaxClimbPitchDeg);
+        Assert.Equal(3, takeoff.MaxClimbBankDeg);
+        Assert.Equal(3, takeoff.GearUpSeconds);
+        Assert.Equal(900, takeoff.GearUpFt);
+        Assert.Equal(2850, takeoff.HighestFt);
+        Assert.Equal(AiLights.Describe(0x1F), takeoff.LightsAtLiftoff);
+
+        // Anflug-Werte bleiben leer: kein Schweben, kein "über das Bahnende in der Luft", keine Fahrwerksprüfung bis 2500 ft
+        Assert.Empty(summary.Gates);
+        Assert.Null(summary.GearDownInTime);
+        Assert.Equal(0, summary.FloatSeconds);
+        Assert.False(summary.AirborneBeyondRunwayEnd);
+        Assert.Null(summary.Touchdown);
+        Assert.Null(summary.GoAround);
+    }
+
+    [Fact]
+    public void Auswertung_Start_ohne_Losrollen_und_ohne_Abheben()
+    {
+        var end = End("23L");
+        var plan = TrafficTestPlan.BuildTakeoff(end);
+        var start = DateTimeOffset.UtcNow;
+
+        var standing = new TrafficTestAnalysis(plan, start);
+        Add(standing, end, start, 0, 60, end.ElevationFt, ias: 0, gs: 0, onGround: true, agl: 0, vs: 0);
+        Add(standing, end, start, 1, 60, end.ElevationFt, ias: 0, gs: 0.5, onGround: true, agl: 0, vs: 0);
+        Assert.Equal("no_roll", standing.Summary().Verdict);
+        Assert.False(standing.RollStarted);
+
+        var rolling = new TrafficTestAnalysis(plan, start);
+        Add(rolling, end, start, 0, 60, end.ElevationFt, ias: 0, gs: 0, onGround: true, agl: 0, vs: 0);
+        Add(rolling, end, start, 1, 900, end.ElevationFt, ias: 80, gs: 80, onGround: true, agl: 0, vs: 0);
+        Assert.Equal("rolling", rolling.Summary().Verdict);
+        var overrun = Add(rolling, end, start, 2, 3050, end.ElevationFt, ias: 120, gs: 120, onGround: true, agl: 0, vs: 0);
+        Assert.Contains("overrun", overrun.Events);
+        Assert.Contains("runway_end at 0 ft", overrun.Events);
+        Assert.Equal("no_liftoff", rolling.Summary().Verdict);
+        Assert.False(rolling.LiftedOff);
+        Assert.Equal(0, rolling.Summary().Takeoff!.HeightOverRunwayEndFt);
+    }
+
     private static TrafficTestPoint Add(
         TrafficTestAnalysis analysis,
         RunwayEnd end,

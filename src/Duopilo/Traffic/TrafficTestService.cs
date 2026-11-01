@@ -16,6 +16,7 @@ namespace Duopilo.Traffic;
 /// <param name="ApproachKt">Anfluggeschwindigkeit (Vapp); leer = aus der Freigabeliste, sonst <see cref="TrafficTestPlan.DefaultApproachKt"/>.</param>
 /// <param name="SpeedControl">Geschwindigkeit im Anflug über AI DESIRED SPEED regeln (die Wegpunkt-Geschwindigkeit beachtet die KI nicht).</param>
 /// <param name="GoAround">Durchstarten, wenn die KI zu hoch oder zu schnell über die Schwelle kommt oder zu lange nicht aufsetzt (<see cref="TrafficGoAround"/>).</param>
+/// <param name="RollM">B1: Boden-Wegpunkt so weit vor dem Spawn, mit Startgeschwindigkeit; leer oder 0 = keiner (<see cref="TrafficTestPlan.BuildTakeoff"/>).</param>
 public sealed record TrafficTestRequest(
     string Airport,
     string Runway,
@@ -28,7 +29,8 @@ public sealed record TrafficTestRequest(
     double? TouchdownM = null,
     double? ApproachKt = null,
     bool SpeedControl = true,
-    bool GoAround = true);
+    bool GoAround = true,
+    double? RollM = null);
 
 /// <summary>Zeitpunkt und Text eines Ereignisses der Testlinie.</summary>
 public sealed record TrafficTestEvent(double Seconds, string Text);
@@ -111,6 +113,12 @@ public sealed class TrafficTestService : IHostedService, IDisposable
     private const int KeepEnded = 8;
 
     private static readonly TimeSpan NoDataAfter = TimeSpan.FromSeconds(30);
+
+    /// <summary>Start: Rollt das Flugzeug so lange nach dem Spawn nicht los, endet der Test (no_roll).</summary>
+    private const double NoRollSeconds = 90;
+
+    /// <summary>Start: Fahrwerk rein frühestens in dieser Höhe über der Bahn (positive rate).</summary>
+    private const double TakeoffGearUpFt = 30;
 
     private readonly SimConnectClient _sim;
     private readonly DuopiloOptions _options;
@@ -217,7 +225,9 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             var slot = Enumerable.Range(0, MaxConcurrent).First(i => running.All(r => r.Slot != i));
             var (title, livery) = await ResolveModelAsync(request, ct);
             var approachKt = request.ApproachKt ?? TrafficModels.TypeOf(title, livery)?.ApproachKt;
-            var plan = TrafficTestPlan.Build(runway, request.Variant, request.SpawnNm, request.TouchdownM, request.FinalLowFt, approachKt);
+            var plan = request.Variant == TrafficTestVariant.B1
+                ? TrafficTestPlan.BuildTakeoff(runway, approachKt, request.RollM)
+                : TrafficTestPlan.Build(runway, request.Variant, request.SpawnNm, request.TouchdownM, request.FinalLowFt, approachKt);
             var spawnUtc = DateTimeOffset.UtcNow;
             var csv = OpenCsv(plan, spawnUtc);
 
@@ -237,7 +247,9 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 SpeedControl = request.SpeedControl,
                 GoAroundEnabled = request.GoAround,
             };
-            run.AddEvent(0, string.Create(CultureInfo.InvariantCulture, $"spawn {plan.SpawnNm:0.#} NM, {plan.Spawn.AltitudeFt:0} ft, {plan.Spawn.AirspeedKt} kt, object {objectId}, {run.Tail}"));
+            run.AddEvent(0, plan.IsTakeoff
+                ? string.Create(CultureInfo.InvariantCulture, $"spawn on the runway {TrafficTestPlan.LineUpM:0} m behind its start, takeoff speed {plan.TakeoffKt:0} kt, object {objectId}, {run.Tail}")
+                : string.Create(CultureInfo.InvariantCulture, $"spawn {plan.SpawnNm:0.#} NM, {plan.Spawn.AltitudeFt:0} ft, {plan.Spawn.AirspeedKt} kt, object {objectId}, {run.Tail}"));
             foreach (var warning in plan.Warnings)
             {
                 run.AddEvent(0, "warning:" + warning);
@@ -481,7 +493,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
 
         // Durchstarten: zu hoch oder zu schnell über der Schwelle, oder zu lange nicht aufgesetzt – neue Wegpunkte geradeaus,
         // Steigflug auf 3000 ft, schneller werden; das Fahrwerk kommt bei positiver Steigrate rein
-        if (run.GoAroundEnabled && run.Analysis.GoAroundPlan is null
+        if (run.GoAroundEnabled && !plan.IsTakeoff && run.Analysis.GoAroundPlan is null
             && TrafficGoAround.Check(plan, run.PreviousAlongM, point.AlongM, sample.AltitudeFt, sample.IndicatedKt, sample.OnGround, run.Analysis.TouchedDown) is { } reason)
         {
             var goAround = TrafficGoAroundPlan.Build(plan, point.AlongM);
@@ -523,6 +535,29 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             }
         }
 
+        // Start (B1): Fahrwerk rein bei positiver Steigrate; Ende bei 2800 ft, am Boden über das Bahnende oder ohne Losrollen
+        if (plan.IsTakeoff)
+        {
+            if (run.Analysis.LiftedOff && !run.GearUpSent && !sample.OnGround && heightFt >= TakeoffGearUpFt
+                && sample.VerticalSpeedFpm >= TrafficGoAroundPlan.PositiveClimbFpm)
+            {
+                run.GearUpSent = true;
+                run.AddEvent(point.Seconds, string.Create(CultureInfo.InvariantCulture, $"gear_up_sent {GearName(run.GearMethod)} at {heightFt:0} ft"));
+                Fire(_sim.SetAiGearAsync(run.ObjectId, false, run.GearMethod, CancellationToken.None), "gear");
+            }
+
+            var end = run.Analysis.LiftedOff && heightFt >= TrafficTestPlan.ClimbEndFt ? "climbed"
+                : !run.Analysis.LiftedOff && sample.OnGround && point.AlongM > plan.Runway.LengthM ? "no_liftoff"
+                : !run.Analysis.RollStarted && point.Seconds >= NoRollSeconds ? "no_roll"
+                : null;
+            if (end is not null && !run.StopScheduled)
+            {
+                run.StopScheduled = true;
+                var at = plan.Runway.Airport + " " + plan.Runway.Designation;
+                _ = Task.Run(() => StopTestAsync(end, CancellationToken.None, at));
+            }
+        }
+
         // A2: Fahrwerk erst im Anflug ausfahren – bei 3000 ft über der Bahn, spätestens am Punkt des Gleitpfads in dieser Höhe
         if (plan.GearDownFt is { } gearFt && run.GearCommands == 0 && !sample.OnGround && run.Analysis.GoAroundPlan is null
             && (heightFt <= gearFt || (plan.GearDownNm is { } gearNm && point.DistanceToThresholdNm is { } d && d <= gearNm)))
@@ -535,7 +570,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         }
 
         // Fährt das Fahrwerk nach dem Befehl nicht aus, bis zu dreimal im Abstand von 3 s nachschicken (nur in der Luft, nicht beim Durchstarten)
-        if (run.GearCommands is > 0 and < 4 && !sample.OnGround && sample.GearExtendedPercent < 50 && run.Analysis.GoAroundPlan is null
+        if (run.GearCommands is > 0 and < 4 && !sample.OnGround && sample.GearExtendedPercent < 50 && run.Analysis.GoAroundPlan is null && !run.GearUpSent
             && point.Seconds >= run.GearSentSeconds + (3 * run.GearCommands))
         {
             run.GearCommands++;
@@ -690,7 +725,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                     gear = GearName(run.GearMethod),
                     spawnUtc = run.SpawnUtc,
                     endReason = run.EndReason,
-                    plan = new { plan.SpawnNm, plan.GearAtSpawn, plan.GearDownFt, plan.GearDownNm, plan.TouchdownM, plan.StopM, plan.FinalLowFt, plan.ApproachKt, speedControl = run.SpeedControl, goAround = run.GoAroundEnabled, waypoints = plan.Waypoints, goAroundWaypoints = run.Analysis.GoAroundPlan?.Waypoints },
+                    plan = new { plan.SpawnNm, plan.GearAtSpawn, plan.GearDownFt, plan.GearDownNm, plan.TouchdownM, plan.StopM, plan.FinalLowFt, plan.ApproachKt, takeoffKt = plan.IsTakeoff ? plan.TakeoffKt : (double?)null, speedControl = run.SpeedControl, goAround = run.GoAroundEnabled, waypoints = plan.Waypoints, goAroundWaypoints = run.Analysis.GoAroundPlan?.Waypoints },
                     summary,
                     events = run.Events,
                 },
