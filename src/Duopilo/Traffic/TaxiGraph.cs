@@ -307,6 +307,20 @@ public sealed class TaxiGraph
     /// <summary>Abschnitt zwischen zwei Knoten, sonst null.</summary>
     public TaxiEdge? Edge(int a, int b) => _adjacency[a].FirstOrDefault(e => e.Other(a) == b);
 
+    /// <summary>Kosten einer Route wie bei <see cref="Route"/>: Meter, Bahn-Abschnitte <see cref="RunwayCostFactor"/>-fach.</summary>
+    public double CostM(IReadOnlyList<int> route)
+    {
+        var cost = 0.0;
+        for (var i = 1; i < route.Count; i++)
+        {
+            var edge = Edge(route[i - 1], route[i]);
+            var length = Distance(_nodes[route[i - 1]], _nodes[route[i]]);
+            cost += edge?.Type == 2 ? length * RunwayCostFactor : length;
+        }
+
+        return cost;
+    }
+
     /// <summary>Länge einer Route in Metern.</summary>
     public double LengthM(IReadOnlyList<int> route)
     {

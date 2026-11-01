@@ -3,7 +3,7 @@ namespace Duopilo.Traffic;
 /// <summary>
 /// Route vom Parkplatz zum Haltepunkt einer Startbahn mit den Wegen für Pushback und Rollen (<see cref="TaxiKinematics"/>).
 /// </summary>
-/// <param name="Nodes">Knoten der Route im Netz, von der Parkposition bis zum Haltepunkt.</param>
+/// <param name="Nodes">Knoten der Route im Netz, von der Parkposition bis zum ersten Knoten hinter dem Halt.</param>
 /// <param name="Taxiways">Rollwege entlang der Route ("A, A7, B").</param>
 /// <param name="PushbackPath">Weg des Pushbacks (vorwärts gerechnet), null = vorwärts aus der Parkposition.</param>
 public sealed record TaxiRoute(
@@ -18,91 +18,26 @@ public sealed record TaxiRoute(
     /// <summary>Aufreihen: so weit rollt das Flugzeug hinter dem Einmündungspunkt auf der Mittellinie in Startrichtung.</summary>
     public const double LineUpAheadM = 40;
 
-    /// <summary>Punkte gelten als auf der Bahn, wenn sie so nah an der Mittellinie liegen.</summary>
-    private const double OnCenterlineM = 8;
-
-    /// <summary>Aufreihen: Weg vom Ende des Rollens (kurz vor dem Haltepunkt) auf die Mittellinie, null = nicht geplant.</summary>
-    public TaxiPath? LineUpPath { get; init; }
-
-    /// <summary>Aufreihen: wo das Flugzeug danach steht, entlang ab dem Bahnanfang.</summary>
-    public double? LineUpAlongM { get; init; }
-
-    /// <summary>Aufreihen: Rollpunkte vom Haltepunkt bis zur Einmündung auf die Bahn.</summary>
-    public IReadOnlyList<int> LineUpNodes { get; init; } = [];
-
-    /// <summary>
-    /// Plant das Aufreihen dazu: vom Haltepunkt über die Rollpunkte zum nächsten Punkt auf der Mittellinie von <paramref name="end"/>
-    /// (Bahn-Abschnitt oder höchstens <see cref="OnCenterlineM"/> daneben), dort im Bogen in Startrichtung und
-    /// <see cref="LineUpAheadM"/> weiter. Ohne Weg auf die Bahn bleibt es bei der Route ohne Aufreihen.
-    /// </summary>
-    public TaxiRoute WithLineUp(TaxiGraph graph, RunwayEnd end, TaxiProfile profile)
-    {
-        var holdNode = Hold.Node.Id;
-
-        // Derselbe Weg wie bei der Wahl des Haltepunkts (HoldsBeforeEntry), sonst der kürzeste zu einem Punkt auf der Mittellinie
-        IReadOnlyList<int>? best = HoldsBeforeEntry(graph, end).Where(h => h.Hold.Node.Id == holdNode).Select(h => h.LineUp).FirstOrDefault();
-        var bestLength = best is null ? double.MaxValue : graph.LengthM(best);
-        foreach (var node in graph.Nodes)
-        {
-            if (node.IsParking || node.Id == holdNode)
-            {
-                continue;
-            }
-
-            var (along, cross) = end.Offsets(node.Latitude, node.Longitude);
-            if (Math.Abs(cross) > OnCenterlineM || along < -200 || along > end.LengthM * 0.5)
-            {
-                continue;
-            }
-
-            if (graph.Route(holdNode, node.Id) is { Count: >= 2 } candidate && graph.LengthM(candidate) < Math.Min(bestLength, 600))
-            {
-                best = candidate;
-                bestLength = graph.LengthM(candidate);
-            }
-        }
-
-        if (best is null)
-        {
-            return this;
-        }
-
-        // Einmündung auf der Mittellinie, dann geradeaus in Startrichtung
-        var entry = graph.Nodes[best[^1]];
-        var (entryAlong, _) = end.Offsets(entry.Latitude, entry.Longitude);
-        var aheadAlong = Math.Max(entryAlong, 0) + LineUpAheadM;
-        var (aheadLat, aheadLon) = end.Point(aheadAlong);
-        var (aheadEast, aheadNorth) = graph.ToLocal(aheadLat, aheadLon);
-        var (centerLat, centerLon) = end.Point(entryAlong);
-        var (centerEast, centerNorth) = graph.ToLocal(centerLat, centerLon);
-
-        var start = TaxiPath.At(TaxiPath.LengthM);
-        var points = new List<(double East, double North)> { (start.East, start.North) };
-        points.AddRange(best.Take(best.Count - 1).Select(n => (graph.Nodes[n].EastM, graph.Nodes[n].NorthM)));
-        points.Add((centerEast, centerNorth));
-        points.Add((aheadEast, aheadNorth));
-        var straight = Math.Min(profile.TaxiKt, TaxiKinematics.LineUpKt) * MetersPerSecondPerKnot;
-        var path = TaxiPath.Build(points, profile.TurnRadiusM, straight, profile.LateralMps2, Math.Min(straight, MinTurnMps));
-        return this with { LineUpPath = path, LineUpAlongM = Math.Round(aheadAlong), LineUpNodes = best };
-    }
-
     /// <summary>Zeigt die Nase so weit vom Rollweg weg (Grad), schiebt ein Schlepper das Flugzeug zurück.</summary>
     public const double PushbackAboveDeg = 90;
 
-    /// <summary>Der Rollweg hinter dem Pushback-Punkt zählt, wenn er höchstens so weit (Grad) von der Gegenrichtung abweicht.</summary>
-    private const double PushbackLineDeg = 45;
-
-    /// <summary>Vom Haltepunkt höchstens so weit bis auf die Bahn (<see cref="HoldsBeforeEntry"/>).</summary>
+    /// <summary>Vom Halt höchstens so weit bis auf die Bahn – weiter sucht <see cref="Plan"/> keinen Haltepunkt.</summary>
     public const double MaxLineUpM = 300;
-
-    /// <summary>Einmündungen, die so nah beieinander liegen, gelten als gleich nah am Bahnanfang (dann entscheidet der kürzere Weg).</summary>
-    private const double EntryBucketM = 100;
-
-    /// <summary>So weit darf der innere Haltepunkt hinter dem ersten liegen (<see cref="InnerHold"/>).</summary>
-    public const double MaxInnerHoldM = 250;
 
     /// <summary>So weit schiebt der Schlepper höchstens zurück, bis die Route abbiegt (lange Einfahrlinien).</summary>
     public const double MaxPushbackM = 250;
+
+    /// <summary>Ohne Haltepunkt der Bahn in der Nähe: so weit von der Mittellinie halten.</summary>
+    public const double DefaultHoldDistanceM = 90;
+
+    /// <summary>Punkte gelten als auf der Bahn, wenn sie so nah an der Mittellinie liegen.</summary>
+    private const double OnCenterlineM = 8;
+
+    /// <summary>Wahl der Einmündung: jeder Meter hinter dem Bahnanfang zählt so viel wie diese Meter Rollweg (volle Bahnlänge bevorzugt).</summary>
+    private const double EntryAlongWeight = 3;
+
+    /// <summary>Der Rollweg hinter dem Pushback-Punkt zählt, wenn er höchstens so weit (Grad) von der Gegenrichtung abweicht.</summary>
+    private const double PushbackLineDeg = 45;
 
     private const double MetersPerSecondPerKnot = 0.514444;
 
@@ -111,76 +46,53 @@ public sealed record TaxiRoute(
 
     public bool Pushback => PushbackPath is not null;
 
+    /// <summary>Aufreihen: Weg vom Halt auf die Mittellinie und in Startrichtung, null = nicht geplant.</summary>
+    public TaxiPath? LineUpPath { get; init; }
+
+    /// <summary>Aufreihen: wo das Flugzeug danach steht, entlang ab dem Bahnanfang.</summary>
+    public double? LineUpAlongM { get; init; }
+
+    /// <summary>Rollpunkte hinter dem Halt bis zur Einmündung auf die Bahn (der Weg des Aufreihens).</summary>
+    public IReadOnlyList<int> LineUpNodes { get; init; } = [];
+
+    /// <summary>Einmündung auf die Mittellinie, entlang ab dem Bahnanfang; null = Route ohne Einmündung (<see cref="Build(TaxiGraph, TaxiNode, TaxiHold, IReadOnlyList{int}, TaxiProfile)"/>).</summary>
+    public double? EntryAlongM { get; init; }
+
     /// <summary>
-    /// Route von <paramref name="parking"/> zum ersten erreichbaren Haltepunkt vor dem Start von <paramref name="end"/>
-    /// (<see cref="TaxiGraph.DepartureHolds"/>), sonst null.
+    /// Route von <paramref name="parking"/> auf die Bahn <paramref name="end"/> mit Halt davor, sonst null. Ziel ist eine Einmündung:
+    /// ein Rollpunkt auf der Mittellinie in der ersten Bahnhälfte, den die Route über einen Rollweg erreicht (nicht über die Bahn) –
+    /// die mit der kürzesten Route, wobei jeder Meter hinter dem Bahnanfang <see cref="EntryAlongWeight"/> Meter Rollweg zählt.
+    /// Gehalten wird auf dem Weg dorthin (<see cref="FindStop"/>): am letzten Haltepunkt der Bahn (normale Haltelinie, nicht die
+    /// ILS-Linie) oder – fehlt am Zubringer ein Haltepunkt im Netz – dort, wo die Route so weit von der Mittellinie entfernt ist wie der
+    /// nächste Haltepunkt der Bahn. In EDDL hat der Zubringer von K1 auf die 23R keinen Haltepunkt im Netz; beta.24 hielt deshalb an der
+    /// langen Linie am Rollweg geradeaus und rollte zurück.
     /// </summary>
     public static TaxiRoute? Plan(TaxiGraph graph, RunwayEnd end, TaxiNode parking, TaxiProfile profile)
     {
-        // Zuerst die Haltepunkte, hinter denen es direkt auf die Bahn geht (Einmündung nahe am Bahnanfang zuerst)
-        foreach (var (hold, _, _) in HoldsBeforeEntry(graph, end))
+        var candidates = new List<(IReadOnlyList<int> Nodes, double Along, double Score)>();
+        foreach (var (entry, along) in RunwayEntries(graph, end))
         {
-            if (graph.Route(parking.Id, hold.Node.Id) is { Count: >= 2 } nodes)
+            if (graph.Route(parking.Id, entry.Id) is not { Count: >= 3 } nodes || graph.Edge(nodes[^2], nodes[^1]) is not { Type: not 2 })
             {
-                return Build(graph, parking, hold, nodes, profile);
+                continue;
             }
+
+            candidates.Add((nodes, along, graph.CostM(nodes) + (EntryAlongWeight * Math.Max(0, along))));
         }
 
-        foreach (var hold in graph.DepartureHolds(end))
+        foreach (var (nodes, along, _) in candidates.OrderBy(c => c.Score))
         {
-            if (graph.Route(parking.Id, hold.Node.Id) is { Count: >= 2 } nodes)
+            if (FindStop(graph, end, nodes, profile) is { } stop)
             {
-                // Liegt dahinter näher an der Bahn noch ein Haltepunkt (die Linie vor "RWY AHEAD" statt der ILS-Linie), dort halten
-                if (InnerHold(graph, end, hold) is { } inner && graph.Route(parking.Id, inner.Node.Id) is { Count: >= 2 } innerNodes)
-                {
-                    return Build(graph, parking, inner, innerNodes, profile);
-                }
-
-                return Build(graph, parking, hold, nodes, profile);
+                return Build(graph, parking, nodes, stop, profile) with { EntryAlongM = Math.Round(along) };
             }
         }
 
         return null;
     }
 
-    /// <summary>
-    /// Haltepunkte vor dem Start von <paramref name="end"/>, hinter denen der Weg auf die Bahn kurz ist (höchstens
-    /// <see cref="MaxLineUpM"/>) und an keinem weiteren Haltepunkt derselben Bahn vorbeiführt – der letzte vor der Bahn, nicht die
-    /// ILS-Linie davor und nicht die Linie an einem Rollweg, über den es erst zu einem anderen Zubringer ginge (EDDL K1, beta.24).
-    /// Sortiert nach der Einmündung (nahe am Bahnanfang zuerst), dann nach der Länge des Wegs.
-    /// </summary>
-    public static IReadOnlyList<(TaxiHold Hold, IReadOnlyList<int> LineUp, double EntryAlongM)> HoldsBeforeEntry(TaxiGraph graph, RunwayEnd end)
-    {
-        var holds = graph.DepartureHolds(end);
-        var holdIds = holds.Select(h => h.Node.Id).ToHashSet();
-        var entries = RunwayEntries(graph, end);
-        var result = new List<(TaxiHold Hold, IReadOnlyList<int> LineUp, double EntryAlongM, double LengthM)>();
-        foreach (var hold in holds)
-        {
-            (IReadOnlyList<int> Path, double Length, double Along)? best = null;
-            foreach (var (node, along) in entries)
-            {
-                if (graph.Route(hold.Node.Id, node.Id) is { Count: >= 2 } path && graph.LengthM(path) is var length
-                    && length <= MaxLineUpM && (best is null || length < best.Value.Length))
-                {
-                    best = (path, length, along);
-                }
-            }
-
-            if (best is { } found && !found.Path.Skip(1).Any(holdIds.Contains))
-            {
-                result.Add((hold, found.Path, found.Along, found.Length));
-            }
-        }
-
-        return [.. result
-            .OrderBy(r => Math.Round(r.EntryAlongM / EntryBucketM))
-            .ThenBy(r => r.LengthM)
-            .Select(r => (r.Hold, r.LineUp, r.EntryAlongM))];
-    }
-
-    /// <summary>Punkte auf der Mittellinie von <paramref name="end"/> (höchstens <see cref="OnCenterlineM"/> daneben) in der ersten Bahnhälfte.</summary>
-    private static List<(TaxiNode Node, double AlongM)> RunwayEntries(TaxiGraph graph, RunwayEnd end)
+    /// <summary>Rollpunkte auf der Mittellinie von <paramref name="end"/> (höchstens <see cref="OnCenterlineM"/> daneben) in der ersten Bahnhälfte.</summary>
+    public static IReadOnlyList<(TaxiNode Node, double AlongM)> RunwayEntries(TaxiGraph graph, RunwayEnd end)
     {
         var entries = new List<(TaxiNode, double)>();
         foreach (var node in graph.Nodes)
@@ -201,32 +113,121 @@ public sealed record TaxiRoute(
     }
 
     /// <summary>
-    /// Der Haltepunkt derselben Bahn, der hinter <paramref name="hold"/> auf dem Weg zur Bahn liegt und am nächsten an der Mittellinie:
-    /// höchstens <see cref="MaxInnerHoldM"/> weit, ohne Bahn-Abschnitte, und der Weg nicht viel länger als der Unterschied der Abstände
-    /// zur Mittellinie (sonst läge er an einem anderen Zubringer). In EDDL liegt an K1 erst die ILS-Haltelinie (Leiter), gut 100 m
-    /// weiter die Linie vor "RWY AHEAD 23R" – gehalten wird an der zweiten. Null = keiner.
+    /// Wo vor der Einmündung (letzter Knoten von <paramref name="nodes"/>) gehalten wird, rückwärts gesucht, höchstens
+    /// <see cref="MaxLineUpM"/> weit und nur bis zu einem Bahn-Abschnitt (einer gekreuzten Bahn): am letzten normalen Haltepunkt der
+    /// Bahn (TYPE 2 oder 5 – die ILS-Linie, TYPE 4/6, liegt davor und gilt bei gutem Wetter nicht) oder dort, wo die Route den Abstand
+    /// des nächsten Haltepunkts der Bahn zur Mittellinie unterschreitet; jeweils <see cref="TaxiProfile.StopShortM"/> davor. Null =
+    /// keiner (die Route liegt ganz nah an der Bahn).
     /// </summary>
-    public static TaxiHold? InnerHold(TaxiGraph graph, RunwayEnd end, TaxiHold hold)
+    public static TaxiStop? FindStop(TaxiGraph graph, RunwayEnd end, IReadOnlyList<int> nodes, TaxiProfile profile)
     {
-        TaxiHold? best = null;
-        foreach (var other in graph.DepartureHolds(end))
+        var designation = AirportRunway.Normalize(end.Designation);
+        var entryNode = graph.Nodes[nodes[^1]];
+        var holds = graph.Holds().Where(h => h.Runway.Split('/').Any(d => AirportRunway.Normalize(d) == designation)).ToList();
+        var normalHolds = holds.Where(h => h.Node.PointType is 2 or 5).ToList();
+        var reference = normalHolds.OrderBy(h => Distance(h.Node, entryNode)).FirstOrDefault(h => Distance(h.Node, entryNode) < 600);
+        var holdDistance = Math.Clamp(reference?.CenterlineM ?? DefaultHoldDistanceM, 40, 250);
+        var normalIds = normalHolds.Select(h => h.Node.Id).ToHashSet();
+
+        double Cross(TaxiNode n) => Math.Abs(end.Offsets(n.Latitude, n.Longitude).CrossM);
+
+        var walked = 0.0;
+        for (var i = nodes.Count - 1; i >= 1; i--)
         {
-            var closer = hold.CenterlineM - other.CenterlineM;
-            if (other.Node.Id == hold.Node.Id || closer < 10 || (best is not null && other.CenterlineM >= best.CenterlineM))
+            var (a, b) = (graph.Nodes[nodes[i - 1]], graph.Nodes[nodes[i]]);
+            if (i < nodes.Count - 1 && graph.Edge(a.Id, b.Id) is { Type: 2 })
             {
-                continue;
+                break;
             }
 
-            if (graph.Route(hold.Node.Id, other.Node.Id) is { Count: >= 2 } path
-                && graph.LengthM(path) <= Math.Min(MaxInnerHoldM, (closer * 1.5) + 30)
-                && path.Zip(path.Skip(1)).All(p => graph.Edge(p.First, p.Second)?.Type != 2))
+            walked += Distance(a, b);
+            if (walked > MaxLineUpM)
             {
-                best = other;
+                break;
+            }
+
+            (double East, double North)? at = null;
+            if (normalIds.Contains(a.Id))
+            {
+                at = (a.EastM, a.NorthM);
+            }
+            else if (Cross(a) >= holdDistance && Cross(b) < holdDistance)
+            {
+                var t = (Cross(a) - holdDistance) / (Cross(a) - Cross(b));
+                at = (a.EastM + ((b.EastM - a.EastM) * t), a.NorthM + ((b.NorthM - a.NorthM) * t));
+            }
+
+            if (at is { } point)
+            {
+                var (segment, east, north) = Before(graph, nodes, i - 1, point, profile.StopShortM);
+                var taxiway = graph.Edge(a.Id, b.Id)?.Name ?? "";
+                var hold = holds.FirstOrDefault(h => h.Node.Id == a.Id)
+                    ?? new TaxiHold(a, end.Designation, Math.Round(holdDistance), taxiway);
+                return new TaxiStop(segment, east, north, hold with { Taxiway = taxiway.Length > 0 ? taxiway : hold.Taxiway });
             }
         }
 
-        return best;
+        return null;
     }
+
+    /// <summary>
+    /// Plant das Aufreihen dazu: vom Halt über die restlichen Rollpunkte auf die Einmündung, dort im Bogen in Startrichtung und
+    /// <see cref="LineUpAheadM"/> weiter. Ohne Einmündung (Route aus <see cref="Build(TaxiGraph, TaxiNode, TaxiHold, IReadOnlyList{int}, TaxiProfile)"/>)
+    /// bleibt es bei der Route.
+    /// </summary>
+    public TaxiRoute WithLineUp(TaxiGraph graph, RunwayEnd end, TaxiProfile profile)
+    {
+        if (LineUpNodes.Count == 0)
+        {
+            return this;
+        }
+
+        var entry = graph.Nodes[LineUpNodes[^1]];
+        var (entryAlong, _) = end.Offsets(entry.Latitude, entry.Longitude);
+        var aheadAlong = Math.Max(entryAlong, 0) + LineUpAheadM;
+        var (aheadLat, aheadLon) = end.Point(aheadAlong);
+        var (aheadEast, aheadNorth) = graph.ToLocal(aheadLat, aheadLon);
+        var (centerLat, centerLon) = end.Point(entryAlong);
+        var (centerEast, centerNorth) = graph.ToLocal(centerLat, centerLon);
+
+        var start = TaxiPath.At(TaxiPath.LengthM);
+        var points = new List<(double East, double North)> { (start.East, start.North) };
+        points.AddRange(LineUpNodes.Take(LineUpNodes.Count - 1).Select(n => (graph.Nodes[n].EastM, graph.Nodes[n].NorthM)));
+        points.Add((centerEast, centerNorth));
+        points.Add((aheadEast, aheadNorth));
+        var straight = Math.Min(profile.TaxiKt, TaxiKinematics.LineUpKt) * MetersPerSecondPerKnot;
+        var path = TaxiPath.Build(points, profile.TurnRadiusM, straight, profile.LateralMps2, Math.Min(straight, MinTurnMps));
+        return this with { LineUpPath = path, LineUpAlongM = Math.Round(aheadAlong) };
+    }
+
+    /// <summary>
+    /// Punkt <paramref name="distanceM"/> vor <paramref name="point"/> (auf dem Abschnitt hinter Knoten <paramref name="segment"/>),
+    /// rückwärts entlang der Route; mit dem Abschnitt, auf dem er liegt.
+    /// </summary>
+    private static (int Segment, double East, double North) Before(TaxiGraph graph, IReadOnlyList<int> nodes, int segment, (double East, double North) point, double distanceM)
+    {
+        var (east, north) = point;
+        var left = distanceM;
+        for (var k = segment; k >= 0; k--)
+        {
+            var a = graph.Nodes[nodes[k]];
+            var length = Math.Sqrt(((east - a.EastM) * (east - a.EastM)) + ((north - a.NorthM) * (north - a.NorthM)));
+            if (length >= left && length > 0)
+            {
+                var f = left / length;
+                return (k, east + ((a.EastM - east) * f), north + ((a.NorthM - north) * f));
+            }
+
+            // Weiter auf dem Abschnitt davor: der Punkt ist jetzt Knoten k
+            left -= length;
+            (east, north) = (a.EastM, a.NorthM);
+        }
+
+        return (0, east, north);
+    }
+
+    private static double Distance(TaxiNode a, TaxiNode b) =>
+        Math.Sqrt(((a.EastM - b.EastM) * (a.EastM - b.EastM)) + ((a.NorthM - b.NorthM) * (a.NorthM - b.NorthM)));
 
     /// <summary>
     /// Parkpositionen, die zu Kategorie und Wirbelschleppen-Kategorie passen, in zufälliger Reihenfolge: Verkehrsflugzeuge an Gates und
@@ -255,10 +256,25 @@ public sealed record TaxiRoute(
         return [.. first, .. rest];
     }
 
-    /// <summary>Wege aus der Route: Pushback, wenn die Nase vom Rollweg wegzeigt, dann vorwärts bis kurz vor den Haltepunkt.</summary>
+    /// <summary>
+    /// Wege aus einer Route, die an einem Haltepunkt endet (letzter Knoten): Pushback, wenn die Nase vom Rollweg wegzeigt, dann vorwärts
+    /// bis <see cref="TaxiProfile.StopShortM"/> vor den Haltepunkt. Ohne Einmündung – kein Aufreihen.
+    /// </summary>
     public static TaxiRoute Build(TaxiGraph graph, TaxiNode parking, TaxiHold hold, IReadOnlyList<int> nodes, TaxiProfile profile)
     {
-        var points = nodes.Select(n => (graph.Nodes[n].EastM, graph.Nodes[n].NorthM)).ToList();
+        var (segment, east, north) = Before(graph, nodes, nodes.Count - 2, (graph.Nodes[nodes[^1]].EastM, graph.Nodes[nodes[^1]].NorthM), profile.StopShortM);
+        return Build(graph, parking, nodes, new TaxiStop(segment, east, north, hold), profile) with { LineUpNodes = [] };
+    }
+
+    /// <summary>
+    /// Wege aus einer Route bis zur Einmündung mit dem Halt davor: Pushback, wenn die Nase vom Rollweg wegzeigt, dann vorwärts bis zum
+    /// Halt; die Rollpunkte dahinter sind der Weg des Aufreihens (<see cref="WithLineUp"/>).
+    /// </summary>
+    public static TaxiRoute Build(TaxiGraph graph, TaxiNode parking, IReadOnlyList<int> nodes, TaxiStop stop, TaxiProfile profile)
+    {
+        var taxiNodes = nodes.Take(stop.Segment + 1).ToList();
+        var points = taxiNodes.Select(n => (graph.Nodes[n].EastM, graph.Nodes[n].NorthM)).ToList();
+        points.Add((stop.East, stop.North));
         var straight = profile.TaxiKt * MetersPerSecondPerKnot;
         TaxiPath? pushback = null;
 
@@ -270,28 +286,21 @@ public sealed record TaxiRoute(
             // Weiterfahrt liegt; dorthin schwenkt das Heck (bis E), die Nase zeigt dann in Fahrtrichtung. Geht die Route nach der
             // Parkposition erst geradeaus weiter (lange Einfahrlinie wie auf den Frachtpositionen in EDDL), schiebt der Schlepper das
             // Flugzeug die ganze Linie zurück – sonst müsste es nach dem Pushback umdrehen.
-            var (turnIndex, endEast, endNorth) = PushbackEnd(graph, parking, nodes, points, profile);
+            var routePoints = nodes.Select(n => (graph.Nodes[n].EastM, graph.Nodes[n].NorthM)).ToList();
+            var (turnIndex, endEast, endNorth) = PushbackEnd(graph, parking, nodes, routePoints, profile);
+            turnIndex = Math.Clamp(turnIndex, 1, Math.Max(1, points.Count - 2));
             var pushPoints = points.Take(turnIndex + 1).ToList();
             pushPoints.Add((endEast, endNorth));
             pushback = TaxiPath.Build(pushPoints, profile.PushbackRadiusM, TaxiKinematics.PushbackKt * MetersPerSecondPerKnot, profile.LateralMps2, 0.3);
             points = [(endEast, endNorth), .. points.Skip(turnIndex)];
         }
 
-        // Kurz vor dem Haltepunkt stehen bleiben: die Nase steht vor dem Bezugspunkt
-        if (points.Count >= 2)
-        {
-            var (lastEast, lastNorth) = points[^1];
-            var (prevEast, prevNorth) = points[^2];
-            var segment = Math.Sqrt(((lastEast - prevEast) * (lastEast - prevEast)) + ((lastNorth - prevNorth) * (lastNorth - prevNorth)));
-            if (segment > profile.StopShortM + 1)
-            {
-                var f = (segment - profile.StopShortM) / segment;
-                points[^1] = (prevEast + ((lastEast - prevEast) * f), prevNorth + ((lastNorth - prevNorth) * f));
-            }
-        }
-
         var taxi = TaxiPath.Build(points, profile.TurnRadiusM, straight, profile.LateralMps2, Math.Min(straight, MinTurnMps));
-        return new TaxiRoute(parking, hold, nodes, graph.TaxiwayNames(nodes), Math.Round(graph.LengthM(nodes)), pushback, taxi);
+        var routeNodes = nodes.Take(Math.Min(nodes.Count, stop.Segment + 2)).ToList();
+        return new TaxiRoute(parking, stop.Hold, routeNodes, graph.TaxiwayNames(routeNodes), Math.Round(graph.LengthM(routeNodes)), pushback, taxi)
+        {
+            LineUpNodes = [.. nodes.Skip(stop.Segment + 1)],
+        };
     }
 
     /// <summary>
@@ -365,3 +374,7 @@ public sealed record TaxiRoute(
         return length > 0 ? (east / length, north / length) : (0, 1);
     }
 }
+
+/// <summary>Halt vor der Bahn: auf dem Abschnitt hinter Knoten <paramref name="Segment"/> der Route, an der Stelle (Ost, Nord).</summary>
+/// <param name="Hold">Der Haltepunkt (oder der Knoten davor mit dem Abstand des nächsten Haltepunkts, wenn am Zubringer keiner im Netz ist).</param>
+public sealed record TaxiStop(int Segment, double East, double North, TaxiHold Hold);

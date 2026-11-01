@@ -405,7 +405,6 @@ public sealed class TaxiTests
         Assert.Equal(90, route.Hold.CenterlineM, 0);
         var (_, endNorth, _) = route.TaxiPath.At(route.TaxiPath.LengthM);
         Assert.Equal(90 + TaxiProfile.Airliner.StopShortM, endNorth, 1);
-        Assert.Equal(route.Hold, TaxiRoute.InnerHold(graph, end, graph.DepartureHolds(end).Single(h => h.Node.PointType == 4)));
     }
 
     [Fact]
@@ -449,16 +448,70 @@ public sealed class TaxiTests
         var graph = TaxiGraph.Build(data, [Runway]);
         var end = End("09");
 
-        // A führt nur über B oder C auf die Bahn – kein Haltepunkt, an dem man vor der Bahn steht
-        var candidates = TaxiRoute.HoldsBeforeEntry(graph, end);
-        Assert.Equal([4, 6], candidates.Select(c => c.Hold.Node.Id));
-        Assert.Equal([4, 5], candidates[0].LineUp);
-        Assert.Equal([6, 7], candidates[1].LineUp);
-
-        // Aufreihen von dort, wo gehalten wird – direkt auf die Bahn
+        // Einmündung über C (näher am Bahnanfang), gehalten am letzten Haltepunkt davor – nicht an A – und von dort aufgereiht
         var route = TaxiRoute.Plan(graph, end, graph.FindParking("A1")!, TaxiProfile.Airliner)!.WithLineUp(graph, end, TaxiProfile.Airliner);
         Assert.Equal(4, route.Hold.Node.Id);
         Assert.Equal([4, 5], route.LineUpNodes);
+        Assert.InRange(route.EntryAlongM!.Value, 95, 110);
+        var (stopEast, stopNorth, _) = route.TaxiPath.At(route.TaxiPath.LengthM);
+        Assert.Equal(-900, stopEast, 1);
+        Assert.Equal(90 + TaxiProfile.Airliner.StopShortM, stopNorth, 1);
+    }
+
+    [Fact]
+    public void Halt_am_Zubringer_ohne_Haltepunkt_im_Abstand_der_Haltelinie_daneben()
+    {
+        // Wie K1 in EDDL (beta.24/27): Der Zubringer auf die Bahn (über D) hat keinen Haltepunkt im Netz, der Rollweg geradeaus hat einen
+        // (A, 110 m vor der Mittellinie); davor die ILS-Linie (I). Gehalten wird am Zubringer 110 m vor der Mittellinie, nicht an A und
+        // nicht an der ILS-Linie, und kein Stück zurück
+        TaxiPointData P(double east, double north, int type = 1) => new(type, 0, east, north);
+        var data = new AirportTaxiData(
+            "EDXT",
+            51.0,
+            7.0,
+            50,
+            [
+                P(-500, 200),      // 0 Rollweg von Osten
+                P(-600, 200, 4),   // 1 ILS-Linie
+                P(-700, 200),      // 2 Kreuzung J
+                P(-800, 110, 2),   // 3 Haltelinie A am Rollweg geradeaus (Richtung Südwesten)
+                P(-900, 50),       // 4
+                P(-700, 120),      // 5 Zubringer D
+                P(-700, 0),        // 6 Bahn
+                P(-1000, 0),       // 7 Bahnanfang
+                P(1000, 0),        // 8 Bahnende
+            ],
+            [new TaxiParkingData(9, 0, 12, 0, 1, 0, 0, 20, -500, 300)],
+            [
+                new TaxiPathData(3, 20, 0, 0, 0, 0, 0),
+                new TaxiPathData(1, 20, 0, 0, 0, 1, 0),
+                new TaxiPathData(1, 20, 0, 0, 1, 2, 0),
+                new TaxiPathData(1, 20, 0, 0, 2, 3, 0),
+                new TaxiPathData(1, 20, 0, 0, 3, 4, 0),
+                new TaxiPathData(1, 20, 0, 0, 2, 5, 0),
+                new TaxiPathData(1, 20, 0, 0, 5, 6, 0),
+                new TaxiPathData(2, 45, 9, 0, 7, 6, 0),
+                new TaxiPathData(2, 45, 9, 0, 6, 8, 0),
+            ],
+            ["K1"]);
+        var graph = TaxiGraph.Build(data, [Runway]);
+        var end = End("09");
+
+        var route = TaxiRoute.Plan(graph, end, graph.FindParking("A1")!, TaxiProfile.Airliner)!.WithLineUp(graph, end, TaxiProfile.Airliner);
+
+        // Halt auf dem Zubringer: 110 m vor der Mittellinie (wie A), 12 m davor
+        var (stopEast, stopNorth, stopHeading) = route.TaxiPath.At(route.TaxiPath.LengthM);
+        Assert.Equal(-700, stopEast, 1);
+        Assert.Equal(110 + TaxiProfile.Airliner.StopShortM, stopNorth, 1);
+        Assert.Equal(180, stopHeading, 1);
+        Assert.Equal(110, route.Hold.CenterlineM, 0);
+        Assert.DoesNotContain(3, route.Nodes);
+
+        // Aufreihen vorwärts weiter über D auf die Bahn – nicht zurück
+        Assert.Equal([5, 6], route.LineUpNodes);
+        var lineUp = route.LineUpPath!;
+        Assert.Equal(180, lineUp.At(1).HeadingDeg, 1);
+        Assert.Equal(90, lineUp.At(lineUp.LengthM).HeadingDeg, 1);
     }
 
     [Fact]
