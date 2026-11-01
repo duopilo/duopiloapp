@@ -204,7 +204,7 @@ public sealed class EnrouteKinematics
     /// <summary>Kurz vor der Zielhöhe höchstens so viel ft/min je ft Abstand (300 ft darunter 1500 ft/min).</summary>
     private const double LevelOffFpmPerFt = 5;
 
-    private const double MaxBankDeg = 30;
+    private const double BankLimitDeg = 30;
 
     private readonly RunwayEnd _runway;
     private readonly EnrouteProfile _profile;
@@ -406,7 +406,7 @@ public sealed class EnrouteKinematics
             // Querneigung aus der Krümmung hier und ein paar Sekunden voraus – rollt so schon kurz vor dem Bogen ein
             var ahead = p.At(_distanceM + (groundMps * BankLeadSeconds)).CurvaturePerM;
             var bank = Math.Atan(groundMps * groundMps * ((curvature + ahead) / 2) / Gravity) * 180 / Math.PI;
-            BankRightDeg = Toward(BankRightDeg, Math.Clamp(bank, -MaxBankDeg, MaxBankDeg), RollDegPerSec * dt);
+            BankRightDeg = Toward(BankRightDeg, Math.Clamp(bank, -BankLimitDeg, BankLimitDeg), RollDegPerSec * dt);
         }
         else
         {
