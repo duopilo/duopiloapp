@@ -467,13 +467,13 @@ public sealed class TrafficTestTests
             TrafficModels.Approved.First(t => t.MatchesExactly(title)).IcaoType,
             TrafficModels.TypeOf(title)!.IcaoType));
 
-        // Typen ohne exakte Titel sind die vollen GA-Modelle aus MSFS 2024: ungetestet, an Titelwörtern erkannt
+        // Typen ohne exakte Titel sind die vollen GA- und Militärmodelle aus MSFS 2024: ungetestet, an Titelwörtern erkannt
         var byWords = TrafficModels.Approved.Where(t => t.Titles.Count == 0).ToList();
         Assert.NotEmpty(byWords);
         Assert.All(byWords, t =>
         {
             Assert.Equal(TrafficModelStatus.Untested, t.Status);
-            Assert.Equal(TrafficCategory.GeneralAviation, t.Category);
+            Assert.Contains(t.Category, new[] { TrafficCategory.GeneralAviation, TrafficCategory.Military });
             Assert.NotEmpty(t.TitleWords);
         });
 
