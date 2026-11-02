@@ -130,6 +130,14 @@ FLF im Panther- und Z8-Stil zufällig gemischt. Heiße Bremsen und Startabbruch:
     Position nicht;
   - außer Sicht des eigenen Flugzeugs, sonst die nächstbeste. Man sieht die Fahrzeuge erst auf den Rollwegen.
   - Vorteil: Parkpositionen sind schon Knoten im Rollweg-Netz, die Route zur Bahn gibt es damit ohne Fahrzeugwege.
+- **Mehrere Wachen** (z. B. EDDL, EDDK, EDDF): Jede Wache ist ein Startpunkt mit Fahrzeugen. Für jedes benötigte Fahrzeug
+  nimmt Duopilo die Wache mit der kürzesten Fahrzeit über das Rollweg-Netz zum Bereitstellungsraum.
+  - Local Standby und Notfälle am Boden: nur die nächste Wache.
+  - Full Emergency: alle Wachen, die in etwa 3 Minuten dort sein können. Die Fahrzeuge kommen dann aus verschiedenen
+    Richtungen und nacheinander an.
+  - Der ELW kommt von der nächsten Wache, damit die Einsatzleitung früh vor Ort ist.
+  - Ohne bekannte Wachen gilt das genauso: eine freie Parkposition je Bahn, bei parallelen oder weit auseinanderliegenden
+    Bahnen also mehrere Startpunkte.
 - **Später:** echte Wachen aus OpenStreetMap (`amenity=fire_station`, beim ersten Besuch abfragen und lokal speichern,
   Hinweis „© OpenStreetMap-Mitwirkende“) und eigene Einträge für einzelne Plätze. Beides nur, wenn die freie Parkposition
   sichtbar stört.
