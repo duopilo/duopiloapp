@@ -300,7 +300,8 @@ public sealed class HeliKinematics
             error = error > 180 ? error - 360 : error;
             var step = Math.Clamp(error, -_profile.YawDegPerSec * dt, _profile.YawDegPerSec * dt);
             HeadingTrueDeg = TrafficMath.Normalize(HeadingTrueDeg + step);
-            aligned = Math.Abs(error - step) < 1;
+            // Erst absetzen, wenn die Drehung ganz durch ist (der letzte Schritt landet genau auf dem Kurs)
+            aligned = Math.Abs(error - step) < 0.01;
         }
 
         if (HoverSeconds >= _profile.HoverSeconds && aligned && Math.Abs(HeightFt - _profile.HoverFt) < 2)
