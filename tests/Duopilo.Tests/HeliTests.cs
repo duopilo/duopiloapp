@@ -406,6 +406,79 @@ public sealed class HeliTests
         }
     }
 
+    [Fact]
+    public void Pad_der_Datenbank_nimmt_den_gemessenen_Boden_nur_direkt_darueber()
+    {
+        var roof = new HeliPad("ED34D", "H2", 51.38141, 6.786043, 226, 90, 29.5, 29.5, "none", Elevated: true);
+        Assert.Equal(14.75, roof.RadiusM, 2);
+        // beta.43: 60 m davor die Straße gemessen, 80 ft tiefer
+        Assert.False(HeliPads.AcceptsMeasuredGround(roof, 60, 147));
+        Assert.False(HeliPads.AcceptsMeasuredGround(roof, 5, 147));
+        Assert.False(HeliPads.AcceptsMeasuredGround(roof, 20, 225));
+        Assert.True(HeliPads.AcceptsMeasuredGround(roof, 5, 224.5));
+        var point = new HeliPad("POS", "P2", 51.35, 6.76, 110, null, 20, 20, "point", Measured: true);
+        Assert.True(HeliPads.AcceptsMeasuredGround(point, 500, 147));
+    }
+
+    [Fact]
+    public void Dach_Pads_erkennt_es_an_der_Hoehe_ueber_dem_Heliport()
+    {
+        // ED34D: Heliport 110 ft, H1 am Boden, H2 auf dem Dach (226 ft)
+        var data = new AirportHelipads(
+            "ED34D",
+            51.380212,
+            6.78732,
+            110 / RunwayEnd.FeetPerMeter,
+            [
+                new AirportHelipad(0, 51.380225, 6.787321, 112 / RunwayEnd.FeetPerMeter, 53, 18.1, 18.1, 0),
+                new AirportHelipad(1, 51.38141, 6.786043, 226 / RunwayEnd.FeetPerMeter, 90, 29.5, 29.5, 0),
+            ],
+            []);
+
+        var pads = HeliPads.From(data);
+
+        Assert.False(pads[0].Elevated);
+        Assert.True(pads[1].Elevated);
+        Assert.Equal(0, HeliMission.TowerFor(pads[0]));
+        Assert.Equal(HeliMission.TowerFt, HeliMission.TowerFor(pads[1]));
+    }
+
+    [Fact]
+    public void Vom_Dach_auf_das_Pad_daneben_erst_hoch_dann_steil_ueber_die_Dachkante()
+    {
+        var roof = new HeliPad("ED34D", "H2", 51.38141, 6.786043, 226, 90, 29.5, 29.5, "none", Elevated: true);
+        var station = new HeliPad("ED34D", "H1", 51.380225, 6.787321, 112, 53, 18.1, 18.1, "none");
+        var mission = new HeliMission([roof, station], HeliProfile.Default, 1000, 0, 226, 90, 5, 0);
+        var maxAngle = 0.0;
+        var t = 0.0;
+        for (; t < 300 && mission.Phase != HeliMissionPhase.Done; t += 1.0 / 30)
+        {
+            mission.Advance(1.0 / 30);
+            var pose = mission.Pose();
+            var fromRoof = RouteMath.DistanceNm(pose.Latitude, pose.Longitude, roof.Latitude, roof.Longitude) * Nm;
+            if (mission.Phase == HeliMissionPhase.Departure)
+            {
+                // Senkrecht hoch, erst dann vom Pad weg
+                Assert.True(fromRoof < 1 || pose.AltitudeFt - 5 >= 226 + HeliMission.TowerFt - 1);
+            }
+            else if (fromRoof < 60)
+            {
+                // Über dem Dach (bis 60 m vom Pad) mindestens 20 ft über dem Dach
+                Assert.True(pose.AltitudeFt - 5 >= 226 + 20, string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{pose.AltitudeFt - 5:0} ft at {fromRoof:0} m from the roof pad"));
+            }
+
+            maxAngle = Math.Max(maxAngle, mission.Current.IsDeparture ? 0 : mission.Current.ApproachAngleDeg);
+        }
+
+        Assert.Equal(HeliMissionPhase.Done, mission.Phase);
+        Assert.InRange(maxAngle, 15, HeliKinematics.MaxApproachAngleDeg);
+        var end = mission.Pose();
+        Assert.Equal(0, RouteMath.DistanceNm(end.Latitude, end.Longitude, station.Latitude, station.Longitude) * Nm, 1);
+        Assert.Equal(112 + 5, end.AltitudeFt, 3);
+        Assert.Equal(53, mission.Current.HeadingTrueDeg, 3);
+        Assert.InRange(t, 40, 150);
+    }
+
     private static AiProbeSample Sample(DateTimeOffset utc, double lat, double lon, double altitudeFt, bool onGround) =>
         new(1, utc, lat, lon, altitudeFt, onGround ? 5 : altitudeFt - Pad.ElevationFt, 0, 0, 0, 230, onGround, true, 100, 100, 100, 100, null);
 }

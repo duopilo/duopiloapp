@@ -186,6 +186,12 @@ public sealed class HeliKinematics
         SpeedKt = Math.Clamp(startKt, 0, profile.CruiseKt);
         PitchDeg = pitchDeg ?? profile.CruisePitchDeg;
         HeadingTrueDeg = frame.HeadingTrueDeg;
+
+        // Steiler als das Profil, wenn der Weg sonst zu flach für die Höhe wäre (kurze Strecke von weiter oben)
+        var needed = DistanceM > 1
+            ? Math.Atan((_startHeightFt - profile.HoverFt) / (DistanceM * RunwayEnd.FeetPerMeter)) * 180 / Math.PI
+            : 0;
+        ApproachAngleDeg = Math.Clamp(needed, profile.ApproachAngleDeg, MaxApproachAngleDeg);
         GroundFt = groundFt;
         CgHeightFt = Math.Max(0, cgHeightFt);
         StartDistanceM = DistanceM;
@@ -203,12 +209,14 @@ public sealed class HeliKinematics
     /// <paramref name="cruiseHeightFt"/> über dem Pad steigen (erst flach, ab <see cref="ClimbFromKt"/> mit <see cref="HeliProfile.ClimbFpm"/>).
     /// <see cref="DistanceM"/> ist dann der Weg ab dem Pad.
     /// </summary>
-    public static HeliKinematics Departure(RunwayEnd frame, HeliProfile profile, double cruiseHeightFt, double startHeadingDeg, double groundFt, double cgHeightFt, double groundPitchDeg)
+    /// <param name="towerFt">Senkrecht so hoch steigen, bevor er Fahrt aufnimmt (Dach-Pads, kurze Strecken); 0 = nur auf die Schwebehöhe.</param>
+    public static HeliKinematics Departure(RunwayEnd frame, HeliProfile profile, double cruiseHeightFt, double startHeadingDeg, double groundFt, double cgHeightFt, double groundPitchDeg, double towerFt = 0)
     {
         var heli = new HeliKinematics(frame, profile, 0, cruiseHeightFt, 0, frame.HeadingTrueDeg, groundFt, cgHeightFt)
         {
             GroundPitchDeg = groundPitchDeg,
         };
+        heli.TowerFt = Math.Clamp(towerFt, profile.TakeoffHoverFt, heli._startHeightFt);
         heli.IsDeparture = true;
         heli.Phase = HeliPhase.Startup;
         heli.HeightFt = 0;
@@ -220,6 +228,15 @@ public sealed class HeliKinematics
 
     /// <summary>Abflug (<see cref="Departure"/>) statt Anflug.</summary>
     public bool IsDeparture { get; private set; }
+
+    /// <summary>Abflug: Schwebehöhe nach dem senkrechten Steigen (mindestens <see cref="HeliProfile.TakeoffHoverFt"/>).</summary>
+    public double TowerFt { get; private set; }
+
+    /// <summary>Anflug: Winkel des Anflugwegs – der des Profils, steiler, wenn er von weiter oben anfängt (z. B. vom Dach auf ein Pad daneben).</summary>
+    public double ApproachAngleDeg { get; private set; }
+
+    /// <summary>So steil höchstens (Dach → Pad daneben).</summary>
+    public const double MaxApproachAngleDeg = 30;
 
     /// <summary>Abflug: so lange läuft der Rotor schon am Boden.</summary>
     public double StartupElapsedSeconds { get; private set; }
@@ -237,7 +254,7 @@ public sealed class HeliKinematics
         ? Phase switch
         {
             HeliPhase.Startup => 0,
-            HeliPhase.Liftoff or HeliPhase.Hover => _profile.TakeoffHoverFt,
+            HeliPhase.Liftoff or HeliPhase.Hover => TowerFt,
             _ => _startHeightFt,
         }
         : Phase switch
@@ -294,7 +311,7 @@ public sealed class HeliKinematics
 
     /// <summary>Höhe der Kufen über dem Pad im Anflug an dieser Stelle: Anflugwinkel bis zur Schwebehöhe, oben die Starthöhe.</summary>
     public double ProfileHeightFt(double distanceM) =>
-        Math.Min(_startHeightFt, _profile.HoverFt + (Math.Max(0, distanceM) * Math.Tan(_profile.ApproachAngleDeg * Math.PI / 180) * RunwayEnd.FeetPerMeter));
+        Math.Min(_startHeightFt, _profile.HoverFt + (Math.Max(0, distanceM) * Math.Tan(ApproachAngleDeg * Math.PI / 180) * RunwayEnd.FeetPerMeter));
 
     /// <summary>Höchste Fahrt an dieser Stelle, mit der er mit der Verzögerung des Profils noch über dem Pad steht.</summary>
     public double AllowedKt(double distanceM) =>
@@ -429,9 +446,9 @@ public sealed class HeliKinematics
 
                 break;
             case HeliPhase.Liftoff:
-                HeightFt = Math.Min(_profile.TakeoffHoverFt, HeightFt + (_profile.LiftoffFpm / 60 * dt));
+                HeightFt = Math.Min(TowerFt, HeightFt + (_profile.LiftoffFpm / 60 * dt));
                 PitchDeg = Toward(PitchDeg, _profile.HoverPitchDeg, PitchDegPerSec * dt);
-                if (HeightFt >= _profile.TakeoffHoverFt)
+                if (HeightFt >= TowerFt)
                 {
                     Phase = HeliPhase.Hover;
                 }

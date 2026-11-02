@@ -637,6 +637,11 @@ auch diese Abschnitte selbst (`EnrouteKinematics`), statt sie an die Wegpunkt-KI
 - **Einsatzflug (beta.43, Variante H3):** Stopps als Route (Koordinaten oder Helipads), je Abschnitt Abflug wie H2 und Anflug wie H1 –
   der Wechsel im selben Frame mit gleicher Lage, Höhe, Fahrt und Nase (`HeliMission`); an Stopps dazwischen warten und ab einer Minute
   den Rotor abstellen.
+- **beta.43, Einsatz ED34D H1 → Einsatzort → ED34D H2 (Dach) → H1:** Am Einsatzort und auf dem Dach genau gelandet, aber im Anflug
+  aufs Dach flog der Heli durchs Gebäude: 60 m vor dem Pad maß er unter sich die Straße (80 ft unter dem Dach), und mit 100 ft
+  Spielraum zog die Bodennachführung den Heli mit nach unten. Ab beta.44 nimmt ein Pad der Datenbank die Messung nur direkt über dem
+  Pad und höchstens 30 ft daneben. Dach-Pads (über 30 ft höher als der Heliport) startet er senkrecht auf 100 ft; der Anflug auf ein
+  Pad daneben wird dann steiler (bis 30°) statt die Dachkante mit 6° zu streifen.
 
 **Fahrplan des eigenen Verkehrs (Stand 1.11.2026):**
 
