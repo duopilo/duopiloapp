@@ -44,6 +44,7 @@ public sealed class FireOperation
     private readonly List<FireVehicle> _vehicles = [];
     private readonly object _lock = new();
     private bool _landed;
+    private bool _seenAirborne;
     private double _airborneSeconds;
     private double _stoppedSeconds;
     private double _offRunwaySeconds;
@@ -294,7 +295,16 @@ public sealed class FireOperation
 
     private void TrackAircraft(FireAircraftState aircraft, double dt)
     {
-        if (aircraft.OnGround)
+        var onRunway = Graph.RunwayAt(aircraft.EastM, aircraft.NorthM) is not null;
+        if (!aircraft.OnGround)
+        {
+            _seenAirborne = true;
+        }
+
+        // Aufgesetzt erst nach einem Flug (oder mit Landegeschwindigkeit auf einer Bahn). Steht das Flugzeug beim Alarm schon am Boden
+        // (Test am Gate, Test EDDL 02.11.), warten die Fahrzeuge an den Haltepunkten, statt es für gelandet zu halten und einzurücken.
+        var landing = aircraft.OnGround && (_landed || Level == FireAlertLevel.GroundIncident || _seenAirborne || (onRunway && aircraft.GroundSpeedMps > 15));
+        if (landing)
         {
             _landed = true;
             _airborneSeconds = 0;
@@ -313,8 +323,7 @@ public sealed class FireOperation
             }
         }
 
-        _stoppedSeconds = aircraft.OnGround && aircraft.GroundSpeedMps < 0.5 ? _stoppedSeconds + dt : 0;
-        var onRunway = Graph.RunwayAt(aircraft.EastM, aircraft.NorthM) is not null;
+        _stoppedSeconds = _landed && aircraft.GroundSpeedMps < 0.5 ? _stoppedSeconds + dt : 0;
         _offRunwaySeconds = _landed && !onRunway ? _offRunwaySeconds + dt : 0;
         if (_landed && onRunway && _stoppedSeconds >= StopOnRunwaySeconds)
         {

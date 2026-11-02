@@ -451,6 +451,33 @@ public sealed class FireTests
     }
 
     [Fact]
+    public void Alarm_am_Boden_die_Fahrzeuge_warten_an_der_Bahn()
+    {
+        // Test EDDL 02.11.: Alarm, während das Flugzeug am Vorfeld steht – die Fahrzeuge rückten nach einer Minute wieder ein
+        var graph = Graph();
+        var plan = FirePlanner.Plan(graph, Runway09, FireCategory.Lineup(FireAlertLevel.LocalStandby, 7), TrafficWake.Medium, null)!;
+        var operation = new FireOperation(graph, FireAlertLevel.LocalStandby, plan, TrafficWake.Medium, 7);
+        foreach (var vp in plan.Vehicles)
+        {
+            operation.Add(new FireVehicle(vp.Unit, "test", vp.Route, operation.Trail, graph.ToLatLon, 164));
+        }
+
+        var parked = new FireAircraftState(-200, 330, 180, 0, true);
+        for (var t = 0; t < 4 * 300; t++)
+        {
+            operation.Update(parked, 0.25);
+            foreach (var vehicle in operation.Vehicles)
+            {
+                vehicle.Advance(0.25);
+            }
+        }
+
+        Assert.False(operation.Returning);
+        Assert.False(operation.Landed);
+        Assert.All(operation.Vehicles, v => Assert.Equal(FireVehiclePhase.Standby, v.Phase));
+    }
+
+    [Fact]
     public void Abbruch_alle_fahren_zur_Wache_zurueck()
     {
         var graph = Graph();
