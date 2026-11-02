@@ -431,14 +431,21 @@ public sealed class FireOperation
         vehicle.Drive(path, FireVehiclePhase.Positioning, FireVehiclePhase.AtAircraft, path.LengthM > 200 ? FireProfile.MaxMps : FireProfile.PositionMps, heading);
     }
 
-    /// <summary>Zurück zur eigenen Wache über die Rollwege (ohne Blaulicht), dort weg.</summary>
+    /// <summary>
+    /// Zurück zur eigenen Wache über die Rollwege (ohne Blaulicht), dort weg: zur Parkposition selbst bzw. zur OSM-Wache. Ohne Route
+    /// verschwindet das Fahrzeug an Ort und Stelle – geradeaus weiterzufahren hieße am Haltepunkt: auf die Bahn (Test EDDL 02.11.).
+    /// </summary>
     private void SendBack(FireVehicle vehicle)
     {
-        var points = FirePlanner.RouteBetween(Graph, vehicle.EastM, vehicle.NorthM, vehicle.HomeEastM, vehicle.HomeNorthM);
+        var station = Plan.Vehicles.FirstOrDefault(v => v.Unit == vehicle.Unit)?.Station;
+        var points = station?.Parking is { } parking
+            ? FirePlanner.RouteToNode(Graph, vehicle.EastM, vehicle.NorthM, parking)
+            : null;
+        points ??= FirePlanner.RouteBetween(Graph, vehicle.EastM, vehicle.NorthM, vehicle.HomeEastM, vehicle.HomeNorthM);
         if (points is null)
         {
-            var rad = vehicle.HeadingDeg * Math.PI / 180;
-            points = [(vehicle.EastM, vehicle.NorthM), (vehicle.EastM + (150 * Math.Sin(rad)), vehicle.NorthM + (150 * Math.Cos(rad)))];
+            vehicle.Remove();
+            return;
         }
 
         vehicle.Drive(FirePlanner.BuildPath(points, FireProfile.ReturnMps), FireVehiclePhase.Returning, FireVehiclePhase.Gone, FireProfile.ReturnMps);

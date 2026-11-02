@@ -305,6 +305,34 @@ public static class FirePlanner
         return null;
     }
 
+    /// <summary>
+    /// Weg von einem Punkt zu einem Knoten (auch einer Parkposition): über den nächsten erreichbaren Rollpunkt (bis
+    /// <see cref="MaxEndNodeTries"/> probiert). Null = keine Route.
+    /// </summary>
+    public static List<(double East, double North)>? RouteToNode(TaxiGraph graph, double fromEast, double fromNorth, TaxiNode target)
+    {
+        var starts = graph.Nodes
+            .Where(n => !n.IsParking)
+            .OrderBy(n => Distance(n.EastM, n.NorthM, fromEast, fromNorth))
+            .Take(MaxEndNodeTries);
+        foreach (var start in starts)
+        {
+            if (start.Id == target.Id)
+            {
+                return [(fromEast, fromNorth), (target.EastM, target.NorthM)];
+            }
+
+            if (graph.Route(start.Id, target.Id) is { Count: >= 2 } nodes)
+            {
+                var points = new List<(double East, double North)> { (fromEast, fromNorth) };
+                points.AddRange(nodes.Select(n => (graph.Nodes[n].EastM, graph.Nodes[n].NorthM)));
+                return points;
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>Nächster Rollpunkt (keine Parkposition) zu einem Punkt.</summary>
     public static TaxiNode? NearestNode(TaxiGraph graph, double east, double north) =>
         graph.Nodes.Where(n => !n.IsParking).MinBy(n => Distance(n.EastM, n.NorthM, east, north));
