@@ -105,6 +105,55 @@ eine Bremstemperatur oder Brandwarnung im Flugzeugprofil, sonst bleiben nur die 
 
 Bei einem Notfall am Boden (Brand am Gate, heiße Bremsen am Stand) fallen die Schritte 3 und 4 weg.
 
+### Aufstellung an der Bahn
+
+Vorbild Phoenix Sky Harbor: je ein Löschfahrzeug nahe jedem Bahnende, eins in der Mitte, dort auch die Einsatzleitung, jede
+Position mindestens 500 ft (rund 150 m) von der Bahn entfernt. Für Duopilo übertragen auf die Haltepunkte der Landebahn
+aus dem Rollweg-Netz (`TaxiHold`, liegen hinter der Haltelinie):
+
+| Position | Wo | Wer |
+| --- | --- | --- |
+| Aufsetzzone | erster Haltepunkt rund 300–600 m nach der Schwelle | FLF 1 |
+| Mitte | Haltepunkt nahe der Bahnmitte | ELW, bei Full Emergency HLF, RTW, Rettungstreppe |
+| Ausrollen | Haltepunkt kurz hinter der erwarteten Stoppstelle (Landestrecke des Typs) | FLF 2 |
+| Bahnende | letzter Haltepunkt vor dem Ende, für ein Überrollen | FLF 3 (nur ab Kategorie 8) |
+
+- Steht an einer Position schon ein Flugzeug am Haltepunkt, nimmt das Fahrzeug den nächsten freien.
+- Gibt es Haltepunkte auf beiden Seiten, die Seite zur Wache hin.
+- Blaulicht an, Fahrlicht an, Front zur Bahn.
+
+### Hinterherfahren: deine Spur statt Plan
+
+Die Fahrzeuge folgen keiner vorab geplanten Route, sondern der Spur, die dein Flugzeug tatsächlich gefahren ist. Wo du
+abrollst, drehst oder stehen bleibst, ist damit egal.
+
+1. **Spur aufzeichnen:** ab dem Aufsetzen alle paar Meter die eigene Position speichern. Die Position kommt bisher nur
+   einmal pro Sekunde (Kurs und Fahrt jedes Frame). Während eines Einsatzes also schneller anfordern oder mit Kurs und Fahrt
+   dazwischen rechnen.
+2. **Einfädeln:** Hat das Flugzeug eine Position passiert und ist langsamer als etwa 40 kt, fährt das Fahrzeug über das
+   Rollweg-Netz zum nächsten Punkt der Spur hinter dem Flugzeug und fährt ab dort auf der Spur.
+3. **Abstand halten:** Jedes Fahrzeug hat einen Soll-Abstand entlang der Spur (FLF 1 vorn, dann ELW, FLF 2 …). Die
+   Geschwindigkeit regelt sich nach dem Fehler im Abstand, begrenzt durch Höchst- und Kurvengeschwindigkeit. Bei laufenden
+   Triebwerken bleibt der Abstand groß genug für den Abgasstrahl. Startwerte (etwa 80 m auf der Bahn, 50 m auf dem
+   Rollweg) legen wir beim Test fest; typgenaue Strahl-Daten stehen in den Airport-Planning-Dokumenten der Hersteller.
+4. **Umstellen:** Steht das Flugzeug, fahren die Fahrzeuge von der Spur auf feste Plätze rund um das Flugzeug, berechnet aus
+   Lage, Kurs und Größe: FLF vor und hinter dem Hauptfahrwerk, ELW schräg vor der Nase.
+5. **Weiterrollen:** Rollt das Flugzeug wieder los, fahren sie zurück auf die Spur und folgen weiter, bis zum Stand.
+
+### Wenn du vom Plan abweichst
+
+| Was passiert | Was die Fahrzeuge tun |
+| --- | --- |
+| anderer Abrollweg | nichts Besonderes, sie fahren deine Spur |
+| Stopp vor einem Fahrzeug | das Fahrzeug passiert dich nie, es fährt über die Bahn auf dich zu und stellt sich vor dich |
+| Stopp mitten auf der Bahn | Umstellen auf der Bahn, Bahn bleibt gesperrt |
+| anderes Gate oder anderer Weg | Spur folgen, das Ziel muss niemand kennen |
+| Landung auf einer anderen Bahn | sobald du aufsetzt, zum nächsten Punkt deiner Spur fahren, dann folgen |
+| Durchstarten | an den Positionen bleiben, beim nächsten Anflug neu aufstellen, falls die Bahn wechselt |
+| Ausweichen zu einem anderen Flughafen | Einsatz dort neu beginnen, hier einrücken |
+| Abbruch („cancel Mayday“) | einrücken, auch mitten im Folgen |
+| Rollen über Gras oder abseits der Rollwege | Spur folgen, aber nur bis zum Stopp ans Flugzeug heran, nicht durch Gebäude |
+
 ### Fahrzeuge je Stufe
 
 Die Kategorie kommt aus einer Tabelle ICAO-Typ → Feuerwehr-Kategorie. Ohne Eintrag dient die Wirbelschleppen-Klasse als
@@ -199,6 +248,10 @@ Triebwerken.
   Pan Pan → Local Standby, Mayday → Full Emergency
 - [Jersey Airport: Emergency Orders](https://cdn.ports.je/web/Emergency%20Orders%20Issue%203.pdf): Alarmstufen und
   Bereitstellungsräume
+- [Phoenix Fire: Sky Harbor Response (SOP 205.13)](https://www.phoenix.gov/content/dam/phoenix/firesite/documents/205.13%20Sky%20Harbor%20Response.pdf):
+  Bereitstellung an beiden Enden und in der Mitte, mindestens 500 ft von der Bahn
+- [Engine Thrust Hazards in the Airport Environment (AviationPros)](https://www.aviationpros.com/home/article/10386641/engine-thrust-hazards-in-the-airport-environment):
+  Abgasstrahl, Verweis auf die Herstellerdaten
 - [CAA Nepal: SOPs for RFF Service 2019](https://dspace.caanepal.gov.np/bitstream/123456789/426/1/SOPs%20for%20RFF%20service%2c%202019.pdf):
   Folgen nach dem Aufsetzen, Kontakt zum Piloten, Evakuierung
 - [Hot brakes and wheel fires (Code 7700)](https://code7700.com/hot_brakes_wheel_fires.htm): Annäherung an Räder,
