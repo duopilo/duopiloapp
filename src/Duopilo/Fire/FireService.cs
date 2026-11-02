@@ -131,6 +131,39 @@ public sealed class FireService : BackgroundService
         }
     }
 
+    /// <summary>
+    /// Sofort aufräumen (fire_service reset): alle Fahrzeuge verschwinden ohne Rückfahrt, auch in der Pause – zum Neustarten eines
+    /// Tests. Entfernt werden sie im nächsten Takt.
+    /// </summary>
+    public FireInfo Reset()
+    {
+        lock (_lock)
+        {
+            if (_run is not { } run)
+            {
+                throw new InvalidOperationException(Loc.T("tools.fire.nothing"));
+            }
+
+            _log.LogInformation(Loc.Log("log.fire.standDown"), "reset");
+            run.Cts.Cancel();
+            run.SpawnDone = true;
+            run.Operation?.ReturnAll();
+            foreach (var vehicle in run.Objects.Keys)
+            {
+                vehicle.Remove();
+            }
+
+            if (run.Objects.Count == 0)
+            {
+                _last = Info(run) with { State = "finished" };
+                _run = null;
+                return _last;
+            }
+
+            return Info(run);
+        }
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var nextAtc = DateTimeOffset.MinValue;

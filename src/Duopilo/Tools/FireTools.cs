@@ -23,10 +23,11 @@ public static class FireTools
         "(idle, armed, planning, dispatching, responding, standby, following, at_aircraft, returning, finished, unavailable with error), " +
         "level, airport, runway, category, spawn parking, vehicles (unit, model, phase, speed, gap). action alert: developer test without " +
         "the radio: level (local, full, ground), airport (else the nearest airport of the SimBrief plan), runway (else the one the " +
-        "aircraft is lined up for). action cancel: all vehicles return.")]
+        "aircraft is lined up for). action cancel: all vehicles return to the station. action reset: all vehicles disappear at once " +
+        "(also while paused), to restart a test.")]
     public static string Fire(
         FireService fire,
-        [Description("status (default), alert or cancel.")] string action = "status",
+        [Description("status (default), alert, cancel or reset.")] string action = "status",
         [Description("alert: local (Pan Pan, default), full (Mayday) or ground (incident on the ground, the aircraft must be on the ground).")] string? level = null,
         [Description("alert: airport ICAO, empty = the nearest airport of the SimBrief plan.")] string? airport = null,
         [Description("alert: landing runway, e.g. 23R; empty = the runway the aircraft is lined up for.")] string? runway = null)
@@ -37,6 +38,7 @@ public static class FireTools
             {
                 "alert" => fire.Alert(level, airport, runway),
                 "cancel" => fire.Cancel(),
+                "reset" => fire.Reset(),
                 _ => fire.Status(),
             };
             return Json.Serialize(info);
