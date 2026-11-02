@@ -121,7 +121,8 @@ public sealed record TrafficTestOverflight(
 /// stopped (gelandet und angehalten), landed, floated (schwebt über der Bahn), airborne, go_around (durchgestartet, nicht gelandet),
 /// go_around_ignored (durchgestartet, aber doch aufgesetzt), no_data. Beim Start (B1): climbed (auf
 /// <see cref="TrafficTestPlan.ClimbEndFt"/> gestiegen), climbing, rolling, no_roll (nicht losgerollt), no_liftoff (am Boden über das
-/// Bahnende). Beim Überflug (C1): passed (hinter dem Ausflugpunkt), cruising. A4 vor dem Eindrehpunkt auf den Final: enroute.
+/// Bahnende). Beim Überflug (C1): passed (hinter dem Ausflugpunkt), cruising. A4 vor dem Eindrehpunkt auf den Final: enroute. Heli
+/// (H1): landed (auf dem Pad), approaching.
 /// </param>
 /// <param name="MeanSpeedDeviationKt">Mittlere Abweichung IAS minus Wunsch im Anflug (positiv = zu schnell).</param>
 /// <param name="GearExtendedAtNm">Entfernung zur Schwelle, als das Fahrwerk ganz draußen war (0 = erst hinter der Schwelle).</param>
@@ -255,6 +256,9 @@ public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spa
     private double _cruiseGroundSpeedSum;
     private int _cruiseSamples;
     private bool _exited;
+
+    /// <summary>H1: Sekunde, in der der Heli aufgesetzt hat; sonst null.</summary>
+    private double? _heliLandedSeconds;
     private int _lastLights;
 
     public int Samples { get; private set; }
@@ -345,6 +349,21 @@ public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spa
             _previousAlong = along;
             _previousSeconds = seconds;
             return new TrafficTestPoint(Math.Round(seconds, 1), along, cross, null, targetKt, events);
+        }
+
+        // H1: Heli-Anflug aufs Pad – Entfernung zum Pad, gelandet, sobald er steht (Werte aus der Kinematik)
+        if (plan.IsHeli)
+        {
+            if (_heliLandedSeconds is null && s.OnGround)
+            {
+                _heliLandedSeconds = seconds;
+                events.Add(string.Create(CultureInfo.InvariantCulture, $"heli_touchdown {Math.Sqrt((along * along) + (cross * cross)):0.0} m from the pad center"));
+            }
+
+            _previousAlong = along;
+            _previousSeconds = seconds;
+            var toPad = Math.Round(Math.Sqrt((along * along) + (cross * cross)) / RunwayEnd.MetersPerNm, 2);
+            return new TrafficTestPoint(Math.Round(seconds, 1), along, cross, toPad, targetKt, events);
         }
 
         // A4 vor dem Eindrehpunkt: noch kein Endanflug – erst danach wertet eine neue Auswertung mit dem Endanflug aus
@@ -504,6 +523,7 @@ public sealed class TrafficTestAnalysis(TrafficTestPlan plan, DateTimeOffset spa
             : plan.IsTakeoff ? (_liftoffSeconds is null
                 ? (_overran ? "no_liftoff" : _rollStartSeconds is null ? "no_roll" : "rolling")
                 : _highestFt >= TrafficTestPlan.ClimbEndFt ? "climbed" : "climbing")
+            : plan.IsHeli ? (_heliLandedSeconds is not null ? "landed" : "approaching")
             : plan.Arrival is not null ? "enroute"
             : GoAroundPlan is not null ? (_touchdown is null ? "go_around" : "go_around_ignored")
             : _touchdown is null ? (_floatSeconds >= 5 || _airborneBeyondEnd ? "floated" : "airborne")
