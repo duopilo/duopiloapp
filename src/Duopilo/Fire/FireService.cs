@@ -10,7 +10,7 @@ namespace Duopilo.Fire;
 /// <summary>Ein Fahrzeug im Status von fire_service.</summary>
 /// <param name="RemainingM">Restweg bis zum Ziel des aktuellen Wegs (Haltepunkt, Platz am Flugzeug, Wache), beim Folgen und Stehen null.</param>
 /// <param name="SimSpeedKt">GROUND VELOCITY des Objekts laut Sim (für die Raddrehung im Modell), null = noch keine Abfrage.</param>
-public sealed record FireVehicleInfo(string Unit, string Model, string Phase, uint? ObjectId, string? Hold, double? AlongM, double? SpeedKt, double? SimSpeedKt, double? RemainingM, double? GapM, double? TargetGapM);
+public sealed record FireVehicleInfo(string Unit, string Model, string Phase, uint? ObjectId, string? Hold, double? AlongM, double? SpeedKt, double? SimSpeedKt, double? RemainingM, double? GapM, double? TargetGapM, double Latitude, double Longitude);
 
 /// <summary>Stand der Feuerwehr für fire_service und das Log.</summary>
 /// <param name="State">idle, armed, planning, dispatching, responding, standby, following, at_aircraft, returning, finished, unavailable.</param>
@@ -845,6 +845,7 @@ public sealed class FireService : BackgroundService
             {
                 var (vehicle, id) = (pair.Key, pair.Value);
                 var plan = run.Plans.GetValueOrDefault(vehicle);
+                var pose = vehicle.Pose();
                 return new FireVehicleInfo(
                     vehicle.Unit.Name,
                     vehicle.Model,
@@ -856,7 +857,9 @@ public sealed class FireService : BackgroundService
                     vehicle.SimGroundSpeedKt is { } simKt ? Math.Round(simKt, 1) : null,
                     vehicle.RemainingM > 0 ? Math.Round(vehicle.RemainingM) : null,
                     double.IsNaN(vehicle.GapM) ? null : Math.Round(vehicle.GapM),
-                    vehicle.Phase == FireVehiclePhase.Following ? Math.Round(vehicle.TargetGapM) : null);
+                    vehicle.Phase == FireVehiclePhase.Following ? Math.Round(vehicle.TargetGapM) : null,
+                    Math.Round(pose.Latitude, 6),
+                    Math.Round(pose.Longitude, 6));
             })
             .ToList();
         var missing = operation?.Plan.Missing.Select(u => u.Name).ToList() ?? [];
