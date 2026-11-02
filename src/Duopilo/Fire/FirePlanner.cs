@@ -302,7 +302,20 @@ public static class FirePlanner
     /// leichten Knicke im Rollweg-Netz hielten die Fahrzeuge sonst fast überall bei Kurventempo (Test EDDL, 02.11.: 12–25 kt).
     /// </summary>
     public static TaxiPath BuildPath(IReadOnlyList<(double East, double North)> points, double maxMps) =>
-        TaxiPath.Build(Simplify(points, SimplifyM), FireProfile.TurnRadiusM, maxMps, FireProfile.LateralMps2, FireProfile.MinTurnMps);
+        TaxiPath.Build(Simplify(points, SimplifyM), FireProfile.TurnRadiusM, maxMps, FireProfile.LateralMps2, FireProfile.MinTurnMps, CornerRadiusM);
+
+    /// <summary>So weit darf ein Bogen höchstens innen an der Ecke vorbeischneiden (Rollwege sind gut 20 m breit).</summary>
+    public const double MaxCornerCutM = 4;
+
+    /// <summary>
+    /// Kurvenradius je Knick: so groß, dass der Bogen höchstens <see cref="MaxCornerCutM"/> an der Ecke vorbeischneidet – flache Knicke
+    /// fahren sich fast mit voller Geschwindigkeit, rechte Winkel eng und langsam (Test EDDL 02.11.: an jedem Knick 17 kt).
+    /// </summary>
+    public static double CornerRadiusM(double turnRad)
+    {
+        var excess = (1 / Math.Cos(Math.Min(turnRad, 3.0) / 2)) - 1;
+        return excess <= 1e-6 ? 500 : Math.Clamp(MaxCornerCutM / excess, 8, 500);
+    }
 
     /// <summary>So weit darf der vereinfachte Weg höchstens vom Rollweg abweichen.</summary>
     public const double SimplifyM = 4;

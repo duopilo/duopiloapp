@@ -27,7 +27,11 @@ public sealed class TaxiPath
     /// Weg durch <paramref name="points"/>; Ecken mit <paramref name="turnRadiusM"/>, Höchstgeschwindigkeit geradeaus
     /// <paramref name="straightMps"/>, in Bögen sqrt(<paramref name="lateralMps2"/> · r), aber nicht unter <paramref name="minMps"/>.
     /// </summary>
-    public static TaxiPath Build(IReadOnlyList<(double East, double North)> points, double turnRadiusM, double straightMps, double lateralMps2, double minMps)
+    /// <param name="radiusForTurn">
+    /// Optional: Kurvenradius je Knick (Knickwinkel im Bogenmaß → Radius). Ohne gilt <paramref name="turnRadiusM"/> für jede Ecke –
+    /// dann bremst auch ein leichter Knick auf Kurventempo. Die Feuerwehr nimmt bei flachen Knicken große Radien.
+    /// </param>
+    public static TaxiPath Build(IReadOnlyList<(double East, double North)> points, double turnRadiusM, double straightMps, double lateralMps2, double minMps, Func<double, double>? radiusForTurn = null)
     {
         var p = new List<(double X, double Y)>();
         foreach (var point in points)
@@ -60,7 +64,8 @@ public sealed class TaxiPath
             // Tangentenlänge: Ein Abschnitt zwischen zwei Ecken reicht für beide je zur Hälfte, der erste und letzte ganz
             var maxIn = lenIn * (i - 1 == 0 ? 1 : 0.5);
             var maxOut = lenOut * (i + 1 == p.Count - 1 ? 1 : 0.5);
-            var t = Math.Min(turnRadiusM * half, Math.Min(maxIn, maxOut));
+            var wanted = radiusForTurn?.Invoke(Math.Abs(turn)) ?? turnRadiusM;
+            var t = Math.Min(wanted * half, Math.Min(maxIn, maxOut));
             var radius = t / half;
             var a = (X: p[i].X - (ux * t), Y: p[i].Y - (uy * t));
             AddLine(pieces, ref s, current, a, straightMps);
