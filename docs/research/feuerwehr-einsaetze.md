@@ -20,6 +20,7 @@ Fragen:
 - **Außer Notlandungen sinnvoll:** heiße Bremsen, Startabbruch, Brand am Boden, Anforderung durch den Piloten. Beim
   Betanken mit Passagieren an Bord wird die Feuerwehr in echt meist nur informiert, eine Wache vor Ort ist nicht die Regel.
   Das kommt deshalb höchstens als Option.
+- **Keine Wachen-Liste nötig:** Die Fahrzeuge spawnen auf einer freien Parkposition nahe der Bahnmitte, außer Sicht.
 - **Erster Schritt:** Mayday und Pan Pan in EDDL mit Bereitstellung an der Bahn, sobald Follow-me Fahrzeuge spawnen und
   bewegen kann.
 
@@ -119,12 +120,21 @@ FLF im Panther- und Z8-Stil zufällig gemischt. Heiße Bremsen und Startabbruch:
 
 ## Wache und Wege
 
-- **Wache:** Die MSFS-Daten kennen keine Feuerwachen. Vorschlag: eine Datei je Flughafen (Lage, Ausrichtung, mehrere
-  Wachen möglich), anfangs für EDDL und EDDF gepflegt. Ohne Eintrag nimmt Duopilo die Fahrzeug-Parkposition (Typ 13
-  `VEHICLE`) nahe der Bahnmitte, sonst einen Punkt neben dem Rollweg dort.
-- **Wege:** Das Rollweg-Netz liest bisher nur Rollwege, Bahnen, Parkpositionen und Pfade. MSFS liefert auch
-  Fahrzeugwege (Typ 6 `VEHICLE`) und Straßen (Typ 7 `ROAD`). Die nehmen wir für die Strecke von der Wache dazu, auf dem
-  Vorfeld und an der Bahn fahren die Fahrzeuge über Rollwege.
+- **Wache:** Die MSFS-Daten kennen keine Feuerwachen, und eine Liste für jeden Flughafen ist nicht zu pflegen. Deshalb
+  spawnen die Fahrzeuge standardmäßig auf einer **freien Parkposition** und fahren von dort los:
+  - bevorzugt eine Fahrzeug-Parkposition (Typ 13 `VEHICLE`), sonst Vorfeld- oder Fracht-Positionen, Gates mit Fluggastbrücke
+    zuletzt;
+  - möglichst nah an der Bahnmitte, damit jedes Bahnende schnell erreichbar ist (echte Wachen liegen aus demselben Grund
+    oft mittig);
+  - frei heißt: kein eigenes KI-Flugzeug und kein Sim-Verkehr darauf; während des Einsatzes vergibt der eigene Verkehr die
+    Position nicht;
+  - außer Sicht des eigenen Flugzeugs, sonst die nächstbeste. Man sieht die Fahrzeuge erst auf den Rollwegen.
+  - Vorteil: Parkpositionen sind schon Knoten im Rollweg-Netz, die Route zur Bahn gibt es damit ohne Fahrzeugwege.
+- **Später:** echte Wachen aus OpenStreetMap (`amenity=fire_station`, beim ersten Besuch abfragen und lokal speichern,
+  Hinweis „© OpenStreetMap-Mitwirkende“) und eigene Einträge für einzelne Plätze. Beides nur, wenn die freie Parkposition
+  sichtbar stört.
+- **Wege:** Für Wachen abseits des Rollweg-Netzes kämen die Fahrzeugwege (Typ 6 `VEHICLE`) und Straßen (Typ 7 `ROAD`) aus
+  den MSFS-Daten dazu, die das Rollweg-Netz bisher nicht liest.
 - **Bewegen:** wie beim Follow-me (`AICreateSimulatedObject`, Kinematik wie beim Rollen). Im Einsatz deutlich schneller als
   Flugzeuge auf dem Rollweg, die Werte legen wir beim Test fest.
 
@@ -157,7 +167,7 @@ Triebwerken.
 ## Reihenfolge (Vorschlag)
 
 1. Follow-me fertig: Fahrzeuge spawnen, bewegen, Licht schalten.
-2. Wachen-Datei und Mayday/Pan Pan bis zur Bereitstellung an der Bahn, Test in EDDL.
+2. Spawn auf freier Parkposition und Mayday/Pan Pan bis zur Bereitstellung an der Bahn, Test in EDDL.
 3. Hinterherfahren, Umstellen, Rückmeldung, Begleitung zum Stand.
 4. Bahnsperre für den eigenen Verkehr.
 5. Heiße Bremsen, Startabbruch, Brand am Boden, Anforderung durch den Piloten.
@@ -165,7 +175,7 @@ Triebwerken.
 
 ## Offen
 
-- Wachen: Datei pflegen oder nur automatisch? Wo liegen die Wachen in EDDL?
+- Wachen aus OpenStreetMap: Wie gut sind Flughafenwachen dort erfasst? Erst prüfen, wenn die freie Parkposition stört.
 - Funk zwischen Feuerwehr und Pilot: eigene Frequenz und Stimme oder vorerst über den Tower?
 - Betankungswache: überhaupt, und wenn ja, Standard an oder aus?
 - Rettungstreppe an die Tür und Evakuierung: erst nach dem Rest.
