@@ -595,6 +595,18 @@ auch diese Abschnitte selbst (`EnrouteKinematics`), statt sie an die Wegpunkt-KI
 - **Simulation vor dem Test:** In Python nachgerechnet kamen vier Anflugrichtungen am Eindrehpunkt jeweils weniger als 2 ft neben dem
   Gleitpfad an, mit 210 kt und höchstens 25° Querneigung.
 - **Offen:** A4 ist noch nicht gegen andere Landungen getaktet (Zeit statt Abstand, kommt mit dem Fahrplan-Verkehr).
+  Ebenso fehlt die Staffelung zwischen Anflügen auf parallele Bahnen: Gleichzeitig gestartet, würden sich zwei A4 auf 23L und 23R
+  in ihren Kurven über den Finals kreuzen.
+
+**beta.37 in Düsseldorf (1./2.11.2026):**
+- **C2:** Über dem eigenen Flugzeug auf FL350, 0 m neben dem Kurs, `passed`.
+- **A4 aus 227 (von hinter dem Flughafen):** 35 NM, 180°-Linkskurve mit 25°. Eingedreht bei 10 NM mit 3234 ft (Gleitpfad 3234) und
+  210 kt, im Final höchstens 9 ft neben dem Pfad, aufgesetzt bei 453 m, über L5 zu A2.
+- **A4 aus 320:** 115°-Rechtskurve, ebenso genau. Die Querneigung zeigt in MSFS in die richtige Richtung (links positiv, im Sim
+  angesehen).
+- **B3:** Von A8 zur 23R. Ab 1500 ft Linkskurve auf 137 mit 25°, 2500 ft/min, bei 10 027 ft Landelicht aus, darüber 300 kt.
+- **Gefunden:** Am Eindrehpunkt hing das Flugzeug noch 12° und stand mit dem Endanflug schlagartig gerade. Außerdem war es schon bei
+  8 NM auf 140 kt. Beides ist in beta.38 behoben: Es leitet so früh aus, wie das Rollen dauert, und fliegt bis 4 NM Vapp + 25.
 
 **Fahrplan des eigenen Verkehrs (Stand 1.11.2026):**
 
