@@ -15,6 +15,7 @@ public sealed record FireVehicleInfo(string Unit, string Model, string Phase, ui
 /// <summary>Stand der Feuerwehr für fire_service und das Log.</summary>
 /// <param name="State">idle, armed, planning, dispatching, responding, standby, following, at_aircraft, returning, finished, unavailable.</param>
 /// <param name="Source">atc (Mayday/Pan Pan im Funk) oder tool (fire_service alert).</param>
+/// <param name="Target">Wem die Feuerwehr folgt: own (eigenes Flugzeug) oder das Kennzeichen eines Verkehrstests (DUO01 …).</param>
 public sealed record FireInfo(
     string State,
     string? Source,
@@ -25,7 +26,8 @@ public sealed record FireInfo(
     string? Spawn,
     IReadOnlyList<FireVehicleInfo> Vehicles,
     IReadOnlyList<string> Missing,
-    string? Error);
+    string? Error,
+    string? Target = null);
 
 /// <summary>
 /// Flughafenfeuerwehr (docs/research/feuerwehr-einsaetze.md): Bei Mayday oder Pan Pan im ATC-Modul (oder zum Testen über
@@ -84,7 +86,9 @@ public sealed class FireService : BackgroundService
     }
 
     /// <summary>Alarm ohne Funk (fire_service alert) – zum Testen an jedem Flughafen. Ohne Flughafen: der nähere des SimBrief-Plans.</summary>
-    public FireInfo Alert(string? level, string? airport, string? runway)
+    /// <param name="tail">Statt des eigenen Flugzeugs einem KI-Flugzeug eines Verkehrstests folgen (DUO01 …); Flughafen und Bahn kommen
+    /// dann vom Test, wenn nicht angegeben.</param>
+    public FireInfo Alert(string? level, string? airport, string? runway, string? tail = null)
     {
         if (!Available)
         {
@@ -104,13 +108,25 @@ public sealed class FireService : BackgroundService
                 throw new InvalidOperationException(Loc.T("tools.fire.busy"));
             }
 
-            var icao = string.IsNullOrWhiteSpace(airport) ? NearestPlanAirport() : airport.Trim().ToUpperInvariant();
+            TrafficTestStatus? test = null;
+            if (!string.IsNullOrWhiteSpace(tail))
+            {
+                test = _services.GetService<TrafficTestService>()?.Status()
+                    .LastOrDefault(t => t.State == "running" && string.Equals(t.Tail, tail.Trim(), StringComparison.OrdinalIgnoreCase))
+                    ?? throw new InvalidOperationException(Loc.T("tools.fire.tailUnknown", tail.Trim()));
+            }
+
+            var icao = !string.IsNullOrWhiteSpace(airport) ? airport.Trim().ToUpperInvariant() : test?.Airport ?? NearestPlanAirport();
             if (icao is null)
             {
                 throw new InvalidOperationException(Loc.T("tools.fire.noAirport"));
             }
 
-            var run = new Run("tool", alertLevel, icao, string.IsNullOrWhiteSpace(runway) ? null : runway.Trim(), _simBrief.Current?.AircraftIcao, DateTimeOffset.UtcNow, null);
+            var runwayName = !string.IsNullOrWhiteSpace(runway) ? runway.Trim() : test?.Runway;
+            var run = new Run("tool", alertLevel, icao, runwayName, test?.Type ?? _simBrief.Current?.AircraftIcao, DateTimeOffset.UtcNow, null)
+            {
+                TargetTail = test?.Tail,
+            };
             StartLocked(run, dispatchNow: true);
             return Info(run);
         }
@@ -571,7 +587,8 @@ public sealed class FireService : BackgroundService
                 return;
             }
 
-            if (OwnState(graph, now) is { } aircraft)
+            var aircraft = run.TargetTail is { } targetTail ? TestState(run, targetTail, graph, now) : OwnState(graph, now);
+            if (aircraft is not null)
             {
                 operation.Update(aircraft, dt);
             }
@@ -756,6 +773,47 @@ public sealed class FireService : BackgroundService
         return new FireAircraftState(east + (ahead * Math.Sin(rad)), north + (ahead * Math.Cos(rad)), heading, mps, _sim.Bool("onGround") == true);
     }
 
+    /// <summary>
+    /// Lage eines KI-Flugzeugs aus einem Verkehrstest (Messpunkt einmal pro Sekunde, dazwischen mit Kurs und Fahrt weitergerechnet).
+    /// Ist der Test vorbei oder fehlt er 30 s lang, rückt die Feuerwehr ein.
+    /// </summary>
+    private FireAircraftState? TestState(Run run, string tail, TaxiGraph graph, DateTimeOffset now)
+    {
+        if (now - run.TestReadUtc >= TimeSpan.FromSeconds(1))
+        {
+            run.TestReadUtc = now;
+            var test = _services.GetService<TrafficTestService>()?.Status()
+                .LastOrDefault(t => string.Equals(t.Tail, tail, StringComparison.OrdinalIgnoreCase));
+            if (test is { State: "running", Last: { Latitude: { } lat, Longitude: { } lon } last })
+            {
+                run.TestMissingSince = null;
+                if (run.TestFix is not { } fix || fix.Seconds != last.Seconds)
+                {
+                    run.TestFix = (last.Seconds, lat, lon, last.HeadingTrueDeg ?? 0, last.GroundSpeedKt, last.OnGround, now);
+                }
+            }
+            else
+            {
+                run.TestMissingSince ??= now;
+                if (now - run.TestMissingSince > TimeSpan.FromSeconds(30) && run.Operation is { Returning: false })
+                {
+                    StandDownLocked(run, "traffic_test_ended");
+                }
+            }
+        }
+
+        if (run.TestFix is not { } current)
+        {
+            return null;
+        }
+
+        var mps = Math.Max(0, current.GroundSpeedKt * MetersPerSecondPerKnot);
+        var (east, north) = graph.ToLocal(current.Latitude, current.Longitude);
+        var ahead = mps * Math.Min(1.5, (now - current.Utc).TotalSeconds);
+        var rad = current.HeadingDeg * Math.PI / 180;
+        return new FireAircraftState(east + (ahead * Math.Sin(rad)), north + (ahead * Math.Cos(rad)), current.HeadingDeg, mps, current.OnGround);
+    }
+
     private (double East, double North)? OwnLocal(TaxiGraph graph) =>
         _sim.Num("lat") is { } lat && _sim.Num("lon") is { } lon ? graph.ToLocal(lat, lon) : null;
 
@@ -874,7 +932,8 @@ public sealed class FireService : BackgroundService
             operation?.Plan.Spawn.Parking?.Label,
             vehicles,
             missing,
-            run.Error);
+            run.Error,
+            run.TargetTail ?? "own");
     }
 
     private sealed class Run(string source, FireAlertLevel level, string? airport, string? runway, string? aircraftIcao, DateTimeOffset startedUtc, DateTimeOffset? emergencySince)
@@ -914,6 +973,15 @@ public sealed class FireService : BackgroundService
         public Dictionary<FireVehicle, FireVehiclePhase> LoggedPhase { get; } = [];
 
         public List<string> SpawnErrors { get; set; } = [];
+
+        /// <summary>Kennzeichen des Verkehrstests, dem die Feuerwehr folgt; null = eigenes Flugzeug.</summary>
+        public string? TargetTail { get; init; }
+
+        public DateTimeOffset TestReadUtc { get; set; }
+
+        public DateTimeOffset? TestMissingSince { get; set; }
+
+        public (double Seconds, double Latitude, double Longitude, double HeadingDeg, double GroundSpeedKt, bool OnGround, DateTimeOffset Utc)? TestFix { get; set; }
 
         public string? Error { get; set; }
 

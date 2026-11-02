@@ -1522,5 +1522,6 @@
   "log.fire.finished": "Fire service operation at {airport} finished",
   "log.fire.updateFailed": "Fire service update failed: {error}",
   "log.fire.obstaclesFailed": "Fire service: aircraft on the ground unknown ({error}) – parking positions may be occupied",
-  "log.fire.lightsFailed": "Fire service lights could not be set: {error}"
+  "log.fire.lightsFailed": "Fire service lights could not be set: {error}",
+  "tools.fire.tailUnknown": "No running traffic test with tail {tail} (see traffic_test_status)."
 }

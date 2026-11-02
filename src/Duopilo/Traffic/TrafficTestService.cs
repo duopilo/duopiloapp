@@ -86,7 +86,10 @@ public sealed record TrafficTestLast(
     double CrossM,
     string? AiState,
     string Lights,
-    double DesiredKt);
+    double DesiredKt,
+    double? Latitude = null,
+    double? Longitude = null,
+    double? HeadingTrueDeg = null);
 
 /// <summary>Zustand eines Testanflugs für Tool und Browser.</summary>
 /// <param name="State">running oder ended.</param>
@@ -1230,7 +1233,10 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 Math.Round(point.CrossM, 1),
                 sample.AiState,
                 AiLights.Describe(sample.LightStates),
-                Math.Round(sample.DesiredKt));
+                Math.Round(sample.DesiredKt),
+                Math.Round(sample.Latitude, 7),
+                Math.Round(sample.Longitude, 7),
+                Math.Round(sample.HeadingTrueDeg, 1));
             foreach (var e in point.Events)
             {
                 run.AddEvent(point.Seconds, e);

@@ -1248,5 +1248,6 @@
   "tools.fire.runwayUnknown": "Bahn {runway} gibt es in {airport} nicht.",
   "tools.fire.noRouteToRunway": "In {airport} gibt es keine Route von einer freien Parkposition zu einem Haltepunkt der Bahn {runway}.",
   "tools.fire.spawnFailed": "Die Feuerwehrfahrzeuge konnten nicht erzeugt werden: {errors} Ist das Feuerwehr-Paket von Duopilo (duopilo-fire) im Community-Ordner?",
-  "tools.fire.failed": "Feuerwehr fehlgeschlagen: {error}"
+  "tools.fire.failed": "Feuerwehr fehlgeschlagen: {error}",
+  "tools.fire.tailUnknown": "Kein laufender Verkehrstest mit dem Kennzeichen {tail} (siehe traffic_test_status)."
 }
