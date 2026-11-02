@@ -171,6 +171,7 @@ public sealed partial class AtcSession
                 break;
             case AtcPhase.GroundArrival:
                 TickGroundArrival(input);
+                TickFollowMe(input, output);
                 break;
         }
 
@@ -274,6 +275,13 @@ public sealed partial class AtcSession
             _ackFrequency = null;
             _ackPending = false;
             AnswerTrafficQuery(trafficQuery, input, output);
+            return output;
+        }
+
+        // Follow-me anfordern oder abbestellen ("request follow-me", "cancel follow-me"): auch bei offenem Readback des Gates und
+        // ohne als Quittung zu gelten – nur auf Anfrage, ATC bietet es nie von selbst an
+        if (AtcFollowMeCall.Parse(heard) is { } followMeCall && HandleFollowMeCall(followMeCall, input, output))
+        {
             return output;
         }
 

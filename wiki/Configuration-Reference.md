@@ -45,6 +45,9 @@ Only put in what you change. Example:
 | `Input:Enabled` | `false` | [Input Module](Input-Module) – the dashboard switch takes precedence |
 | `Input:ConfirmWindowSeconds` | `60` | lifetime of a prepared action |
 | `Atc:Enabled`, `Speak`, `SquawkFromSim`, `SessionFile`, `SessionMaxAgeHours`, `TemplatesFile` | | [ATC](ATC#settings) |
+| `FollowMe:Enabled` | `true` | [follow-me](ATC#follow-me) on request (tray instance only) |
+| `FollowMe:Model` | `Duopilo_FollowMe_Licht` | vehicle title from its `sim.cfg` |
+| `FollowMe:HeightFt` | `0` | model reference point above the ground |
 | `Speech:Engine` | `auto` | `auto`, `windows`, `kokoro` |
 | `Speech:KokoroVoice` | `bm_george` | default Kokoro voice for callouts |
 | `Speech:KokoroThreads` | `2` | CPU threads for Kokoro |

@@ -77,6 +77,7 @@ Up to version 0.9.x Duopilo was called **Kopilot**. Most things carry over by th
 | `get_atc_controller` | Duopilo ATC: current station with frequency and voice, expected next pilot transmission, pending readback, squawk, history |
 | `atc_control` | Duopilo ATC: start/stop/restart the session, reload templates, repeat the last transmission |
 | `atc_set_value` | Duopilo ATC: set gate, holding point, taxi route, pushback direction, approach type or runway by hand |
+| `follow_me` | Follow-me after landing (only on request, "request follow-me" to ground): state of the vehicle, request without the radio for testing, cancel |
 
 Every response contains `activeAlerts`: the monitoring alerts active right now. That way Claude catches warnings even while it is asking for something else.
 

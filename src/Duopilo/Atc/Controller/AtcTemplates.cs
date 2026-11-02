@@ -274,6 +274,12 @@ public sealed class AtcRules
     /// on 5 miles final") und gibt die Landefreigabe erst, wenn der Vorausfliegende gelandet ist.
     /// </summary>
     public bool TrafficSequencing { get; set; } = true;
+
+    /// <summary>
+    /// Follow-me (nur auf Anfrage): Steht das Fahrzeug nach so vielen Sekunden nicht vor dem Flugzeug, gibt ATC auf ("follow-me not
+    /// available") und die Rollfreigabe zum Gate.
+    /// </summary>
+    public int FollowMeTimeoutSeconds { get; set; } = 240;
 }
 
 public sealed class AtcMessageTemplate
@@ -523,6 +529,11 @@ public static class AtcMessageIds
 
     public const string GroundArrivalContact = "ground.arrivalContact";
     public const string GroundTaxiToGate = "ground.taxiToGate";
+    public const string GroundFollowMeRequest = "ground.followMeRequest";
+    public const string GroundFollowMe = "ground.followMe";
+    public const string GroundFollowMeFollow = "ground.followMeFollow";
+    public const string GroundFollowMeUnavailable = "ground.followMeUnavailable";
+    public const string GroundFollowMeUnable = "ground.followMeUnable";
 
     public const string CommonNegative = "common.negative";
     public const string CommonRoger = "common.roger";
@@ -560,6 +571,7 @@ public static class AtcMessageIds
         ApproachContact, ApproachDescend, ApproachCleared, ApproachHandoff,
         TowerLandingContact, TowerLanding, TowerVacate, TowerSequence,
         GroundArrivalContact, GroundTaxiToGate,
+        GroundFollowMeRequest, GroundFollowMe, GroundFollowMeFollow, GroundFollowMeUnavailable, GroundFollowMeUnable,
         CommonNegative, CommonRoger, CommonSayAgain, CommonRadioCheck, CommonCheckSquawk, CommonCheckFrequency, CommonWrongStation,
         CommonTrafficInfo, CommonNoTraffic,
         EmergencyMayday, EmergencyPanPan, EmergencyDetails, EmergencyRoger, EmergencyDirect, EmergencyLevel, EmergencyLevelDiscretion,

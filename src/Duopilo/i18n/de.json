@@ -1220,5 +1220,18 @@
   "tools.trafficTest.parkingUnknown": "Parkposition „{parking}“ gibt es in {airport} nicht. Einige dort: {labels}.",
   "tools.trafficTest.noHold": "Für die Bahn {runway} in {airport} gibt es keinen Haltepunkt.",
   "tools.trafficTest.noTaxiRoute": "Keine Rollroute von der Parkposition {parking} zu einem Haltepunkt der Bahn {runway}.",
-  "tools.trafficTest.speedMethodUnknown": "Unbekannte Speed-Methode „{method}“ – desired (AI DESIRED SPEED), throttle (fester Schub in den Wegpunkten), velocity (VELOCITY BODY Z) oder off."
+  "tools.trafficTest.speedMethodUnknown": "Unbekannte Speed-Methode „{method}“ – desired (AI DESIRED SPEED), throttle (fester Schub in den Wegpunkten), velocity (VELOCITY BODY Z) oder off.",
+  "tools.followMe.disabled": "Follow-me gibt es in dieser Duopilo-Instanz nicht – es ist ausgeschaltet (Duopilo:FollowMe:Enabled), oder das ist die stdio-Instanz von Claude Desktop (das Fahrzeug kommt nur aus der Tray-Instanz).",
+  "tools.followMe.busy": "Ein Follow-me ist schon unterwegs – erst wegschicken (action cancel).",
+  "tools.followMe.noAirport": "Kein Flughafen: einen angeben (ICAO) oder einen SimBrief-Plan laden.",
+  "tools.followMe.nothing": "Kein Follow-me unterwegs.",
+  "tools.followMe.notOnGround": "Das Flugzeug steht nicht am Boden.",
+  "tools.followMe.noPosition": "Eigene Position oder eigener Kurs unbekannt.",
+  "tools.followMe.noTaxiways": "MSFS hat keine Rollwege für {airport}.",
+  "tools.followMe.notOnTaxiway": "Das Flugzeug steht nicht an einem Rollweg von {airport} (mehr als {meters} m entfernt).",
+  "tools.followMe.gateUnknown": "Parkposition {gate} gibt es in {airport} nicht.",
+  "tools.followMe.noRoute": "Keine Rollroute zu einer freien Parkposition in {airport}, die für ein Follow-me weit genug ist.",
+  "tools.followMe.noRouteToGate": "Keine Rollroute von hier zur Parkposition {gate}, oder sie ist zu nah für ein Follow-me.",
+  "tools.followMe.spawnFailed": "Das Follow-me-Fahrzeug {model} ließ sich nicht erzeugen: {error} Liegt das Fahrzeugpaket von Duopilo im Community-Ordner?",
+  "tools.followMe.failed": "Follow-me fehlgeschlagen: {error}"
 }

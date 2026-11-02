@@ -61,6 +61,9 @@ if (transport == DuopiloTransport.Stdio)
         {
             o.Atc.SessionFile = "atc-session-stdio.json";
         }
+
+        // Das Follow-me-Fahrzeug kommt nur aus der Tray-Instanz – sonst stünden zwei vor dem Flugzeug
+        o.FollowMe.Enabled = false;
     });
     builder.Services
         .AddMcpServer()

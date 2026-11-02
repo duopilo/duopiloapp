@@ -52,6 +52,10 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<AtcService>();
         services.AddHostedService(sp => sp.GetRequiredService<AtcService>());
 
+        // Follow-me nach der Landung, nur auf Anfrage beim Ground (in der stdio-Instanz aus, siehe Program.cs)
+        services.AddSingleton<Duopilo.Vehicles.FollowMeService>();
+        services.AddHostedService(sp => sp.GetRequiredService<Duopilo.Vehicles.FollowMeService>());
+
         // Zustand der Sprachschleife für duopilo_status – die Tray-Instanz ersetzt den Platzhalter (AddDuopiloVoice)
         services.TryAddSingleton<Duopilo.Voice.IVoiceStatusSource, Duopilo.Voice.NoVoiceLoop>();
         return services;

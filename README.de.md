@@ -77,6 +77,7 @@ Bis Version 0.9.x hieß Duopilo **Kopilot**. Das meiste wird von selbst übernom
 | `get_atc_controller` | Duopilo-ATC: aktuelle Station mit Frequenz und Stimme, erwarteter nächster Pilotenspruch, offenes Readback, Squawk, Verlauf |
 | `atc_control` | Duopilo-ATC: Sitzung starten/beenden/neu starten, Vorlagen neu laden, letzten Funkspruch wiederholen |
 | `atc_set_value` | Duopilo-ATC: Gate, Rollhalt, Rollroute, Pushback-Richtung, Anflugart oder Bahn von Hand setzen |
+| `follow_me` | Follow-me nach der Landung (nur auf Anfrage, „request follow-me“ beim Ground): Stand des Fahrzeugs, zum Testen ohne Funk anfordern, abbestellen |
 
 Jede Antwort enthält `activeAlerts`: die gerade aktiven Monitoring-Meldungen. So bekommt Claude Warnungen auch mit, wenn es eigentlich etwas anderes abfragt.
 

@@ -74,6 +74,7 @@ Beim Laden prüft Duopilo auf fehlende Funksprüche, unbekannte Variablen, Readb
 | `sectorMinNm` | Sektoren, die die Route kürzer als dieser Wert (20 nm) berührt, bekommen keine eigene Übergabe |
 | `trafficInfo`, `trafficInfoRangeNm`, `trafficInfoAltitudeFt`, `trafficInfoMissNm` | Traffic-Info von Departure, Center und Approach von sich aus (Standard: innerhalb von 15 nm und 1500 ft, Annäherung auf 5 nm oder weniger in den nächsten drei Minuten) |
 | `trafficSequencing` | Tower nennt die Reihenfolge im Endanflug („number two, follow …“) und gibt frei, sobald der Vorausfliegende gelandet ist |
+| `followMeTimeoutSeconds` | steht ein angefordertes [Follow-me](DE-ATC#follow-me) nach dieser Zeit (240 s) nicht vor dem Flugzeug → „follow-me not available“ mit der Rollfreigabe |
 
 ## Luftraum- und Airline-Daten
 
