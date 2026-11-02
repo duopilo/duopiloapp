@@ -78,7 +78,12 @@ public static class TrafficTestTools
         "15 s (ENGINE_AUTO_SHUTDOWN, simvars off), all lights off after 45 s, the test ends 75 s after landing (landed). Without title " +
         "the Eurocopter EC-135T1 Ambulance in the ADAC livery (helicopter titles: traffic_test_models, helicopter: true; the livery goes " +
         "into livery, not the title). rotor tries to spin the rotor (all, event, simvars, off) – the EC-135 and the PassiveAircraft " +
-        "B212 turned theirs in beta.40; status heli (phase cruise/approach/hover/descent/landed). " +
+        "B212 turned theirs in beta.40; status heli (phase cruise/approach/hover/descent/landed). Variant H2 is a helicopter departure, " +
+        "flown by Duopilo: spawn on the ground on the pad (helipad of airport or latitude/longitude, as H1), rotor start for 30 s with " +
+        "nav, beacon and logo lights, vertical liftoff at 300 ft/min to 10 ft, 5 s hover and turn onto trackDeg (default the pad's " +
+        "heading, a spot north), landing light, strobes and recognition on, then forward at 1 m/s² to cruiseKt (default 90) while " +
+        "climbing – shallow at first, 1000 ft/min from 40 kt – to heightFt (default 1000) above the pad, landing light off there; the " +
+        "test ends endNm (1–20, default 3) from the pad (departed). Status heli (phase startup/liftoff/hover/transition/climb/cruise). " +
         "Up to 4 tests at the same time, one per runway (e.g. a parallel approach: one call for 05L, one for 05R); starting a " +
         "test on a runway that already has one replaces it. Pick runways the pilot is not using right now. Samples (1 per second) go to one CSV " +
         "per test in the data folder (traffic-tests). Follow with traffic_test_status, end with traffic_test_stop (the aircraft is removed; " +
@@ -97,9 +102,9 @@ public static class TrafficTestTools
         "title the model is picked by these rules – by weight from the traffic mix.")]
     public static async Task<string> Start(
         TrafficTestService tests,
-        [Description("ICAO code of the airport, e.g. EDDL (H1: also a heliport). Must be within 80 NM of the pilot's aircraft. Not needed for C2, nor for H1 with latitude/longitude.")] string? airport = null,
-        [Description("Runway end to land on or take off from, e.g. 23L (5L and 05L are the same). Not needed for C2 and H1.")] string? runway = null,
-        [Description("A1 (gear down from spawn, 5 NM), A2 (spawn 15 NM with the gear up, gear down at 3000 ft above the runway), B1 (takeoff from the runway), C1 (overflight at cruise altitude over an airport), C2 (overflight away from airports: over latitude/longitude or the pilot's aircraft), D1 (taxi from a parking spot to the holding point of the runway), B2 (departure from the gate: taxi, line up, take off), B3 (departure from the gate to cruise), A3 (landing with taxi-in to a parking spot) A4 (arrival from cruise: descent, turn onto the final, landing, taxi-in) or H1 (helicopter landing on a helipad or any spot). Default A1.")] string variant = "A1",
+        [Description("ICAO code of the airport, e.g. EDDL (H1, H2: also a heliport). Must be within 80 NM of the pilot's aircraft. Not needed for C2, nor for H1/H2 with latitude/longitude.")] string? airport = null,
+        [Description("Runway end to land on or take off from, e.g. 23L (5L and 05L are the same). Not needed for C2, H1 and H2.")] string? runway = null,
+        [Description("A1 (gear down from spawn, 5 NM), A2 (spawn 15 NM with the gear up, gear down at 3000 ft above the runway), B1 (takeoff from the runway), C1 (overflight at cruise altitude over an airport), C2 (overflight away from airports: over latitude/longitude or the pilot's aircraft), D1 (taxi from a parking spot to the holding point of the runway), B2 (departure from the gate: taxi, line up, take off), B3 (departure from the gate to cruise), A3 (landing with taxi-in to a parking spot) A4 (arrival from cruise: descent, turn onto the final, landing, taxi-in) H1 (helicopter landing on a helipad or any spot) or H2 (helicopter departure from a helipad or any spot). Default A1.")] string variant = "A1",
         [Description("Aircraft title as listed by traffic_test_models. Empty = automatic (an FSLTL A320 if installed, else a verified model of the approval list – a PassiveAircraft model –, else any A320; FlyByWire and Headwind models are skipped).")] string? title = null,
         [Description("Livery name for the title (MSFS 2024 modular aircraft). Empty = default livery.")] string? livery = null,
         [Description("Spawn distance before the threshold in NM (2–30; C1: before the overflight point, 5–75; A4: from the threshold, 20–75; H1: from the pad, 0.5–20). Empty = default of the variant.")] double? spawnNm = null,
@@ -131,9 +136,9 @@ public static class TrafficTestTools
             "0.5 NM, onto the 3° path, flare from 30 ft (general aviation 15 ft) to about 150 ft/min, touchdown around 450 m behind the " +
             "threshold, then braking to the stop point. Needed because the waypoint AI flies no slower than about 169 kt and lands at a " +
             "fixed 133 kt. Empty = waypoint AI to the stop, as before.")] double? kinematicNm = null,
-        [Description("C1, C2: track of the overflight in degrees true; B3: track after the turn. Empty = C1 the direction of the runway, C2 across the pilot's heading (from the left), B3 straight ahead.")] double? trackDeg = null,
+        [Description("C1, C2: track of the overflight in degrees true; B3: track after the turn; H2: track after the takeoff. Empty = C1 the direction of the runway, C2 across the pilot's heading (from the left), B3 straight ahead, H2 the pad's heading (a spot: north).")] double? trackDeg = null,
         [Description("C1, C2, B3: flight level, e.g. 350; A4: the highest it spawns (else on the descent path). Empty = 350 (general aviation 85); C2 over the pilot's aircraft at least 2000 ft above it.")] double? flightLevel = null,
-        [Description("C1, C2, B3, A4: true cruise speed in kt (B3 at cruise level, A4 the most up high); H1: speed to the pad (40–150). Empty = 450 (general aviation twice the approach speed, at most 300; H1 90); the AI takes it as true airspeed.")] double? cruiseKt = null,
+        [Description("C1, C2, B3, A4: true cruise speed in kt (B3 at cruise level, A4 the most up high); H1: speed to the pad, H2: after the takeoff (40–150). Empty = 450 (general aviation twice the approach speed, at most 300; H1/H2 90); the AI takes it as true airspeed.")] double? cruiseKt = null,
         [Description("Start even if the aircraft doesn't fit the runway (runway rules, length, width) – the reasons go into the events. Default false.")] bool ignoreRunwayRules = false,
         [Description(
             "Go around when the approach doesn't fit (default true): too high or too fast at the threshold, or no touchdown by 900 m. " +
@@ -148,14 +153,14 @@ public static class TrafficTestTools
             "at V2 + 10 (general aviation V2) with 2500 ft/min (general aviation 700), nose up to about 15° (path plus angle of attack), " +
             "from 1500 ft above the runway 1500 ft/min and faster, level at 3000 ft. false = waypoint AI as before.")] bool kinematicTakeoff = true,
         [Description("D1, B2 and B3: parking spot to start from; A3 and A4: parking spot to taxi to – e.g. 'A12', 'P5' or 'G3' (traffic_taxi_info lists them). Empty = a free one that fits the type, at random.")] string? parking = null,
-        [Description("C2: latitude of the overflight point. Empty (with longitude) = the pilot's aircraft. H1: latitude of the spot to land on instead of a helipad.")] double? latitude = null,
-        [Description("C2: longitude of the overflight point; H1: of the spot to land on.")] double? longitude = null,
+        [Description("C2: latitude of the overflight point. Empty (with longitude) = the pilot's aircraft. H1/H2: latitude of the spot to land on or take off from instead of a helipad.")] double? latitude = null,
+        [Description("C2: longitude of the overflight point; H1/H2: of the spot to land on or take off from.")] double? longitude = null,
         [Description("C2: pass this many NM beside the point (right of the track positive), e.g. 2 to fly past the pilot. Empty = right over it.")] double? offsetNm = null,
         [Description("A4: direction the arrival comes from, as a bearing from the threshold in degrees true (e.g. 360 = from the north); H1: from the pad. Empty = A4 straight in on the extended centerline, H1 against the pad's heading (a spot: from the pilot's side).")] double? fromDeg = null,
-        [Description("B3: the test ends this many NM from the runway (10–75). Empty = 40.")] double? endNm = null,
-        [Description("H1: helipad of the airport, e.g. H2 (H02 and 2 are the same; traffic_helipads lists them). Empty = the first.")] string? helipad = null,
-        [Description("H1: start height above the pad in ft (200–5000). Empty = 1000.")] double? heightFt = null,
-        [Description("H1: how to try to spin the rotor – 'all' (default: event ENGINE_AUTO_START at spawn and after 5 s, plus GENERAL ENG COMBUSTION, TURB ENG N1, GENERAL ENG RPM and ROTOR GOV TARGET PCT every 3 s), 'event', 'simvars' or 'off'.")] string rotor = "all",
+        [Description("B3: the test ends this many NM from the runway (10–75); H2: from the pad (1–20). Empty = B3 40, H2 3.")] double? endNm = null,
+        [Description("H1, H2: helipad of the airport, e.g. H2 (H02 and 2 are the same; traffic_helipads lists them). Empty = the first.")] string? helipad = null,
+        [Description("H1: start height above the pad in ft, H2: cruise height above the pad (200–5000). Empty = 1000.")] double? heightFt = null,
+        [Description("H1, H2: how to try to spin the rotor – 'all' (default: event ENGINE_AUTO_START at spawn and after 5 s, plus GENERAL ENG COMBUSTION, TURB ENG N1, GENERAL ENG RPM and ROTOR GOV TARGET PCT every 3 s), 'event', 'simvars' or 'off'.")] string rotor = "all",
         CancellationToken cancellationToken = default)
     {
         if (!Enum.TryParse<TrafficTestVariant>(variant?.Trim(), ignoreCase: true, out var parsed) || !Enum.IsDefined(parsed))
@@ -181,7 +186,7 @@ public static class TrafficTestTools
         var missing = parsed switch
         {
             TrafficTestVariant.C2 => false,
-            TrafficTestVariant.H1 => string.IsNullOrWhiteSpace(airport) && latitude is null,
+            TrafficTestVariant.H1 or TrafficTestVariant.H2 => string.IsNullOrWhiteSpace(airport) && latitude is null,
             _ => string.IsNullOrWhiteSpace(airport) || string.IsNullOrWhiteSpace(runway),
         };
         if (missing)
@@ -189,7 +194,7 @@ public static class TrafficTestTools
             return Json.Serialize(new { ok = false, error = Loc.T("tools.trafficTest.airportRequired") });
         }
 
-        if ((parsed is TrafficTestVariant.C2 or TrafficTestVariant.H1) && (latitude is null) != (longitude is null))
+        if ((parsed is TrafficTestVariant.C2 or TrafficTestVariant.H1 or TrafficTestVariant.H2) && (latitude is null) != (longitude is null))
         {
             return Json.Serialize(new { ok = false, error = Loc.T("tools.trafficTest.positionIncomplete") });
         }
@@ -271,7 +276,7 @@ public static class TrafficTestTools
         "distance to the threshold, position relative to the centerline, AI state), events (spawn, gear, touchdown, stopped …) and the " +
         "evaluation: verdict (stopped, landed, floated = hovered above the runway without touching down, airborne, go_around, " +
         "go_around_ignored = went around but touched down anyway; takeoff B1: climbed, climbing, rolling, no_roll, no_liftoff; overflight C1: " +
-        "passed, cruising; taxi D1: parked, taxiing, stopped; helicopter H1: landed, approaching), overflight (when overhead, distance off track, altitude and speed there, max track and altitude deviation, " +
+        "passed, cruising; taxi D1: parked, taxiing, stopped; helicopter H1: landed, approaching; H2: airborne, on_ground), overflight (when overhead, distance off track, altitude and speed there, max track and altitude deviation, " +
         "mean IAS and ground speed), go-around " +
         "(reason, where, height, lowest and highest point after it, seconds until the gear was up, whether 2800 ft were reached), takeoff " +
         "(roll start, liftoff point, speed and pitch, roll distance, height over the runway end, climb rate, pitch and bank up to 1500 ft, " +
