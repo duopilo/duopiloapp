@@ -294,7 +294,8 @@ public sealed class FollowMeTests
         var (clearLat, clearLon) = graph.ToLatLon(clear.East, clear.North);
         Assert.InRange(Math.Abs(end.Offsets(clearLat, clearLon).CrossM), FollowMePlan.ClearOfRunwayM, FollowMePlan.ClearOfRunwayM + 3);
         Assert.Equal(plan.ClearS!.Value + plan.GapM, plan.MeetS, 3);
-        Assert.Empty(plan.CrossingStops);
+        Assert.Empty(plan.Crossings);
+        Assert.Empty(plan.ApproachCrossings);
 
         // Der Weg des Fahrzeugs ist der Rollweg des Flugzeugs: dieselben Meter
         foreach (var s in new[] { 100.0, 400.0, 800.0 })
@@ -356,7 +357,7 @@ public sealed class FollowMeTests
     public void Faehrt_vor_gekreuzter_Bahn_erst_wenn_sie_frei_ist()
     {
         var (graph, basePlan) = Planned();
-        var plan = basePlan with { CrossingStops = [300] };
+        var plan = basePlan with { Crossings = [new FollowMeCrossing("36/18", 300, 400)] };
         var vehicle = new FollowMeVehicle(plan, graph.ToLatLon, 50);
         vehicle.SetAircraft(0, 0);
         Run(vehicle, 200, () => vehicle.Phase == FollowMePhase.InPosition);
@@ -379,13 +380,124 @@ public sealed class FollowMeTests
         Assert.True(vehicle.HoldingShort);
         Assert.Equal(0, vehicle.CrossingsDone);
 
-        // Frei: es kreuzt
+        // Frei: es kreuzt – und bleibt erst stehen (das Flugzeug wartet), wenn die Bahn auch für das Flugzeug hinter ihm frei wäre
+        Assert.Equal("36/18", vehicle.HoldingAt!.Runway);
         vehicle.CrossingClear = true;
         vehicle.SetAircraft(vehicle.ReferenceS - 30, 0);
-        Run(vehicle, 10);
+        Run(vehicle, 60);
         Assert.False(vehicle.HoldingShort);
         Assert.Equal(1, vehicle.CrossingsDone);
-        Assert.True(vehicle.ReferenceS > 300.5);
+        var clear = 400 + (plan.GapM * FollowMeProfile.MinGapFactor) + FollowMeVehicle.ClearMarginM;
+        Assert.InRange(vehicle.ReferenceS, clear - 0.5, clear + 15);
+        Assert.InRange(vehicle.SpeedMps, 0, 0.01);
+    }
+
+    // ------------------------------------------------------------------ KI mit gekreuzter Bahn
+
+    // Landung auf der 27, Abrollen bei Ost 200 nach Norden (C), bei Nord b (300) nach Westen (B) über die Querbahn 36/18 (Mitte Ost 0 /
+    // Nord 700, 1000 m lang: Nord 200 bis 1200) mit Haltepunkten 90 m beiderseits, Parkposition A1 bei (-600/b+50), B geht weiter nach Westen
+    private static readonly AirportRunway CrossRunway = new(51.0 + (700 / 111_250.0), 7.0, 50, 0, 1000, 45, "36", "18");
+
+    private static TaxiGraph CrossingGraph(double b = 300)
+    {
+        TaxiPointData P(double east, double north, int type = 1) => new(type, 0, east, north);
+        var data = new AirportTaxiData(
+            "EDXT",
+            51.0,
+            7.0,
+            50,
+            [
+                P(-1000, 0),       // 0 Bahnanfang West
+                P(200, 0),         // 1 Abrollpunkt
+                P(1000, 0),        // 2 Bahnende Ost
+                P(200, 90, 2),     // 3 Haltepunkt an C
+                P(200, b),         // 4
+                P(90, b, 2),       // 5 Haltepunkt vor 36/18
+                P(0, b),           // 6 auf 36/18
+                P(-90, b, 2),      // 7 Haltepunkt der Gegenrichtung
+                P(-600, b),        // 8 Einfahrt
+                P(-1000, b),       // 9 B weiter nach Westen
+                P(0, 200),         // 10 Ende 18
+                P(0, 1200),        // 11 Ende 36
+            ],
+            [new TaxiParkingData(9, 0, 12, 0, 1, 0, 0, 20, -600, b + 50)],
+            [
+                new TaxiPathData(2, 45, 9, 0, 0, 1, 0),
+                new TaxiPathData(2, 45, 9, 0, 1, 2, 0),
+                new TaxiPathData(1, 20, 0, 0, 1, 3, 1),
+                new TaxiPathData(1, 20, 0, 0, 3, 4, 1),
+                new TaxiPathData(1, 20, 0, 0, 4, 5, 0),
+                new TaxiPathData(1, 20, 0, 0, 5, 6, 0),
+                new TaxiPathData(1, 20, 0, 0, 6, 7, 0),
+                new TaxiPathData(1, 20, 0, 0, 7, 8, 0),
+                new TaxiPathData(1, 20, 0, 0, 8, 9, 0),
+                new TaxiPathData(2, 45, 36, 0, 10, 6, 0),
+                new TaxiPathData(2, 45, 36, 0, 6, 11, 0),
+                new TaxiPathData(3, 20, 0, 0, 8, 0, 0),
+            ],
+            ["B", "C"]);
+        return TaxiGraph.Build(data, [Runway, CrossRunway]);
+    }
+
+    private static (TaxiGraph Graph, TaxiRoute Route, FollowMePlan Plan) ArrivalWithCrossing(double b = 300)
+    {
+        var graph = CrossingGraph(b);
+        var end = RunwayEnd.Find("EDXT", [Runway, CrossRunway], "27")!;
+        var route = TaxiRoute.PlanArrival(graph, end, graph.FindParking("A1")!, TaxiProfile.Airliner, 500)!.WithCrossings(graph, TaxiProfile.Airliner, Runway);
+        var plan = FollowMePlan.FromArrival(graph, route, end, FollowMeProfile.GapM(TrafficWake.Medium));
+        Assert.NotNull(plan);
+        return (graph, route, plan!);
+    }
+
+    [Fact]
+    public void KI_Follow_me_kreuzt_auf_dem_Weg_entgegen_erst_wenn_die_Bahn_frei_ist()
+    {
+        var (graph, route, plan) = ArrivalWithCrossing();
+
+        // Vorweg: derselbe Halt wie der des Flugzeugs (12 m vor dem Haltepunkt bei Ost 90), frei gegenüber (Ost -102)
+        var crossing = Assert.Single(route.Crossings);
+        var lead = Assert.Single(plan.Crossings);
+        Assert.Equal("36/18", lead.Runway);
+        Assert.Equal(crossing.StopS, lead.StopM, 1);
+        Assert.InRange(plan.Reference.At(lead.ClearM).East, -106, -98);
+
+        // Entgegen: es startet hinter der Querbahn und hält auf der anderen Seite (Ost -102, nach Osten), frei ab dem Halt des Flugzeugs
+        Assert.True(plan.Approach.At(0).East < -150, $"Start bei Ost {plan.Approach.At(0).East:0}");
+        var approach = Assert.Single(plan.ApproachCrossings);
+        var hold = plan.Approach.At(approach.StopM);
+        Assert.InRange(hold.East, -106, -98);
+        Assert.InRange(hold.North, 298, 302);
+        Assert.InRange(hold.HeadingDeg, 85, 95);
+        Assert.InRange(plan.Approach.At(approach.ClearM).East, 98, 106);
+
+        var vehicle = new FollowMeVehicle(plan, graph.ToLatLon, 50);
+        vehicle.SetAircraft(0, 0);
+        Run(vehicle, 200, () => vehicle.HoldingShort);
+        Assert.Equal(FollowMePhase.Approach, vehicle.Phase);
+        Assert.Same(approach, vehicle.HoldingAt);
+        Assert.InRange(vehicle.DistanceM, approach.StopM - 0.5, approach.StopM + 0.1);
+
+        // Ohne Freigabe bleibt es stehen, danach fährt es weiter, wendet und wartet
+        Run(vehicle, 30);
+        Assert.True(vehicle.HoldingShort);
+        vehicle.CrossingClear = true;
+        Run(vehicle, 200, () => vehicle.Phase == FollowMePhase.InPosition);
+        Assert.Equal(FollowMePhase.InPosition, vehicle.Phase);
+        Assert.Equal(1, vehicle.ApproachCrossingsDone);
+        Assert.Equal(0, vehicle.CrossingsDone);
+    }
+
+    [Fact]
+    public void KI_Follow_me_startet_nicht_auf_einer_gekreuzten_Bahn()
+    {
+        // B bei Nord 600: 600 m hinter dem Treffpunkt läge der Start auf der Querbahn – er wird vor sie gelegt, kein Kreuzen entgegen
+        var (_, _, plan) = ArrivalWithCrossing(600);
+        var crossing = Assert.Single(plan.Crossings);
+        Assert.True(plan.MeetS + FollowMeProfile.SpawnAheadM < crossing.ClearM, $"Treffpunkt {plan.MeetS:0}, frei ab {crossing.ClearM:0}");
+        Assert.Empty(plan.ApproachCrossings);
+        var start = plan.Approach.At(0);
+        Assert.InRange(start.East, 102, 108);
+        Assert.InRange(start.North, 598, 602);
     }
 
     [Fact]

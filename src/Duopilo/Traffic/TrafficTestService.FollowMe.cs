@@ -9,12 +9,13 @@ namespace Duopilo.Traffic;
 /// Follow-me für den eigenen KI-Verkehr (A3, A4 mit followMe, docs/research/follow-me.md): Nach der Prüfung der Parkposition 2 NM vor
 /// der Schwelle fährt das Fahrzeug los und wartet gewendet hinter der Stelle, an der das Flugzeug die Bahn verlässt. Das Flugzeug rollt
 /// bis dorthin und folgt dann mit Abstand (Halt hinter dem Fahrzeug über <see cref="TaxiKinematics.TrafficStopS"/>); das Fahrzeug regelt
-/// seine Geschwindigkeit nach dem Flugzeug, hält vor gekreuzten Bahnen, bis sie frei sind, und fährt am Gate vorbei und weg.
+/// seine Geschwindigkeit nach dem Flugzeug, hält vor gekreuzten Bahnen (auch auf dem Weg entgegen), bis sie frei sind, und fährt am Gate
+/// vorbei und weg.
 /// </summary>
 public sealed partial class TrafficTestService
 {
     /// <summary>So nah darf das Flugzeug dem Fahrzeug kommen (Anteil des Abstands) – darunter bremst es.</summary>
-    public const double FollowMeMinGapFactor = 0.6;
+    public const double FollowMeMinGapFactor = FollowMeProfile.MinGapFactor;
 
     private const double MetersPerSecondPerKnot = 0.514444;
 
@@ -63,9 +64,8 @@ public sealed partial class TrafficTestService
         }
 
         run.FollowMePlan = plan;
-        run.FollowMeCrossings = [.. route.Crossings.Where(c => c.StopS > plan.MeetS && c.StopS < plan.StandEntryS).OrderBy(c => c.StopS)];
         run.AddEvent(seconds, string.Create(CultureInfo.InvariantCulture,
-            $"follow_me_planned meet {plan.MeetS:0} m (off the runway at {plan.ClearS:0} m), gap {plan.GapM:0} m, approach {plan.Approach.LengthM:0} m, {run.FollowMeCrossings.Count} crossings"));
+            $"follow_me_planned meet {plan.MeetS:0} m (off the runway at {plan.ClearS:0} m), gap {plan.GapM:0} m, approach {plan.Approach.LengthM:0} m, crossings {plan.ApproachCrossings.Count} approaching, {plan.Crossings.Count} leading"));
         try
         {
             var unit = await _followMe.SpawnAsync(plan, graph, run.InitialPlan.Runway.ElevationFt, vehicle => FollowMeFrameBefore(run, vehicle), vehicle => FollowMeFrameAfter(run, vehicle), CancellationToken.None);
@@ -118,6 +118,7 @@ public sealed partial class TrafficTestService
         }
 
         var vehicle = unit.Vehicle;
+        run.FollowMeCrossingsDone = vehicle.ApproachCrossingsDone + vehicle.CrossingsDone;
         var phase = FollowMePhaseName(vehicle);
         if (phase != run.FollowMePhaseLogged)
         {
@@ -127,15 +128,15 @@ public sealed partial class TrafficTestService
             {
                 "in_position" => "follow_me_wait in position" + gap,
                 "leading" => "follow_me_lead" + gap,
-                "holding_short" => "follow_me_holding_short " + (vehicle.CrossingsDone < run.FollowMeCrossings.Count ? run.FollowMeCrossings[vehicle.CrossingsDone].Runway : "?"),
+                "holding_short" => "follow_me_holding_short " + (vehicle.HoldingAt?.Runway ?? "?") + (vehicle.Phase == FollowMePhase.Approach ? " approaching" : ""),
                 "finished" => "follow_me_done",
                 _ => "follow_me_" + phase,
             });
         }
 
-        if (vehicle.HoldingShort && !vehicle.CrossingClear && vehicle.CrossingsDone < run.FollowMeCrossings.Count)
+        if (vehicle.HoldingAt is { } crossing && !vehicle.CrossingClear)
         {
-            CheckRunwayForFollowMe(run, vehicle, run.FollowMeCrossings[vehicle.CrossingsDone], seconds);
+            CheckRunwayForFollowMe(run, vehicle, crossing.Runway, seconds);
         }
 
         if (vehicle.Phase == FollowMePhase.Gone)
@@ -149,9 +150,9 @@ public sealed partial class TrafficTestService
     /// der Bahn oder im Endanflug bis 4 NM ist (<see cref="RunwayOccupancy"/>); ohne Antwort nach <see cref="RunwayCheckGiveUpSeconds"/>
     /// trotzdem. Das eigene Testflugzeug zählt nicht.
     /// </summary>
-    private void CheckRunwayForFollowMe(TrafficTestRun run, FollowMeVehicle vehicle, TaxiCrossing crossing, double seconds)
+    private void CheckRunwayForFollowMe(TrafficTestRun run, FollowMeVehicle vehicle, string crossedRunway, double seconds)
     {
-        if (run.TaxiGraph is not { } graph || run.FollowMeScanBusy || RunwayOf(graph.Runways, crossing.Runway.Split('/')[0]) is not { } runway)
+        if (run.TaxiGraph is not { } graph || run.FollowMeScanBusy || RunwayOf(graph.Runways, crossedRunway.Split('/')[0]) is not { } runway)
         {
             return;
         }
@@ -175,7 +176,7 @@ public sealed partial class TrafficTestService
                 {
                     if (holding >= RunwayCheckGiveUpSeconds)
                     {
-                        Clear("warning:follow_me_runway_unknown " + crossing.Runway + " (" + scan.Error + "), going on");
+                        Clear("warning:follow_me_runway_unknown " + crossedRunway + " (" + scan.Error + "), going on");
                     }
 
                     return;
@@ -184,7 +185,7 @@ public sealed partial class TrafficTestService
                 var blocker = RunwayOccupancy.Blocker(graph.Icao, runway, scan.Samples, run.ObjectId, RunwayOccupancy.FinalNm);
                 if (blocker is null)
                 {
-                    Clear(string.Create(CultureInfo.InvariantCulture, $"follow_me_runway_clear {crossing.Runway} after {holding:0} s"));
+                    Clear(string.Create(CultureInfo.InvariantCulture, $"follow_me_runway_clear {crossedRunway} after {holding:0} s"));
                 }
             }
             catch (Exception ex) when (ex is OperationCanceledException or InvalidOperationException or TimeoutException or ObjectDisposedException)
@@ -253,7 +254,7 @@ public sealed partial class TrafficTestService
             plan.GapM,
             vehicle is not null && !double.IsNaN(vehicle.GapM) ? Math.Round(vehicle.GapM) : null,
             vehicle is not null ? Math.Round(vehicle.SpeedMps / MetersPerSecondPerKnot, 1) : 0,
-            vehicle?.CrossingsDone ?? 0,
-            run.FollowMeCrossings.Count);
+            vehicle is null ? run.FollowMeCrossingsDone : vehicle.ApproachCrossingsDone + vehicle.CrossingsDone,
+            plan.ApproachCrossings.Count + plan.Crossings.Count);
     }
 }

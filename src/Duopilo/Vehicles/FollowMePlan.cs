@@ -49,7 +49,18 @@ public static class FollowMeProfile
 
     /// <summary>So weit darf das Flugzeug höchstens neben einem Rollweg stehen, damit die Route von dort beginnt.</summary>
     public const double MaxOffTaxiwayM = 60;
+
+    /// <summary>KI-Verkehr: So nah darf das Flugzeug dem Fahrzeug kommen (Anteil des Abstands) – darunter bremst es.</summary>
+    public const double MinGapFactor = 0.6;
 }
+
+/// <summary>
+/// Gekreuzte Bahn auf dem Weg des Fahrzeugs (Meter auf <see cref="FollowMePlan.Approach"/> bzw. <see cref="FollowMePlan.Reference"/>):
+/// Halt davor bei <paramref name="StopM"/>, ab <paramref name="ClearM"/> liegt sie hinter ihm (auf der anderen Seite so weit von der
+/// Mittellinie wie der Halt).
+/// </summary>
+/// <param name="Runway">Die gekreuzte Bahn ("05R/23L").</param>
+public sealed record FollowMeCrossing(string Runway, double StopM, double ClearM);
 
 /// <summary>
 /// Weg des Follow-me (Meter östlich/nördlich wie im <see cref="TaxiGraph"/>):
@@ -93,8 +104,17 @@ public sealed record FollowMePlan(
     /// <summary>KI-Verkehr: Hier hat das Flugzeug die Bahn verlassen (auf <see cref="Reference"/>); bis hierhin rollt es, solange das Fahrzeug noch nicht steht.</summary>
     public double? ClearS { get; init; }
 
-    /// <summary>Halte vor gekreuzten Bahnen auf <see cref="Reference"/> (KI-Verkehr: dieselben wie die des Flugzeugs).</summary>
-    public IReadOnlyList<double> CrossingStops { get; init; } = [];
+    /// <summary>Gekreuzte Bahnen beim Vorwegfahren, Meter auf <see cref="Reference"/> (KI-Verkehr: dieselben Halte wie die des Flugzeugs).</summary>
+    public IReadOnlyList<FollowMeCrossing> Crossings { get; init; } = [];
+
+    /// <summary>
+    /// Gekreuzte Bahnen auf dem Weg entgegen, Meter auf <see cref="Approach"/>: Halt auf der Seite, von der das Fahrzeug kommt, frei auf
+    /// der Seite des Flugzeugs.
+    /// </summary>
+    public IReadOnlyList<FollowMeCrossing> ApproachCrossings { get; init; } = [];
+
+    /// <summary>Nach einer gekreuzten Bahn so weit dahinter starten, sonst (Start auf oder dicht hinter der Bahn) vor ihr.</summary>
+    private const double SpawnClearM = 20;
 
     /// <summary>Nach der Wendeschleife so weit geradeaus bis zum Wartepunkt.</summary>
     private const double WaitAheadM = 2;
@@ -143,7 +163,8 @@ public sealed record FollowMePlan(
     /// Plant das Follow-me für eine Landung mit Rollen des eigenen KI-Verkehrs (A3, A4): Weg des Fahrzeugs = Rollweg des Flugzeugs
     /// (<see cref="TaxiRoute.TaxiPath"/> ab der Übergabe auf der Bahn), Treffpunkt <paramref name="gapM"/> hinter der Stelle, an der das
     /// Flugzeug die Bahn verlassen hat (<see cref="ClearS"/>, <see cref="ClearOfRunwayM"/> von der Mittellinie), Halte vor gekreuzten Bahnen
-    /// wie die des Flugzeugs (<see cref="CrossingStops"/>). Null = der Weg reicht nicht für ein Follow-me.
+    /// wie die des Flugzeugs (<see cref="Crossings"/>), auf dem Weg entgegen auf der anderen Seite (<see cref="ApproachCrossings"/>). Läge
+    /// der Start auf einer gekreuzten Bahn oder dicht dahinter, startet das Fahrzeug vor ihr. Null = der Weg reicht nicht für ein Follow-me.
     /// </summary>
     public static FollowMePlan? FromArrival(TaxiGraph graph, TaxiRoute route, RunwayEnd runway, double gapM)
     {
@@ -181,9 +202,76 @@ public sealed record FollowMePlan(
         points.AddRange(beyond);
         var reference = TaxiPath.Build(points, FollowMeProfile.LeadTurnRadiusM, FollowMeProfile.MaxMps, FollowMeProfile.LateralMps2, FollowMeProfile.MinTurnMps);
         var entryS = reference.NearestS(entry.EastM, entry.NorthM);
-        return Assemble(route.Parking, nodes, route.Taxiways, reference, entryS, clearS + gapM, gapM, driveOff) is { } plan
-            ? plan with { ClearS = clearS, CrossingStops = [.. route.Crossings.Select(c => c.StopS).Where(c => c > clearS + gapM && c < entryS).Order()] }
-            : null;
+        var meetS = clearS + gapM;
+
+        // Gekreuzte Bahnen hinter dem Treffpunkt: Halt wie das Flugzeug, frei auf der anderen Seite
+        var crossings = route.Crossings
+            .Where(c => c.StopS > meetS && c.StopS < entryS)
+            .OrderBy(c => c.StopS)
+            .Select(c => new FollowMeCrossing(c.Runway, c.StopS, FarSide(graph, reference, c)))
+            .ToList();
+
+        // Start nicht auf einer Bahn oder dicht dahinter: dann davor
+        var spawnS = Math.Min(entryS, meetS + FollowMeProfile.SpawnAheadM);
+        if (crossings.FirstOrDefault(c => c.StopM < spawnS && spawnS < c.ClearM + SpawnClearM) is { } onRunway)
+        {
+            spawnS = onRunway.StopM - 1;
+        }
+
+        if (Assemble(route.Parking, nodes, route.Taxiways, reference, entryS, meetS, gapM, driveOff, spawnS) is not { } plan)
+        {
+            return null;
+        }
+
+        // Auf dem Weg entgegen (die Route rückwärts ab spawnS): Halt auf der anderen Seite, frei am Halt des Flugzeugs
+        var approach = new List<FollowMeCrossing>();
+        foreach (var c in crossings.Where(c => c.ClearM + SpawnClearM <= spawnS))
+        {
+            approach.Add(new FollowMeCrossing(c.Runway, Math.Round(OnApproach(plan.Approach, reference, spawnS, c.ClearM), 1), Math.Round(OnApproach(plan.Approach, reference, spawnS, c.StopM), 1)));
+        }
+
+        return plan with { ClearS = clearS, Crossings = crossings, ApproachCrossings = [.. approach.OrderBy(c => c.StopM)] };
+    }
+
+    /// <summary>
+    /// Hinter dem Halt vor <paramref name="crossing"/> die Stelle auf <paramref name="path"/>, die auf der anderen Seite der Bahn wieder so
+    /// weit von der Mittellinie liegt; ohne Bahn im Netz oder ohne solche Stelle: so weit hinter dem Halt wie zweimal der Abstand zur Mittellinie.
+    /// </summary>
+    private static double FarSide(TaxiGraph graph, TaxiPath path, TaxiCrossing crossing)
+    {
+        var fallback = crossing.StopS + (2 * crossing.CenterlineM);
+        if (RunwayEnd.Find(graph.Icao, graph.Runways, crossing.Runway.Split('/')[0]) is not { } end)
+        {
+            return fallback;
+        }
+
+        double Cross(double s)
+        {
+            var p = path.At(s);
+            var (lat, lon) = graph.ToLatLon(p.East, p.North);
+            return end.Offsets(lat, lon).CrossM;
+        }
+
+        var near = Cross(crossing.StopS);
+        var hold = Math.Abs(near);
+        for (var s = crossing.StopS + 2; s <= path.LengthM; s += 2)
+        {
+            var x = Cross(s);
+            if (Math.Sign(x) != Math.Sign(near) && Math.Abs(x) >= hold)
+            {
+                return s;
+            }
+        }
+
+        return fallback;
+    }
+
+    /// <summary>Stelle <paramref name="referenceS"/> auf dem Weg entgegen (der beginnt bei <paramref name="spawnS"/> und fährt die Route rückwärts).</summary>
+    private static double OnApproach(TaxiPath approach, TaxiPath reference, double spawnS, double referenceS)
+    {
+        var p = reference.At(referenceS);
+        var guess = spawnS - referenceS;
+        return approach.NearestS(p.East, p.North, Math.Max(0, guess - 30), guess + 30);
     }
 
     /// <summary>Auf <paramref name="path"/> die erste Stelle, die <see cref="ClearOfRunwayM"/> (sonst 60 m) neben der Mittellinie liegt.</summary>
@@ -214,7 +302,8 @@ public sealed record FollowMePlan(
         double entryS,
         double meetS,
         double gapM,
-        List<(double East, double North)> driveOff)
+        List<(double East, double North)> driveOff,
+        double? spawnAtS = null)
     {
         if (entryS < Math.Max(FollowMeProfile.MinRouteM, meetS + FollowMeProfile.MergeM + 20))
         {
@@ -230,7 +319,7 @@ public sealed record FollowMePlan(
 
         // Entgegen: die Route rückwärts bis kurz vor den Treffpunkt, Spurwechsel nach links (in Fahrtrichtung des Fahrzeugs rechts),
         // dann die Wendeschleife um E herum zur Seite des Flugzeugs – danach steht es rechts der Mittellinie in Richtung Gate
-        var spawnS = Math.Min(entryS, meetS + FollowMeProfile.SpawnAheadM);
+        var spawnS = spawnAtS ?? Math.Min(entryS, meetS + FollowMeProfile.SpawnAheadM);
         var approach = new List<(double East, double North)>();
         for (var s = spawnS; s > meetS + FollowMeProfile.MergeM; s -= SampleM)
         {

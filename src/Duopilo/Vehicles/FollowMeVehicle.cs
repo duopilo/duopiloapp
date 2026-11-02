@@ -61,7 +61,8 @@ public sealed class FollowMeVehicle
     private bool _leavingOnLead;
     private volatile bool _crossingClear;
     private volatile int _crossingsDone;
-    private volatile bool _holdingShort;
+    private volatile int _approachCrossingsDone;
+    private volatile FollowMeCrossing? _holdingAt;
     private double _holdSeconds;
 
     public FollowMeVehicle(FollowMePlan plan, Func<double, double, (double Latitude, double Longitude)> toLatLon, double groundFt, double heightFt = 0)
@@ -114,11 +115,23 @@ public sealed class FollowMeVehicle
     /// <summary>Vor gekreuzten Bahnen mindestens so lange halten.</summary>
     public const double CrossingHoldSeconds = 3;
 
-    /// <summary>Steht vor einer gekreuzten Bahn (<see cref="FollowMePlan.CrossingStops"/>) und wartet auf <see cref="CrossingClear"/>.</summary>
-    public bool HoldingShort => _holdingShort;
+    /// <summary>Über eine gekreuzte Bahn mindestens so schnell, bis sie auch für das Flugzeug dahinter frei ist.</summary>
+    public const double CrossingMps = 5;
 
-    /// <summary>So viele Bahnen sind gekreuzt (bzw. der Index der Bahn, vor der es hält).</summary>
+    /// <summary>Hinter einer gekreuzten Bahn noch so viel Luft, bevor es anhalten darf.</summary>
+    public const double ClearMarginM = 10;
+
+    /// <summary>Steht vor einer gekreuzten Bahn (<see cref="HoldingAt"/>) und wartet auf <see cref="CrossingClear"/>.</summary>
+    public bool HoldingShort => _holdingAt is not null;
+
+    /// <summary>Die Bahn, vor der es gerade steht (auf dem Weg entgegen oder vorweg), sonst null.</summary>
+    public FollowMeCrossing? HoldingAt => _holdingAt;
+
+    /// <summary>So viele Bahnen sind beim Vorwegfahren gekreuzt (<see cref="FollowMePlan.Crossings"/>).</summary>
     public int CrossingsDone => _crossingsDone;
+
+    /// <summary>So viele Bahnen sind auf dem Weg entgegen gekreuzt (<see cref="FollowMePlan.ApproachCrossings"/>).</summary>
+    public int ApproachCrossingsDone => _approachCrossingsDone;
 
     /// <summary>Die Bahn vor dem Fahrzeug ist frei (setzt der Verkehrstest aus der Verkehrsabfrage, aus einem anderen Thread).</summary>
     public bool CrossingClear
@@ -162,7 +175,24 @@ public sealed class FollowMeVehicle
         switch (_phase)
         {
             case FollowMePhase.Approach:
-                Move(_plan.Approach, FollowMeProfile.MaxMps, dt);
+                if (_holdingAt is not null)
+                {
+                    if (HoldShort(dt))
+                    {
+                        _approachCrossingsDone++;
+                    }
+
+                    break;
+                }
+
+                var ahead = NextApproachCrossing();
+                Move(_plan.Approach, FollowMeProfile.MaxMps, dt, ahead?.StopM);
+                if (ahead is not null && DistanceM >= ahead.StopM - 0.05)
+                {
+                    StartHold(ahead);
+                    break;
+                }
+
                 if (AtEnd(_plan.Approach))
                 {
                     SpeedMps = 0;
@@ -173,29 +203,25 @@ public sealed class FollowMeVehicle
 
             case FollowMePhase.InPosition:
             case FollowMePhase.Leading:
-                if (_holdingShort)
+                if (_holdingAt is not null)
                 {
-                    // Vor der gekreuzten Bahn: Mindestzeit und frei
-                    SpeedMps = 0;
-                    _holdSeconds += dt;
-                    if (_holdSeconds >= CrossingHoldSeconds && _crossingClear)
+                    if (HoldShort(dt))
                     {
                         _crossingsDone++;
-                        _holdingShort = false;
-                        _crossingClear = false;
                     }
 
                     break;
                 }
 
-                var crossing = NextCrossingLeadM();
-                Move(_plan.Lead, TargetMps(), dt, crossing);
-                if (crossing is { } stopAt && DistanceM >= stopAt - 0.05)
+                var crossing = NextLeadCrossing();
+                double? stopAt = crossing is null ? null : LeadM(crossing.StopM);
+
+                // Auf und dicht hinter einer gekreuzten Bahn nicht stehen bleiben, auch wenn das Flugzeug wartet
+                var target = ClearingRunway() ? Math.Max(TargetMps(), CrossingMps) : TargetMps();
+                Move(_plan.Lead, target, dt, stopAt);
+                if (crossing is not null && DistanceM >= stopAt!.Value - 0.05)
                 {
-                    SpeedMps = 0;
-                    _holdingShort = true;
-                    _holdSeconds = 0;
-                    _crossingClear = false;
+                    StartHold(crossing);
                     break;
                 }
 
@@ -236,7 +262,9 @@ public sealed class FollowMeVehicle
             case FollowMePhase.Leaving:
                 var before = DistanceM;
                 var path = _leavingOnLead ? _plan.Lead : _plan.Approach;
-                var leaveStop = _leavingOnLead ? NextCrossingLeadM() : null;
+                double? leaveStop = _leavingOnLead
+                    ? (NextLeadCrossing() is { } leadCrossing ? LeadM(leadCrossing.StopM) : null)
+                    : NextApproachCrossing()?.StopM;
                 Move(path, FollowMeProfile.MaxMps, dt, leaveStop);
                 if (_leavingOnLead)
                 {
@@ -308,6 +336,7 @@ public sealed class FollowMeVehicle
 
     private void StartLeaving()
     {
+        _holdingAt = null;
         switch (_phase)
         {
             case FollowMePhase.Approach:
@@ -359,11 +388,61 @@ public sealed class FollowMeVehicle
 
     private bool AtEnd(TaxiPath path) => DistanceM >= path.LengthM - 0.05 || (SpeedMps < 0.1 && path.LengthM - DistanceM < 0.5 && _phase != FollowMePhase.InPosition && _phase != FollowMePhase.Leading);
 
-    /// <summary>Nächster Halt vor einer gekreuzten Bahn auf <see cref="FollowMePlan.Lead"/>, null = keiner mehr.</summary>
-    private double? NextCrossingLeadM()
+    /// <summary>Nächste gekreuzte Bahn beim Vorwegfahren, null = keine mehr.</summary>
+    private FollowMeCrossing? NextLeadCrossing()
     {
         var done = _crossingsDone;
-        return done < _plan.CrossingStops.Count ? Math.Max(0, _plan.CrossingStops[done] - _plan.LeadOffsetS) : null;
+        return done < _plan.Crossings.Count ? _plan.Crossings[done] : null;
+    }
+
+    /// <summary>Nächste gekreuzte Bahn auf dem Weg entgegen, null = keine mehr.</summary>
+    private FollowMeCrossing? NextApproachCrossing()
+    {
+        var done = _approachCrossingsDone;
+        return done < _plan.ApproachCrossings.Count ? _plan.ApproachCrossings[done] : null;
+    }
+
+    /// <summary>Stelle auf <see cref="FollowMePlan.Reference"/> als Meter auf <see cref="FollowMePlan.Lead"/>.</summary>
+    private double LeadM(double referenceS) => Math.Max(0, referenceS - _plan.LeadOffsetS);
+
+    /// <summary>
+    /// Die zuletzt gekreuzte Bahn liegt noch nicht so weit hinter dem Fahrzeug, dass auch das Flugzeug mit seinem kleinsten Abstand
+    /// (<see cref="FollowMeProfile.MinGapFactor"/>) von ihr weg wäre.
+    /// </summary>
+    private bool ClearingRunway()
+    {
+        var done = _crossingsDone;
+        if (done == 0 || done > _plan.Crossings.Count)
+        {
+            return false;
+        }
+
+        var clear = _plan.Crossings[done - 1].ClearM + (_plan.GapM * FollowMeProfile.MinGapFactor) + ClearMarginM;
+        return LeadM(clear) > DistanceM;
+    }
+
+    /// <summary>Vor der Bahn anhalten und auf die Freigabe warten.</summary>
+    private void StartHold(FollowMeCrossing crossing)
+    {
+        SpeedMps = 0;
+        _holdSeconds = 0;
+        _crossingClear = false;
+        _holdingAt = crossing;
+    }
+
+    /// <summary>Vor der Bahn stehen: true = Mindestzeit vorbei und frei, es geht weiter.</summary>
+    private bool HoldShort(double dt)
+    {
+        SpeedMps = 0;
+        _holdSeconds += dt;
+        if (_holdSeconds < CrossingHoldSeconds || !_crossingClear)
+        {
+            return false;
+        }
+
+        _holdingAt = null;
+        _crossingClear = false;
+        return true;
     }
 
     /// <summary>

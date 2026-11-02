@@ -296,6 +296,7 @@ public sealed record TrafficTestTaxi(
 /// <param name="MeetM">Treffpunkt auf dem Rollweg (Meter ab der Übergabe auf der Bahn).</param>
 /// <param name="ClearM">Bis hierhin rollt das Flugzeug, solange das Fahrzeug noch nicht gewendet hat (die Bahn ist dort verlassen).</param>
 /// <param name="GapM">Abstand Fahrzeug – Flugzeug entlang des Rollwegs, sobald es gewendet hat.</param>
+/// <param name="Crossings">Gekreuzte Bahnen des Fahrzeugs (auf dem Weg entgegen und vorweg); <paramref name="CrossingsDone"/> davon gekreuzt.</param>
 public sealed record TrafficTestFollowMe(
     string Phase,
     uint? ObjectId,
@@ -3083,8 +3084,8 @@ public sealed partial class TrafficTestService : IHostedService, IDisposable
         /// <summary>Plan des Follow-me (auch wenn das Fahrzeug schon weg ist).</summary>
         public FollowMePlan? FollowMePlan { get; set; }
 
-        /// <summary>Die gekreuzten Bahnen auf dem Weg des Fahrzeugs (dieselben wie in <see cref="FollowMePlan.CrossingStops"/>).</summary>
-        public IReadOnlyList<TaxiCrossing> FollowMeCrossings { get; set; } = [];
+        /// <summary>So viele Bahnen hat das Fahrzeug gekreuzt (bleibt, wenn es weg ist).</summary>
+        public int FollowMeCrossingsDone { get; set; }
 
         /// <summary>Belegtes Fahrzeug des Flughafens (<see cref="FollowMeFleet"/>).</summary>
         public IDisposable? FollowMeLease { get; set; }
