@@ -44,8 +44,9 @@ See [SimBrief & Flight Plan](SimBrief-and-Flight-Plan).
 | Tool | Content |
 |---|---|
 | `get_traffic` | traffic nearby (AI, live, multiplayer): callsign, type, distance, clock position, altitude difference, trend, GS, callout for the closest target |
-| `traffic_test_start` | developer test, off by default: spawns an AI aircraft (`DUO01`–`DUO04`) that flies a final approach and lands or goes around (A1, A2) or takes off and climbs away (B1) or crosses at cruise altitude (C1) or taxis from a parking spot to the holding point (D1), departs from the gate (B2) or lands and taxis in to a parking spot (A3), up to 4 at once, one per runway; refuses aircraft that don't fit the runway (runway rules, length, width) |
+| `traffic_test_start` | developer test, off by default: spawns an AI aircraft (`DUO01`–`DUO04`) that flies a final approach and lands or goes around (A1, A2) or takes off and climbs away (B1) or crosses at cruise altitude (C1) or taxis from a parking spot to the holding point (D1), departs from the gate (B2), lands and taxis in to a parking spot (A3), arrives from cruise (A4), departs to cruise (B3) or lands a helicopter on a helipad or any spot (H1), up to 4 at once, one per runway; refuses aircraft that don't fit the runway (runway rules, length, width) |
 | `traffic_taxi_info` | developer tool: the taxiway network of an airport from MSFS (parking spots, holding points per runway, taxiways, how the positions fit) and the taxi route to a runway, without spawning |
+| `traffic_helipads` | developer tool: the helipads of an airport or heliport from MSFS (label, position, elevation, heading, size, marking) for the helicopter landing (H1), without spawning |
 | `traffic_test_status` | state and evaluation of the traffic tests (touchdown, flare, floating, speed against request, stop point, go-around, CSV file) |
 | `traffic_test_stop` | ends the traffic tests (or the one on a runway) and removes the aircraft |
 | `traffic_test_models` | installed aircraft models (title, livery) for the traffic test, with ICAO type and status from the approval list |
