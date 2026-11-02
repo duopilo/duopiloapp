@@ -301,6 +301,111 @@ public sealed class HeliTests
         Assert.Equal("airborne", analysis.Summary().Verdict);
     }
 
+    [Fact]
+    public void Heli_Einsatzflug_Station_Einsatzort_Station_ohne_Spruenge()
+    {
+        var station = new HeliPad("POS", "P1", 51.380228, 6.787324, 110, null, 20, 20, "point", Measured: true);
+        var (sceneLat, sceneLon) = RouteMath.Destination(station.Latitude, station.Longitude, 75, 3);
+        var scene = new HeliPad("POS", "P2", sceneLat, sceneLon, 110, null, 20, 20, "point", Measured: true);
+        var back = station with { Label = "P3" };
+        var plan = TrafficTestPlan.BuildHeliMission([station, scene, back], HeliProfile.Default, waitMinutes: 1);
+        Assert.Equal(TrafficTestVariant.H3, plan.Variant);
+        Assert.Equal(75, plan.Runway.HeadingTrueDeg, 0);
+        Assert.Equal(60, plan.HeliWaitSeconds);
+        Assert.True(plan.Spawn.OnGround);
+        Assert.Equal(3, plan.Waypoints.Count);
+
+        var mission = new HeliMission(plan.HeliStops!, plan.Heli!.Profile, plan.Heli.StartHeightFt, plan.HeliWaitSeconds, 110, plan.Spawn.HeadingTrueDeg, 5, 0);
+        var phases = new List<(HeliMissionPhase Phase, int Leg)> { (mission.Phase, mission.Leg) };
+        var dt = 1.0 / 30;
+        var previous = mission.Pose();
+        double? landedAtScene = null;
+        double? departedScene = null;
+        var t = 0.0;
+        for (; t < 1200 && mission.Phase != HeliMissionPhase.Done; t += dt)
+        {
+            mission.Advance(dt);
+            var pose = mission.Pose();
+
+            // Keine Sprünge beim Wechsel zwischen Abflug, Anflug und Warten
+            Assert.True(Math.Abs(pose.AltitudeFt - previous.AltitudeFt) < 2, string.Create(System.Globalization.CultureInfo.InvariantCulture, $"altitude jump at {t:0.0} s"));
+            Assert.True(RouteMath.DistanceNm(previous.Latitude, previous.Longitude, pose.Latitude, pose.Longitude) * Nm < 3, string.Create(System.Globalization.CultureInfo.InvariantCulture, $"position jump at {t:0.0} s"));
+            Assert.True(Math.Abs(pose.PitchUpDeg - previous.PitchUpDeg) < 0.2);
+            previous = pose;
+
+            if (phases[^1] != (mission.Phase, mission.Leg))
+            {
+                phases.Add((mission.Phase, mission.Leg));
+                if (mission.Phase == HeliMissionPhase.Waiting)
+                {
+                    landedAtScene = t;
+                    Assert.Equal(0, RouteMath.DistanceNm(pose.Latitude, pose.Longitude, scene.Latitude, scene.Longitude) * Nm, 1);
+                }
+
+                if (mission.Phase == HeliMissionPhase.Departure && mission.Leg == 2)
+                {
+                    departedScene = t;
+                    Assert.Equal(255, mission.Current.Frame.HeadingTrueDeg, 0);
+                }
+            }
+        }
+
+        Assert.Equal(
+            [
+                (HeliMissionPhase.Departure, 1),
+                (HeliMissionPhase.Approach, 1),
+                (HeliMissionPhase.Waiting, 1),
+                (HeliMissionPhase.Departure, 2),
+                (HeliMissionPhase.Approach, 2),
+                (HeliMissionPhase.Done, 2),
+            ],
+            phases);
+        Assert.Equal(60, departedScene!.Value - landedAtScene!.Value, 0);
+        var end = mission.Pose();
+        Assert.Equal(0, RouteMath.DistanceNm(end.Latitude, end.Longitude, station.Latitude, station.Longitude) * Nm, 1);
+        Assert.Equal(110 + 5, end.AltitudeFt, 3);
+        Assert.InRange(t, 400, 700);
+    }
+
+    [Fact]
+    public void Heli_Einsatzflug_kurze_Strecke_geht_direkt_in_den_Anflug()
+    {
+        var a = new HeliPad("POS", "P1", 51.38, 6.78, 110, null, 20, 20, "point", Measured: true);
+        var (lat, lon) = RouteMath.Destination(a.Latitude, a.Longitude, 0, 0.6);
+        var b = new HeliPad("EDXX", "H1", lat, lon, 150, 90, 20, 20, "h");
+        var mission = new HeliMission([a, b], HeliProfile.Default, 1000, 0, 110, 0, 5, 0);
+        var maxHeight = 0.0;
+        for (var t = 0.0; t < 400 && mission.Phase != HeliMissionPhase.Done; t += 1.0 / 30)
+        {
+            mission.Advance(1.0 / 30);
+            maxHeight = Math.Max(maxHeight, mission.Pose().AltitudeFt);
+        }
+
+        Assert.Equal(HeliMissionPhase.Done, mission.Phase);
+        // Nicht erst auf 1000 ft, sondern am Anflugweg umgedreht; gelandet auf der Höhe des Pads, auf dessen Ausrichtung
+        Assert.InRange(maxHeight, 200, 700);
+        Assert.Equal(150 + 5, mission.Pose().AltitudeFt, 3);
+        Assert.Equal(90, mission.Current.HeadingTrueDeg, 3);
+    }
+
+    [Theory]
+    [InlineData("51.380228,6.787324", true, 51.380228, 6.787324)]
+    [InlineData(" 51.380228, 6.787324 ", true, 51.380228, 6.787324)]
+    [InlineData("51.38 6.78", true, 51.38, 6.78)]
+    [InlineData("-33.9,151.2", true, -33.9, 151.2)]
+    [InlineData("EDDL H2", false, 0, 0)]
+    [InlineData("51,38 6,78", false, 0, 0)]
+    [InlineData("95,10", false, 95, 10)]
+    public void Heli_Route_Koordinaten(string text, bool ok, double lat, double lon)
+    {
+        Assert.Equal(ok, HeliPads.TryParseCoordinates(text, out var parsedLat, out var parsedLon));
+        if (ok)
+        {
+            Assert.Equal(lat, parsedLat, 6);
+            Assert.Equal(lon, parsedLon, 6);
+        }
+    }
+
     private static AiProbeSample Sample(DateTimeOffset utc, double lat, double lon, double altitudeFt, bool onGround) =>
         new(1, utc, lat, lon, altitudeFt, onGround ? 5 : altitudeFt - Pad.ElevationFt, 0, 0, 0, 230, onGround, true, 100, 100, 100, 100, null);
 }

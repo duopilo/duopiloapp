@@ -632,6 +632,11 @@ auch diese Abschnitte selbst (`EnrouteKinematics`), statt sie an die Wegpunkt-KI
   15 s danach abgestellt und ausgelaufen.
 - **Abflug (beta.42, Variante H2):** 30 s Rotor anlassen, senkrecht auf 10 ft, 5 s schweben und auf den Kurs drehen, mit 1 m/s²
   auf 90 kt und dabei steigen (erst 300 ft/min, ab 40 kt 1000 ft/min) auf 1000 ft über dem Pad; aus 3 NM rund 3 Minuten.
+- **beta.42 an der Station:** Christoph 9 (EC-135, ORANGE-RED) hob nach 30 s Anlassen sauber ab, flog auf 180 und fing bei 1,6 NM auf
+  1000 ft ab; bei 3 NM genau auf der Linie (`departed`). Der gemessene Boden folgt dem Gelände unter dem Heli.
+- **Einsatzflug (beta.43, Variante H3):** Stopps als Route (Koordinaten oder Helipads), je Abschnitt Abflug wie H2 und Anflug wie H1 –
+  der Wechsel im selben Frame mit gleicher Lage, Höhe, Fahrt und Nase (`HeliMission`); an Stopps dazwischen warten und ab einer Minute
+  den Rotor abstellen.
 
 **Fahrplan des eigenen Verkehrs (Stand 1.11.2026):**
 
@@ -644,7 +649,7 @@ auch diese Abschnitte selbst (`EnrouteKinematics`), statt sie an die Wegpunkt-KI
    Luftfahrt FL85, doppelte Vapp, 15 NM. Flughafenregeln für alle Plätze – beta.19. Abseits der Flughäfen (C2) – beta.36.
 5. Rollen – beta.22 (Variante D1): Pushback und Rollen vom Gate zum Haltepunkt über die Rollwege, beta.23 mit Hindernissen; Abflug vom Gate mit Aufreihen und Start – beta.24 (B2), Halt an der richtigen Linie ab beta.28; Rollen nach der Landung – beta.29 (A3); Halt vor gekreuzten Bahnen – beta.30; Abflug-Reihenfolge mit Abstand beim Rollen – beta.31, ohne Deadlock am Haltepunkt ab beta.32, jeder Test endet für sich ab beta.33; Takt der Landungen und Mischbetrieb auf einer Bahn – beta.34; Gegenverkehr beim Rollen und Lücke nach Plan – beta.35; Anflug aus dem Reiseflug und Abflug bis in den Reiseflug – beta.37.
 6. Helikopter – nach dem Rollen: kinematisch (Anflug, Schweben, senkrecht landen und abheben), auf Heliports und Flughäfen;
-   Heliports bekommen dann nur Helis. Landung auf ein Helipad oder einen beliebigen Punkt – beta.40 (H1), Rotor abstellen – beta.41; Abheben – beta.42 (H2).
+   Heliports bekommen dann nur Helis. Landung auf ein Helipad oder einen beliebigen Punkt – beta.40 (H1), Rotor abstellen – beta.41; Abheben – beta.42 (H2); Einsatzflug über mehrere Stopps – beta.43 (H3).
 
 **Entscheidung danach:**
 
