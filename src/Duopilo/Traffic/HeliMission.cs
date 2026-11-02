@@ -31,6 +31,15 @@ public sealed class HeliMission
     private readonly HeliProfile _profile;
     private readonly double _cruiseHeightFt;
 
+    /// <summary>
+    /// Vom Dach-Pad (<see cref="HeliPad.Elevated"/>) erst senkrecht so hoch steigen: Von ED34D H2 auf H1 daneben (160 m, 114 ft tiefer)
+    /// streifte der 6°-Anflug sonst die Dachkante (beta.43); von hier oben geht der Anflug steiler (<see cref="HeliKinematics.ApproachAngleDeg"/>).
+    /// </summary>
+    public const double TowerFt = 100;
+
+    /// <summary>Senkrecht steigen vor dem Abflug von <paramref name="from"/>: vom Dach <see cref="TowerFt"/>, sonst nur auf die Schwebehöhe.</summary>
+    public static double TowerFor(HeliPad from) => from.Elevated ? TowerFt : 0;
+
     public HeliMission(IReadOnlyList<HeliPad> stops, HeliProfile profile, double cruiseHeightFt, double waitSeconds, double startGroundFt, double startHeadingDeg, double cgHeightFt, double groundPitchDeg)
     {
         if (stops.Count < 2)
@@ -45,7 +54,7 @@ public sealed class HeliMission
         CgHeightFt = cgHeightFt;
         GroundPitchDeg = groundPitchDeg;
         Leg = 1;
-        Current = HeliKinematics.Departure(LegFrame(stops[0], stops[1], startGroundFt), profile, cruiseHeightFt, startHeadingDeg, startGroundFt, cgHeightFt, groundPitchDeg);
+        Current = HeliKinematics.Departure(LegFrame(stops[0], stops[1], startGroundFt), profile, cruiseHeightFt, startHeadingDeg, startGroundFt, cgHeightFt, groundPitchDeg, TowerFor(stops[0]));
     }
 
     public IReadOnlyList<HeliPad> Stops { get; }
@@ -112,7 +121,7 @@ public sealed class HeliMission
                     var here = Stops[Leg];
                     var ground = Current.GroundFt;
                     Leg++;
-                    Current = HeliKinematics.Departure(LegFrame(here, Stops[Leg], ground), _profile, _cruiseHeightFt, Current.HeadingTrueDeg, ground, CgHeightFt, Current.GroundPitchDeg);
+                    Current = HeliKinematics.Departure(LegFrame(here, Stops[Leg], ground), _profile, _cruiseHeightFt, Current.HeadingTrueDeg, ground, CgHeightFt, Current.GroundPitchDeg, TowerFor(here));
                     Phase = HeliMissionPhase.Departure;
                 }
 

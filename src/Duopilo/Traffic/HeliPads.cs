@@ -11,6 +11,7 @@ namespace Duopilo.Traffic;
 /// <param name="HeadingDeg">Ausrichtung des Pads (rechtweisend), auf die der Heli im Schweben dreht; null = egal.</param>
 /// <param name="Type">none, h, square, circle, medical; bei Koordinaten "point".</param>
 /// <param name="Measured">Der Boden kommt aus der Messung unter dem Heli (Koordinaten), nicht aus der Datenbank.</param>
+/// <param name="Elevated">Pad liegt deutlich über dem Flughafen bzw. Heliport (<see cref="HeliPads.ElevatedFt"/>) – ein Dach-Pad.</param>
 public sealed record HeliPad(
     string Airport,
     string Label,
@@ -21,13 +22,37 @@ public sealed record HeliPad(
     double LengthM,
     double WidthM,
     string Type,
-    bool Measured = false);
+    bool Measured = false,
+    bool Elevated = false)
+{
+    /// <summary>Halbe Kantenlänge, mindestens <see cref="HeliPads.MinPadRadiusM"/>: so nah an der Mitte steht der Heli über dem Pad.</summary>
+    public double RadiusM => Math.Max(HeliPads.MinPadRadiusM, Math.Max(LengthM, WidthM) / 2);
+}
 
 /// <summary>Helipads aus der MSFS-Datenbank lesbar machen: Bezeichnungen und Suche nach "H02", "h2" oder "2".</summary>
 public static partial class HeliPads
 {
     /// <summary>So nah muss ein Startpunkt an der Mitte eines Helipads liegen, damit seine Nummer dessen Bezeichnung wird.</summary>
     public const double StartMatchM = 40;
+
+    /// <summary>So viel höher als der Flughafen liegt ein Dach-Pad mindestens (ED34D H2: 116 ft).</summary>
+    public const double ElevatedFt = 30;
+
+    /// <summary>Kleinster Radius eines Pads für die Bodenmessung.</summary>
+    public const double MinPadRadiusM = 10;
+
+    /// <summary>
+    /// So weit darf der gemessene Boden über einem Pad der Datenbank von dessen Höhe abweichen. beta.43: Vor dem Dach-Pad der BG Duisburg
+    /// (ED34D H2) maß der Heli 60 m davor die Straße, 80 ft tiefer – mit 100 ft Spielraum zog er den Boden mit und flog durchs Gebäude.
+    /// </summary>
+    public const double MaxPadGroundCorrectionFt = 30;
+
+    /// <summary>
+    /// Ob der unter dem Heli gemessene Boden für ein Pad der Datenbank gilt: nur direkt über dem Pad (<see cref="HeliPad.RadiusM"/>) und
+    /// höchstens <see cref="MaxPadGroundCorrectionFt"/> neben dessen Höhe. Ein Punkt (gemessen) nimmt jede Messung.
+    /// </summary>
+    public static bool AcceptsMeasuredGround(HeliPad pad, double distanceM, double measuredFt) =>
+        pad.Measured || (distanceM <= pad.RadiusM && Math.Abs(measuredFt - pad.ElevationFt) <= MaxPadGroundCorrectionFt);
 
     /// <summary>
     /// Helipads mit Bezeichnung: Liegt ein Startpunkt auf einem Pad (TYPE 3, höchstens <see cref="StartMatchM"/> entfernt), heißt
@@ -86,7 +111,8 @@ public static partial class HeliPads
                 double.IsFinite(pad.HeadingDeg) ? TrafficMath.Normalize(pad.HeadingDeg) : null,
                 pad.LengthM,
                 pad.WidthM,
-                pad.TypeName))
+                pad.TypeName,
+                Elevated: pad.AltitudeM != 0 && (pad.AltitudeM - data.AltitudeM) * RunwayEnd.FeetPerMeter > ElevatedFt))
             .OrderBy(p => Number(p.Label) ?? int.MaxValue)];
     }
 
