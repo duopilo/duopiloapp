@@ -1233,5 +1233,6 @@
   "tools.followMe.noRoute": "Keine Rollroute zu einer freien Parkposition in {airport}, die für ein Follow-me weit genug ist.",
   "tools.followMe.noRouteToGate": "Keine Rollroute von hier zur Parkposition {gate}, oder sie ist zu nah für ein Follow-me.",
   "tools.followMe.spawnFailed": "Das Follow-me-Fahrzeug {model} ließ sich nicht erzeugen: {error} Liegt das Fahrzeugpaket von Duopilo im Community-Ordner?",
-  "tools.followMe.failed": "Follow-me fehlgeschlagen: {error}"
+  "tools.followMe.failed": "Follow-me fehlgeschlagen: {error}",
+  "tools.followMe.noVehicle": "Alle Follow-me-Fahrzeuge in {airport} sind unterwegs (höchstens {count} zugleich)."
 }

@@ -59,6 +59,10 @@ public sealed class FollowMeVehicle
     private double _phaseSeconds;
     private double _leftM;
     private bool _leavingOnLead;
+    private volatile bool _crossingClear;
+    private volatile int _crossingsDone;
+    private volatile bool _holdingShort;
+    private double _holdSeconds;
 
     public FollowMeVehicle(FollowMePlan plan, Func<double, double, (double Latitude, double Longitude)> toLatLon, double groundFt, double heightFt = 0)
     {
@@ -107,6 +111,22 @@ public sealed class FollowMeVehicle
 
     public double PhaseSeconds => _phaseSeconds;
 
+    /// <summary>Vor gekreuzten Bahnen mindestens so lange halten.</summary>
+    public const double CrossingHoldSeconds = 3;
+
+    /// <summary>Steht vor einer gekreuzten Bahn (<see cref="FollowMePlan.CrossingStops"/>) und wartet auf <see cref="CrossingClear"/>.</summary>
+    public bool HoldingShort => _holdingShort;
+
+    /// <summary>So viele Bahnen sind gekreuzt (bzw. der Index der Bahn, vor der es hält).</summary>
+    public int CrossingsDone => _crossingsDone;
+
+    /// <summary>Die Bahn vor dem Fahrzeug ist frei (setzt der Verkehrstest aus der Verkehrsabfrage, aus einem anderen Thread).</summary>
+    public bool CrossingClear
+    {
+        get => _crossingClear;
+        set => _crossingClear = value;
+    }
+
     /// <summary>Neue Lage des Flugzeugs: Stelle auf <see cref="FollowMePlan.Reference"/> und Geschwindigkeit über Grund (m/s).</summary>
     public void SetAircraft(double referenceS, double groundSpeedMps) => _aircraft = new AircraftProgress(referenceS, Math.Max(0, groundSpeedMps));
 
@@ -153,7 +173,32 @@ public sealed class FollowMeVehicle
 
             case FollowMePhase.InPosition:
             case FollowMePhase.Leading:
-                Move(_plan.Lead, TargetMps(), dt);
+                if (_holdingShort)
+                {
+                    // Vor der gekreuzten Bahn: Mindestzeit und frei
+                    SpeedMps = 0;
+                    _holdSeconds += dt;
+                    if (_holdSeconds >= CrossingHoldSeconds && _crossingClear)
+                    {
+                        _crossingsDone++;
+                        _holdingShort = false;
+                        _crossingClear = false;
+                    }
+
+                    break;
+                }
+
+                var crossing = NextCrossingLeadM();
+                Move(_plan.Lead, TargetMps(), dt, crossing);
+                if (crossing is { } stopAt && DistanceM >= stopAt - 0.05)
+                {
+                    SpeedMps = 0;
+                    _holdingShort = true;
+                    _holdSeconds = 0;
+                    _crossingClear = false;
+                    break;
+                }
+
                 if (_phase == FollowMePhase.InPosition && SpeedMps > 0.3)
                 {
                     _phase = FollowMePhase.Leading;
@@ -191,13 +236,20 @@ public sealed class FollowMeVehicle
             case FollowMePhase.Leaving:
                 var before = DistanceM;
                 var path = _leavingOnLead ? _plan.Lead : _plan.Approach;
-                Move(path, FollowMeProfile.MaxMps, dt);
+                var leaveStop = _leavingOnLead ? NextCrossingLeadM() : null;
+                Move(path, FollowMeProfile.MaxMps, dt, leaveStop);
                 if (_leavingOnLead)
                 {
                     _leftM += DistanceM - before;
                 }
 
-                if (AtEnd(path))
+                if (leaveStop is { } bahn && DistanceM >= bahn - 0.05)
+                {
+                    // Abbestellt kreuzt es keine Bahn mehr: davor verschwinden
+                    SpeedMps = 0;
+                    _phase = FollowMePhase.Gone;
+                }
+                else if (AtEnd(path))
                 {
                     if (_leavingOnLead)
                     {
@@ -307,21 +359,37 @@ public sealed class FollowMeVehicle
 
     private bool AtEnd(TaxiPath path) => DistanceM >= path.LengthM - 0.05 || (SpeedMps < 0.1 && path.LengthM - DistanceM < 0.5 && _phase != FollowMePhase.InPosition && _phase != FollowMePhase.Leading);
 
-    /// <summary>Auf <paramref name="path"/> weiter: zur Wunschgeschwindigkeit beschleunigen bzw. bremsen, Kurven und das Ende beachten.</summary>
-    private void Move(TaxiPath path, double targetMps, double dt)
+    /// <summary>Nächster Halt vor einer gekreuzten Bahn auf <see cref="FollowMePlan.Lead"/>, null = keiner mehr.</summary>
+    private double? NextCrossingLeadM()
     {
+        var done = _crossingsDone;
+        return done < _plan.CrossingStops.Count ? Math.Max(0, _plan.CrossingStops[done] - _plan.LeadOffsetS) : null;
+    }
+
+    /// <summary>
+    /// Auf <paramref name="path"/> weiter: zur Wunschgeschwindigkeit beschleunigen bzw. bremsen, Kurven, das Ende und
+    /// <paramref name="stopAt"/> (Meter auf dem Weg) beachten.
+    /// </summary>
+    private void Move(TaxiPath path, double targetMps, double dt, double? stopAt = null)
+    {
+        var end = Math.Min(stopAt ?? path.LengthM, path.LengthM);
         var allowed = Math.Min(targetMps, path.AllowedMps(DistanceM, FollowMeProfile.DecelMps2));
+        if (stopAt is not null)
+        {
+            allowed = Math.Min(allowed, Math.Sqrt(2 * FollowMeProfile.DecelMps2 * Math.Max(0, end - DistanceM)));
+        }
+
         SpeedMps = SpeedMps < allowed
             ? Math.Min(allowed, SpeedMps + (FollowMeProfile.AccelMps2 * dt))
             : Math.Max(allowed, SpeedMps - (FollowMeProfile.DecelMps2 * dt));
 
-        // Am Ende nicht kurz davor stehen bleiben (Bremsgrenze 0): kriechen
-        if (SpeedMps <= 0 && targetMps > 0 && path.LengthM - DistanceM > 0.05)
+        // Am Ende bzw. Halt nicht kurz davor stehen bleiben (Bremsgrenze 0): kriechen
+        if (SpeedMps <= 0 && targetMps > 0 && end - DistanceM > 0.05)
         {
-            SpeedMps = Math.Min(0.2, path.LengthM - DistanceM);
+            SpeedMps = Math.Min(0.2, end - DistanceM);
         }
 
-        DistanceM = Math.Min(path.LengthM, DistanceM + (SpeedMps * dt));
+        DistanceM = Math.Min(end, DistanceM + (SpeedMps * dt));
         var (east, north, heading) = path.At(DistanceM);
         (EastM, NorthM, HeadingDeg) = (east, north, heading);
     }

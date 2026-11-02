@@ -53,6 +53,8 @@ public static class ServiceCollectionExtensions
         services.AddHostedService(sp => sp.GetRequiredService<AtcService>());
 
         // Follow-me nach der Landung, nur auf Anfrage beim Ground (in der stdio-Instanz aus, siehe Program.cs)
+        services.AddSingleton<Duopilo.Vehicles.FollowMeFleet>();
+        services.AddSingleton<Duopilo.Vehicles.FollowMeSpawner>();
         services.AddSingleton<Duopilo.Vehicles.FollowMeService>();
         services.AddHostedService(sp => sp.GetRequiredService<Duopilo.Vehicles.FollowMeService>());
 

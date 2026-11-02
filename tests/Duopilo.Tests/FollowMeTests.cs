@@ -269,6 +269,140 @@ public sealed class FollowMeTests
         Assert.Equal(53 + 1.5, vehicle.Pose().AltitudeFt, 3);
     }
 
+    // ------------------------------------------------------------------ KI-Verkehr (A3, A4 mit followMe)
+
+    /// <summary>Landung auf der 27, Abrollen über A1 im Westen, dann Rollweg A nach Osten zu Gate A5.</summary>
+    private static (TaxiGraph Graph, TaxiRoute Route, RunwayEnd Runway, FollowMePlan Plan) Arrival()
+    {
+        var graph = Graph();
+        var end = RunwayEnd.Find("EDXT", [Runway], "27")!;
+        var route = TaxiRoute.PlanArrival(graph, end, graph.FindParking("A5")!, TaxiProfile.Airliner, 1000);
+        Assert.NotNull(route);
+        var plan = FollowMePlan.FromArrival(graph, route!, end, FollowMeProfile.GapM(TrafficWake.Medium));
+        Assert.NotNull(plan);
+        return (graph, route!, end, plan!);
+    }
+
+    [Fact]
+    public void KI_Follow_me_wartet_hinter_der_Stelle_an_der_die_Bahn_verlassen_ist()
+    {
+        var (graph, route, end, plan) = Arrival();
+
+        // Abrollweg A1 (x = -800): die Bahn ist ab 90 m neben der Mittellinie verlassen, das Fahrzeug wendet 60 m weiter
+        Assert.NotNull(plan.ClearS);
+        var clear = route.TaxiPath.At(plan.ClearS!.Value);
+        var (clearLat, clearLon) = graph.ToLatLon(clear.East, clear.North);
+        Assert.InRange(Math.Abs(end.Offsets(clearLat, clearLon).CrossM), FollowMePlan.ClearOfRunwayM, FollowMePlan.ClearOfRunwayM + 3);
+        Assert.Equal(plan.ClearS!.Value + plan.GapM, plan.MeetS, 3);
+        Assert.Empty(plan.CrossingStops);
+
+        // Der Weg des Fahrzeugs ist der Rollweg des Flugzeugs: dieselben Meter
+        foreach (var s in new[] { 100.0, 400.0, 800.0 })
+        {
+            var p = route.TaxiPath.At(s);
+            Assert.InRange(plan.Reference.NearestS(p.East, p.North) - s, -3, 3);
+        }
+
+        // Halt 40 m hinter der Einfahrt (Punkt 5) weiter nach Osten, weg Richtung Punkt 6
+        var stop = plan.Lead.At(plan.Lead.LengthM);
+        Assert.InRange(Distance((stop.East, stop.North), (40, 200)), 0, 1);
+        // Die Einfahrt: wo das Flugzeug zum Gate abbiegt (das Fahrzeug fährt dort geradeaus, ein paar Meter länger)
+        Assert.InRange(plan.StandEntryS, route.TaxiPath.NearestS(0, 200) - 2, route.TaxiPath.NearestS(0, 200) + 10);
+    }
+
+    [Fact]
+    public void KI_Flugzeug_wartet_aufs_Fahrzeug_und_folgt_mit_Abstand()
+    {
+        var (graph, route, _, plan) = Arrival();
+        var vehicle = new FollowMeVehicle(plan, graph.ToLatLon, 50);
+        var taxi = new TaxiKinematics(null, route.TaxiPath, graph.ToLatLon, 50, 8, 0, rolling: route.HandoverKt);
+
+        // Das Fahrzeug ist knapp unterwegs, das Flugzeug rollt gleich von der Bahn ab
+        var t = 0.0;
+        var minGap = double.MaxValue;
+        var maxBeforeInPosition = 0.0;
+        while (t < 900 && !(taxi.Phase == TaxiPhase.Holding && vehicle.Phase == FollowMePhase.Gone))
+        {
+            vehicle.SetAircraft(taxi.Phase == TaxiPhase.Holding ? taxi.Taxi.LengthM : taxi.DistanceM, taxi.SpeedKt * 0.514444);
+            vehicle.Advance(0.1);
+            taxi.TrafficStopS = TrafficTestService.FollowMeStop(vehicle);
+            if (t >= 20)
+            {
+                taxi.Advance(0.1);
+            }
+
+            t += 0.1;
+            if (vehicle.Phase == FollowMePhase.Approach && t >= 20)
+            {
+                maxBeforeInPosition = Math.Max(maxBeforeInPosition, taxi.DistanceM);
+            }
+
+            if (vehicle.Phase is FollowMePhase.InPosition or FollowMePhase.Leading && taxi.Phase == TaxiPhase.Taxi)
+            {
+                minGap = Math.Min(minGap, vehicle.ReferenceS - taxi.DistanceM);
+            }
+        }
+
+        // Vor dem Wenden kommt das Flugzeug nicht über die Stelle hinaus, an der es die Bahn verlassen hat
+        Assert.InRange(maxBeforeInPosition, 0, plan.ClearS!.Value + 0.5);
+
+        // Danach nie näher als 60 % des Abstands; am Ende steht es an der Parkposition und das Fahrzeug ist weg
+        Assert.InRange(minGap, (plan.GapM * TrafficTestService.FollowMeMinGapFactor) - 1, plan.GapM + 5);
+        Assert.Equal(TaxiPhase.Holding, taxi.Phase);
+        Assert.Equal(FollowMePhase.Gone, vehicle.Phase);
+    }
+
+    [Fact]
+    public void Faehrt_vor_gekreuzter_Bahn_erst_wenn_sie_frei_ist()
+    {
+        var (graph, basePlan) = Planned();
+        var plan = basePlan with { CrossingStops = [300] };
+        var vehicle = new FollowMeVehicle(plan, graph.ToLatLon, 50);
+        vehicle.SetAircraft(0, 0);
+        Run(vehicle, 200, () => vehicle.Phase == FollowMePhase.InPosition);
+
+        // Das Flugzeug rollt mit 5 m/s hinterher, bleibt aber hinter dem Fahrzeug (Halt mit 60 % des Abstands)
+        var aircraftS = 0.0;
+        for (var i = 0; i < 1200 && !vehicle.HoldingShort; i++)
+        {
+            aircraftS = Math.Min(aircraftS + 0.5, vehicle.ReferenceS - (plan.GapM * TrafficTestService.FollowMeMinGapFactor));
+            vehicle.SetAircraft(aircraftS, 5);
+            vehicle.Advance(0.1);
+        }
+
+        Assert.True(vehicle.HoldingShort);
+        Assert.InRange(vehicle.ReferenceS, 299, 300.5);
+
+        // Ohne Freigabe bleibt es stehen
+        vehicle.SetAircraft(aircraftS, 0);
+        Run(vehicle, 20);
+        Assert.True(vehicle.HoldingShort);
+        Assert.Equal(0, vehicle.CrossingsDone);
+
+        // Frei: es kreuzt
+        vehicle.CrossingClear = true;
+        vehicle.SetAircraft(vehicle.ReferenceS - 30, 0);
+        Run(vehicle, 10);
+        Assert.False(vehicle.HoldingShort);
+        Assert.Equal(1, vehicle.CrossingsDone);
+        Assert.True(vehicle.ReferenceS > 300.5);
+    }
+
+    [Fact]
+    public void Halt_hinter_dem_Fahrzeug()
+    {
+        Assert.Equal(5, TrafficTestService.CombineStops(5, double.NaN));
+        Assert.Equal(3, TrafficTestService.CombineStops(5, 3));
+        Assert.True(double.IsNaN(TrafficTestService.CombineStops(double.NaN, double.NaN)));
+
+        var (graph, plan) = Planned();
+        var vehicle = new FollowMeVehicle(plan, graph.ToLatLon, 50);
+        Assert.Equal(plan.MeetS - plan.GapM, TrafficTestService.FollowMeStop(vehicle));
+        vehicle.Leave();
+        vehicle.Advance(0.1);
+        Assert.True(double.IsNaN(TrafficTestService.FollowMeStop(vehicle)));
+    }
+
     /// <summary>Rechnet in Schritten von 0,1 s, höchstens <paramref name="maxSeconds"/> oder bis <paramref name="until"/>; Rückgabe: vergangene Sekunden.</summary>
     private static double Run(FollowMeVehicle vehicle, double maxSeconds, Func<bool>? until = null)
     {

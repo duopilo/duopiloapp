@@ -41,9 +41,11 @@ Kein Fahrzeug (Paket fehlt, keine Route, Gate gleich voraus, stdio-Instanz, nach
 
 Offen: ob `AIReleaseControl` für Bodenfahrzeuge nötig ist (bewusst weggelassen) und ob die Abfrage `PLANE ALT ABOVE GROUND` für Bodenfahrzeuge Werte liefert.
 
-## Geplant: Follow-me für den eigenen KI-Verkehr
+## Follow-me für den eigenen KI-Verkehr (in Arbeit)
 
 Auch Landungen mit Rollen (A3, A4) sollen ein Follow-me bekommen können – ebenfalls nur „auf Anfrage“, also nicht jede.
+
+Stand im Branch `feature/follow-me-ai`: `traffic_test_start` mit `followMe: true` (A3/A4) – Plan aus der Rollroute (`FollowMePlan.FromArrival`), Halt des Flugzeugs hinter dem Fahrzeug (nie näher als 60 % des Abstands; bevor das Fahrzeug gewendet hat, nur bis zur Stelle, an der die Bahn verlassen ist), Halt des Fahrzeugs vor gekreuzten Bahnen mit Verkehrsabfrage, höchstens zwei Fahrzeuge je Flughafen (`FollowMeFleet`, mit dem des Piloten zusammen), Status `taxi.followMe`, Ereignisse `follow_me_*`. Noch offen: Quote je Flughafen, Test im Sim.
 
 **Wann**
 - Quote je Flughafen in `data\traffic\airport-rules.json` (`followMePercent`), entschieden bei der Prüfung 2 NM vor der Schwelle (`RecheckParkingAsync`). Zuerst 0 – nur im Test mit `followMe: true` an A3/A4.

@@ -1492,5 +1492,6 @@
   "log.followMe.removeFailed": "Follow-me vehicle {objectId} could not be removed: {error}",
   "log.followMe.updateFailed": "Follow-me update failed: {error}",
   "log.followMe.obstaclesFailed": "Follow-me: aircraft on the ground unknown ({error}) – parking positions may be occupied",
-  "log.followMe.lightsFailed": "Follow-me lights could not be set: {error}"
+  "log.followMe.lightsFailed": "Follow-me lights could not be set: {error}",
+  "tools.followMe.noVehicle": "All follow-me vehicles at {airport} are on their way ({count} at most at the same time)."
 }
