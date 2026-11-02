@@ -2,10 +2,10 @@ using Duopilo.Sim;
 
 namespace Duopilo.Traffic;
 
-/// <summary>Abschnitt eines Heli-Anflugs (<see cref="HeliKinematics"/>).</summary>
+/// <summary>Abschnitt eines Heli-Anflugs oder -Abflugs (<see cref="HeliKinematics"/>).</summary>
 public enum HeliPhase
 {
-    /// <summary>Geradeaus auf Reisehöhe und mit Reisefahrt zum Pad.</summary>
+    /// <summary>Geradeaus auf Reisehöhe und mit Reisefahrt (Anflug: zum Pad; Abflug: auf Kurs, Ende des Steigflugs).</summary>
     Cruise,
 
     /// <summary>Anflug: auf dem Anflugwinkel sinken und so langsamer werden, dass es über dem Pad steht.</summary>
@@ -19,6 +19,18 @@ public enum HeliPhase
 
     /// <summary>Am Boden.</summary>
     Landed,
+
+    /// <summary>Abflug: am Boden, Rotor läuft an.</summary>
+    Startup,
+
+    /// <summary>Abflug: senkrecht auf die Schwebehöhe.</summary>
+    Liftoff,
+
+    /// <summary>Abflug: aus dem Schweben vorwärts Fahrt aufnehmen, flach steigen.</summary>
+    Transition,
+
+    /// <summary>Abflug: mit Fahrt auf die Reisehöhe steigen.</summary>
+    Climb,
 }
 
 /// <summary>
@@ -92,7 +104,12 @@ public static class HeliRotor
 /// <param name="YawDegPerSec">Drehrate im Schweben.</param>
 /// <param name="CruisePitchDeg">Längsneigung in Reisefahrt (Nase runter negativ).</param>
 /// <param name="HoverPitchDeg">Längsneigung im Schweben.</param>
-/// <param name="DecelPitchPerMps2">So viel Nase hoch je m/s² Verzögerung.</param>
+/// <param name="DecelPitchPerMps2">So viel Nase hoch je m/s² Verzögerung (beim Beschleunigen ebenso viel runter).</param>
+/// <param name="StartupSeconds">Abflug: so lange läuft der Rotor am Boden, bevor er abhebt.</param>
+/// <param name="TakeoffHoverFt">Abflug: Schwebehöhe nach dem Abheben.</param>
+/// <param name="LiftoffFpm">Abflug: Steigrate beim Abheben und zu Beginn des Übergangs.</param>
+/// <param name="AccelMps2">Abflug: Beschleunigung bis zur Reisefahrt.</param>
+/// <param name="ClimbFpm">Abflug: Steigrate mit Fahrt (ab <see cref="HeliKinematics.ClimbFromKt"/>).</param>
 public sealed record HeliProfile(
     double CruiseKt,
     double DecelMps2,
@@ -104,7 +121,12 @@ public sealed record HeliProfile(
     double YawDegPerSec,
     double CruisePitchDeg,
     double HoverPitchDeg,
-    double DecelPitchPerMps2)
+    double DecelPitchPerMps2,
+    double StartupSeconds = 30,
+    double TakeoffHoverFt = 10,
+    double LiftoffFpm = 300,
+    double AccelMps2 = 1.0,
+    double ClimbFpm = 1000)
 {
     /// <summary>
     /// Mittlerer Heli (Bell 205, H135): 90 kt, 0,6 m/s² (90 kt bis zum Stand in knapp 1 NM), 6° (bei 90 kt gut 950 ft/min),
@@ -141,6 +163,12 @@ public sealed class HeliKinematics
     /// <summary>Höhe folgt dem gemessenen Boden höchstens so schnell (ft/s).</summary>
     private const double GroundSlewFtPerSec = 20;
 
+    /// <summary>Abflug: ab dieser Fahrt steigt er mit <see cref="HeliProfile.ClimbFpm"/> (darunter anteilig ab <see cref="HeliProfile.LiftoffFpm"/>).</summary>
+    public const double ClimbFromKt = 40;
+
+    /// <summary>Abflug: Zeitkonstante, mit der er auf der Reisehöhe abfängt.</summary>
+    private const double LevelOffSeconds = 6;
+
     private readonly RunwayEnd _frame;
     private readonly HeliProfile _profile;
     private readonly double _startHeightFt;
@@ -164,6 +192,34 @@ public sealed class HeliKinematics
 
     public HeliPhase Phase { get; private set; } = HeliPhase.Cruise;
 
+    /// <summary>
+    /// Abflug (H2): Der Heli steht auf dem Pad (Mitte von <paramref name="frame"/>), Rotor läuft <see cref="HeliProfile.StartupSeconds"/>
+    /// an, dann senkrecht auf <see cref="HeliProfile.TakeoffHoverFt"/>, im Schweben von <paramref name="startHeadingDeg"/> auf den
+    /// Kurs des Rahmens drehen, vorwärts mit <see cref="HeliProfile.AccelMps2"/> auf Reisefahrt beschleunigen und dabei auf
+    /// <paramref name="cruiseHeightFt"/> über dem Pad steigen (erst flach, ab <see cref="ClimbFromKt"/> mit <see cref="HeliProfile.ClimbFpm"/>).
+    /// <see cref="DistanceM"/> ist dann der Weg ab dem Pad.
+    /// </summary>
+    public static HeliKinematics Departure(RunwayEnd frame, HeliProfile profile, double cruiseHeightFt, double startHeadingDeg, double groundFt, double cgHeightFt, double groundPitchDeg)
+    {
+        var heli = new HeliKinematics(frame, profile, 0, cruiseHeightFt, 0, frame.HeadingTrueDeg, groundFt, cgHeightFt)
+        {
+            GroundPitchDeg = groundPitchDeg,
+        };
+        heli.IsDeparture = true;
+        heli.Phase = HeliPhase.Startup;
+        heli.HeightFt = 0;
+        heli.SpeedKt = 0;
+        heli.PitchDeg = groundPitchDeg;
+        heli.HeadingTrueDeg = TrafficMath.Normalize(startHeadingDeg);
+        return heli;
+    }
+
+    /// <summary>Abflug (<see cref="Departure"/>) statt Anflug.</summary>
+    public bool IsDeparture { get; private set; }
+
+    /// <summary>Abflug: so lange läuft der Rotor schon am Boden.</summary>
+    public double StartupElapsedSeconds { get; private set; }
+
     public HeliProfile Profile => _profile;
 
     /// <summary>Höhe über dem Pad beim Start (Reisehöhe).</summary>
@@ -173,15 +229,24 @@ public sealed class HeliKinematics
     public double? PadHeadingDeg => _padHeadingDeg;
 
     /// <summary>Höhe über dem Pad, die er gerade anstrebt: im Anflug das Profil, im Schweben die Schwebehöhe, danach 0.</summary>
-    public double TargetHeightFt => Phase switch
-    {
-        HeliPhase.Cruise or HeliPhase.Approach => ProfileHeightFt(DistanceM),
-        HeliPhase.Hover => _profile.HoverFt,
-        _ => 0,
-    };
+    public double TargetHeightFt => IsDeparture
+        ? Phase switch
+        {
+            HeliPhase.Startup => 0,
+            HeliPhase.Liftoff or HeliPhase.Hover => _profile.TakeoffHoverFt,
+            _ => _startHeightFt,
+        }
+        : Phase switch
+        {
+            HeliPhase.Cruise or HeliPhase.Approach => ProfileHeightFt(DistanceM),
+            HeliPhase.Hover => _profile.HoverFt,
+            _ => 0,
+        };
 
     /// <summary>Fahrt, die er gerade anstrebt (im Anflug die höchste, mit der er noch über dem Pad zum Stehen kommt).</summary>
-    public double TargetKt => Phase is HeliPhase.Cruise or HeliPhase.Approach ? AllowedKt(DistanceM) : 0;
+    public double TargetKt => IsDeparture
+        ? (Phase is HeliPhase.Transition or HeliPhase.Climb or HeliPhase.Cruise ? _profile.CruiseKt : 0)
+        : Phase is HeliPhase.Cruise or HeliPhase.Approach ? AllowedKt(DistanceM) : 0;
 
     /// <summary>Restweg zum Pad (m).</summary>
     public double DistanceM { get; private set; }
@@ -221,7 +286,7 @@ public sealed class HeliKinematics
     /// <summary>Wo das Verzögern begann (Restweg in m), sonst null.</summary>
     public double? DecelFromM { get; private set; }
 
-    public bool OnGround => Phase == HeliPhase.Landed;
+    public bool OnGround => Phase is HeliPhase.Landed or HeliPhase.Startup;
 
     /// <summary>Höhe der Kufen über dem Pad im Anflug an dieser Stelle: Anflugwinkel bis zur Schwebehöhe, oben die Starthöhe.</summary>
     public double ProfileHeightFt(double distanceM) =>
@@ -244,6 +309,13 @@ public sealed class HeliKinematics
         }
 
         var before = HeightFt;
+        if (IsDeparture)
+        {
+            AdvanceDeparture(dt);
+            VerticalSpeedFpm = OnGround ? 0 : (HeightFt - before) / dt * 60;
+            return;
+        }
+
         switch (Phase)
         {
             case HeliPhase.Cruise:
@@ -264,10 +336,10 @@ public sealed class HeliKinematics
         VerticalSpeedFpm = Phase == HeliPhase.Landed ? 0 : (HeightFt - before) / dt * 60;
     }
 
-    /// <summary>Lage für den Sim: auf der Linie zum Pad, Bezugspunkt über den Kufen, ohne Querneigung.</summary>
+    /// <summary>Lage für den Sim: auf der Linie zum Pad (Abflug: ab dem Pad), Bezugspunkt über den Kufen, ohne Querneigung.</summary>
     public AiPose Pose()
     {
-        var (lat, lon) = _frame.Point(-DistanceM);
+        var (lat, lon) = _frame.Point(IsDeparture ? DistanceM : -DistanceM);
         return new AiPose(lat, lon, GroundFt + CgHeightFt + HeightFt, PitchDeg, 0, HeadingTrueDeg);
     }
 
@@ -313,21 +385,90 @@ public sealed class HeliKinematics
         HoverSeconds += dt;
         HeightFt += (_profile.HoverFt - HeightFt) * (1 - Math.Exp(-dt / HeightSeconds));
         PitchDeg = Toward(PitchDeg, _profile.HoverPitchDeg, PitchDegPerSec * dt);
-        var aligned = true;
-        if (_padHeadingDeg is { } pad)
-        {
-            var error = TrafficMath.Normalize(pad - HeadingTrueDeg);
-            error = error > 180 ? error - 360 : error;
-            var step = Math.Clamp(error, -_profile.YawDegPerSec * dt, _profile.YawDegPerSec * dt);
-            HeadingTrueDeg = TrafficMath.Normalize(HeadingTrueDeg + step);
-            // Erst absetzen, wenn die Drehung ganz durch ist (der letzte Schritt landet genau auf dem Kurs)
-            aligned = Math.Abs(error - step) < 0.01;
-        }
-
+        var aligned = YawTo(_padHeadingDeg, dt);
         if (HoverSeconds >= _profile.HoverSeconds && aligned && Math.Abs(HeightFt - _profile.HoverFt) < 2)
         {
             Phase = HeliPhase.Descent;
         }
+    }
+
+    /// <summary>
+    /// Mit der Drehrate des Profils auf <paramref name="headingDeg"/> drehen; true, wenn die Drehung ganz durch ist (der letzte Schritt
+    /// landet genau auf dem Kurs) oder es keinen Zielkurs gibt.
+    /// </summary>
+    private bool YawTo(double? headingDeg, double dt)
+    {
+        if (headingDeg is not { } target)
+        {
+            return true;
+        }
+
+        var error = TrafficMath.Normalize(target - HeadingTrueDeg);
+        error = error > 180 ? error - 360 : error;
+        var step = Math.Clamp(error, -_profile.YawDegPerSec * dt, _profile.YawDegPerSec * dt);
+        HeadingTrueDeg = TrafficMath.Normalize(HeadingTrueDeg + step);
+        return Math.Abs(error - step) < 0.01;
+    }
+
+    /// <summary>Abflug: Anlassen, Abheben, Schweben mit Drehung auf den Kurs, Übergang, Steigflug, Reiseflug.</summary>
+    private void AdvanceDeparture(double dt)
+    {
+        switch (Phase)
+        {
+            case HeliPhase.Startup:
+                StartupElapsedSeconds += dt;
+                PitchDeg = Toward(PitchDeg, GroundPitchDeg, PitchDegPerSec * dt);
+                if (StartupElapsedSeconds >= _profile.StartupSeconds)
+                {
+                    Phase = HeliPhase.Liftoff;
+                }
+
+                break;
+            case HeliPhase.Liftoff:
+                HeightFt = Math.Min(_profile.TakeoffHoverFt, HeightFt + (_profile.LiftoffFpm / 60 * dt));
+                PitchDeg = Toward(PitchDeg, _profile.HoverPitchDeg, PitchDegPerSec * dt);
+                if (HeightFt >= _profile.TakeoffHoverFt)
+                {
+                    Phase = HeliPhase.Hover;
+                }
+
+                break;
+            case HeliPhase.Hover:
+                HoverSeconds += dt;
+                PitchDeg = Toward(PitchDeg, _profile.HoverPitchDeg, PitchDegPerSec * dt);
+                if (YawTo(_frame.HeadingTrueDeg, dt) && HoverSeconds >= _profile.HoverSeconds)
+                {
+                    Phase = HeliPhase.Transition;
+                }
+
+                break;
+            default:
+                AdvanceClimbOut(dt);
+                break;
+        }
+    }
+
+    private void AdvanceClimbOut(double dt)
+    {
+        var before = SpeedKt;
+        SpeedKt = Math.Min(_profile.CruiseKt, SpeedKt + (_profile.AccelMps2 / MetersPerSecondPerKnot * dt));
+        DistanceM += (before + SpeedKt) / 2 * MetersPerSecondPerKnot * dt;
+
+        // Steigen: erst flach, mit der Fahrt bis ClimbFromKt auf die volle Rate, an der Reisehöhe weich abfangen
+        var share = Math.Clamp(SpeedKt / ClimbFromKt, 0, 1);
+        var fpm = _profile.LiftoffFpm + ((_profile.ClimbFpm - _profile.LiftoffFpm) * share);
+        var rate = Math.Min(fpm, Math.Max(0, _startHeightFt - HeightFt) * 60 / LevelOffSeconds);
+        HeightFt = Math.Min(_startHeightFt, HeightFt + (rate / 60 * dt));
+
+        // Nase: beim Beschleunigen runter (bis kurz vor der Reisefahrt), in Fahrt wie im Reiseflug
+        var cruiseShare = Math.Clamp(SpeedKt / _profile.CruiseKt, 0, 1);
+        var pitch = (_profile.CruisePitchDeg * cruiseShare) + (_profile.HoverPitchDeg * (1 - cruiseShare));
+        pitch -= _profile.DecelPitchPerMps2 * _profile.AccelMps2 * Math.Clamp((_profile.CruiseKt - SpeedKt) / 10, 0, 1);
+        PitchDeg = Toward(PitchDeg, pitch, PitchDegPerSec * dt);
+
+        Phase = SpeedKt < ClimbFromKt ? HeliPhase.Transition
+            : HeightFt < _startHeightFt - 1 ? HeliPhase.Climb
+            : HeliPhase.Cruise;
     }
 
     private void AdvanceDescent(double dt)
