@@ -40,3 +40,22 @@ Kein Fahrzeug (Paket fehlt, keine Route, Gate gleich voraus, stdio-Instanz, nach
 5. Danach der ganze Ablauf im Funk nach einer Landung (EDDL).
 
 Offen: ob `AIReleaseControl` für Bodenfahrzeuge nötig ist (bewusst weggelassen) und ob die Abfrage `PLANE ALT ABOVE GROUND` für Bodenfahrzeuge Werte liefert.
+
+## Geplant: Follow-me für den eigenen KI-Verkehr
+
+Auch Landungen mit Rollen (A3, A4) sollen ein Follow-me bekommen können – ebenfalls nur „auf Anfrage“, also nicht jede.
+
+**Wann**
+- Quote je Flughafen in `data\traffic\airport-rules.json` (`followMePercent`), entschieden bei der Prüfung 2 NM vor der Schwelle (`RecheckParkingAsync`). Zuerst 0 – nur im Test mit `followMe: true` an A3/A4.
+- Eher bei Allgemeiner Luftfahrt, Außen- und Frachtpositionen als an Gates mit Andockführung.
+
+**Ablauf**
+1. Bei 2 NM fährt das Fahrzeug los und wartet gewendet hinter dem Abrollweg, an dem das Flugzeug die Bahn verlässt (Übergabepunkt der Rollroute).
+2. Weg des Fahrzeugs = Rollweg des Flugzeugs: `FollowMePlan` aus der fertigen `TaxiRoute` statt aus dem Rollweg-Netz neu – beide fahren dieselbe Linie.
+3. Das Flugzeug folgt mit dem vorhandenen Halt hinter Verkehr: `TaxiKinematics.TrafficStopS` = Stelle des Fahrzeugs minus Abstand. Das Fahrzeug regelt wie beim Piloten nach der Stelle des Flugzeugs (`FollowMeVehicle.SetAircraft` aus der Kinematik statt aus SimConnect).
+4. Gekreuzte Bahnen: Das Fahrzeug hält vor der Haltelinie und kreuzt erst, wenn die Bahn frei ist (dieselbe Prüfung wie `TaxiKinematics.RunwayClear`); das Flugzeug wartet dahinter.
+5. Am Gate wie beim Piloten: vorbei, warten, weg.
+
+**Grenzen**: höchstens zwei Fahrzeuge je Flughafen gleichzeitig (eins kann für den Piloten sein); ist keins frei, rollt das Flugzeug allein. Status in `traffic_test_status` (taxi.followMe), Ereignisse `follow_me_wait`, `follow_me_lead`, `follow_me_done`.
+
+**Schritte**: `FollowMePlan` aus einer `TaxiRoute`, Kopplung an die Rollkinematik, Halt an Bahnkreuzungen fürs Fahrzeug, A3/A4 mit `followMe`, Quote je Flughafen. Test in EDDL 23R.
