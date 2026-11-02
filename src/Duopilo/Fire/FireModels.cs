@@ -214,8 +214,11 @@ public static class FireCategory
 /// <summary>Kennwerte der Feuerwehrfahrzeuge im Einsatz (schneller als Follow-me, langsamer in Kurven).</summary>
 public static class FireProfile
 {
-    /// <summary>Höchstens 60 km/h – Einsatzfahrt über Rollwege und Bahn.</summary>
-    public const double MaxMps = 16.7;
+    /// <summary>
+    /// Höchstens 90 km/h (rund 49 kt) – Einsatzfahrt über Rollwege und Bahn; echte FLF schaffen über 100 km/h, die Eintreffzeit
+    /// zum Bahnende liegt bei 2–3 Minuten.
+    /// </summary>
+    public const double MaxMps = 25;
 
     /// <summary>Rückfahrt zur Wache ohne Blaulicht: 40 km/h.</summary>
     public const double ReturnMps = 11.1;
@@ -223,15 +226,17 @@ public static class FireProfile
     /// <summary>Am Flugzeug und beim Umstellen: 20 km/h.</summary>
     public const double PositionMps = 5.5;
 
-    public const double TurnRadiusM = 15;
+    /// <summary>Kurvenradius an echten Ecken (ein FLF ist lang und schwer): rund 17 kt in der Kurve.</summary>
+    public const double TurnRadiusM = 25;
 
     public const double MinTurnMps = 2.5;
 
-    public const double AccelMps2 = 1.0;
+    /// <summary>Anfahren: 0 auf 80 km/h in gut 20 s.</summary>
+    public const double AccelMps2 = 1.1;
 
     public const double DecelMps2 = 2.5;
 
-    public const double LateralMps2 = 2.5;
+    public const double LateralMps2 = 3.0;
 
     /// <summary>Abstandsregelung beim Folgen: so viel schneller (m/s) je Meter zu viel Abstand.</summary>
     public const double GapGain = 0.2;

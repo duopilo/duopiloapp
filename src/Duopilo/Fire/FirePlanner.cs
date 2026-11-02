@@ -198,9 +198,52 @@ public static class FirePlanner
     public static TaxiNode? NearestNode(TaxiGraph graph, double east, double north) =>
         graph.Nodes.Where(n => !n.IsParking).MinBy(n => Distance(n.EastM, n.NorthM, east, north));
 
-    /// <summary>Weg durch Punkte mit den Kurven der Feuerwehrfahrzeuge.</summary>
+    /// <summary>
+    /// Weg durch Punkte mit den Kurven der Feuerwehrfahrzeuge. Vorher fallen Punkte weg, die kaum vom geraden Weg abweichen
+    /// (<see cref="SimplifyM"/>): Jeder Knick bekommt in <see cref="TaxiPath"/> einen Bogen mit Kurvengeschwindigkeit, und die vielen
+    /// leichten Knicke im Rollweg-Netz hielten die Fahrzeuge sonst fast überall bei Kurventempo (Test EDDL, 02.11.: 12–25 kt).
+    /// </summary>
     public static TaxiPath BuildPath(IReadOnlyList<(double East, double North)> points, double maxMps) =>
-        TaxiPath.Build(points, FireProfile.TurnRadiusM, maxMps, FireProfile.LateralMps2, FireProfile.MinTurnMps);
+        TaxiPath.Build(Simplify(points, SimplifyM), FireProfile.TurnRadiusM, maxMps, FireProfile.LateralMps2, FireProfile.MinTurnMps);
+
+    /// <summary>So weit darf der vereinfachte Weg höchstens vom Rollweg abweichen.</summary>
+    public const double SimplifyM = 4;
+
+    /// <summary>Douglas-Peucker: Linienzug ohne die Punkte, die höchstens <paramref name="toleranceM"/> neben dem Rest liegen.</summary>
+    public static List<(double East, double North)> Simplify(IReadOnlyList<(double East, double North)> points, double toleranceM)
+    {
+        if (points.Count < 3)
+        {
+            return [.. points];
+        }
+
+        var keep = new bool[points.Count];
+        keep[0] = keep[^1] = true;
+        var stack = new Stack<(int From, int To)>();
+        stack.Push((0, points.Count - 1));
+        while (stack.Count > 0)
+        {
+            var (from, to) = stack.Pop();
+            var (worst, index) = (0.0, -1);
+            for (var i = from + 1; i < to; i++)
+            {
+                var d = TaxiGraph.SegmentDistance(points[i].East, points[i].North, points[from].East, points[from].North, points[to].East, points[to].North);
+                if (d > worst)
+                {
+                    (worst, index) = (d, i);
+                }
+            }
+
+            if (index >= 0 && worst > toleranceM)
+            {
+                keep[index] = true;
+                stack.Push((from, index));
+                stack.Push((index, to));
+            }
+        }
+
+        return [.. points.Where((_, i) => keep[i])];
+    }
 
     /// <summary>Die letzten <paramref name="meters"/> eines Linienzugs abschneiden (das Ende rückt entlang des Wegs nach vorn).</summary>
     public static List<(double East, double North)> Truncate(List<(double East, double North)> points, double meters)
