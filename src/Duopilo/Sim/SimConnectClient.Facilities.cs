@@ -16,6 +16,7 @@ public sealed partial class SimConnectClient
     private const uint FacilityDefinitionId = 950_000;
     private const uint FacilityRunwayDefinitionId = 950_001;
     private const uint FacilityTaxiDefinitionId = 950_002;
+    private const uint FacilityHelipadDefinitionId = 950_003;
     private const uint FacilityRequestBase = 2_000_000;
     private static readonly TimeSpan FacilityTimeout = TimeSpan.FromSeconds(10);
 
@@ -25,6 +26,7 @@ public sealed partial class SimConnectClient
     private bool _facilityDefined;
     private bool _facilityRunwaysDefined;
     private bool _facilityTaxiDefined;
+    private bool _facilityHelipadsDefined;
     private uint _nextFacilityRequest;
 
     /// <summary>Alle Frequenzen eines Flughafens aus der MSFS-Datenbank (Ground, Tower, Clearance, Approach …).</summary>
@@ -99,6 +101,36 @@ public sealed partial class SimConnectClient
             [.. request.TaxiParkings.OrderBy(p => p.Index).Select(p => p.Item)],
             [.. request.TaxiPaths.OrderBy(p => p.Index).Select(p => p.Item)],
             [.. request.TaxiNames.OrderBy(p => p.Index).Select(p => p.Item)]);
+    }
+
+    /// <summary>
+    /// Helipads eines Flughafens oder Heliports aus der MSFS-Datenbank (HELIPAD: Mitte, Höhe, Kurs, Größe, Art) und die Startpunkte
+    /// auf Helipads (START mit TYPE 3, deren Nummer MSFS für die Bezeichnung H1, H2 … nutzt). Helipads selbst haben keinen Namen.
+    /// </summary>
+    public async Task<AirportHelipads> RequestAirportHelipadsAsync(string icao, CancellationToken ct)
+    {
+        if (!_connection.IsConnected)
+        {
+            throw new InvalidOperationException(Loc.T("sim.notConnected"));
+        }
+
+        var request = new FacilityRequest(icao.Trim().ToUpperInvariant(), FacilityKind.Helipads);
+        Enqueue(sc =>
+        {
+            _facilityQueue.Enqueue(request);
+            StartNextFacilityRequest(sc);
+        });
+
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(FacilityTimeout * 3);
+        await request.Completion.Task.WaitAsync(timeout.Token);
+        return new AirportHelipads(
+            request.Icao,
+            request.Latitude,
+            request.Longitude,
+            request.AltitudeM,
+            [.. request.Helipads.OrderBy(h => h.Index).Select(h => h.Item)],
+            [.. request.Starts.OrderBy(s => s.Index).Select(s => s.Item).Where(s => s.Type == HelipadStart.HelipadType)]);
     }
 
     private void StartNextFacilityRequest(SimConnect sc)
@@ -189,12 +221,41 @@ public sealed partial class SimConnectClient
                 _facilityTaxiDefined = true;
             }
 
+            if (next.Kind == FacilityKind.Helipads && !_facilityHelipadsDefined)
+            {
+                var def = (SimDefinitionId)FacilityHelipadDefinitionId;
+                AddAirportPart(sc, def);
+                sc.AddToFacilityDefinition(def, "OPEN HELIPAD");
+                sc.AddToFacilityDefinition(def, "LATITUDE");
+                sc.AddToFacilityDefinition(def, "LONGITUDE");
+                sc.AddToFacilityDefinition(def, "ALTITUDE");
+                sc.AddToFacilityDefinition(def, "HEADING");
+                sc.AddToFacilityDefinition(def, "LENGTH");
+                sc.AddToFacilityDefinition(def, "WIDTH");
+                sc.AddToFacilityDefinition(def, "TYPE");
+                sc.AddToFacilityDefinition(def, "CLOSE HELIPAD");
+                sc.AddToFacilityDefinition(def, "OPEN START");
+                sc.AddToFacilityDefinition(def, "LATITUDE");
+                sc.AddToFacilityDefinition(def, "LONGITUDE");
+                sc.AddToFacilityDefinition(def, "ALTITUDE");
+                sc.AddToFacilityDefinition(def, "HEADING");
+                sc.AddToFacilityDefinition(def, "NUMBER");
+                sc.AddToFacilityDefinition(def, "DESIGNATOR");
+                sc.AddToFacilityDefinition(def, "TYPE");
+                sc.AddToFacilityDefinition(def, "CLOSE START");
+                sc.AddToFacilityDefinition(def, "CLOSE AIRPORT");
+                sc.RegisterFacilityDataDefineStruct<FacilityHelipadData>(SIMCONNECT_FACILITY_DATA_TYPE.HELIPAD);
+                sc.RegisterFacilityDataDefineStruct<FacilityStartData>(SIMCONNECT_FACILITY_DATA_TYPE.START);
+                _facilityHelipadsDefined = true;
+            }
+
             next.StartedUtc = DateTimeOffset.UtcNow;
             _facilityActive = next;
             var definition = next.Kind switch
             {
                 FacilityKind.Runways => FacilityRunwayDefinitionId,
                 FacilityKind.Taxiways => FacilityTaxiDefinitionId,
+                FacilityKind.Helipads => FacilityHelipadDefinitionId,
                 _ => FacilityDefinitionId,
             };
             sc.RequestFacilityData((SimDefinitionId)definition, (SimRequestId)(FacilityRequestBase + ++_nextFacilityRequest), next.Icao, "");
@@ -236,6 +297,14 @@ public sealed partial class SimConnectClient
         {
             active.TaxiPaths.Add((index, new TaxiPathData(path.Type, path.Width, path.RunwayNumber, path.RunwayDesignator, path.Start, path.End, path.NameIndex)));
         }
+        else if (data.Data[0] is FacilityHelipadData helipad)
+        {
+            active.Helipads.Add((index, new AirportHelipad(index, helipad.Latitude, helipad.Longitude, helipad.Altitude, helipad.Heading, helipad.Length, helipad.Width, helipad.Type)));
+        }
+        else if (data.Data[0] is FacilityStartData start)
+        {
+            active.Starts.Add((index, new HelipadStart(start.Latitude, start.Longitude, start.Altitude, start.Heading, start.Number, start.Type)));
+        }
         else if (data.Data[0] is FacilityTaxiNameData taxiName)
         {
             active.TaxiNames.Add((index, taxiName.Name?.TrimEnd('\0', ' ') ?? ""));
@@ -272,6 +341,10 @@ public sealed partial class SimConnectClient
             {
                 _log.LogInformation(Loc.Log("log.sim.facilityTaxiways"), active.TaxiPoints.Count, active.TaxiParkings.Count, active.TaxiPaths.Count, active.Icao);
             }
+            else if (active.Kind == FacilityKind.Helipads)
+            {
+                _log.LogInformation(Loc.Log("log.sim.facilityHelipads"), active.Helipads.Count, active.Starts.Count, active.Icao);
+            }
             else
             {
                 _log.LogInformation(Loc.Log("log.sim.facilityFrequencies"), active.Frequencies.Count, active.Icao);
@@ -302,6 +375,7 @@ public sealed partial class SimConnectClient
         _facilityDefined = false;
         _facilityRunwaysDefined = false;
         _facilityTaxiDefined = false;
+        _facilityHelipadsDefined = false;
         _facilityActive?.Completion.TrySetException(new InvalidOperationException(Loc.T("sim.disconnected")));
         _facilityActive = null;
         while (_facilityQueue.TryDequeue(out var queued))
@@ -325,6 +399,7 @@ public sealed partial class SimConnectClient
         Frequencies,
         Runways,
         Taxiways,
+        Helipads,
     }
 
     private sealed class FacilityRequest(string icao, FacilityKind kind)
@@ -352,6 +427,10 @@ public sealed partial class SimConnectClient
         public List<(int Index, TaxiPathData Item)> TaxiPaths { get; } = [];
 
         public List<(int Index, string Item)> TaxiNames { get; } = [];
+
+        public List<(int Index, AirportHelipad Item)> Helipads { get; } = [];
+
+        public List<(int Index, HelipadStart Item)> Starts { get; } = [];
 
         public TaskCompletionSource Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
@@ -429,6 +508,70 @@ public struct FacilityTaxiPathData
 
     public uint NameIndex;
 }
+
+/// <summary>HELIPAD: LATITUDE, LONGITUDE, ALTITUDE (FLOAT64, Grad und Meter), HEADING, LENGTH, WIDTH (FLOAT32), TYPE (INT32).</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
+public struct FacilityHelipadData
+{
+    public double Latitude;
+
+    public double Longitude;
+
+    public double Altitude;
+
+    public float Heading;
+
+    public float Length;
+
+    public float Width;
+
+    public int Type;
+}
+
+/// <summary>START: LATITUDE, LONGITUDE, ALTITUDE (FLOAT64), HEADING (FLOAT32), NUMBER, DESIGNATOR, TYPE (INT32).</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
+public struct FacilityStartData
+{
+    public double Latitude;
+
+    public double Longitude;
+
+    public double Altitude;
+
+    public float Heading;
+
+    public int Number;
+
+    public int Designator;
+
+    public int Type;
+}
+
+/// <summary>Helipad aus der MSFS-Datenbank (in der Reihenfolge, in der MSFS sie liefert).</summary>
+/// <param name="AltitudeM">Höhe der Mitte in Metern.</param>
+/// <param name="Type">0 keine Markierung, 1 H, 2 Quadrat, 3 Kreis, 4 Krankenhaus.</param>
+public sealed record AirportHelipad(int Index, double Latitude, double Longitude, double AltitudeM, double HeadingDeg, double LengthM, double WidthM, int Type)
+{
+    /// <summary>Art als Text: none, h, square, circle, medical.</summary>
+    public string TypeName => Type switch
+    {
+        1 => "h",
+        2 => "square",
+        3 => "circle",
+        4 => "medical",
+        _ => "none",
+    };
+}
+
+/// <summary>Startpunkt aus der MSFS-Datenbank; auf einem Helipad (TYPE 3) ist NUMBER die Nummer des Helipads (H1, H2 …).</summary>
+public sealed record HelipadStart(double Latitude, double Longitude, double AltitudeM, double HeadingDeg, int Number, int Type)
+{
+    /// <summary>START TYPE eines Helipads.</summary>
+    public const int HelipadType = 3;
+}
+
+/// <summary>Helipads eines Flughafens oder Heliports (<see cref="SimConnectClient.RequestAirportHelipadsAsync"/>).</summary>
+public sealed record AirportHelipads(string Icao, double Latitude, double Longitude, double AltitudeM, IReadOnlyList<AirportHelipad> Helipads, IReadOnlyList<HelipadStart> Starts);
 
 /// <summary>TAXI_NAME: NAME (STRING32).</summary>
 [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]

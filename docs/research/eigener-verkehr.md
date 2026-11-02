@@ -611,6 +611,18 @@ auch diese Abschnitte selbst (`EnrouteKinematics`), statt sie an die Wegpunkt-KI
   Flugzeug am Boden gefunden, vier Minuten vorher waren es 35, danach über 50 – MSFS hatte seinen Bodenverkehr neu aufgebaut. Ab beta.39
   prüfen A3 und A4 die Parkposition bei 2 NM noch einmal und rollen sonst zu einer anderen, die vom selben Abrollpunkt erreichbar ist.
 
+**Helikopter (beta.39/40):**
+- **Wegpunkt-KI mit Heli (beta.39, A1 mit dem `Asobo PassiveAircraft B205`):** Er spawnt (die Modellliste kennt nur
+  `SIMCONNECT_SIMOBJECT_TYPE.AIRCRAFT`, der Titel geht trotzdem), fliegt die 65 kt genau und liegt auf dem Gleitpfad – aber wie ein
+  Flugzeug: Im Landemodus fing er ab und startete 184 ft hoch durch. Der Rotor drehte sich nicht, nur das Beacon war an.
+- **Folge (beta.40, Variante H1):** Duopilo fliegt Helis selbst (`HeliKinematics`): geradeaus aufs Pad, auf 6° sinken und dabei mit
+  0,6 m/s² verzögern (v = √(2·a·d)), sodass er über dem Pad steht, 5 s auf 40 ft schweben, auf die Ausrichtung des Pads drehen,
+  mit 300 ft/min absetzen (die letzten 10 ft mit 100). Ziel: ein Helipad aus der MSFS-Datenbank (Facility `HELIPAD` mit Lage, Höhe,
+  Ausrichtung, Größe, Markierung; Namen haben sie keine – die Nummer kommt aus den `START`-Einträgen vom Typ 3) oder ein beliebiger
+  Punkt, dann mit dem Boden unter dem Heli gemessen. Heliports (Krankenhäuser, Plattformen) sind in MSFS eigene Flughäfen.
+- **Rotor:** `ROTOR RPM` und `ROTOR RPM PCT` sind laut SDK nicht schreibbar. H1 versucht `ENGINE_AUTO_START` und die SimVars
+  `GENERAL ENG COMBUSTION`, `TURB ENG N1`, `GENERAL ENG RPM` und `ROTOR GOV TARGET PCT` (`rotor`); ob ein Modell davon dreht, zeigt der Test.
+
 **Fahrplan des eigenen Verkehrs (Stand 1.11.2026):**
 
 1. Anflug und Landung – erledigt bis beta.14 (Wegpunkte, Fahrwerk bis 2500 ft, Lichter, Freigabeliste, Geschwindigkeit).
@@ -622,7 +634,7 @@ auch diese Abschnitte selbst (`EnrouteKinematics`), statt sie an die Wegpunkt-KI
    Luftfahrt FL85, doppelte Vapp, 15 NM. Flughafenregeln für alle Plätze – beta.19. Abseits der Flughäfen (C2) – beta.36.
 5. Rollen – beta.22 (Variante D1): Pushback und Rollen vom Gate zum Haltepunkt über die Rollwege, beta.23 mit Hindernissen; Abflug vom Gate mit Aufreihen und Start – beta.24 (B2), Halt an der richtigen Linie ab beta.28; Rollen nach der Landung – beta.29 (A3); Halt vor gekreuzten Bahnen – beta.30; Abflug-Reihenfolge mit Abstand beim Rollen – beta.31, ohne Deadlock am Haltepunkt ab beta.32, jeder Test endet für sich ab beta.33; Takt der Landungen und Mischbetrieb auf einer Bahn – beta.34; Gegenverkehr beim Rollen und Lücke nach Plan – beta.35; Anflug aus dem Reiseflug und Abflug bis in den Reiseflug – beta.37.
 6. Helikopter – nach dem Rollen: kinematisch (Anflug, Schweben, senkrecht landen und abheben), auf Heliports und Flughäfen;
-   Heliports bekommen dann nur Helis.
+   Heliports bekommen dann nur Helis. Landung auf ein Helipad oder einen beliebigen Punkt – beta.40 (H1); Abheben fehlt noch.
 
 **Entscheidung danach:**
 
@@ -639,6 +651,7 @@ auch diese Abschnitte selbst (`EnrouteKinematics`), statt sie an die Wegpunkt-KI
 - [MSFS 2024 SDK – SimConnect_AICreateParkedATCAircraft_EX1](https://docs.flightsimulator.com/msfs2024/flighting/programming-apis/simconnect/api-reference/ai-object/simconnect_aicreateparkedatcaircraft_ex1/)
 - [MSFS 2024 SDK – SIMCONNECT_DATA_WAYPOINT](https://docs.flightsimulator.com/msfs2024/retail/programming-apis/simconnect/api-reference/structures-and-enumerations/simconnect_data_waypoint/index.md)
 - [MSFS 2024 SDK – SIMCONNECT_WAYPOINT_FLAGS](https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_WAYPOINT_FLAGS.htm)
+- [MSFS 2024 SDK – Helicopter Variables](https://docs.flightsimulator.com/msfs2024/retail/programming-apis/simvars/helicopter-variables/)
 - [MSFS SDK – SIMCONNECT_FACILITY_DATA_TYPE](https://docs.flightsimulator.com/html/Programming_Tools/SimConnect/API_Reference/Structures_And_Enumerations/SIMCONNECT_FACILITY_DATA_TYPE.htm)
 - [MSFS DevSupport – SimConnect Injections in FS2024 (_EX1, Liveries)](https://devsupport.flightsimulator.com/t/simconnect-injections-in-fs2024/11769)
 - [MSFS DevSupport – AI injected aircraft do not switch to STATE_LANDING on approach](https://devsupport.flightsimulator.com/t/ai-injected-aircraft-do-not-switch-to-state-landing-on-approach/12124)
