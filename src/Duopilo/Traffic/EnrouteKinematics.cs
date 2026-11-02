@@ -193,8 +193,6 @@ public sealed class EnrouteKinematics
 
     private const double PitchDegPerSec = 1;
 
-    /// <summary>Anflug: Querneigung schon so weit vor dem Bogen (halb).</summary>
-    private const double BankLeadSeconds = 3;
 
     /// <summary>Abflug: Zeitkonstante, mit der der Kurs auf den gewünschten läuft (Kurvenrate = Abweichung / Zeit).</summary>
     private const double HeadingSeconds = 8;
@@ -398,14 +396,15 @@ public sealed class EnrouteKinematics
         if (_path is { } p)
         {
             _distanceM = Math.Min(p.LengthM, _distanceM + (groundMps * dt));
-            var (along, cross, heading, curvature) = p.At(_distanceM);
+            var (along, cross, heading, _) = p.At(_distanceM);
             AlongM = along;
             CrossM = cross;
             HeadingDeg = heading;
 
-            // Querneigung aus der Krümmung hier und ein paar Sekunden voraus – rollt so schon kurz vor dem Bogen ein
-            var ahead = p.At(_distanceM + (groundMps * BankLeadSeconds)).CurvaturePerM;
-            var bank = Math.Atan(groundMps * groundMps * ((curvature + ahead) / 2) / Gravity) * 180 / Math.PI;
+            // Querneigung aus der Krümmung so weit voraus, wie das Einrollen dauert: am Anfang des Bogens ganz drin, am Eindrehpunkt
+            // wieder gerade (beta.37 hing dort noch 12° und richtete sich mit dem Endanflug schlagartig auf)
+            var ahead = p.At(_distanceM + (groundMps * _profile.BankDeg / RollDegPerSec)).CurvaturePerM;
+            var bank = Math.Atan(groundMps * groundMps * ahead / Gravity) * 180 / Math.PI;
             BankRightDeg = Toward(BankRightDeg, Math.Clamp(bank, -BankLimitDeg, BankLimitDeg), RollDegPerSec * dt);
         }
         else

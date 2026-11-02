@@ -303,10 +303,20 @@ public sealed class TrafficKinematics
     public static double GlidePathHeightFt(double alongM) =>
         TrafficTestPlan.ThresholdCrossingFt - (alongM * Math.Tan(TrafficTestPlan.GlideSlopeDeg * Math.PI / 180) * FeetPerMeter);
 
-    /// <summary>Wunschfahrt im Anflug: bis 0,5 NM Vapp + 5, dann Vapp, im Abfangen Vapp − 5.</summary>
+    /// <summary>
+    /// Wunschfahrt im Anflug: kommt das Flugzeug schneller herein (A4 mit 210 kt am Eindrehpunkt), bis <see cref="IntermediateNm"/>
+    /// höchstens Vapp + 25, dann bis 0,5 NM Vapp + 5, dann Vapp, im Abfangen Vapp − 5.
+    /// </summary>
     public double TargetKt => Phase == KinematicPhase.Flare ? _plan.TouchdownKt
+        : AlongM < -IntermediateNm * RunwayEnd.MetersPerNm && StartSpeedKt > _plan.ApproachKt + 5
+            ? Math.Min(StartSpeedKt, _plan.ApproachKt + IntermediateAboveVappKt)
         : AlongM < -0.5 * RunwayEnd.MetersPerNm ? _plan.ApproachKt + 5
         : _plan.ApproachKt;
+
+    /// <summary>Weiter draußen als das darf ein schneller hereinkommender Anflug noch Vapp + <see cref="IntermediateAboveVappKt"/> fliegen.</summary>
+    public const double IntermediateNm = 4;
+
+    public const double IntermediateAboveVappKt = 25;
 
     /// <summary>Rechnet <paramref name="dt"/> Sekunden weiter.</summary>
     public void Advance(double dt)

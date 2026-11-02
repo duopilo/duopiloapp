@@ -1072,7 +1072,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 Math.Round(sample.AltitudeFt),
                 Math.Round(sample.AltitudeAglFt),
                 Math.Round(sample.IndicatedKt),
-                point.TargetKt,
+                run.Enroute is { Joined: false } shown ? Math.Round(shown.TargetKt) : point.TargetKt,
                 Math.Round(sample.GroundSpeedKt),
                 Math.Round(sample.VerticalSpeedFpm),
                 Math.Round(sample.PitchDeg, 1),
