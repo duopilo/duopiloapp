@@ -189,7 +189,9 @@ public sealed class FireOperation
                     break;
 
                 case FireVehiclePhase.Following:
-                    if (stopped && !_inspected)
+                    // Nach dem Abrollen (nur noch FLF 1 als Begleitung) bleibt es beim Halt hinter dem Flugzeug, statt es am Gate
+                    // oder an einer Kreuzung zu umstellen
+                    if (stopped && !_inspected && !_released)
                     {
                         Position(vehicle, aircraft);
                     }
