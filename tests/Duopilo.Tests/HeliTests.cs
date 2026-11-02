@@ -190,6 +190,31 @@ public sealed class HeliTests
         Assert.False(TrafficTestService.Matches(frame, "05L"));
     }
 
+    [Fact]
+    public void Heli_Lichter_mit_Recognition_und_abstellen_schaltet_alles_aus()
+    {
+        Assert.Equal(("RECOGNITION_LIGHTS_SET", "LIGHT RECOGNITION"), AiLights.Names(AiLight.Recognition));
+        Assert.Equal("nav recognition", AiLights.Describe(0x0041));
+        Assert.Contains((AiLight.Recognition, true), TrafficLights.HeliApproach.Changes());
+        Assert.Contains((AiLight.Landing, true), TrafficLights.HeliApproach.Changes());
+        Assert.True(TrafficLights.HeliLanded.MatchedBy(0x0103));
+        Assert.True(TrafficLights.HeliShutdown.MatchedBy(0));
+        Assert.All(TrafficLights.HeliShutdown.Changes(), c => Assert.False(c.On));
+        // Flugzeuge schalten das Recognition-Licht nicht
+        Assert.DoesNotContain(TrafficLights.Approach.Changes(), c => c.Light == AiLight.Recognition);
+    }
+
+    [Fact]
+    public void Heli_Rotor_abstellen_setzt_dieselben_SimVars_auf_aus()
+    {
+        Assert.Equal(HeliRotor.SimVars.Select(v => (v.Name, v.Unit)), HeliRotor.SimVarsOff.Select(v => (v.Name, v.Unit)));
+        Assert.All(HeliRotor.SimVarsOff, v => Assert.Equal(0, v.Value));
+        Assert.True(HeliRotor.StopAfterLandingSeconds < HeliRotor.LightsOffAfterLandingSeconds);
+        Assert.True(HeliRotor.LightsOffAfterLandingSeconds < HeliRotor.EndAfterLandingSeconds);
+        // Die Livery gehört nicht in den Titel (sonst CREATE_OBJECT_FAILED, beta.40)
+        Assert.DoesNotContain("(", TrafficTestService.DefaultHeliTitle, StringComparison.Ordinal);
+    }
+
     private static AiProbeSample Sample(DateTimeOffset utc, double lat, double lon, double altitudeFt, bool onGround) =>
         new(1, utc, lat, lon, altitudeFt, onGround ? 5 : altitudeFt - Pad.ElevationFt, 0, 0, 0, 230, onGround, true, 100, 100, 100, 100, null);
 }

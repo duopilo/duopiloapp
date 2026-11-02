@@ -622,6 +622,11 @@ auch diese Abschnitte selbst (`EnrouteKinematics`), statt sie an die Wegpunkt-KI
   Punkt, dann mit dem Boden unter dem Heli gemessen. Heliports (Krankenhäuser, Plattformen) sind in MSFS eigene Flughäfen.
 - **Rotor:** `ROTOR RPM` und `ROTOR RPM PCT` sind laut SDK nicht schreibbar. H1 versucht `ENGINE_AUTO_START` und die SimVars
   `GENERAL ENG COMBUSTION`, `TURB ENG N1`, `GENERAL ENG RPM` und `ROTOR GOV TARGET PCT` (`rotor`); ob ein Modell davon dreht, zeigt der Test.
+- **beta.40 in EDH0U (2.11.2026):** Der `Eurocopter EC-135T1 Ambulance` (Livery `ADAC` – im Titel ohne Klammer, sonst
+  `CREATE_OBJECT_FAILED`) und der `Asobo PassiveAircraft B212` landeten genau in der Mitte des Pads (0,0 m) mit 100 ft/min, knapp
+  3 Minuten aus 3 NM; gemessener Boden 119,5 ft gegen 120 ft in der Datenbank. Beide Rotoren drehten, beide standen sauber auf den
+  Kufen. Beim B212 war kein Landelicht zu sehen, obwohl `LIGHT STATES` es als an meldete. Ab beta.41: EC-135 als Standard, das
+  Recognition-Licht dazu, Rotor 15 s nach der Landung abstellen, Helikopter in der Modellliste.
 
 **Fahrplan des eigenen Verkehrs (Stand 1.11.2026):**
 

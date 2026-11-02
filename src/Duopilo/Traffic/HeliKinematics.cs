@@ -45,7 +45,18 @@ public static class HeliRotor
 {
     public const string StartEvent = "ENGINE_AUTO_START";
 
+    public const string StopEvent = "ENGINE_AUTO_SHUTDOWN";
+
     public const double ResendSeconds = 3;
+
+    /// <summary>So lange nach dem Aufsetzen läuft der Rotor noch, dann abstellen (Event, SimVars auf aus, kein Nachschicken mehr).</summary>
+    public const double StopAfterLandingSeconds = 15;
+
+    /// <summary>So lange nach dem Aufsetzen sind alle Lichter aus (der Rotor läuft bis dahin aus).</summary>
+    public const double LightsOffAfterLandingSeconds = 45;
+
+    /// <summary>So lange nach dem Aufsetzen endet der Test (landed).</summary>
+    public const double EndAfterLandingSeconds = 75;
 
     /// <summary>Triebwerk an, N1 und Drehzahl, Reglerziel 100 % – ob ein Modell davon den Rotor dreht, zeigt der Test.</summary>
     public static readonly IReadOnlyList<(string Name, string Unit, double Value)> SimVars =
@@ -54,6 +65,15 @@ public static class HeliRotor
         ("TURB ENG N1:1", "percent", 90),
         ("GENERAL ENG RPM:1", "rpm", 6600),
         ("ROTOR GOV TARGET PCT:1", "percent over 100", 1),
+    ];
+
+    /// <summary>Zum Abstellen: dieselben SimVars auf aus.</summary>
+    public static readonly IReadOnlyList<(string Name, string Unit, double Value)> SimVarsOff =
+    [
+        ("GENERAL ENG COMBUSTION:1", "bool", 0),
+        ("TURB ENG N1:1", "percent", 0),
+        ("GENERAL ENG RPM:1", "rpm", 0),
+        ("ROTOR GOV TARGET PCT:1", "percent over 100", 0),
     ];
 
     public static bool SendsEvent(HeliRotorMethod method) => method is HeliRotorMethod.Event or HeliRotorMethod.All;
