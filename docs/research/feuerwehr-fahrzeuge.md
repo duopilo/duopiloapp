@@ -59,6 +59,8 @@ Gebraucht für Follow-me und die Flughafenfeuerwehr (siehe [Roadmap](../../wiki/
 3. Mit `SetDataOnSimObject(def, objectId, …)` 0 oder 1 setzen.
 4. Während das Objekt lädt, wird der Wert ignoriert. Nach einem Respawn oder Reload steht er wieder auf 0. Deshalb kurz nach dem Spawn setzen und bei jeder Zustandsänderung erneut senden.
 5. Falls `L:1:` per SimConnect nicht greift: die A-Variablen `LIGHT BEACON` und `LIGHT LANDING` (Bool) auf dieselbe ObjectID setzen. Das Modell wertet beide aus.
+6. Räder und Lenkung (Branch `feature/feuerwehr`): `L:1:DUOPILO_WEG` und `L:1:DUOPILO_KURVE` setzt Duopilo im Frame-Takt mit der Lage
+   (je eine DataDefinition, nur wenn sich der Wert ändert). Die Krümmung kommt aus Kursänderung je Meter, über 0,4 s geglättet.
 
 ## Rettungstreppe anlegen (RTF, offen)
 

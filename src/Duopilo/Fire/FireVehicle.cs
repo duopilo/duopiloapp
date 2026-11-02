@@ -86,6 +86,18 @@ public sealed class FireVehicle
 
     public double SpeedMps { get; private set; }
 
+    /// <summary>Gefahrene Strecke seit dem Spawn (Räder drehen, <c>L:1:DUOPILO_WEG</c>).</summary>
+    public double OdometerM { get; private set; }
+
+    /// <summary>Krümmung der Fahrspur in 1/m, rechts positiv (Lenkung, <c>L:1:DUOPILO_KURVE</c>); bleibt im Stand stehen.</summary>
+    public double CurvaturePerM { get; private set; }
+
+    /// <summary>Engster Kurvenradius, den die Lenkung zeigt (darunter wären es Sprünge der Spur, kein Lenken).</summary>
+    public const double MaxCurvaturePerM = 1 / 6.0;
+
+    /// <summary>Glättung der Krümmung: Zeitkonstante in Sekunden (die Spur hat alle 3 m einen Knick).</summary>
+    public const double CurvatureSmoothingS = 0.4;
+
     /// <summary>Strecke auf dem aktuellen Weg (nicht beim Folgen).</summary>
     public double DistanceM { get; private set; }
 
@@ -243,6 +255,7 @@ public sealed class FireVehicle
                 _aircraftS = Math.Min(_trail.LengthM + 5, _aircraftS + (_aircraftMps * dt));
             }
 
+            var (east, north, heading) = (EastM, NorthM, HeadingDeg);
             switch (Phase)
             {
                 case FireVehiclePhase.Responding:
@@ -258,7 +271,27 @@ public sealed class FireVehicle
                     SpeedMps = 0;
                     break;
             }
+
+            Roll(east, north, heading, dt);
         }
+    }
+
+    /// <summary>
+    /// Strecke und Krümmung aus der Bewegung dieses Takts. Sprünge (neuer Weg, Drehen im Stand) zählen nicht: über 30 m in einem Takt
+    /// oder weniger als 2 cm Weg.
+    /// </summary>
+    private void Roll(double fromEast, double fromNorth, double fromHeading, double dt)
+    {
+        var moved = Math.Sqrt(Math.Pow(EastM - fromEast, 2) + Math.Pow(NorthM - fromNorth, 2));
+        if (moved < 0.02 || moved > 30)
+        {
+            return;
+        }
+
+        OdometerM += moved;
+        var turn = ((HeadingDeg - fromHeading + 540) % 360) - 180;
+        var raw = Math.Clamp(turn * Math.PI / 180 / moved, -MaxCurvaturePerM, MaxCurvaturePerM);
+        CurvaturePerM += (raw - CurvaturePerM) * (dt / (CurvatureSmoothingS + dt));
     }
 
     /// <summary>Lage für den Sim: Bezugspunkt <see cref="HeightFt"/> über dem Boden, waagerecht.</summary>
@@ -267,7 +300,7 @@ public sealed class FireVehicle
         lock (_lock)
         {
             var (lat, lon) = _toLatLon(EastM, NorthM);
-            return new AiPose(lat, lon, GroundFt + HeightFt, 0, 0, HeadingDeg);
+            return new AiPose(lat, lon, GroundFt + HeightFt, 0, 0, HeadingDeg, OdometerM, CurvaturePerM);
         }
     }
 

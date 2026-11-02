@@ -714,4 +714,27 @@ public sealed class FireTests
         // Der 1,3 km lange Abschnitt ist ein falsch gelesener Index und fehlt
         Assert.Equal(plain.BrokenPaths + 1, roads.BrokenPaths);
     }
+
+    [Fact]
+    public void Raeder_und_Lenkung_aus_der_Fahrt()
+    {
+        // 200 m nach Norden, Rechtskurve, 200 m nach Osten: die Strecke zählt mit, in der Kurve lenkt es rechts, danach wieder gerade
+        var route = FirePlanner.BuildPath([(0, 0), (0, 200), (200, 200)], FireProfile.MaxMps);
+        var vehicle = new FireVehicle(new FireUnit(FireVehicleKind.Flf, 1, FireStandbyRole.Rollout), "test", route, new FireTrail(), (e, n) => (51 + (n / 111_000), 7 + (e / 70_000)), 164);
+        var maxRight = 0.0;
+        for (var i = 0; i < 2000 && vehicle.Phase == FireVehiclePhase.Responding; i++)
+        {
+            vehicle.Advance(0.05);
+            maxRight = Math.Max(maxRight, vehicle.CurvaturePerM);
+        }
+
+        Assert.Equal(FireVehiclePhase.Standby, vehicle.Phase);
+        Assert.InRange(vehicle.OdometerM, route.LengthM - 1, route.LengthM + 1);
+        Assert.InRange(maxRight, 0.5 / FirePlanner.CornerRadiusM(Math.PI / 2), FireVehicle.MaxCurvaturePerM);
+        Assert.InRange(vehicle.CurvaturePerM, -0.005, 0.005);
+
+        var pose = vehicle.Pose();
+        Assert.Equal(vehicle.OdometerM, pose.WheelDistanceM);
+        Assert.Equal(vehicle.CurvaturePerM, pose.CurvaturePerM);
+    }
 }

@@ -52,6 +52,11 @@ public sealed partial class SimConnectClient
     private uint _aiSpeedDefId;
     private uint _aiVelocityDefId;
     private uint _aiPoseDefId;
+    private uint _aiWheelDefId;
+    private uint _aiSteerDefId;
+
+    // Zuletzt gesendete Rad- und Lenkwerte je Objekt (nur SimConnect-Thread): unverändert wird nichts geschickt
+    private readonly Dictionary<uint, (double Distance, double Curvature)> _aiWheelSent = [];
     private uint _nextAiReleaseRequest;
     private bool _frameSubscribed;
     private long _lastFrameTicks;
@@ -353,6 +358,7 @@ public sealed partial class SimConnectClient
 
         Enqueue(sc =>
         {
+            _aiWheelSent.Remove(objectId);
             if (unfreeze)
             {
                 Freeze(sc, objectId, false);
@@ -426,8 +432,46 @@ public sealed partial class SimConnectClient
                     BankDeg = p.BankDeg,
                     HeadingTrueDeg = p.HeadingTrueDeg,
                 });
+
+                if (p.WheelDistanceM is { } distance)
+                {
+                    SetWheels(sender, objectId, distance, p.CurvaturePerM ?? 0);
+                }
             }
         }
+    }
+
+    /// <summary>
+    /// Räder und Lenkung eines eigenen Bodenfahrzeugs: <c>L:1:DUOPILO_WEG</c> und <c>L:1:DUOPILO_KURVE</c> (Z-Variablen, gelten nur für
+    /// dieses Objekt; je eine Data Definition wie bei den Lichtern). Der Sim setzt GROUND VELOCITY eingefrorener Objekte nicht, die
+    /// Modelle rechnen den Drehwinkel deshalb aus der Strecke (docs/research/feuerwehr-fahrzeuge.md).
+    /// </summary>
+    private void SetWheels(SimConnect sc, uint objectId, double distanceM, double curvature)
+    {
+        if (_aiWheelDefId == 0)
+        {
+            _aiWheelDefId = ++_nextDefId;
+            sc.AddToDataDefinition((SimDefinitionId)_aiWheelDefId, "L:1:DUOPILO_WEG", "Number", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
+            sc.RegisterDataDefineStruct<double>((SimDefinitionId)_aiWheelDefId);
+            _aiSteerDefId = ++_nextDefId;
+            sc.AddToDataDefinition((SimDefinitionId)_aiSteerDefId, "L:1:DUOPILO_KURVE", "Number", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
+            sc.RegisterDataDefineStruct<double>((SimDefinitionId)_aiSteerDefId);
+        }
+
+        var sent = _aiWheelSent.TryGetValue(objectId, out var last) ? last : (Distance: double.NaN, Curvature: double.NaN);
+        if (!(Math.Abs(distanceM - sent.Distance) < 0.001))
+        {
+            sc.SetDataOnSimObject((SimDefinitionId)_aiWheelDefId, objectId, SIMCONNECT_DATA_SET_FLAG.DEFAULT, distanceM);
+            sent.Distance = distanceM;
+        }
+
+        if (!(Math.Abs(curvature - sent.Curvature) < 0.0002))
+        {
+            sc.SetDataOnSimObject((SimDefinitionId)_aiSteerDefId, objectId, SIMCONNECT_DATA_SET_FLAG.DEFAULT, curvature);
+            sent.Curvature = curvature;
+        }
+
+        _aiWheelSent[objectId] = sent;
     }
 
     /// <summary>Event an ein eigenes KI-Objekt (nicht an das eigene Flugzeug, daher ohne die Sperrliste des Eingabe-Moduls).</summary>
@@ -800,6 +844,9 @@ public sealed partial class SimConnectClient
         _aiSpeedDefId = 0;
         _aiVelocityDefId = 0;
         _aiPoseDefId = 0;
+        _aiWheelDefId = 0;
+        _aiSteerDefId = 0;
+        _aiWheelSent.Clear();
         _frameSubscribed = false;
         _aiPoseSources.Clear();
         _aiLightDefIds.Clear();
@@ -921,7 +968,17 @@ public sealed record AiProbeSample(
 /// <summary>Lage eines von Duopilo bewegten KI-Flugzeugs (<see cref="SimConnectClient.StartAiPose"/>).</summary>
 /// <param name="AltitudeFt">Höhe des Bezugspunkts über MSL.</param>
 /// <param name="PitchUpDeg">Längsneigung, Nase hoch positiv.</param>
-public readonly record struct AiPose(double Latitude, double Longitude, double AltitudeFt, double PitchUpDeg, double BankDeg, double HeadingTrueDeg);
+/// <param name="WheelDistanceM">Nur Duopilos Bodenfahrzeuge: gefahrene Strecke seit dem Spawn für <c>L:1:DUOPILO_WEG</c> (Räder drehen).</param>
+/// <param name="CurvaturePerM">Dazu die Krümmung der Fahrspur für <c>L:1:DUOPILO_KURVE</c> (Lenkung), 1/m, rechts positiv.</param>
+public readonly record struct AiPose(
+    double Latitude,
+    double Longitude,
+    double AltitudeFt,
+    double PitchUpDeg,
+    double BankDeg,
+    double HeadingTrueDeg,
+    double? WheelDistanceM = null,
+    double? CurvaturePerM = null);
 
 /// <summary>SimVars, die die Kinematik jeden Frame setzt, in dieser Reihenfolge (siehe <see cref="AiPoseData"/>).</summary>
 public static class AiPoseVariables
