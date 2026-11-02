@@ -429,8 +429,10 @@ public sealed class TrafficTestService : IHostedService, IDisposable
     /// <summary>Start: Fahrwerk rein frühestens in dieser Höhe über der Bahn (positive rate).</summary>
     private const double TakeoffGearUpFt = 30;
 
-    /// <summary>H1 ohne Titel: dieses Modell (spawnt in MSFS 2024, beta.39).</summary>
-    public const string DefaultHeliTitle = "Asobo PassiveAircraft B205";
+    /// <summary>H1 ohne Titel: dieses Modell mit <see cref="DefaultHeliLivery"/> – landete in beta.40 auf EDH0U mit drehendem Rotor.</summary>
+    public const string DefaultHeliTitle = "Eurocopter EC-135T1 Ambulance";
+
+    public const string DefaultHeliLivery = "ADAC";
 
     /// <summary>H1: Bezugspunkt über den Kufen, wenn der Sim nichts meldet.</summary>
     private const double DefaultHeliCgHeightFt = 5;
@@ -757,6 +759,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 KinematicTakeoff = plan.IsTakeoff && request.KinematicTakeoff,
                 Category = category,
                 Lights = plan.IsOverflight || (plan.Arrival is not null && plan.Spawn.AltitudeFt >= EnrouteProfile.SpeedLimitFt) ? TrafficLights.Cruise
+                    : plan.IsHeli ? TrafficLights.HeliApproach
                     : plan.IsTaxi ? TrafficLights.Rollout : TrafficLights.Approach,
                 TaxiGraph = taxiGraph,
                 FullModel = !title.Contains("Passive", StringComparison.OrdinalIgnoreCase),
@@ -1116,16 +1119,17 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             return (request.Title.Trim(), request.Livery?.Trim() ?? "");
         }
 
-        // H1: Die Modellliste kennt nur Flugzeuge (SIMCONNECT_SIMOBJECT_TYPE.AIRCRAFT), keine Helis
+        // H1 ohne Titel: der EC-135 (ADAC), sonst die genannte Livery
         if (request.Variant == TrafficTestVariant.H1)
         {
-            return (DefaultHeliTitle, request.Livery?.Trim() ?? "");
+            return (DefaultHeliTitle, string.IsNullOrWhiteSpace(request.Livery) ? DefaultHeliLivery : request.Livery.Trim());
         }
 
         IReadOnlyList<AiModel> models;
         try
         {
-            models = await _sim.EnumerateAircraftModelsAsync(ct);
+            // Helikopter fliegen nur H1 – die Regeln und die Standardwahl nehmen Flugzeuge
+            models = [.. (await _sim.EnumerateAircraftModelsAsync(ct)).Where(m => !m.Helicopter)];
         }
         catch (NotSupportedException)
         {
@@ -1931,8 +1935,39 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 $"heli_landed on {pad} at {heli.TouchdownFpm:0} ft/min, ground {heli.GroundFt:0} ft, heading {heli.HeadingTrueDeg:000}"));
             run.RolloutLightsSent = true;
             run.RolloutLightsSeconds = seconds;
-            run.AddEvent(seconds, "lights_sent rollout");
-            Fire(_sim.SetAiLightsAsync(run.ObjectId, TrafficLights.Rollout, CancellationToken.None), "lights");
+            run.Lights = TrafficLights.HeliLanded;
+            run.AddEvent(seconds, "lights_sent landed (landing, strobes, recognition off)");
+            Fire(_sim.SetAiLightsAsync(run.ObjectId, TrafficLights.HeliLanded, CancellationToken.None), "lights");
+        }
+
+        // Nach der Landung: Rotor abstellen, dann alle Lichter aus (das Nachschicken der Rolllichter endet damit)
+        var landedFor = heli.OnGround && run.HoldingSinceSeconds is { } landedAt ? seconds - landedAt : (double?)null;
+        if (landedFor >= HeliRotor.StopAfterLandingSeconds && run.Rotor != HeliRotorMethod.Off && run.Once("rotor_stop"))
+        {
+            run.RotorStopped = true;
+            if (HeliRotor.SendsEvent(run.Rotor))
+            {
+                Fire(_sim.SendAiEventAsync(run.ObjectId, HeliRotor.StopEvent, 0, CancellationToken.None), "rotor");
+            }
+
+            if (HeliRotor.SendsSimVars(run.Rotor))
+            {
+                foreach (var (name, unit, value) in HeliRotor.SimVarsOff)
+                {
+                    Fire(_sim.SetAiSimVarAsync(run.ObjectId, name, unit, value, CancellationToken.None), "rotor");
+                }
+            }
+
+            run.AddEvent(seconds, string.Create(CultureInfo.InvariantCulture,
+                $"rotor_stop {landedFor:0} s after landing ({(HeliRotor.SendsEvent(run.Rotor) ? HeliRotor.StopEvent + ", " : "")}{(HeliRotor.SendsSimVars(run.Rotor) ? "simvars off" : "")})"));
+        }
+
+        if (landedFor >= HeliRotor.LightsOffAfterLandingSeconds && run.Once("lights_shutdown"))
+        {
+            run.RolloutLightResends = int.MaxValue;
+            run.Lights = TrafficLights.HeliShutdown;
+            run.AddEvent(seconds, "lights_sent shutdown (all off)");
+            Fire(_sim.SetAiLightsAsync(run.ObjectId, TrafficLights.HeliShutdown, CancellationToken.None), "lights");
         }
 
         // Rotor: Event nach 5 s noch einmal, SimVars alle ResendSeconds
@@ -1943,7 +1978,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             Fire(_sim.SendAiEventAsync(run.ObjectId, HeliRotor.StartEvent, 0, CancellationToken.None), "rotor");
         }
 
-        if (HeliRotor.SendsSimVars(run.Rotor) && (run.RotorSentSeconds is not { } last || seconds >= last + HeliRotor.ResendSeconds))
+        if (HeliRotor.SendsSimVars(run.Rotor) && !run.RotorStopped && (run.RotorSentSeconds is not { } last || seconds >= last + HeliRotor.ResendSeconds))
         {
             if (run.RotorSentSeconds is null)
             {
@@ -1958,7 +1993,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             }
         }
 
-        if (heli.OnGround && run.HoldingSinceSeconds is { } since && seconds - since >= HoldingEndSeconds && !run.StopScheduled)
+        if (landedFor >= HeliRotor.EndAfterLandingSeconds && !run.StopScheduled)
         {
             run.StopScheduled = true;
             _ = Task.Run(() => StopRunAsync(run, "landed"));
@@ -3087,6 +3122,9 @@ public sealed class TrafficTestService : IHostedService, IDisposable
 
         /// <summary>H1: Sekunde der letzten Rotor-SimVars.</summary>
         public double? RotorSentSeconds { get; set; }
+
+        /// <summary>H1: Rotor nach der Landung abgestellt – keine Rotor-SimVars mehr.</summary>
+        public bool RotorStopped { get; set; }
 
         /// <summary>A3, A4: neue Route, weil die geplante Parkposition vor der Landung belegt war; sonst null.</summary>
         public TaxiRoute? ReplannedTaxi

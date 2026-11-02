@@ -364,6 +364,18 @@ public static class TrafficLights
     /// <summary>Was nach der Landung an sein muss, sonst schickt der Test <see cref="Rollout"/> nach (Taxilicht haben die PassiveAircraft nicht).</summary>
     public static readonly AiLights RolloutRequired = new(Nav: true, Beacon: true);
 
+    /// <summary>
+    /// Heli im Anflug: wie <see cref="Approach"/>, dazu das Recognition-Licht – beim Passive-B212 war in beta.40 kein Landelicht zu
+    /// sehen, obwohl der Sim es als an meldete; vielleicht hängt der Scheinwerfer dort.
+    /// </summary>
+    public static readonly AiLights HeliApproach = Approach with { Recognition = true };
+
+    /// <summary>Heli gelandet, Rotor dreht noch: Nav, Beacon und Logo, alles andere aus.</summary>
+    public static readonly AiLights HeliLanded = new(Nav: true, Beacon: true, Strobe: false, Landing: false, Taxi: false, Logo: true, Recognition: false);
+
+    /// <summary>Heli abgestellt, Rotor steht: alle Lichter aus.</summary>
+    public static readonly AiLights HeliShutdown = new(Nav: false, Beacon: false, Strobe: false, Landing: false, Taxi: false, Logo: false, Recognition: false);
+
     /// <summary>Unter dieser Geschwindigkeit am Boden schaltet der Test auf <see cref="Rollout"/>.</summary>
     public const double RolloutBelowKt = 60;
 }
