@@ -8,7 +8,9 @@ using Microsoft.Extensions.Options;
 namespace Duopilo.Fire;
 
 /// <summary>Ein Fahrzeug im Status von fire_service.</summary>
-public sealed record FireVehicleInfo(string Unit, string Model, string Phase, uint? ObjectId, string? Hold, double? AlongM, double? SpeedKt, double? GapM, double? TargetGapM);
+/// <param name="RemainingM">Restweg bis zum Ziel des aktuellen Wegs (Haltepunkt, Platz am Flugzeug, Wache), beim Folgen und Stehen null.</param>
+/// <param name="SimSpeedKt">GROUND VELOCITY des Objekts laut Sim (für die Raddrehung im Modell), null = noch keine Abfrage.</param>
+public sealed record FireVehicleInfo(string Unit, string Model, string Phase, uint? ObjectId, string? Hold, double? AlongM, double? SpeedKt, double? SimSpeedKt, double? RemainingM, double? GapM, double? TargetGapM);
 
 /// <summary>Stand der Feuerwehr für fire_service und das Log.</summary>
 /// <param name="State">idle, armed, planning, dispatching, responding, standby, following, at_aircraft, returning, finished, unavailable.</param>
@@ -490,6 +492,7 @@ public sealed class FireService : BackgroundService
     /// <summary>Boden unter dem Fahrzeug aus der Abfrage (eingefroren: Höhe minus Höhe über Grund), nur in der Nähe des Erwarteten.</summary>
     private static void OnProbe(double expectedGroundFt, FireVehicle vehicle, AiProbeSample sample)
     {
+        vehicle.SimGroundSpeedKt = sample.GroundSpeedKt;
         var measured = sample.AltitudeFt - sample.AltitudeAglFt;
         if (Math.Abs(measured - expectedGroundFt) < MaxGroundCorrectionFt)
         {
@@ -817,6 +820,8 @@ public sealed class FireService : BackgroundService
                     plan?.Hold?.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),
                     plan?.Hold is null ? null : plan.AlongM,
                     Math.Round(vehicle.SpeedMps / MetersPerSecondPerKnot, 1),
+                    vehicle.SimGroundSpeedKt is { } simKt ? Math.Round(simKt, 1) : null,
+                    vehicle.RemainingM > 0 ? Math.Round(vehicle.RemainingM) : null,
                     double.IsNaN(vehicle.GapM) ? null : Math.Round(vehicle.GapM),
                     vehicle.Phase == FireVehiclePhase.Following ? Math.Round(vehicle.TargetGapM) : null);
             })

@@ -136,6 +136,12 @@ public sealed class FireVehicle
     /// <summary>Bezugspunkt des Modells über dem Boden.</summary>
     public double HeightFt { get; }
 
+    /// <summary>
+    /// GROUND VELOCITY des Objekts laut Sim (Abfrage einmal pro Sekunde), null = keine Abfrage. Zeigt, ob der Sim für die
+    /// eingefrorenen, von Duopilo bewegten Fahrzeuge eine Geschwindigkeit rechnet – dann kann das Modell die Räder danach drehen.
+    /// </summary>
+    public double? SimGroundSpeedKt { get; set; }
+
     /// <summary>Neue Lage des Flugzeugs auf der Spur und seine Geschwindigkeit über Grund (m/s).</summary>
     public void SetAircraft(double trailS, double groundSpeedMps)
     {
