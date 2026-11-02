@@ -155,11 +155,12 @@ public sealed class FireTests
         var graph = Graph();
         var plan = FirePlanner.Plan(graph, Runway09, FireCategory.Lineup(FireAlertLevel.LocalStandby, 7), TrafficWake.Medium, null)!;
 
-        // Schwelle 09 bei x = -1000: Haltepunkte 200, 600, 1000, 1400, 1800 m dahinter
+        // Schwelle 09 bei x = -1000: Haltepunkte 200, 600, 1000, 1400, 1800 m dahinter (ein paar Meter Spiel zwischen Kugel- und
+        // WGS84-Rechnung)
         var along = plan.Vehicles.ToDictionary(v => v.Unit.Name, v => v.AlongM);
-        Assert.Equal(600, along["FLF 1"]);     // Aufsetzzone 450 m → nächster Haltepunkt
-        Assert.Equal(1000, along["ELW 1"]);    // Mitte
-        Assert.Equal(1800, along["FLF 2"]);    // Stoppstelle 1500 + 150 m
+        Assert.InRange(along["FLF 1"], 595, 605);     // Aufsetzzone 450 m → nächster Haltepunkt
+        Assert.InRange(along["ELW 1"], 995, 1005);    // Mitte
+        Assert.InRange(along["FLF 2"], 1795, 1805);   // Stoppstelle 1500 + 150 m
 
         // Jede Route endet am Haltepunkt, also hinter der Haltelinie und nicht auf der Bahn
         foreach (var vehicle in plan.Vehicles)
@@ -175,7 +176,7 @@ public sealed class FireTests
     {
         var graph = Graph();
         var plan = FirePlanner.Plan(graph, Runway09, FireCategory.Lineup(FireAlertLevel.FullEmergency, 9), TrafficWake.Heavy, null)!;
-        var mid = plan.Vehicles.Where(v => v.AlongM == 1000).Select(v => v.Route).ToList();
+        var mid = plan.Vehicles.Where(v => Math.Abs(v.AlongM - 1000) < 5).Select(v => v.Route).ToList();
 
         // ELW, HLF, zwei Rettungstreppen und RTW an der Mitte: 22 m Abstand hintereinander
         Assert.Equal(5, mid.Count);
