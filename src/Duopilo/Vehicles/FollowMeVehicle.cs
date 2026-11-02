@@ -59,6 +59,11 @@ public sealed class FollowMeVehicle
     private double _phaseSeconds;
     private double _leftM;
     private bool _leavingOnLead;
+    private volatile bool _crossingClear;
+    private volatile int _crossingsDone;
+    private volatile int _approachCrossingsDone;
+    private volatile FollowMeCrossing? _holdingAt;
+    private double _holdSeconds;
 
     public FollowMeVehicle(FollowMePlan plan, Func<double, double, (double Latitude, double Longitude)> toLatLon, double groundFt, double heightFt = 0)
     {
@@ -107,6 +112,34 @@ public sealed class FollowMeVehicle
 
     public double PhaseSeconds => _phaseSeconds;
 
+    /// <summary>Vor gekreuzten Bahnen mindestens so lange halten.</summary>
+    public const double CrossingHoldSeconds = 3;
+
+    /// <summary>Über eine gekreuzte Bahn mindestens so schnell, bis sie auch für das Flugzeug dahinter frei ist.</summary>
+    public const double CrossingMps = 5;
+
+    /// <summary>Hinter einer gekreuzten Bahn noch so viel Luft, bevor es anhalten darf.</summary>
+    public const double ClearMarginM = 10;
+
+    /// <summary>Steht vor einer gekreuzten Bahn (<see cref="HoldingAt"/>) und wartet auf <see cref="CrossingClear"/>.</summary>
+    public bool HoldingShort => _holdingAt is not null;
+
+    /// <summary>Die Bahn, vor der es gerade steht (auf dem Weg entgegen oder vorweg), sonst null.</summary>
+    public FollowMeCrossing? HoldingAt => _holdingAt;
+
+    /// <summary>So viele Bahnen sind beim Vorwegfahren gekreuzt (<see cref="FollowMePlan.Crossings"/>).</summary>
+    public int CrossingsDone => _crossingsDone;
+
+    /// <summary>So viele Bahnen sind auf dem Weg entgegen gekreuzt (<see cref="FollowMePlan.ApproachCrossings"/>).</summary>
+    public int ApproachCrossingsDone => _approachCrossingsDone;
+
+    /// <summary>Die Bahn vor dem Fahrzeug ist frei (setzt der Verkehrstest aus der Verkehrsabfrage, aus einem anderen Thread).</summary>
+    public bool CrossingClear
+    {
+        get => _crossingClear;
+        set => _crossingClear = value;
+    }
+
     /// <summary>Neue Lage des Flugzeugs: Stelle auf <see cref="FollowMePlan.Reference"/> und Geschwindigkeit über Grund (m/s).</summary>
     public void SetAircraft(double referenceS, double groundSpeedMps) => _aircraft = new AircraftProgress(referenceS, Math.Max(0, groundSpeedMps));
 
@@ -142,7 +175,24 @@ public sealed class FollowMeVehicle
         switch (_phase)
         {
             case FollowMePhase.Approach:
-                Move(_plan.Approach, FollowMeProfile.MaxMps, dt);
+                if (_holdingAt is not null)
+                {
+                    if (HoldShort(dt))
+                    {
+                        _approachCrossingsDone++;
+                    }
+
+                    break;
+                }
+
+                var ahead = NextApproachCrossing();
+                Move(_plan.Approach, FollowMeProfile.MaxMps, dt, ahead?.StopM);
+                if (ahead is not null && DistanceM >= ahead.StopM - 0.05)
+                {
+                    StartHold(ahead);
+                    break;
+                }
+
                 if (AtEnd(_plan.Approach))
                 {
                     SpeedMps = 0;
@@ -153,7 +203,28 @@ public sealed class FollowMeVehicle
 
             case FollowMePhase.InPosition:
             case FollowMePhase.Leading:
-                Move(_plan.Lead, TargetMps(), dt);
+                if (_holdingAt is not null)
+                {
+                    if (HoldShort(dt))
+                    {
+                        _crossingsDone++;
+                    }
+
+                    break;
+                }
+
+                var crossing = NextLeadCrossing();
+                double? stopAt = crossing is null ? null : LeadM(crossing.StopM);
+
+                // Auf und dicht hinter einer gekreuzten Bahn nicht stehen bleiben, auch wenn das Flugzeug wartet
+                var target = ClearingRunway() ? Math.Max(TargetMps(), CrossingMps) : TargetMps();
+                Move(_plan.Lead, target, dt, stopAt);
+                if (crossing is not null && DistanceM >= stopAt!.Value - 0.05)
+                {
+                    StartHold(crossing);
+                    break;
+                }
+
                 if (_phase == FollowMePhase.InPosition && SpeedMps > 0.3)
                 {
                     _phase = FollowMePhase.Leading;
@@ -191,13 +262,22 @@ public sealed class FollowMeVehicle
             case FollowMePhase.Leaving:
                 var before = DistanceM;
                 var path = _leavingOnLead ? _plan.Lead : _plan.Approach;
-                Move(path, FollowMeProfile.MaxMps, dt);
+                double? leaveStop = _leavingOnLead
+                    ? (NextLeadCrossing() is { } leadCrossing ? LeadM(leadCrossing.StopM) : null)
+                    : NextApproachCrossing()?.StopM;
+                Move(path, FollowMeProfile.MaxMps, dt, leaveStop);
                 if (_leavingOnLead)
                 {
                     _leftM += DistanceM - before;
                 }
 
-                if (AtEnd(path))
+                if (leaveStop is { } bahn && DistanceM >= bahn - 0.05)
+                {
+                    // Abbestellt kreuzt es keine Bahn mehr: davor verschwinden
+                    SpeedMps = 0;
+                    _phase = FollowMePhase.Gone;
+                }
+                else if (AtEnd(path))
                 {
                     if (_leavingOnLead)
                     {
@@ -256,6 +336,7 @@ public sealed class FollowMeVehicle
 
     private void StartLeaving()
     {
+        _holdingAt = null;
         switch (_phase)
         {
             case FollowMePhase.Approach:
@@ -307,21 +388,87 @@ public sealed class FollowMeVehicle
 
     private bool AtEnd(TaxiPath path) => DistanceM >= path.LengthM - 0.05 || (SpeedMps < 0.1 && path.LengthM - DistanceM < 0.5 && _phase != FollowMePhase.InPosition && _phase != FollowMePhase.Leading);
 
-    /// <summary>Auf <paramref name="path"/> weiter: zur Wunschgeschwindigkeit beschleunigen bzw. bremsen, Kurven und das Ende beachten.</summary>
-    private void Move(TaxiPath path, double targetMps, double dt)
+    /// <summary>Nächste gekreuzte Bahn beim Vorwegfahren, null = keine mehr.</summary>
+    private FollowMeCrossing? NextLeadCrossing()
     {
+        var done = _crossingsDone;
+        return done < _plan.Crossings.Count ? _plan.Crossings[done] : null;
+    }
+
+    /// <summary>Nächste gekreuzte Bahn auf dem Weg entgegen, null = keine mehr.</summary>
+    private FollowMeCrossing? NextApproachCrossing()
+    {
+        var done = _approachCrossingsDone;
+        return done < _plan.ApproachCrossings.Count ? _plan.ApproachCrossings[done] : null;
+    }
+
+    /// <summary>Stelle auf <see cref="FollowMePlan.Reference"/> als Meter auf <see cref="FollowMePlan.Lead"/>.</summary>
+    private double LeadM(double referenceS) => Math.Max(0, referenceS - _plan.LeadOffsetS);
+
+    /// <summary>
+    /// Die zuletzt gekreuzte Bahn liegt noch nicht so weit hinter dem Fahrzeug, dass auch das Flugzeug mit seinem kleinsten Abstand
+    /// (<see cref="FollowMeProfile.MinGapFactor"/>) von ihr weg wäre.
+    /// </summary>
+    private bool ClearingRunway()
+    {
+        var done = _crossingsDone;
+        if (done == 0 || done > _plan.Crossings.Count)
+        {
+            return false;
+        }
+
+        var clear = _plan.Crossings[done - 1].ClearM + (_plan.GapM * FollowMeProfile.MinGapFactor) + ClearMarginM;
+        return LeadM(clear) > DistanceM;
+    }
+
+    /// <summary>Vor der Bahn anhalten und auf die Freigabe warten.</summary>
+    private void StartHold(FollowMeCrossing crossing)
+    {
+        SpeedMps = 0;
+        _holdSeconds = 0;
+        _crossingClear = false;
+        _holdingAt = crossing;
+    }
+
+    /// <summary>Vor der Bahn stehen: true = Mindestzeit vorbei und frei, es geht weiter.</summary>
+    private bool HoldShort(double dt)
+    {
+        SpeedMps = 0;
+        _holdSeconds += dt;
+        if (_holdSeconds < CrossingHoldSeconds || !_crossingClear)
+        {
+            return false;
+        }
+
+        _holdingAt = null;
+        _crossingClear = false;
+        return true;
+    }
+
+    /// <summary>
+    /// Auf <paramref name="path"/> weiter: zur Wunschgeschwindigkeit beschleunigen bzw. bremsen, Kurven, das Ende und
+    /// <paramref name="stopAt"/> (Meter auf dem Weg) beachten.
+    /// </summary>
+    private void Move(TaxiPath path, double targetMps, double dt, double? stopAt = null)
+    {
+        var end = Math.Min(stopAt ?? path.LengthM, path.LengthM);
         var allowed = Math.Min(targetMps, path.AllowedMps(DistanceM, FollowMeProfile.DecelMps2));
+        if (stopAt is not null)
+        {
+            allowed = Math.Min(allowed, Math.Sqrt(2 * FollowMeProfile.DecelMps2 * Math.Max(0, end - DistanceM)));
+        }
+
         SpeedMps = SpeedMps < allowed
             ? Math.Min(allowed, SpeedMps + (FollowMeProfile.AccelMps2 * dt))
             : Math.Max(allowed, SpeedMps - (FollowMeProfile.DecelMps2 * dt));
 
-        // Am Ende nicht kurz davor stehen bleiben (Bremsgrenze 0): kriechen
-        if (SpeedMps <= 0 && targetMps > 0 && path.LengthM - DistanceM > 0.05)
+        // Am Ende bzw. Halt nicht kurz davor stehen bleiben (Bremsgrenze 0): kriechen
+        if (SpeedMps <= 0 && targetMps > 0 && end - DistanceM > 0.05)
         {
-            SpeedMps = Math.Min(0.2, path.LengthM - DistanceM);
+            SpeedMps = Math.Min(0.2, end - DistanceM);
         }
 
-        DistanceM = Math.Min(path.LengthM, DistanceM + (SpeedMps * dt));
+        DistanceM = Math.Min(end, DistanceM + (SpeedMps * dt));
         var (east, north, heading) = path.At(DistanceM);
         (EastM, NorthM, HeadingDeg) = (east, north, heading);
     }

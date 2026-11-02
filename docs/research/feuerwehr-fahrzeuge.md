@@ -1,4 +1,4 @@
-# Feuerwehr-Fahrzeuge: Licht, Blaulicht und Rettungstreppe schalten
+# Feuerwehr-Fahrzeuge: Licht, Räder, Lenkung und Rettungstreppe schalten
 
 Stand: 02.11.2026. Status: Modelle fertig und im Sim getestet. Der Einbau in Duopilo ist noch offen.
 
@@ -21,14 +21,34 @@ Die `_Licht`-Variante hat echte Lichter, die wie bei den Standard-Bodenfahrzeuge
 
 ## Schalter je Fahrzeug
 
-| Licht | Variable (0/1) | Ersatz |
-| --- | --- | --- |
-| Blaulicht | `L:1:DUOPILO_BLAULICHT` | `A:LIGHT BEACON` |
-| Fahrlicht (Scheinwerfer) | `L:1:DUOPILO_FAHRLICHT` | `A:LIGHT LANDING` |
+| Schalter | Variable | Werte | Ersatz |
+| --- | --- | --- | --- |
+| Blaulicht | `L:1:DUOPILO_BLAULICHT` | 0/1 | `A:LIGHT BEACON` |
+| Fahrlicht (Scheinwerfer) | `L:1:DUOPILO_FAHRLICHT` | 0/1 | `A:LIGHT LANDING` |
+| Räder drehen | `L:1:DUOPILO_WEG` | Strecke in m seit dem Spawn, jeden Frame | – |
+| Lenkung | `L:1:DUOPILO_KURVE` | Krümmung in 1/m, + = rechts, 0 = gerade, jeden Frame | – |
+| Rettungstreppe (nur RTF) | `L:1:DUOPILO_TREPPE` | 0 bis 100 (siehe unten) | – |
 
 - Blaulicht und Fahrlicht sind unabhängig voneinander.
 - `L:1:` ist eine Z-Variable und gilt in MSFS 2024 nur für das eine SimObject. Die globalen `L:DUOPILO_*` werden nicht mehr ausgewertet. Mit ihnen gingen im Test alle Fahrzeuge gleichzeitig an.
 - Im Modell schalten die Variablen über `<Behaviors>`/`<Visibility>` die Knoten `Blaulicht_LODn` und `Fahrlicht_LODn` sichtbar.
+
+### Räder und Lenkung
+
+Stand: 02.11.2026. Alle sechs `_Licht`-Varianten sind exportiert und die Werte im glTF geprüft, im Sim aber noch nicht getestet. In den anderen Varianten stehen die Räder gerade und drehen nicht.
+
+| Fahrzeug | Raddurchmesser | Radumfang | Radstand für die Lenkung | gelenkte Achsen | Achsen (z vor dem Nullpunkt) |
+| --- | --- | --- | --- | --- | --- |
+| HLF | 1,08 m | 3,3929 m | 4,50 m | A1 | +2,20 / −2,30 |
+| RTW | 0,71 m | 2,2305 m | 4,325 m | A1 | +2,52 / −1,805 |
+| ELW | 0,71 m | 2,2305 m | 4,49 m | A1 | +2,45 / −2,04 |
+| RTF | 1,04 m | 3,2673 m | 4,50 m | A1 | +2,30 / −2,20 |
+| FLF Panther (8x8) | 1,413 m | 4,439 m | 6,15 m (A1 bis Mitte A3/A4) | A1 (35°), A2 (Faktor 0,724, also 25,3°) | +3,40 / +1,70 / −1,90 / −3,60 |
+| FLF Z8 (8x8) | 1,413 m | 4,439 m | 6,15 m (A1 bis Mitte A3/A4) | A1 (35°), A2 (Faktor 0,724, also 25,3°) | +3,40 / +1,70 / −1,90 / −3,60 |
+
+- **Animation `Raeder`** (`Type="Sim"`, Länge 100, kein Lag): Sie dreht die Knoten `Rad_A<n><L|R>_LODn` (alle Räder) um die Radachse und rollt vorwärts. Bild 100 entspricht 360°. Code: `(L:1:DUOPILO_WEG, number) <Radumfang> / d flr - 100 *`
+- **Animation `Lenkung`** (`Type="Sim"`, Länge 100, Lag 80): Sie dreht die Knoten `Lenk_A<n><L|R>_LODn` um die Hochachse; 0 ist voll links, 50 gerade, 100 voll rechts, Vollausschlag ±35°. Die Lenk-Knoten sind Eltern der gelenkten Räder, mit dem Drehpunkt in der Radmitte; Lenken und Drehen überlagern sich. Code: `(L:1:DUOPILO_KURVE, number) <Radstand> * atg rddg -35 max 35 min 35 / 50 * 50 +`
+- **Follow-me:** `Duopilo_FollowMe_Licht` kommt aus einem eigenen Skript und Exporter (`FollowMe/export_msfs.py`) mit eigenem Paket. Dort fehlen Raddrehen und Lenkung noch.
 
 ## Einbau in Duopilo (offen)
 
@@ -73,6 +93,9 @@ Die Schwellenhöhe der Türen gehört ins Flugzeugprofil. Grobe Richtwerte, noch
 - Zwei `Duopilo_HLF_Licht` spawnen und nur bei einem das Blaulicht setzen. Nur dieses eine darf blitzen.
 - Fahrlicht allein einschalten: Das Blaulicht bleibt aus.
 - Noch ungetestet: ob SimConnect `L:1:` auf KI-Objekte schreiben kann. Laut SDK ja, im Forum gab es dazu offene Fragen.
+- Räder: `L:1:DUOPILO_WEG` auf 0, dann auf einen Radumfang, dann auf 1,5 Radumfänge setzen. Bei 0 und bei einem Umfang steht das Rad gleich, bei 1,5 Umfängen ist es um 180° gedreht. Beim Hochzählen muss es vorwärts rollen.
+- Lenkung: `L:1:DUOPILO_KURVE` auf 0,04 setzen, die Vorderräder lenken nach rechts. Bei −0,04 lenken sie nach links, bei 0 stehen sie gerade.
+- Zwei Fahrzeuge desselben Typs: Nur das, dessen Werte gesetzt sind, darf sich bewegen.
 - RTF: `L:1:DUOPILO_TREPPE` auf 10, 55 und 100 setzen. Die Brücke muss rechts herausfahren, die Bühne auf halbe bzw. volle Höhe gehen, und die Treppe muss geschlossen bleiben.
 
 ## Später

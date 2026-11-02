@@ -24,7 +24,7 @@ public sealed record HeliPad(
     bool Measured = false);
 
 /// <summary>Helipads aus der MSFS-Datenbank lesbar machen: Bezeichnungen und Suche nach "H02", "h2" oder "2".</summary>
-public static class HeliPads
+public static partial class HeliPads
 {
     /// <summary>So nah muss ein Startpunkt an der Mitte eines Helipads liegen, damit seine Nummer dessen Bezeichnung wird.</summary>
     public const double StartMatchM = 40;
@@ -104,6 +104,24 @@ public static class HeliPads
         var number = digits.TrimStart('0');
         return (prefix == "HP" ? "HP" : "H") + (number.Length == 0 ? "0" : number);
     }
+
+    /// <summary>
+    /// Koordinaten aus "51.380228,6.787324" oder "51.380228 6.787324" (Punkt als Dezimaltrenner); false, wenn es keine sind oder sie
+    /// außerhalb liegen.
+    /// </summary>
+    public static bool TryParseCoordinates(string? text, out double latitude, out double longitude)
+    {
+        latitude = 0;
+        longitude = 0;
+        var match = CoordinatePattern().Match(text ?? "");
+        return match.Success
+            && double.TryParse(match.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out latitude)
+            && double.TryParse(match.Groups[2].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out longitude)
+            && Math.Abs(latitude) <= 89.9 && Math.Abs(longitude) <= 180;
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^\s*(-?\d+(?:\.\d+)?)\s*(?:,|\s)\s*(-?\d+(?:\.\d+)?)\s*$")]
+    private static partial System.Text.RegularExpressions.Regex CoordinatePattern();
 
     /// <summary>Das Pad mit dieser Bezeichnung, ohne Bezeichnung das erste; sonst null.</summary>
     public static HeliPad? Find(IReadOnlyList<HeliPad> pads, string? label)
