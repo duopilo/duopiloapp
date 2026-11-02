@@ -1249,6 +1249,8 @@
   "tools.fire.noRouteToRunway": "In {airport} gibt es keine Route von einer freien Parkposition zu einem Haltepunkt der Bahn {runway}.",
   "tools.fire.spawnFailed": "Die Feuerwehrfahrzeuge konnten nicht erzeugt werden: {errors} Ist das Feuerwehr-Paket von Duopilo (duopilo-fire) im Community-Ordner?",
   "tools.fire.failed": "Feuerwehr fehlgeschlagen: {error}",
+  "tools.fire.parkingUnknown": "Die Parkposition {parking} gibt es in {airport} nicht (traffic_taxi_info listet sie).",
+  "tools.fire.parkingAndTail": "Entweder tail oder parking, nicht beides.",
   "tools.fire.tailUnknown": "Kein laufender Verkehrstest mit dem Kennzeichen {tail} (siehe traffic_test_status).",
   "tools.followMe.noVehicle": "Alle Follow-me-Fahrzeuge in {airport} sind unterwegs (höchstens {count} zugleich)."
 }

@@ -84,7 +84,7 @@ See [Input Module](Input-Module).
 | `atc_control` | start / stop / restart the session, `reload` templates and data, repeat the last transmission |
 | `atc_set_value` | set gate, holding point, taxi route, pushback direction, approach type or runway by hand |
 | `follow_me` | follow-me after landing (only on request): vehicle state; `request` without the radio for testing, `cancel` |
-| `fire_service` | airport fire service on Mayday/Pan Pan (in development): state and vehicles; `alert` without the radio for testing (`local`, `full`, `ground`), `cancel` (back to the station), `reset` (gone at once) |
+| `fire_service` | airport fire service on Mayday/Pan Pan (in development): state and vehicles; `alert` without the radio for testing (`local`, `full`, `ground`; `tail` for an AI aircraft of a traffic test, `parking` for a ground incident at a parking spot), `cancel` (back to the station), `reset` (gone at once) |
 
 See [ATC](ATC).
 

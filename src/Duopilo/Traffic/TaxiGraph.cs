@@ -96,6 +96,12 @@ public sealed class TaxiGraph
     /// <summary>Abschnitte, die verworfen wurden (Index außerhalb der Listen).</summary>
     public int BrokenPaths { get; private set; }
 
+    /// <summary>Geladene Fahrweg-Abschnitte der Bodenfahrzeuge (nur mit <c>vehicleRoads</c>).</summary>
+    public int VehicleRoads { get; private set; }
+
+    /// <summary>Längstes Fahrweg-Stück, das als echt gilt.</summary>
+    public const double MaxVehicleRoadSegmentM = 400;
+
     public IReadOnlyList<TaxiEdge> EdgesOf(int node) => _adjacency[node];
 
     /// <summary>Andere Flugzeuge am Boden (Meter östlich/nördlich), <see cref="SetObstacles"/>.</summary>
@@ -162,14 +168,18 @@ public sealed class TaxiGraph
         return Math.Sqrt((cx * cx) + (cy * cy));
     }
 
-    /// <summary>Netz aus den Daten des Sims; <paramref name="runways"/> dienen der Zuordnung der Achsen und der Haltepunkte.</summary>
-    public static TaxiGraph Build(AirportTaxiData data, IReadOnlyList<AirportRunway> runways)
+    /// <summary>
+    /// Netz aus den Daten des Sims; <paramref name="runways"/> dienen der Zuordnung der Achsen und der Haltepunkte.
+    /// <paramref name="vehicleRoads"/>: auch die Fahrwege der Bodenfahrzeuge (TAXI_PATH VEHICLE und ROAD) – nur für Duopilos eigene
+    /// Fahrzeuge (Feuerwehr), nie für Flugzeuge.
+    /// </summary>
+    public static TaxiGraph Build(AirportTaxiData data, IReadOnlyList<AirportRunway> runways, bool vehicleRoads = false)
     {
         var graph = new TaxiGraph(data.Icao, data.Latitude, data.Longitude, data.AltitudeM * RunwayEnd.FeetPerMeter, runways);
         var (mapping, error) = graph.ChooseMapping(data);
         graph.Mapping = mapping.Name;
         graph.MappingErrorM = error;
-        graph.Fill(data, mapping.Map);
+        graph.Fill(data, mapping.Map, vehicleRoads);
         return graph;
     }
 
@@ -472,7 +482,7 @@ public sealed class TaxiGraph
         return (scored[0].Mapping, Math.Round(scored[0].Error, 1));
     }
 
-    private void Fill(AirportTaxiData data, Func<double, double, (double East, double North)> map)
+    private void Fill(AirportTaxiData data, Func<double, double, (double East, double North)> map, bool vehicleRoads)
     {
         foreach (var point in data.Points)
         {
@@ -489,7 +499,8 @@ public sealed class TaxiGraph
         var points = data.Points.Count;
         foreach (var path in data.Paths)
         {
-            if (path.Type is not (1 or 2 or 3 or 4))
+            var road = path.Type is 6 or 7;
+            if (path.Type is not (1 or 2 or 3 or 4) && !(vehicleRoads && road))
             {
                 continue;
             }
@@ -505,6 +516,19 @@ public sealed class TaxiGraph
             var name = path.NameIndex < data.Names.Count ? data.Names[(int)path.NameIndex] : "";
             var runway = path.Type == 2 && path.RunwayNumber > 0 ? AirportRunway.Designation(path.RunwayNumber, path.RunwayDesignator) : null;
             var edge = new TaxiEdge(from, to, Distance(_nodes[from], _nodes[to]), path.Type, name.Trim(), path.WidthM, runway);
+
+            // Ein Fahrweg-Stück über Hunderte Meter wäre ein falsch gelesener Index (Ende auf einer Parkposition statt einem Rollpunkt)
+            if (road && edge.LengthM > MaxVehicleRoadSegmentM)
+            {
+                BrokenPaths++;
+                continue;
+            }
+
+            if (road)
+            {
+                VehicleRoads++;
+            }
+
             _edges.Add(edge);
             _adjacency[from].Add(edge);
             _adjacency[to].Add(edge);

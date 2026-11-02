@@ -1523,12 +1523,15 @@
   "log.fire.updateFailed": "Fire service update failed: {error}",
   "log.fire.obstaclesFailed": "Fire service: aircraft on the ground unknown ({error}) – parking positions may be occupied",
   "log.fire.lightsFailed": "Fire service lights could not be set: {error}",
+  "tools.fire.parkingUnknown": "There is no parking spot {parking} at {airport} (traffic_taxi_info lists them).",
+  "tools.fire.parkingAndTail": "Either tail or parking, not both.",
   "tools.fire.tailUnknown": "No running traffic test with tail {tail} (see traffic_test_status).",
   "log.fire.stations": "Fire stations at {airport} from OpenStreetMap: {stations}",
   "log.fire.osmFetched": "Fire stations of {airport} fetched from OpenStreetMap: {count} ({url})",
   "log.fire.osmFailed": "Fire stations of {airport} could not be fetched from {url}: {error}",
   "log.fire.osmPending": "Fire stations of {airport} not there from OpenStreetMap after {seconds} s – this time from a free parking position, the request goes on for the next time",
   "log.fire.staleEmergency": "Fire service ignores the {kind} since {since} (older than {hours} h, e.g. from a restored ATC session)",
+  "log.fire.network": "Fire service network at {airport}: {nodes} points, {roads} service road sections",
   "log.fire.osmCacheFailed": "Fire station cache {file} could not be read or written: {error}",
   "tools.followMe.noVehicle": "All follow-me vehicles at {airport} are on their way ({count} at most at the same time)."
 }

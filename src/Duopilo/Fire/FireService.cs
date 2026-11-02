@@ -95,7 +95,8 @@ public sealed class FireService : BackgroundService
     /// <summary>Alarm ohne Funk (fire_service alert) – zum Testen an jedem Flughafen. Ohne Flughafen: der nähere des SimBrief-Plans.</summary>
     /// <param name="tail">Statt des eigenen Flugzeugs einem KI-Flugzeug eines Verkehrstests folgen (DUO01 …); Flughafen und Bahn kommen
     /// dann vom Test, wenn nicht angegeben.</param>
-    public FireInfo Alert(string? level, string? airport, string? runway, string? tail = null)
+    /// <param name="parking">Notfall am Boden an dieser Parkposition statt an einem Flugzeug (z. B. V61A).</param>
+    public FireInfo Alert(string? level, string? airport, string? runway, string? tail = null, string? parking = null)
     {
         if (!Available)
         {
@@ -107,7 +108,16 @@ public sealed class FireService : BackgroundService
             throw new InvalidOperationException(Loc.T("sim.notConnected"));
         }
 
-        var alertLevel = ParseLevel(level) ?? throw new InvalidOperationException(Loc.T("tools.fire.levelUnknown", level ?? ""));
+        var place = string.IsNullOrWhiteSpace(parking) ? null : parking.Trim().ToUpperInvariant();
+        if (place is not null && !string.IsNullOrWhiteSpace(tail))
+        {
+            throw new InvalidOperationException(Loc.T("tools.fire.parkingAndTail"));
+        }
+
+        // An einer Parkposition gibt es keine Landung: immer ein Notfall am Boden
+        var alertLevel = place is not null
+            ? FireAlertLevel.GroundIncident
+            : ParseLevel(level) ?? throw new InvalidOperationException(Loc.T("tools.fire.levelUnknown", level ?? ""));
         lock (_lock)
         {
             if (_run is { Failed: false })
@@ -133,6 +143,7 @@ public sealed class FireService : BackgroundService
             var run = new Run("tool", alertLevel, icao, runwayName, test?.Type ?? _simBrief.Current?.AircraftIcao, DateTimeOffset.UtcNow, null)
             {
                 TargetTail = test?.Tail,
+                TargetParking = place,
             };
             StartLocked(run, dispatchNow: true);
             return Info(run);
@@ -355,7 +366,9 @@ public sealed class FireService : BackgroundService
                 throw new FireUnavailableException(Loc.T("tools.fire.noTaxiways", airport));
             }
 
-            var graph = TaxiGraph.Build(data, runways);
+            // Mit den Fahrwegen der Bodenfahrzeuge: von der Wache über die Betriebsstraßen auf die Rollwege
+            var graph = TaxiGraph.Build(data, runways, vehicleRoads: true);
+            _log.LogInformation(Loc.Log("log.fire.network"), airport, graph.Nodes.Count, graph.VehicleRoads);
             await SetObstaclesAsync(graph, ct);
             var wake = TrafficRules.WakeOf(run.AircraftIcao, TrafficCategory.Airliner);
             var category = FireCategory.Of(run.AircraftIcao, wake);
@@ -381,14 +394,27 @@ public sealed class FireService : BackgroundService
             }
 
             FireDispatchPlan? plan;
+            FireAircraftState? place = null;
             if (run.Level == FireAlertLevel.GroundIncident)
             {
-                if (!onGround || own is null)
+                (double East, double North) at;
+                if (run.TargetParking is { } label)
+                {
+                    // Einsatzort Parkposition: die Fahrzeuge stellen sich auf, als stünde dort ein Flugzeug (Nase in Richtung der Position)
+                    var node = graph.FindParking(label) ?? throw new FireUnavailableException(Loc.T("tools.fire.parkingUnknown", label, airport));
+                    place = new FireAircraftState(node.EastM, node.NorthM, node.Parking?.HeadingDeg ?? 0, 0, true);
+                    at = (node.EastM, node.NorthM);
+                }
+                else if (!onGround || own is null)
                 {
                     throw new FireUnavailableException(Loc.T("tools.fire.notOnGround"));
                 }
+                else
+                {
+                    at = own.Value;
+                }
 
-                plan = FirePlanner.PlanToAircraft(graph, units, own.Value.East, own.Value.North, FireCategory.PostUnitM(wake), stations)
+                plan = FirePlanner.PlanToAircraft(graph, units, at.East, at.North, FireCategory.PostUnitM(wake), stations)
                     ?? throw new FireUnavailableException(Loc.T("tools.fire.noRouteToAircraft", airport));
             }
             else
@@ -409,6 +435,7 @@ public sealed class FireService : BackgroundService
 
                 run.Graph = graph;
                 run.Operation = operation;
+                run.TargetPlace = place;
                 run.Category = category;
                 run.Runway = plan.Runway?.Designation ?? run.Runway;
             }
@@ -644,7 +671,7 @@ public sealed class FireService : BackgroundService
                 return;
             }
 
-            var aircraft = run.TargetTail is { } targetTail ? TestState(run, targetTail, graph, now) : OwnState(graph, now);
+            var aircraft = run.TargetPlace ?? (run.TargetTail is { } targetTail ? TestState(run, targetTail, graph, now) : OwnState(graph, now));
             if (aircraft is not null)
             {
                 operation.Update(aircraft, dt);
@@ -996,7 +1023,7 @@ public sealed class FireService : BackgroundService
             vehicles,
             missing,
             run.Error,
-            run.TargetTail ?? "own");
+            run.TargetTail ?? (run.TargetParking is { } targetParking ? "parking " + targetParking : "own"));
     }
 
     private sealed class Run(string source, FireAlertLevel level, string? airport, string? runway, string? aircraftIcao, DateTimeOffset startedUtc, DateTimeOffset? emergencySince)
@@ -1042,6 +1069,12 @@ public sealed class FireService : BackgroundService
 
         /// <summary>Kennzeichen des Verkehrstests, dem die Feuerwehr folgt; null = eigenes Flugzeug.</summary>
         public string? TargetTail { get; init; }
+
+        /// <summary>Einsatzort Parkposition (fire_service alert mit parking) statt eines Flugzeugs.</summary>
+        public string? TargetParking { get; init; }
+
+        /// <summary>Lage des Einsatzorts an der Parkposition, sobald geplant (steht still).</summary>
+        public FireAircraftState? TargetPlace { get; set; }
 
         public DateTimeOffset TestReadUtc { get; set; }
 

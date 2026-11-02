@@ -17,7 +17,7 @@ public sealed class FireTests
 
     private static readonly int[] ConnectorX = [-800, -400, 0, 400, 800];
 
-    private static TaxiGraph Graph(bool stub = false)
+    private static TaxiGraph Graph(bool stub = false, bool roads = false)
     {
         var points = new List<TaxiPointData>();
         for (var i = 0; i <= 10; i++)
@@ -64,6 +64,10 @@ public sealed class FireTests
             points.Add(new TaxiPointData(1, 0, 300, 330));
             points.Add(new TaxiPointData(1, 0, 320, 345));
             paths.Add(new TaxiPathData(1, 15, 0, 0, points.Count - 2, points.Count - 1, 0));
+
+            // Fahrweg der Bodenfahrzeuge von A bei x = 200 zum Stück, dazu ein falsch gelesener über 1,3 km (wird verworfen)
+            paths.Add(new TaxiPathData(6, 6, 0, 0, 6, points.Count - 2, 0));
+            paths.Add(new TaxiPathData(7, 6, 0, 0, points.Count - 1, 0, 0));
         }
 
         var data = new AirportTaxiData(
@@ -79,7 +83,7 @@ public sealed class FireTests
             ],
             paths,
             ["A", "A1"]);
-        return TaxiGraph.Build(data, [Runway]);
+        return TaxiGraph.Build(data, [Runway], vehicleRoads: roads);
     }
 
     private static RunwayEnd Runway09 => RunwayEnd.Find("EDXF", [Runway], "09")!;
@@ -693,5 +697,21 @@ public sealed class FireTests
 
         var standby = FirePlanner.Plan(graph, Runway09, FireCategory.Lineup(FireAlertLevel.LocalStandby, 6), TrafficWake.Medium, null, [station])!;
         Assert.True(standby.FromOsm);
+    }
+
+    [Fact]
+    public void Fahrwege_der_Bodenfahrzeuge_nur_fuer_die_Feuerwehr()
+    {
+        // Ohne Fahrwege (Flugzeuge) bleibt das Stück abgeschnitten, mit ihnen führt ein Weg von dort auf Rollweg A
+        var plain = Graph(stub: true);
+        var roads = Graph(stub: true, roads: true);
+        var stub = roads.Nodes.Count(n => !n.IsParking) - 2;
+        Assert.Equal(0, plain.VehicleRoads);
+        Assert.Equal(1, roads.VehicleRoads);
+        Assert.Null(plain.Route(stub, 6));
+        Assert.NotNull(roads.Route(stub, 6));
+
+        // Der 1,3 km lange Abschnitt ist ein falsch gelesener Index und fehlt
+        Assert.Equal(plain.BrokenPaths + 1, roads.BrokenPaths);
     }
 }
