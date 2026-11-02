@@ -42,6 +42,9 @@ public enum TrafficTestVariant
 
     /// <summary>Heli-Abflug: auf dem Pad anlassen, senkrecht abheben, schweben, auf Kurs drehen, Fahrt aufnehmen und steigen (Duopilo fliegt selbst).</summary>
     H2,
+
+    /// <summary>Heli-Einsatzflug über mehrere Stopps (z. B. Station → Einsatzort → Station): H2 und H1 im Wechsel, Wartezeit an jedem Stopp.</summary>
+    H3,
 }
 
 /// <summary>H1, H2: Pad und Flug eines Heli-Tests.</summary>
@@ -325,6 +328,18 @@ public sealed record TrafficTestPlan(
 
     /// <summary>H2: Der Test endet so weit vom Pad (1–20 NM).</summary>
     public const double DefaultHeliEndNm = 3;
+
+    /// <summary>H3: Stopps des Einsatzflugs (der erste ist der Start), sonst null.</summary>
+    public IReadOnlyList<HeliPad>? HeliStops { get; init; }
+
+    /// <summary>H3: Wartezeit an jedem Stopp zwischen dem ersten und dem letzten.</summary>
+    public double HeliWaitSeconds { get; init; }
+
+    /// <summary>H3: Wartezeit standardmäßig (0–30 min).</summary>
+    public const double DefaultHeliWaitMinutes = 2;
+
+    /// <summary>H3: höchstens so viele Stopps.</summary>
+    public const int MaxHeliStops = 8;
 
     /// <summary>A4: Spawn standardmäßig so weit von der Schwelle, mindestens <see cref="MinArrivalNm"/>, höchstens <see cref="MaxOverflightNm"/>.</summary>
     public const double DefaultArrivalNm = 40;
@@ -643,6 +658,36 @@ public sealed record TrafficTestPlan(
         return new TrafficTestPlan(TrafficTestVariant.H2, frame, spawn, 0, false, null, null, 0, 0, 0, Math.Clamp(profile.CruiseKt, 50, 180), waypoints, [], [])
         {
             Heli = new HeliLeg(pad, profile, TrafficMath.Normalize(track + 180), height, track, end),
+        };
+    }
+
+    /// <summary>
+    /// Heli-Einsatzflug (H3): Spawn am Boden auf dem ersten Stopp, dann zu jedem weiteren – abheben, Reiseflug auf
+    /// <paramref name="heightFt"/>, Anflug, Landung, <paramref name="waitMinutes"/> warten (<see cref="HeliMission"/>). Der Rahmen ist der
+    /// erste Abschnitt (Start mit Kurs zum zweiten Stopp); je Stopp ein Wegpunkt (Status und Auswertung).
+    /// </summary>
+    public static TrafficTestPlan BuildHeliMission(IReadOnlyList<HeliPad> stops, HeliProfile profile, double? heightFt = null, double? waitMinutes = null)
+    {
+        if (stops.Count < 2)
+        {
+            throw new ArgumentException("A mission needs at least two stops.", nameof(stops));
+        }
+
+        var height = Math.Clamp(heightFt ?? DefaultHeliHeightFt, 200, 5000);
+        var frame = HeliMission.LegFrame(stops[0], stops[1], stops[0].ElevationFt);
+        var start = stops[0];
+        var spawn = new AiInitPosition(start.Latitude, start.Longitude, start.ElevationFt, start.HeadingDeg ?? frame.HeadingTrueDeg, OnGround: true, AirspeedKt: 0);
+        var waypoints = stops
+            .Select((s, i) => new TrafficTestWaypoint(
+                i == 0 ? "start" : string.Create(CultureInfo.InvariantCulture, $"stop{i}"),
+                frame.Offsets(s.Latitude, s.Longitude).AlongM,
+                new AiWaypoint(s.Latitude, s.Longitude, s.ElevationFt, 0, AiWaypointFlags.OnGround)))
+            .ToList();
+        return new TrafficTestPlan(TrafficTestVariant.H3, frame, spawn, 0, false, null, null, 0, 0, 0, Math.Clamp(profile.CruiseKt, 50, 180), waypoints, [], [])
+        {
+            Heli = new HeliLeg(start, profile, TrafficMath.Normalize(frame.HeadingTrueDeg + 180), height, frame.HeadingTrueDeg, 0),
+            HeliStops = stops,
+            HeliWaitSeconds = Math.Clamp(waitMinutes ?? DefaultHeliWaitMinutes, 0, 30) * 60,
         };
     }
 

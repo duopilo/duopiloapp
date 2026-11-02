@@ -174,7 +174,8 @@ public sealed class HeliKinematics
     private readonly double _startHeightFt;
     private readonly double? _padHeadingDeg;
 
-    public HeliKinematics(RunwayEnd frame, HeliProfile profile, double startDistanceM, double startHeightFt, double startKt, double? padHeadingDeg, double groundFt, double cgHeightFt)
+    /// <param name="pitchDeg">Längsneigung zu Beginn; leer = die der Reisefahrt (Einsatzflug: die des Abflugs, ohne Sprung).</param>
+    public HeliKinematics(RunwayEnd frame, HeliProfile profile, double startDistanceM, double startHeightFt, double startKt, double? padHeadingDeg, double groundFt, double cgHeightFt, double? pitchDeg = null)
     {
         _frame = frame;
         _profile = profile;
@@ -183,7 +184,7 @@ public sealed class HeliKinematics
         DistanceM = Math.Max(0, startDistanceM);
         HeightFt = _startHeightFt;
         SpeedKt = Math.Clamp(startKt, 0, profile.CruiseKt);
-        PitchDeg = profile.CruisePitchDeg;
+        PitchDeg = pitchDeg ?? profile.CruisePitchDeg;
         HeadingTrueDeg = frame.HeadingTrueDeg;
         GroundFt = groundFt;
         CgHeightFt = Math.Max(0, cgHeightFt);
@@ -191,6 +192,9 @@ public sealed class HeliKinematics
     }
 
     public HeliPhase Phase { get; private set; } = HeliPhase.Cruise;
+
+    /// <summary>Rahmen: das Pad als Schwelle, der Anflug- bzw. Abflugkurs als Kurs.</summary>
+    public RunwayEnd Frame => _frame;
 
     /// <summary>
     /// Abflug (H2): Der Heli steht auf dem Pad (Mitte von <paramref name="frame"/>), Rotor läuft <see cref="HeliProfile.StartupSeconds"/>
