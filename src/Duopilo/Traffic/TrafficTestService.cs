@@ -349,6 +349,12 @@ public sealed class TrafficTestService : IHostedService, IDisposable
     /// <summary>Rollen: so viele Parkpositionen probiert der Test, bis eine eine Route zum Haltepunkt hat.</summary>
     private const int MaxParkingTries = 25;
 
+    /// <summary>
+    /// A3, A4: So weit vor der Schwelle prüft die Landung noch einmal, ob ihre Parkposition frei ist – MSFS stellt inzwischen eigene
+    /// Flugzeuge ab (beta.37: A310 auf V42, als DUO02 ankam). Bis zum Abrollpunkt bleibt gut eine Minute für Abfrage und neue Route.
+    /// </summary>
+    private const double ParkingRecheckNm = 2;
+
     /// <summary>Start: Weicht der gemessene Boden mehr als das von der Bahnhöhe ab, gilt die Bahnhöhe aus den Bahndaten.</summary>
     private const double MaxGroundCorrectionFt = 100;
 
@@ -924,7 +930,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                     k.Liftoff is { } liftKt ? Math.Round(liftKt.SpeedKt) : null,
                     k.Liftoff is { } liftPitch ? Math.Round(liftPitch.PitchDeg, 1) : null)
                 : null,
-            run.InitialPlan.Taxi is { } route
+            run.Taxi is { } route
                 ? new TrafficTestTaxi(
                     run.InitialPlan.TaxiAfterLanding && !run.TaxiActive ? "landing"
                         : run.TaxiKinematics is { } t ? JsonNamingPolicy.SnakeCaseLower.ConvertName(t.Phase.ToString()) : "parked",
@@ -1125,6 +1131,13 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             && !plan.IsOverflight && run.Analysis.GoAroundPlan is null && !run.Analysis.TouchedDown)
         {
             CheckRunwayBeforeLanding(run, approach, point.Seconds);
+        }
+
+        // A3, A4: kurz vor der Landung noch einmal prüfen, ob die Parkposition frei ist
+        if (run.InitialPlan.TaxiAfterLanding && !run.TaxiActive && run.Kinematics is { ExitAlongM: not null } landingKin
+            && landingKin.AlongM >= -ParkingRecheckNm * RunwayEnd.MetersPerNm && run.Once("parking_recheck"))
+        {
+            _ = Task.Run(() => RecheckParkingAsync(run, landingKin, point.Seconds));
         }
 
         run.PreviousAlongM = point.AlongM;
@@ -1428,24 +1441,111 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         return (kin, after);
     }
 
-    /// <summary>Ein Frame des Endanflugs (<see cref="StartLanding"/>): Landung, nach dem Abrollpunkt das Rollen.</summary>
+    /// <summary>
+    /// Ein Frame des Endanflugs (<see cref="StartLanding"/>): Landung, nach dem Abrollpunkt das Rollen. Hat die Prüfung vor der Landung
+    /// eine andere Parkposition gewählt (<see cref="TrafficTestRun.PendingTaxi"/>), rollt am Abrollpunkt deren Weg statt des alten.
+    /// </summary>
     private static AiPose LandingPose(TrafficTestRun run, TrafficKinematics kin, TaxiKinematics? after, double dt)
     {
         if (after is not null && run.TaxiActive)
         {
-            after.Advance(dt);
-            return after.Pose();
+            if (run.PendingTaxi is not null)
+            {
+                // Zu spät gekommen: das Rollen läuft schon auf dem alten Weg
+                run.PendingTaxi = null;
+                run.ReplannedTaxi = null;
+            }
+
+            var taxi = run.TaxiKinematics ?? after;
+            taxi.Advance(dt);
+            return taxi.Pose();
         }
 
         kin.Advance(dt);
         if (after is not null && kin.Phase == KinematicPhase.Exited)
         {
-            after.GroundFt = kin.GroundFt;
+            var taxi = run.PendingTaxi ?? after;
+            run.PendingTaxi = null;
+            taxi.GroundFt = kin.GroundFt;
+            run.TaxiKinematics = taxi;
             run.TaxiActive = true;
-            return after.Pose();
+            return taxi.Pose();
         }
 
         return kin.Pose();
+    }
+
+    /// <summary>
+    /// A3, A4 kurz vor der Landung: Bodenverkehr neu abfragen und prüfen, ob die Parkposition noch frei ist. Ist sie belegt, eine andere
+    /// freie wählen, die vom selben Abrollpunkt aus erreichbar ist, und deren Weg für den Abrollpunkt bereitlegen (<see cref="LandingPose"/>).
+    /// </summary>
+    private async Task RecheckParkingAsync(TrafficTestRun run, TrafficKinematics kin, double seconds)
+    {
+        try
+        {
+            if (run.TaxiGraph is not { } graph || run.Taxi is not { } route || kin.ExitAlongM is not { } exitAlong)
+            {
+                return;
+            }
+
+            var (count, error) = await SetTaxiObstaclesAsync(graph, run.Category, CancellationToken.None);
+            graph.Reserve(Running()
+                .Where(r => r != run && r.Taxi is not null && r.TaxiGraph?.Icao == graph.Icao)
+                .Select(r => (r.Taxi!.Parking.Latitude, r.Taxi.Parking.Longitude)));
+            var label = route.Parking.Parking?.Label ?? "";
+            if (error is not null)
+            {
+                run.AddEvent(seconds, "warning:parking_recheck_scan " + error);
+            }
+
+            if (!graph.IsOccupied(route.Parking))
+            {
+                run.AddEvent(seconds, string.Create(CultureInfo.InvariantCulture, $"parking_checked {label} free ({count} aircraft on the ground)"));
+                return;
+            }
+
+            var plan = run.InitialPlan;
+            var profile = TaxiProfile.For(run.Category);
+            TaxiRoute? replanned = null;
+            foreach (var node in TaxiRoute.CandidateParkings(graph, run.Category, run.Wake, Random.Shared).Take(MaxParkingTries))
+            {
+                if (node.Id != route.Parking.Id
+                    && TaxiRoute.PlanArrival(graph, plan.Runway, node, profile, (route.EntryAlongM ?? exitAlong) - 1) is { HandoverAlongM: { } handover } candidate
+                    && Math.Abs(handover - exitAlong) < 1)
+                {
+                    replanned = candidate;
+                    break;
+                }
+            }
+
+            if (replanned is null)
+            {
+                run.AddEvent(seconds, "warning:parking_occupied " + label + ", no other free parking from this exit");
+                return;
+            }
+
+            var landing = run.Runways is { } runways ? RunwayOf(runways, plan.Runway.Designation) : null;
+            replanned = replanned.WithCrossings(graph, profile, landing);
+            var taxi = new TaxiKinematics(null, replanned.TaxiPath, graph.ToLatLon, kin.GroundFt, kin.CgHeightFt, kin.GroundPitchDeg, rolling: replanned.HandoverKt, crossingStops: [.. replanned.Crossings.Select(c => c.StopS)])
+            {
+                CheckRunway = true,
+            };
+            if (run.TaxiActive)
+            {
+                run.AddEvent(seconds, "warning:parking_occupied " + label + ", found too late");
+                return;
+            }
+
+            run.ReplannedTaxi = replanned;
+            run.PendingTaxi = taxi;
+            var parking = replanned.Parking.Parking;
+            run.AddEvent(seconds, string.Create(CultureInfo.InvariantCulture,
+                $"parking_changed {label} occupied, now {parking?.Label} ({parking?.TypeName}), route {string.Join(' ', replanned.Taxiways)} {replanned.LengthM:0} m"));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
+        {
+            run.AddEvent(seconds, "warning:parking_recheck_failed " + ex.Message);
+        }
     }
 
     /// <summary>
@@ -1738,8 +1838,8 @@ public sealed class TrafficTestService : IHostedService, IDisposable
     private void ReserveOwnParkings(TaxiGraph graph)
     {
         graph.Reserve(Running()
-            .Where(r => r.InitialPlan.Taxi is not null && r.TaxiGraph?.Icao == graph.Icao)
-            .Select(r => (r.InitialPlan.Taxi!.Parking.Latitude, r.InitialPlan.Taxi.Parking.Longitude)));
+            .Where(r => r.Taxi is not null && r.TaxiGraph?.Icao == graph.Icao)
+            .Select(r => (r.Taxi!.Parking.Latitude, r.Taxi.Parking.Longitude)));
     }
 
     /// <summary>Die Bahn mit dem Ende <paramref name="designation"/>, sonst null.</summary>
@@ -1756,7 +1856,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
     /// </summary>
     private void CheckRunwayWhileHolding(TrafficTestRun run, TaxiKinematics held, double seconds)
     {
-        if (run.TaxiGraph is not { } graph || run.InitialPlan.Taxi is not { } route || held.RunwayClear || run.RunwayScanBusy)
+        if (run.TaxiGraph is not { } graph || run.Taxi is not { } route || held.RunwayClear || run.RunwayScanBusy)
         {
             return;
         }
@@ -2611,6 +2711,27 @@ public sealed class TrafficTestService : IHostedService, IDisposable
 
         /// <summary>Streckenflug: A4 ab dem Spawn bis zum Final, B3 ab dem Steigflug nach dem Start; sonst null.</summary>
         public EnrouteKinematics? Enroute { get; set; }
+
+        /// <summary>A3, A4: neue Route, weil die geplante Parkposition vor der Landung belegt war; sonst null.</summary>
+        public TaxiRoute? ReplannedTaxi
+        {
+            get => Volatile.Read(ref _replannedTaxi);
+            set => Volatile.Write(ref _replannedTaxi, value);
+        }
+
+        private TaxiRoute? _replannedTaxi;
+
+        /// <summary>A3, A4: Rollen auf der neuen Route, das am Abrollpunkt übernimmt (vom Frame übernommen und geleert).</summary>
+        public TaxiKinematics? PendingTaxi
+        {
+            get => Volatile.Read(ref _pendingTaxi);
+            set => Volatile.Write(ref _pendingTaxi, value);
+        }
+
+        private TaxiKinematics? _pendingTaxi;
+
+        /// <summary>Die Rollroute, die gerade gilt: die neue nach einer belegten Parkposition, sonst die des Plans.</summary>
+        public TaxiRoute? Taxi => ReplannedTaxi ?? InitialPlan.Taxi;
 
         private readonly HashSet<string> _once = [];
 
