@@ -1099,7 +1099,9 @@ public sealed partial class AtcSession
         }
 
         var t = heard.Tokens;
-        if (t.Any(x => x.IsWord(NewCallWords)))
+
+        // "position" kennzeichnet eine Positionsmeldung – "hold position" ist dagegen die Quittung einer Anweisung (Follow-me)
+        if (t.Where((x, i) => x.IsWord(NewCallWords) && !(x.IsWord("position") && i > 0 && t[i - 1].IsWord("hold"))).Any())
         {
             return true;
         }
