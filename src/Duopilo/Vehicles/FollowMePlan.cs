@@ -79,7 +79,22 @@ public sealed record FollowMePlan(
     double StandEntryS,
     double GapM)
 {
+    /// <summary>KI-Verkehr: Ab so weit neben der Mittellinie hat das Flugzeug die Bahn verlassen (Abstand der Haltepunkte).</summary>
+    public const double ClearOfRunwayM = TaxiRoute.DefaultHoldDistanceM;
+
     private const double SampleM = 8;
+
+    /// <summary>Den Rollweg der KI so dicht abtasten, dass die Meter auf dem Bezugsweg mit denen des Flugzeugs übereinstimmen.</summary>
+    private const double ArrivalSampleM = 4;
+
+    /// <summary>So weit vor der Einfahrt biegt der Rollweg der KI zum Gate ab (Kurvenradius der Verkehrsflugzeuge) – das Fahrzeug fährt geradeaus weiter.</summary>
+    private const double EntryLeadInM = 35;
+
+    /// <summary>KI-Verkehr: Hier hat das Flugzeug die Bahn verlassen (auf <see cref="Reference"/>); bis hierhin rollt es, solange das Fahrzeug noch nicht steht.</summary>
+    public double? ClearS { get; init; }
+
+    /// <summary>Halte vor gekreuzten Bahnen auf <see cref="Reference"/> (KI-Verkehr: dieselben wie die des Flugzeugs).</summary>
+    public IReadOnlyList<double> CrossingStops { get; init; } = [];
 
     /// <summary>Nach der Wendeschleife so weit geradeaus bis zum Wartepunkt.</summary>
     private const double WaitAheadM = 2;
@@ -121,6 +136,86 @@ public sealed record FollowMePlan(
         var reference = TaxiPath.Build(points, FollowMeProfile.LeadTurnRadiusM, FollowMeProfile.MaxMps, FollowMeProfile.LateralMps2, FollowMeProfile.MinTurnMps);
         var entryS = reference.NearestS(entry.EastM, entry.NorthM);
         var meetS = Math.Max(gapM, FollowMeProfile.TurnRadiusM + 10);
+        return Assemble(parking, nodes, graph.TaxiwayNames(nodes), reference, entryS, meetS, gapM, driveOff);
+    }
+
+    /// <summary>
+    /// Plant das Follow-me für eine Landung mit Rollen des eigenen KI-Verkehrs (A3, A4): Weg des Fahrzeugs = Rollweg des Flugzeugs
+    /// (<see cref="TaxiRoute.TaxiPath"/> ab der Übergabe auf der Bahn), Treffpunkt <paramref name="gapM"/> hinter der Stelle, an der das
+    /// Flugzeug die Bahn verlassen hat (<see cref="ClearS"/>, <see cref="ClearOfRunwayM"/> von der Mittellinie), Halte vor gekreuzten Bahnen
+    /// wie die des Flugzeugs (<see cref="CrossingStops"/>). Null = der Weg reicht nicht für ein Follow-me.
+    /// </summary>
+    public static FollowMePlan? FromArrival(TaxiGraph graph, TaxiRoute route, RunwayEnd runway, double gapM)
+    {
+        var nodes = route.Nodes;
+        if (nodes.Count < 3 || !route.Parking.IsParking)
+        {
+            return null;
+        }
+
+        var entry = graph.Nodes[nodes[^2]];
+        var before = graph.Nodes[nodes[^3]];
+        if (entry.IsParking)
+        {
+            return null;
+        }
+
+        var path = route.TaxiPath;
+        var pathEntryS = path.NearestS(entry.EastM, entry.NorthM);
+        if (ClearOfRunway(graph, path, runway, pathEntryS) is not { } clearS)
+        {
+            return null;
+        }
+
+        // Bezugsweg: der Rollweg des Flugzeugs (dicht abgetastet, die Meter stimmen mit denen des Flugzeugs überein) bis vor die Kurve
+        // zum Gate, dann geradeaus über die Einfahrt und an ihr vorbei wie beim Piloten
+        var (beyond, driveOff) = PastEntry(graph, entry, (before.EastM, before.NorthM), before.Id, route.Parking);
+        var points = new List<(double East, double North)>();
+        for (var s = 0.0; s < pathEntryS - EntryLeadInM; s += ArrivalSampleM)
+        {
+            var p = path.At(s);
+            points.Add((p.East, p.North));
+        }
+
+        points.Add((entry.EastM, entry.NorthM));
+        points.AddRange(beyond);
+        var reference = TaxiPath.Build(points, FollowMeProfile.LeadTurnRadiusM, FollowMeProfile.MaxMps, FollowMeProfile.LateralMps2, FollowMeProfile.MinTurnMps);
+        var entryS = reference.NearestS(entry.EastM, entry.NorthM);
+        return Assemble(route.Parking, nodes, route.Taxiways, reference, entryS, clearS + gapM, gapM, driveOff) is { } plan
+            ? plan with { ClearS = clearS, CrossingStops = [.. route.Crossings.Select(c => c.StopS).Where(c => c > clearS + gapM && c < entryS).Order()] }
+            : null;
+    }
+
+    /// <summary>Auf <paramref name="path"/> die erste Stelle, die <see cref="ClearOfRunwayM"/> (sonst 60 m) neben der Mittellinie liegt.</summary>
+    private static double? ClearOfRunway(TaxiGraph graph, TaxiPath path, RunwayEnd runway, double untilS)
+    {
+        foreach (var clear in new[] { ClearOfRunwayM, 60.0 })
+        {
+            for (var s = 0.0; s <= untilS; s += 2)
+            {
+                var p = path.At(s);
+                var (lat, lon) = graph.ToLatLon(p.East, p.North);
+                if (Math.Abs(runway.Offsets(lat, lon).CrossM) >= clear)
+                {
+                    return s;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>Wendeschleife, Weg vorweg und Wegfahren zu einem Bezugsweg; null = bis zur Einfahrt zu kurz.</summary>
+    private static FollowMePlan? Assemble(
+        TaxiNode parking,
+        IReadOnlyList<int> nodes,
+        IReadOnlyList<string> taxiways,
+        TaxiPath reference,
+        double entryS,
+        double meetS,
+        double gapM,
+        List<(double East, double North)> driveOff)
+    {
         if (entryS < Math.Max(FollowMeProfile.MinRouteM, meetS + FollowMeProfile.MergeM + 20))
         {
             return null;
@@ -180,7 +275,7 @@ public sealed record FollowMePlan(
         return new FollowMePlan(
             parking,
             nodes,
-            graph.TaxiwayNames(nodes),
+            taxiways,
             reference,
             approachPath,
             leadPath,

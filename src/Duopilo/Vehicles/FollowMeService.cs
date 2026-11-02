@@ -54,6 +54,8 @@ public sealed class FollowMeService : BackgroundService
     private readonly TrafficConnection _traffic;
     private readonly SimBriefService _simBrief;
     private readonly IServiceProvider _services;
+    private readonly FollowMeSpawner _spawner;
+    private readonly FollowMeFleet _fleet;
     private readonly ILogger<FollowMeService> _log;
     private readonly object _lock = new();
 
@@ -61,12 +63,22 @@ public sealed class FollowMeService : BackgroundService
     private FollowMeInfo? _last;
     private volatile AtcFollowMeStatus _atcStatus = new(0, AtcFollowMeVehicle.None);
 
-    public FollowMeService(IOptions<DuopiloOptions> options, SimConnectClient sim, TrafficConnection traffic, SimBriefService simBrief, IServiceProvider services, ILogger<FollowMeService> log)
+    public FollowMeService(
+        IOptions<DuopiloOptions> options,
+        SimConnectClient sim,
+        TrafficConnection traffic,
+        SimBriefService simBrief,
+        FollowMeSpawner spawner,
+        FollowMeFleet fleet,
+        IServiceProvider services,
+        ILogger<FollowMeService> log)
     {
         _options = options.Value;
         _sim = sim;
         _traffic = traffic;
         _simBrief = simBrief;
+        _spawner = spawner;
+        _fleet = fleet;
         _services = services;
         _log = log;
     }
@@ -243,7 +255,8 @@ public sealed class FollowMeService : BackgroundService
     /// <summary>Route planen, Fahrzeug erzeugen und bewegen. Geht etwas nicht, ist das Follow-me „nicht verfügbar“.</summary>
     private async Task PrepareAsync(Run run, CancellationToken ct)
     {
-        uint? created = null;
+        FollowMeUnit? created = null;
+        IDisposable? lease = null;
         try
         {
             if (_sim.Bool("onGround") != true)
@@ -279,9 +292,6 @@ public sealed class FollowMeService : BackgroundService
             var groundFt = _sim.Num("altTrue") is { } alt && _sim.Num("altAgl") is { } agl && Math.Abs(alt - agl - graph.ElevationFt) < MaxGroundCorrectionFt
                 ? alt - agl
                 : graph.ElevationFt;
-            var height = _options.FollowMe.HeightFt;
-            var spawn = plan.Approach.At(0);
-            var (spawnLat, spawnLon) = graph.ToLatLon(spawn.East, spawn.North);
             _log.LogInformation(
                 Loc.Log("log.followMe.planned"),
                 plan.Parking.Parking?.Label ?? "?",
@@ -290,18 +300,19 @@ public sealed class FollowMeService : BackgroundService
                 plan.MeetS,
                 plan.Approach.LengthM);
 
-            uint objectId;
+            // Ein Fahrzeug des Flughafens (mit dem KI-Verkehr zusammen höchstens zwei)
+            lease = _fleet.TryReserve(run.Airport) ?? throw new FollowMeUnavailableException(Loc.T("tools.followMe.noVehicle", run.Airport, FollowMeFleet.MaxPerAirport));
+            FollowMeUnit unit;
             try
             {
-                objectId = await _sim.CreateSimulatedObjectAsync(_options.FollowMe.Model, null, new AiInitPosition(spawnLat, spawnLon, groundFt + height, spawn.HeadingDeg, true, 0), ct);
+                unit = await _spawner.SpawnAsync(plan, graph, groundFt, null, null, ct);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (InvalidOperationException ex)
             {
-                throw new FollowMeUnavailableException(Loc.T("tools.followMe.spawnFailed", _options.FollowMe.Model, ex.Message));
+                throw new FollowMeUnavailableException(ex.Message);
             }
 
-            created = objectId;
-            var vehicle = new FollowMeVehicle(plan, graph.ToLatLon, groundFt, height);
+            created = unit;
             lock (_lock)
             {
                 if (!ReferenceEquals(_run, run) || ct.IsCancellationRequested)
@@ -311,37 +322,32 @@ public sealed class FollowMeService : BackgroundService
 
                 run.Graph = graph;
                 run.Plan = plan;
-                run.Vehicle = vehicle;
-                run.ObjectId = objectId;
-                run.GroundFt = groundFt;
+                run.Unit = unit;
+                run.Lease = lease;
+                lease = null;
                 if (run.Leaving)
                 {
-                    vehicle.Leave();
+                    unit.Vehicle.Leave();
                 }
             }
-
-            _sim.StartAiPose(objectId, dt =>
-            {
-                vehicle.Advance(dt);
-                return vehicle.Phase == FollowMePhase.Gone ? null : vehicle.Pose();
-            }, releaseAi: false);
-            _sim.StartAiProbe(objectId, sample => OnProbe(run, vehicle, sample));
-            _log.LogInformation(Loc.Log("log.followMe.spawned"), _options.FollowMe.Model, objectId);
-            _ = SwitchLightsAsync(objectId, ct);
         }
         catch (OperationCanceledException)
         {
-            if (created is { } id)
+            if (created is not null)
             {
-                await RemoveObjectAsync(id);
+                await _spawner.RemoveAsync(created);
             }
+
+            lease?.Dispose();
         }
         catch (Exception ex)
         {
-            if (created is { } id)
+            if (created is not null)
             {
-                await RemoveObjectAsync(id);
+                await _spawner.RemoveAsync(created);
             }
+
+            lease?.Dispose();
 
             var reason = ex is FollowMeUnavailableException ? ex.Message : Loc.T("tools.followMe.failed", ex.Message);
             lock (_lock)
@@ -412,39 +418,6 @@ public sealed class FollowMeService : BackgroundService
         }
     }
 
-    /// <summary>Rundumlicht und Fahrlicht an – während das Objekt lädt, verwirft der Sim die Werte, deshalb mehrmals.</summary>
-    private async Task SwitchLightsAsync(uint objectId, CancellationToken ct)
-    {
-        foreach (var delay in new[] { 1, 2, 5 })
-        {
-            try
-            {
-                await Task.Delay(TimeSpan.FromSeconds(delay), ct);
-                await _sim.SetObjectNumberAsync(objectId, "L:1:DUOPILO_RUNDUMLICHT", "Number", 1, ct);
-                await _sim.SetObjectNumberAsync(objectId, "L:1:DUOPILO_FAHRLICHT", "Number", 1, ct);
-                await _sim.SetAiLightsAsync(objectId, new AiLights(Beacon: true, Landing: true), ct);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
-            catch (Exception ex)
-            {
-                _log.LogDebug(ex, Loc.Log("log.followMe.lightsFailed"), ex.Message);
-            }
-        }
-    }
-
-    /// <summary>Boden unter dem Fahrzeug aus der Abfrage (eingefroren: Höhe minus Höhe über Grund), nur in der Nähe des Erwarteten.</summary>
-    private static void OnProbe(Run run, FollowMeVehicle vehicle, AiProbeSample sample)
-    {
-        var measured = sample.AltitudeFt - sample.AltitudeAglFt;
-        if (Math.Abs(measured - run.GroundFt) < MaxGroundCorrectionFt)
-        {
-            vehicle.GroundTargetFt = measured;
-        }
-    }
-
     /// <summary>Takt: Lage des Flugzeugs an das Fahrzeug, Stand an ATC, am Ende entfernen.</summary>
     private async Task UpdateAsync(CancellationToken ct)
     {
@@ -468,7 +441,7 @@ public sealed class FollowMeService : BackgroundService
                 return;
             }
 
-            if (run.Vehicle is not { } vehicle || run.Plan is not { } plan || run.Graph is not { } graph)
+            if (run.Unit?.Vehicle is not { } vehicle || run.Plan is not { } plan || run.Graph is not { } graph)
             {
                 return;
             }
@@ -525,7 +498,7 @@ public sealed class FollowMeService : BackgroundService
         }
 
         run.Leaving = true;
-        if (run.Vehicle is { } vehicle)
+        if (run.Unit?.Vehicle is { } vehicle)
         {
             vehicle.Leave();
             return;
@@ -552,6 +525,7 @@ public sealed class FollowMeService : BackgroundService
             }
 
             run.Cts.Cancel();
+            run.Lease?.Dispose();
             _last = Info(run) with { State = "finished" };
             _run = null;
             _atcStatus = new AtcFollowMeStatus(0, AtcFollowMeVehicle.None);
@@ -561,27 +535,12 @@ public sealed class FollowMeService : BackgroundService
     private async Task RemoveAsync(Run run, CancellationToken ct)
     {
         run.Cts.Cancel();
-        if (run.ObjectId is not { } id)
+        if (run.Unit is { } unit)
         {
-            return;
+            await _spawner.RemoveAsync(unit);
         }
 
-        _sim.StopAiProbe(id);
-        _sim.StopAiPose(id, unfreeze: false);
-        await RemoveObjectAsync(id);
-    }
-
-    private async Task RemoveObjectAsync(uint objectId)
-    {
-        try
-        {
-            await _sim.RemoveAiObjectAsync(objectId, CancellationToken.None);
-            _log.LogInformation(Loc.Log("log.followMe.removed"), objectId);
-        }
-        catch (Exception ex)
-        {
-            _log.LogDebug(ex, Loc.Log("log.followMe.removeFailed"), objectId, ex.Message);
-        }
+        run.Lease?.Dispose();
     }
 
     private void SetAtc(Run run, AtcFollowMeVehicle state) =>
@@ -610,7 +569,7 @@ public sealed class FollowMeService : BackgroundService
 
     private FollowMeInfo Info(Run run)
     {
-        var vehicle = run.Vehicle;
+        var vehicle = run.Unit?.Vehicle;
         var state = run.Failed ? "unavailable"
             : vehicle is null ? "planning"
             : PhaseName(vehicle.Phase);
@@ -627,7 +586,7 @@ public sealed class FollowMeService : BackgroundService
             gap,
             run.Plan?.GapM,
             vehicle is not null ? Math.Round(vehicle.SpeedMps / MetersPerSecondPerKnot, 1) : null,
-            run.ObjectId,
+            run.Unit?.ObjectId,
             _options.FollowMe.Model,
             run.Error);
     }
@@ -663,11 +622,9 @@ public sealed class FollowMeService : BackgroundService
 
         public FollowMePlan? Plan { get; set; }
 
-        public FollowMeVehicle? Vehicle { get; set; }
+        public FollowMeUnit? Unit { get; set; }
 
-        public uint? ObjectId { get; set; }
-
-        public double GroundFt { get; set; }
+        public IDisposable? Lease { get; set; }
 
         public double AircraftS { get; set; }
 

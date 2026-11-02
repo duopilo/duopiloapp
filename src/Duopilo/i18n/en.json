@@ -1527,5 +1527,6 @@
   "log.fire.stations": "Fire stations at {airport} from OpenStreetMap: {stations}",
   "log.fire.osmFetched": "Fire stations of {airport} fetched from OpenStreetMap: {count}",
   "log.fire.osmFailed": "Fire stations of {airport} could not be fetched from OpenStreetMap: {error}",
-  "log.fire.osmCacheFailed": "Fire station cache {file} could not be read or written: {error}"
+  "log.fire.osmCacheFailed": "Fire station cache {file} could not be read or written: {error}",
+  "tools.followMe.noVehicle": "All follow-me vehicles at {airport} are on their way ({count} at most at the same time)."
 }
