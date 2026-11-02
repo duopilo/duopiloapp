@@ -264,32 +264,45 @@ public static class FirePlanner
         _ => runwayLengthM / 2,
     };
 
+    /// <summary>So viele nahe Rollpunkte probiert <see cref="RouteBetween"/> am Ziel, bis einer erreichbar ist.</summary>
+    public const int MaxEndNodeTries = 12;
+
     /// <summary>
     /// Weg zwischen zwei Punkten über das Rollweg-Netz: vom Punkt zum nächsten Rollpunkt, die Route, vom letzten Rollpunkt zum Ziel.
-    /// <paramref name="fromParking"/>: am Anfang steht das Fahrzeug auf dieser Parkposition (Route ab ihr). Null = keine Route.
+    /// <paramref name="fromParking"/>: am Anfang steht das Fahrzeug auf dieser Parkposition (Route ab ihr). Ist der nächste Rollpunkt am
+    /// Ziel nicht erreichbar (z. B. ein Helipad abseits des Netzes, Test EDDL 02.11.), probiert es die nächsten bis
+    /// <see cref="MaxEndNodeTries"/>; das letzte Stück fährt das Fahrzeug geradeaus. Null = keine Route.
     /// </summary>
     public static List<(double East, double North)>? RouteBetween(TaxiGraph graph, double fromEast, double fromNorth, double toEast, double toNorth, TaxiNode? fromParking = null)
     {
         var start = fromParking ?? NearestNode(graph, fromEast, fromNorth);
-        var end = NearestNode(graph, toEast, toNorth);
-        if (start is null || end is null)
+        if (start is null)
         {
             return null;
         }
 
-        var points = new List<(double East, double North)> { (fromEast, fromNorth) };
-        if (start.Id != end.Id)
+        var ends = graph.Nodes
+            .Where(n => !n.IsParking)
+            .OrderBy(n => Distance(n.EastM, n.NorthM, toEast, toNorth))
+            .Take(MaxEndNodeTries);
+        foreach (var end in ends)
         {
-            if (graph.Route(start.Id, end.Id) is not { Count: >= 2 } nodes)
+            var points = new List<(double East, double North)> { (fromEast, fromNorth) };
+            if (start.Id != end.Id)
             {
-                return null;
+                if (graph.Route(start.Id, end.Id) is not { Count: >= 2 } nodes)
+                {
+                    continue;
+                }
+
+                points.AddRange(nodes.Select(n => (graph.Nodes[n].EastM, graph.Nodes[n].NorthM)));
             }
 
-            points.AddRange(nodes.Select(n => (graph.Nodes[n].EastM, graph.Nodes[n].NorthM)));
+            points.Add((toEast, toNorth));
+            return points;
         }
 
-        points.Add((toEast, toNorth));
-        return points;
+        return null;
     }
 
     /// <summary>Nächster Rollpunkt (keine Parkposition) zu einem Punkt.</summary>

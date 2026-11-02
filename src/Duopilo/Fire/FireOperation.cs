@@ -220,10 +220,19 @@ public sealed class FireOperation
             }
         }
 
-        // Ohne Halt auf der Bahn abgerollt: auch dann folgt nur noch FLF 1
+        // Ohne Halt auf der Bahn abgerollt: auch dann folgt nur noch FLF 1; wer noch wartet (etwa hinter dem Abrollweg, an dem das
+        // Flugzeug nie vorbeikam – Test EDDL 02.11.), rückt gleich ein
         if (_offRunwaySeconds > 10 && !_stoppedOnRunway)
         {
             _released = true;
+        }
+
+        if (_released)
+        {
+            foreach (var vehicle in vehicles.Where(v => v.Phase == FireVehiclePhase.Standby && !ReferenceEquals(v, escort)))
+            {
+                SendBack(vehicle);
+            }
         }
 
         // Am Stand angekommen (nach der Kontrolle) bzw. Notfall am Boden erledigt: alle einrücken
