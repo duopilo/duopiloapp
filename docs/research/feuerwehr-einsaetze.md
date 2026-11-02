@@ -231,8 +231,9 @@ Sperrung von außen: Holding im Anflug oder Warten am Haltepunkt.
 
 - **Einfacher als beim Spieler:** Duopilo fliegt das KI-Flugzeug selbst und kennt Abrollweg, Stoppstelle und Gate vorab.
   Folgen geht trotzdem über die Spur, damit es derselbe Code ist.
-- **Arten:** Pan Pan mit Local Standby (häufigste), Mayday mit Full Emergency (selten), heiße Bremsen nach der Landung.
-  Kein Absturz, keine Evakuierung.
+- **Arten:** Pan Pan mit Local Standby (häufigste), heiße Bremsen nach der Landung und als Mayday höchstens ein
+  Triebwerksbrand (selten): in der Luft gelöscht, Landung, Kontrolle durch die Feuerwehr. Kein Absturz und keine
+  Evakuierung, beides bekämen wir im Sim nicht glaubwürdig dargestellt. Ein sichtbares Feuer gibt es nicht, nur den Ablauf.
 - **Ablauf am Flugzeug:** stoppt auf der Bahn, Feuerwehr umstellt es, kurze Kontrolle, dann rollt es mit Begleitung zum
   Gate. Bei Mayday bleibt es etwas länger stehen.
 - **Funk:** Den Notruf der KI hörst du auf der Frequenz, wenn du auf derselben bist (Pan Pan oder Mayday, danach ATC).
