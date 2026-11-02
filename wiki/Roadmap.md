@@ -49,7 +49,7 @@ Duopilo's own AI traffic instead of the simulator's, built step by step with the
 - [ ] **Follow-me** – own vehicle model (van with full checker livery), leads your aircraft from the exit to the gate
 - [ ] **Airport fire service** – European crash tenders on emergencies from the ATC module; vehicle models with switchable lights and a liftable rescue stair are ready ([notes](https://github.com/duopilo/duopiloapp/blob/main/docs/research/feuerwehr-fahrzeuge.md))
 - [ ] **Own passive aircraft models**
-- [ ] **Helicopters** – kinematic: approach, hover, vertical landing and takeoff on heliports and airports
+- [ ] **Helicopters** – kinematic: approach, hover, vertical landing and takeoff on heliports and airports; the landing on a helipad or any spot is in the test since beta.40 (H1), the takeoff is still open
 - [ ] **Schedule traffic** – flights mapped to the installed models by ICAO type
 - [x] Test at Frankfurt as well (three parallel runways and the Startbahn West)
 

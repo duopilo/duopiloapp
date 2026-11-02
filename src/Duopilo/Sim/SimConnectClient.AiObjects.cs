@@ -253,6 +253,29 @@ public sealed partial class SimConnectClient
         }, ct);
 
     /// <summary>
+    /// Versuch: eine beliebige SimVar eines eigenen KI-Objekts setzen (z. B. ROTOR RPM PCT:1 am Heli). Nicht jede SimVar ist schreibbar;
+    /// lehnt der Sim ab, steht das im Log der SimConnect-Ausnahmen.
+    /// </summary>
+    public Task SetAiSimVarAsync(uint objectId, string name, string unit, double value, CancellationToken ct) =>
+        RunOnSimThreadAsync(sc =>
+        {
+            var key = name + "|" + unit;
+            if (!_aiLightDefIds.TryGetValue(key, out var defId))
+            {
+                defId = ++_nextDefId;
+                sc.AddToDataDefinition((SimDefinitionId)defId, name, unit, SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
+                sc.RegisterDataDefineStruct<double>((SimDefinitionId)defId);
+                _aiLightDefIds[key] = defId;
+            }
+
+            sc.SetDataOnSimObject((SimDefinitionId)defId, objectId, SIMCONNECT_DATA_SET_FLAG.DEFAULT, value);
+        }, ct);
+
+    /// <summary>Ein Event an ein eigenes KI-Objekt schicken (z. B. ENGINE_AUTO_START).</summary>
+    public Task SendAiEventAsync(uint objectId, string eventName, uint data, CancellationToken ct) =>
+        RunOnSimThreadAsync(sc => TransmitToObject(sc, objectId, eventName, data), ct);
+
+    /// <summary>
     /// Wunschgeschwindigkeit eines eigenen KI-Flugzeugs über die SimVar AI DESIRED SPEED (Knoten). Die Geschwindigkeit in den
     /// Wegpunkten beachtet die KI nicht (alle flogen im Test 160–169 kt, auch die ATR).
     /// </summary>
