@@ -127,8 +127,11 @@ public sealed record TrafficTestStatus(
     TrafficTestHeli? Heli = null);
 
 /// <summary>Stand eines Heli-Anflugs (H1, <see cref="HeliKinematics"/>).</summary>
-/// <param name="Phase">cruise, approach, hover, descent, landed.</param>
-/// <param name="DistanceM">Restweg zum Pad.</param>
+/// <param name="Phase">Anflug: cruise, approach, hover, descent, landed; Abflug: startup, liftoff, hover, transition, climb, cruise.</param>
+/// <param name="DistanceM">Anflug: Restweg zum Pad; Abflug: Weg ab dem Pad.</param>
+/// <param name="TrackDeg">Abflug: Kurs nach dem Abheben.</param>
+/// <param name="EndNm">Abflug: Ende des Tests so weit vom Pad.</param>
+/// <param name="StartupSeconds">Abflug: so lange lief der Rotor am Boden.</param>
 /// <param name="HeightFt">Höhe der Kufen über dem Pad.</param>
 /// <param name="TargetHeightFt">Angestrebte Höhe über dem Pad (Anflugprofil, Schwebehöhe, 0).</param>
 /// <param name="GroundSource">database (Höhe des Pads aus MSFS, gemessen nachgeführt) oder measured (Koordinaten: Boden unter dem Heli).</param>
@@ -155,7 +158,10 @@ public sealed record TrafficTestHeli(
     double HoverSeconds,
     double? TouchdownFpm,
     string Rotor,
-    int RotorSends);
+    int RotorSends,
+    double? TrackDeg = null,
+    double? EndNm = null,
+    double? StartupSeconds = null);
 
 /// <summary>Helipads eines Flughafens oder Heliports (traffic_helipads).</summary>
 public sealed record TrafficHelipadInfo(
@@ -513,6 +519,18 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 runway = OverflightPoint(request, overflightEvents);
                 airport = runway.Airport;
             }
+            else if (request.Variant == TrafficTestVariant.H2)
+            {
+                // H2: Abflug vom Helipad (Datenbank) oder einem beliebigen Punkt; Rahmen = Pad mit Abflugkurs
+                runways = [];
+                var pad = await HeliPadAsync(request, overflightEvents, ct);
+                heliPlan = TrafficTestPlan.BuildHeliDeparture(pad, HeliProfile.Default.WithCruise(request.CruiseKt), request.TrackDeg, request.HeightFt, request.EndNm);
+                runway = heliPlan.Runway;
+                airport = runway.Airport;
+                var leg = heliPlan.Heli!;
+                overflightEvents.Add(string.Create(CultureInfo.InvariantCulture,
+                    $"heli_departure_planned track {leg.TrackDeg:000}, {leg.Profile.StartupSeconds:0} s rotor start, hover {leg.Profile.TakeoffHoverFt:0} ft, {leg.Profile.CruiseKt:0} kt, {leg.StartHeightFt:0} ft above the pad, test ends {leg.EndNm:0.#} NM out"));
+            }
             else if (request.Variant == TrafficTestVariant.H1)
             {
                 // H1: Helipad aus der Datenbank (Flughafen oder Heliport) oder ein beliebiger Punkt; Rahmen = Pad mit Anflugkurs
@@ -556,8 +574,8 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             // Modell und Flughafenregeln vor dem Ersetzen: passt das Flugzeug nicht zu Platz oder Bahn, bleibt der laufende Test.
             // Ohne Titel wählen die Regeln das Modell (Verkehrsmix, Militärplatz, nur Allgemeine Luftfahrt …)
             var ruleMessages = new List<string>();
-            var rules = request.Variant is TrafficTestVariant.C1 or TrafficTestVariant.C2 or TrafficTestVariant.H1 ? null : LoadRules(ruleMessages);
-            var operation = request.Variant is TrafficTestVariant.B1 or TrafficTestVariant.D1 or TrafficTestVariant.B2 or TrafficTestVariant.B3 ? TrafficOperation.Departure : TrafficOperation.Arrival;
+            var rules = request.Variant is TrafficTestVariant.C1 or TrafficTestVariant.C2 or TrafficTestVariant.H1 or TrafficTestVariant.H2 ? null : LoadRules(ruleMessages);
+            var operation = request.Variant is TrafficTestVariant.B1 or TrafficTestVariant.D1 or TrafficTestVariant.B2 or TrafficTestVariant.B3 or TrafficTestVariant.H2 ? TrafficOperation.Departure : TrafficOperation.Arrival;
             var (title, livery) = await ResolveModelAsync(request, rules, runway, operation, ct);
             var modelType = TrafficModels.TypeOf(title, livery);
             var approachKt = request.ApproachKt ?? modelType?.ApproachKt;
@@ -705,7 +723,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                     Departure = TrafficTestPlan.DepartureLegFor(category, approachKt, request.TrackDeg, request.FlightLevel, request.CruiseKt, request.EndNm),
                 },
                 TrafficTestVariant.A4 => arrivalPlan!,
-                TrafficTestVariant.H1 => heliPlan!,
+                TrafficTestVariant.H1 or TrafficTestVariant.H2 => heliPlan!,
                 TrafficTestVariant.C1 => TrafficTestPlan.BuildOverflight(runway.Overhead(request.TrackDeg), category, approachKt, request.FlightLevel, request.CruiseKt, request.SpawnNm),
                 TrafficTestVariant.C2 => TrafficTestPlan.BuildOverflight(runway, category, approachKt, OverflightLevel(request, category, overflightEvents), request.CruiseKt, request.SpawnNm, TrafficTestVariant.C2),
                 _ => TrafficTestPlan.Build(runway, request.Variant, spawnNm, request.TouchdownM, request.FinalLowFt, approachKt, throttle),
@@ -756,6 +774,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 KinematicTakeoff = plan.IsTakeoff && request.KinematicTakeoff,
                 Category = category,
                 Lights = plan.IsOverflight || (plan.Arrival is not null && plan.Spawn.AltitudeFt >= EnrouteProfile.SpeedLimitFt) ? TrafficLights.Cruise
+                    : plan.Heli is { IsDeparture: true } ? TrafficLights.HeliLanded
                     : plan.IsHeli ? TrafficLights.HeliApproach
                     : plan.IsTaxi ? TrafficLights.Rollout : TrafficLights.Approach,
                 TaxiGraph = taxiGraph,
@@ -768,6 +787,8 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 ? string.Create(CultureInfo.InvariantCulture, $"spawn at parking {taxi.Parking.Parking?.Label} ({taxi.Parking.Parking?.TypeName}, {taxi.Parking.Parking?.RadiusM:0} m), route {string.Join(' ', taxi.Taxiways)} {taxi.LengthM:0} m to the hold on {taxi.Hold.Taxiway} ({taxi.Hold.Runway}), pushback {(taxi.Pushback ? "yes" : "no")}, net {taxiGraph.Nodes.Count} nodes, {taxiGraph.Edges.Count} paths, mapping {taxiGraph.Mapping} ({taxiGraph.MappingErrorM:0.0} m), object {objectId}, {run.Tail}")
                 : plan.IsTakeoff
                 ? string.Create(CultureInfo.InvariantCulture, $"spawn on the runway {TrafficTestPlan.LineUpM:0} m behind its start, takeoff speed {plan.TakeoffKt:0} kt, object {objectId}, {run.Tail}")
+                : plan.Heli is { IsDeparture: true } heliDeparture
+                ? string.Create(CultureInfo.InvariantCulture, $"spawn on {heliDeparture.Pad.Airport} {heliDeparture.Pad.Label} ({heliDeparture.Pad.Type}), {plan.Spawn.AltitudeFt:0} ft, heading {plan.Spawn.HeadingTrueDeg:000}, rotor starting, object {objectId}, {run.Tail}")
                 : plan.Heli is { } heliLeg
                 ? string.Create(CultureInfo.InvariantCulture, $"spawn {plan.SpawnNm:0.#} NM from {heliLeg.Pad.Airport} {heliLeg.Pad.Label} ({heliLeg.Pad.Type}) from {heliLeg.FromDeg:000}, {plan.Spawn.AltitudeFt:0} ft, heading {plan.Spawn.HeadingTrueDeg:000}, {plan.Spawn.AirspeedKt} kt, object {objectId}, {run.Tail}")
                 : plan.Arrival is { } arrivalLeg
@@ -828,7 +849,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 }
 
                 await _sim.SetAiLightsAsync(objectId, run.Lights, ct);
-                run.AddEvent(0, run.Lights == TrafficLights.Cruise ? "lights_sent cruise" : plan.IsTaxi ? "lights_sent taxi" : "lights_sent approach");
+                run.AddEvent(0, run.Lights == TrafficLights.Cruise ? "lights_sent cruise" : plan.IsTaxi ? "lights_sent taxi" : plan.Heli is { IsDeparture: true } ? "lights_sent ground (nav, beacon, logo)" : "lights_sent approach");
 
                 // Rollen: keine Wegpunkte – Duopilo schiebt das Flugzeug ab dem ersten Messpunkt selbst; A4 und H1 fliegt Duopilo ab dem Spawn
                 if (!plan.IsTaxi && plan.Arrival is null && !plan.IsHeli)
@@ -1064,7 +1085,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             JsonNamingPolicy.SnakeCaseLower.ConvertName(heli.Phase.ToString()),
             leg.Pad.Airport + " " + leg.Pad.Label,
             leg.Pad.Type,
-            heli.PadHeadingDeg is { } padHeading ? Math.Round(padHeading) : null,
+            leg.Pad.HeadingDeg is { } padHeading ? Math.Round(padHeading) : null,
             Math.Round(leg.FromDeg),
             Math.Round(heli.DistanceM),
             Math.Round(heli.HeightFt, 1),
@@ -1081,7 +1102,10 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             Math.Round(heli.HoverSeconds, 1),
             heli.TouchdownFpm,
             run.Rotor.ToString().ToLowerInvariant(),
-            run.RotorSends);
+            run.RotorSends,
+            leg.TrackDeg is { } track ? Math.Round(track) : null,
+            leg.IsDeparture ? leg.EndNm : null,
+            leg.IsDeparture ? Math.Round(heli.StartupElapsedSeconds) : null);
     }
 
     private static TrafficTestEnroute EnrouteStatus(TrafficTestRun run, EnrouteKinematics en) => new(
@@ -1116,8 +1140,8 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             return (request.Title.Trim(), request.Livery?.Trim() ?? "");
         }
 
-        // H1 ohne Titel: der EC-135 (ADAC), sonst die genannte Livery
-        if (request.Variant == TrafficTestVariant.H1)
+        // H1, H2 ohne Titel: der EC-135 (ADAC), sonst die genannte Livery
+        if (request.Variant is TrafficTestVariant.H1 or TrafficTestVariant.H2)
         {
             return (DefaultHeliTitle, string.IsNullOrWhiteSpace(request.Livery) ? DefaultHeliLivery : request.Livery.Trim());
         }
@@ -1849,10 +1873,19 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             ? sample.AltitudeFt - sample.AltitudeAglFt
             : leg.Pad.ElevationFt;
         var (along, _) = plan.Runway.Offsets(sample.Latitude, sample.Longitude);
-        var heli = new HeliKinematics(plan.Runway, leg.Profile, -along, leg.StartHeightFt, leg.Profile.CruiseKt, leg.Pad.HeadingDeg, ground, cg)
+        if (leg.IsDeparture && !leg.Pad.Measured && sample.AltitudeAglFt > 0
+            && Math.Abs(sample.AltitudeFt - sample.AltitudeAglFt - leg.Pad.ElevationFt) <= MaxGroundCorrectionFt)
         {
-            GroundPitchDeg = GroundPitch(sample.StaticPitchDeg),
-        };
+            // Abflug vom Pad der Datenbank: steht er schon, gilt der gemessene Boden
+            ground = sample.AltitudeFt - sample.AltitudeAglFt;
+        }
+
+        var heli = leg.IsDeparture
+            ? HeliKinematics.Departure(plan.Runway, leg.Profile, leg.StartHeightFt, plan.Spawn.HeadingTrueDeg, ground, cg, GroundPitch(sample.StaticPitchDeg))
+            : new HeliKinematics(plan.Runway, leg.Profile, -along, leg.StartHeightFt, leg.Profile.CruiseKt, leg.Pad.HeadingDeg, ground, cg)
+            {
+                GroundPitchDeg = GroundPitch(sample.StaticPitchDeg),
+            };
         run.Heli = heli;
         _sim.StartAiPose(run.ObjectId, dt =>
         {
@@ -1861,7 +1894,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         });
         var seconds = Math.Max(0, (sample.Utc - run.SpawnUtc).TotalSeconds);
         run.AddEvent(Math.Round(seconds, 1), string.Create(CultureInfo.InvariantCulture,
-            $"kinematic_start heli {heli.DistanceM / RunwayEnd.MetersPerNm:0.00} NM from {leg.Pad.Label}, {heli.HeightFt:0} ft above it, {heli.SpeedKt:0} kt, ground {ground:0} ft ({(leg.Pad.Measured ? "measured" : "database")}, cg {cg:0.0} ft, static pitch {sample.StaticPitchDeg:0.0}°)"));
+            $"kinematic_start heli {(leg.IsDeparture ? "departure" : "approach")} {heli.DistanceM / RunwayEnd.MetersPerNm:0.00} NM from {leg.Pad.Label}, {heli.HeightFt:0} ft above it, {heli.SpeedKt:0} kt, ground {ground:0} ft ({(leg.Pad.Measured ? "measured" : "database")}, cg {cg:0.0} ft, static pitch {sample.StaticPitchDeg:0.0}°)"));
     }
 
     /// <summary>
@@ -1896,6 +1929,12 @@ public sealed class TrafficTestService : IHostedService, IDisposable
     /// </summary>
     private void UpdateHeli(TrafficTestRun run, HeliKinematics heli, double seconds)
     {
+        if (heli.IsDeparture)
+        {
+            UpdateHeliDeparture(run, heli, seconds);
+            return;
+        }
+
         var pad = run.InitialPlan.Runway.Designation;
         if (heli.Phase != HeliPhase.Cruise && run.Once("heli_approach"))
         {
@@ -1964,6 +2003,18 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             Fire(_sim.SetAiLightsAsync(run.ObjectId, TrafficLights.HeliShutdown, CancellationToken.None), "lights");
         }
 
+        KeepRotorRunning(run, seconds);
+
+        if (landedFor >= HeliRotor.EndAfterLandingSeconds && !run.StopScheduled)
+        {
+            run.StopScheduled = true;
+            _ = Task.Run(() => StopRunAsync(run, "landed"));
+        }
+    }
+
+    /// <summary>Rotor am Laufen halten: Event nach 5 s noch einmal, SimVars alle <see cref="HeliRotor.ResendSeconds"/> bis zum Abstellen.</summary>
+    private void KeepRotorRunning(TrafficTestRun run, double seconds)
+    {
         // Rotor: Event nach 5 s noch einmal, SimVars alle ResendSeconds
         if (HeliRotor.SendsEvent(run.Rotor) && seconds >= 5 && run.Once("rotor_event_resent"))
         {
@@ -1986,12 +2037,62 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 Fire(_sim.SetAiSimVarAsync(run.ObjectId, name, unit, value, CancellationToken.None), "rotor");
             }
         }
+    }
 
-        if (landedFor >= HeliRotor.EndAfterLandingSeconds && !run.StopScheduled)
+    /// <summary>
+    /// H2: Ereignisse (Abheben, Schweben, Übergang, Steigflug, Reiseflug), Lichter – am Boden Nav, Beacon, Logo; ab dem Abheben
+    /// Landelicht, Strobes und Recognition; auf der Reisehöhe wie im Reiseflug –, Rotor am Laufen halten und das Ende
+    /// <see cref="HeliLeg.EndNm"/> vom Pad (departed).
+    /// </summary>
+    private void UpdateHeliDeparture(TrafficTestRun run, HeliKinematics heli, double seconds)
+    {
+        var leg = run.InitialPlan.Heli!;
+        var pad = run.InitialPlan.Runway.Designation;
+        if (heli.Phase != HeliPhase.Startup && run.Once("heli_liftoff"))
+        {
+            run.AddEvent(seconds, string.Create(CultureInfo.InvariantCulture,
+                $"heli_liftoff from {pad} after {heli.StartupElapsedSeconds:0} s rotor start, ground {heli.GroundFt:0} ft"));
+            SetHeliLights(run, TrafficLights.HeliApproach, seconds, "takeoff");
+        }
+
+        if (heli.Phase is not (HeliPhase.Startup or HeliPhase.Liftoff) && run.Once("heli_hover"))
+        {
+            run.AddEvent(seconds, string.Create(CultureInfo.InvariantCulture,
+                $"heli_hover at {heli.HeightFt:0} ft, heading {heli.HeadingTrueDeg:000}, turning to {leg.TrackDeg:000}"));
+        }
+
+        if ((heli.Phase is HeliPhase.Transition or HeliPhase.Climb or HeliPhase.Cruise) && run.Once("heli_transition"))
+        {
+            run.AddEvent(seconds, string.Create(CultureInfo.InvariantCulture,
+                $"heli_transition after {heli.HoverSeconds:0} s hovering, heading {heli.HeadingTrueDeg:000}, accelerating at {heli.Profile.AccelMps2:0.0} m/s²"));
+        }
+
+        if ((heli.Phase is HeliPhase.Climb or HeliPhase.Cruise) && run.Once("heli_climb"))
+        {
+            run.AddEvent(seconds, string.Create(CultureInfo.InvariantCulture,
+                $"heli_climb at {heli.SpeedKt:0} kt, {heli.HeightFt:0} ft, {heli.DistanceM:0} m from {pad}"));
+        }
+
+        if (heli.Phase == HeliPhase.Cruise && run.Once("heli_level_off"))
+        {
+            run.AddEvent(seconds, string.Create(CultureInfo.InvariantCulture,
+                $"heli_level_off at {heli.HeightFt:0} ft above the pad, {heli.SpeedKt:0} kt, {heli.DistanceM / RunwayEnd.MetersPerNm:0.0} NM out"));
+            SetHeliLights(run, TrafficLights.HeliCruise, seconds, "cruise");
+        }
+
+        KeepRotorRunning(run, seconds);
+        if (heli.DistanceM >= leg.EndNm * RunwayEnd.MetersPerNm && !run.StopScheduled)
         {
             run.StopScheduled = true;
-            _ = Task.Run(() => StopRunAsync(run, "landed"));
+            _ = Task.Run(() => StopRunAsync(run, "departed"));
         }
+    }
+
+    private void SetHeliLights(TrafficTestRun run, AiLights lights, double seconds, string name)
+    {
+        run.Lights = lights;
+        run.AddEvent(seconds, "lights_sent " + name);
+        Fire(_sim.SetAiLightsAsync(run.ObjectId, lights, CancellationToken.None), "lights");
     }
 
     /// <summary>Helipads eines Flughafens oder Heliports zum Nachsehen (traffic_helipads), mit Entfernung vom eigenen Flugzeug.</summary>

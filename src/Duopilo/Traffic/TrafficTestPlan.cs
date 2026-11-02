@@ -39,12 +39,21 @@ public enum TrafficTestVariant
 
     /// <summary>Heli-Landung: geradeaus auf ein Helipad (Flughafen, Heliport oder Koordinaten), verzögern, schweben, absetzen (Duopilo fliegt selbst).</summary>
     H1,
+
+    /// <summary>Heli-Abflug: auf dem Pad anlassen, senkrecht abheben, schweben, auf Kurs drehen, Fahrt aufnehmen und steigen (Duopilo fliegt selbst).</summary>
+    H2,
 }
 
-/// <summary>H1: Ziel und Anflug eines Heli-Tests.</summary>
-/// <param name="FromDeg">Aus dieser Richtung kommt der Heli (Peilung vom Pad, rechtweisend).</param>
-/// <param name="StartHeightFt">Höhe der Kufen über dem Pad beim Spawn (Reisehöhe).</param>
-public sealed record HeliLeg(HeliPad Pad, HeliProfile Profile, double FromDeg, double StartHeightFt);
+/// <summary>H1, H2: Pad und Flug eines Heli-Tests.</summary>
+/// <param name="FromDeg">H1: aus dieser Richtung kommt der Heli (Peilung vom Pad, rechtweisend). H2: Gegenkurs des Abflugs.</param>
+/// <param name="StartHeightFt">H1: Höhe der Kufen über dem Pad beim Spawn. H2: Reisehöhe über dem Pad.</param>
+/// <param name="TrackDeg">H2: Kurs nach dem Abheben; null = Anflug (H1).</param>
+/// <param name="EndNm">H2: Der Test endet so weit vom Pad.</param>
+public sealed record HeliLeg(HeliPad Pad, HeliProfile Profile, double FromDeg, double StartHeightFt, double? TrackDeg = null, double EndNm = 0)
+{
+    /// <summary>Abflug (H2) statt Anflug (H1).</summary>
+    public bool IsDeparture => TrackDeg is not null;
+}
 
 /// <summary>A4: der Weg aus dem Reiseflug bis zum Eindrehpunkt auf den Final.</summary>
 /// <param name="FromDeg">Aus dieser Richtung kommt der Anflug (Peilung von der Schwelle, rechtweisend).</param>
@@ -311,8 +320,11 @@ public sealed record TrafficTestPlan(
     /// <summary>H1: Spawn standardmäßig so weit vom Pad (0,5–20 NM).</summary>
     public const double DefaultHeliNm = 3;
 
-    /// <summary>H1: Starthöhe über dem Pad (200–5000 ft).</summary>
+    /// <summary>H1: Starthöhe über dem Pad, H2: Reisehöhe (200–5000 ft).</summary>
     public const double DefaultHeliHeightFt = 1000;
+
+    /// <summary>H2: Der Test endet so weit vom Pad (1–20 NM).</summary>
+    public const double DefaultHeliEndNm = 3;
 
     /// <summary>A4: Spawn standardmäßig so weit von der Schwelle, mindestens <see cref="MinArrivalNm"/>, höchstens <see cref="MaxOverflightNm"/>.</summary>
     public const double DefaultArrivalNm = 40;
@@ -608,6 +620,29 @@ public sealed record TrafficTestPlan(
         return new TrafficTestPlan(TrafficTestVariant.H1, frame, spawn, distance, false, null, null, 0, 0, 0, Math.Clamp(profile.CruiseKt, 50, 180), waypoints, [], [])
         {
             Heli = new HeliLeg(pad, profile, from, height),
+        };
+    }
+
+    /// <summary>
+    /// Heli-Abflug (H2): Spawn am Boden auf dem Pad (Ausrichtung des Pads, ohne die der Kurs), Abflug auf <paramref name="trackDeg"/>
+    /// (leer = Ausrichtung des Pads, ohne die Norden), Reisehöhe <paramref name="heightFt"/> über dem Pad, Ende <paramref name="endNm"/>
+    /// vom Pad. Rahmen: das Pad als Schwelle, der Abflugkurs als Kurs – entlang = Weg ab dem Pad. Ein Wegpunkt "pad" (Status und
+    /// Auswertung); Duopilo fliegt (<see cref="HeliKinematics.Departure"/>).
+    /// </summary>
+    public static TrafficTestPlan BuildHeliDeparture(HeliPad pad, HeliProfile profile, double? trackDeg = null, double? heightFt = null, double? endNm = null)
+    {
+        var track = TrafficMath.Normalize(trackDeg ?? pad.HeadingDeg ?? 0);
+        var height = Math.Clamp(heightFt ?? DefaultHeliHeightFt, 200, 5000);
+        var end = Math.Clamp(endNm ?? DefaultHeliEndNm, 1, 20);
+        var frame = new RunwayEnd(pad.Airport, pad.Label, pad.Latitude, pad.Longitude, pad.ElevationFt, track, pad.LengthM, pad.WidthM);
+        var spawn = new AiInitPosition(pad.Latitude, pad.Longitude, pad.ElevationFt, pad.HeadingDeg ?? track, OnGround: true, AirspeedKt: 0);
+        var waypoints = new List<TrafficTestWaypoint>
+        {
+            new("pad", 0, new AiWaypoint(pad.Latitude, pad.Longitude, pad.ElevationFt, 0, AiWaypointFlags.OnGround)),
+        };
+        return new TrafficTestPlan(TrafficTestVariant.H2, frame, spawn, 0, false, null, null, 0, 0, 0, Math.Clamp(profile.CruiseKt, 50, 180), waypoints, [], [])
+        {
+            Heli = new HeliLeg(pad, profile, TrafficMath.Normalize(track + 180), height, track, end),
         };
     }
 

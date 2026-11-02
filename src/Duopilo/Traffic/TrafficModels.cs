@@ -373,6 +373,9 @@ public static class TrafficLights
     /// <summary>Heli gelandet, Rotor dreht noch: Nav, Beacon und Logo, alles andere aus.</summary>
     public static readonly AiLights HeliLanded = new(Nav: true, Beacon: true, Strobe: false, Landing: false, Taxi: false, Logo: true, Recognition: false);
 
+    /// <summary>Heli auf Reisehöhe nach dem Abflug: wie <see cref="Cruise"/> (Landelicht aus), Recognition aus.</summary>
+    public static readonly AiLights HeliCruise = Cruise with { Recognition = false };
+
     /// <summary>Heli abgestellt, Rotor steht: alle Lichter aus.</summary>
     public static readonly AiLights HeliShutdown = new(Nav: false, Beacon: false, Strobe: false, Landing: false, Taxi: false, Logo: false, Recognition: false);
 

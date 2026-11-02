@@ -215,6 +215,92 @@ public sealed class HeliTests
         Assert.DoesNotContain("(", TrafficTestService.DefaultHeliTitle, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Heli_Abflug_laesst_an_hebt_ab_dreht_beschleunigt_und_steigt()
+    {
+        var plan = TrafficTestPlan.BuildHeliDeparture(Pad, HeliProfile.Default, trackDeg: 90);
+        var leg = plan.Heli!;
+        Assert.Equal(TrafficTestVariant.H2, plan.Variant);
+        Assert.True(leg.IsDeparture);
+        Assert.Equal(90, plan.Runway.HeadingTrueDeg, 6);
+        Assert.True(plan.Spawn.OnGround);
+        Assert.Equal(230, plan.Spawn.HeadingTrueDeg);
+
+        var heli = HeliKinematics.Departure(plan.Runway, leg.Profile, leg.StartHeightFt, plan.Spawn.HeadingTrueDeg, Pad.ElevationFt, 5, 1);
+        var phases = new List<HeliPhase> { heli.Phase };
+        double minPitch = double.MaxValue, maxClimb = 0, maxSpeed = 0;
+        var dt = 1.0 / 30;
+        var t = 0.0;
+        for (; t < 400 && heli.DistanceM < leg.EndNm * Nm; t += dt)
+        {
+            heli.Advance(dt);
+            if (phases[^1] != heli.Phase)
+            {
+                phases.Add(heli.Phase);
+                if (heli.Phase == HeliPhase.Transition)
+                {
+                    // Erst nach der Drehung auf den Kurs und ohne Fahrt vom Pad weg
+                    Assert.Equal(90, heli.HeadingTrueDeg, 6);
+                    Assert.Equal(0, heli.DistanceM, 1);
+                    Assert.Equal(HeliProfile.Default.TakeoffHoverFt, heli.HeightFt, 3);
+                }
+            }
+
+            if (heli.Phase == HeliPhase.Startup)
+            {
+                Assert.True(heli.OnGround);
+                Assert.Equal(0, heli.HeightFt);
+            }
+
+            minPitch = Math.Min(minPitch, heli.PitchDeg);
+            maxClimb = Math.Max(maxClimb, heli.VerticalSpeedFpm);
+            maxSpeed = Math.Max(maxSpeed, heli.SpeedKt);
+        }
+
+        Assert.Equal([HeliPhase.Startup, HeliPhase.Liftoff, HeliPhase.Hover, HeliPhase.Transition, HeliPhase.Climb, HeliPhase.Cruise], phases);
+        Assert.InRange(t, 170, 200);
+        Assert.Equal(1000, heli.HeightFt, 0);
+        Assert.Equal(90, maxSpeed, 3);
+        Assert.InRange(maxClimb, 990, 1001);
+        Assert.InRange(minPitch, -9, -6);
+        Assert.Equal(90, heli.HeadingTrueDeg, 6);
+
+        // Auf dem Kurs vom Pad weg, Bezugspunkt über den Kufen
+        var pose = heli.Pose();
+        Assert.Equal(90, RouteMath.BearingDeg(Pad.Latitude, Pad.Longitude, pose.Latitude, pose.Longitude), 0);
+        Assert.Equal(Pad.ElevationFt + 5 + 1000, pose.AltitudeFt, 0);
+    }
+
+    [Fact]
+    public void Heli_Abflug_ohne_Kurs_nimmt_die_Ausrichtung_des_Pads()
+    {
+        var plan = TrafficTestPlan.BuildHeliDeparture(Pad, HeliProfile.Default, endNm: 50, heightFt: 100);
+        Assert.Equal(230, plan.Heli!.TrackDeg!.Value);
+        Assert.Equal(20, plan.Heli.EndNm);
+        Assert.Equal(200, plan.Heli.StartHeightFt);
+
+        var point = new HeliPad("POS", "HP1", 51.380228, 6.787324, 110, null, 20, 20, "point", Measured: true);
+        var fromPoint = TrafficTestPlan.BuildHeliDeparture(point, HeliProfile.Default);
+        Assert.Equal(0, fromPoint.Heli!.TrackDeg!.Value);
+        Assert.Equal(0, fromPoint.Spawn.HeadingTrueDeg);
+        Assert.Equal(TrafficTestPlan.DefaultHeliEndNm, fromPoint.Heli.EndNm);
+    }
+
+    [Fact]
+    public void Heli_Abflug_Auswertung_meldet_abgehoben()
+    {
+        var plan = TrafficTestPlan.BuildHeliDeparture(Pad, HeliProfile.Default);
+        var t0 = DateTimeOffset.UtcNow;
+        var analysis = new TrafficTestAnalysis(plan, t0);
+        var ground = analysis.Add(Sample(t0.AddSeconds(1), Pad.Latitude, Pad.Longitude, Pad.ElevationFt + 5, onGround: true));
+        Assert.DoesNotContain(ground.Events, e => e.StartsWith("heli_touchdown", StringComparison.Ordinal));
+        Assert.Equal("on_ground", analysis.Summary().Verdict);
+
+        var air = analysis.Add(Sample(t0.AddSeconds(40), Pad.Latitude, Pad.Longitude, Pad.ElevationFt + 15, onGround: false));
+        Assert.Contains("heli_liftoff", air.Events);
+        Assert.Equal("airborne", analysis.Summary().Verdict);
+    }
+
     private static AiProbeSample Sample(DateTimeOffset utc, double lat, double lon, double altitudeFt, bool onGround) =>
         new(1, utc, lat, lon, altitudeFt, onGround ? 5 : altitudeFt - Pad.ElevationFt, 0, 0, 0, 230, onGround, true, 100, 100, 100, 100, null);
 }

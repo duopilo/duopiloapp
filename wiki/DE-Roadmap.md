@@ -49,7 +49,7 @@ Eigener KI-Verkehr von Duopilo statt des Verkehrs aus dem Simulator, Schritt fü
 - [ ] **Follow-me** – eigenes Fahrzeugmodell (Bus mit Vollkaro), führt dein Flugzeug vom Abrollweg zum Gate
 - [ ] **Flughafenfeuerwehr** – europäische Löschfahrzeuge bei Notfällen aus dem ATC-Modul; Fahrzeugmodelle mit schaltbarem Licht und hebbarer Rettungstreppe sind fertig ([Notizen](https://github.com/duopilo/duopiloapp/blob/main/docs/research/feuerwehr-fahrzeuge.md))
 - [ ] **Eigene Passive-Flugzeugmodelle**
-- [ ] **Helikopter** – kinematisch: Anflug, Schweben, senkrechtes Landen und Abheben auf Heliports und Flughäfen; die Landung auf einem Helipad oder beliebigen Punkt ist ab beta.40 im Test (H1), das Abheben fehlt noch
+- [ ] **Helikopter** – kinematisch: Anflug, Schweben, senkrechtes Landen und Abheben auf Heliports und Flughäfen; die Landung auf einem Helipad oder beliebigen Punkt ist ab beta.40 im Test (H1), das Abheben ab beta.42 (H2)
 - [ ] **Fahrplan-Verkehr** – Flüge, über den ICAO-Typ den installierten Modellen zugeordnet
 - [x] Auch in Frankfurt testen (drei Parallelbahnen und die Startbahn West)
 
