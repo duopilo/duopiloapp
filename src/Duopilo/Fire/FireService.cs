@@ -15,6 +15,7 @@ public sealed record FireVehicleInfo(string Unit, string Model, string Phase, ui
 /// <summary>Stand der Feuerwehr für fire_service und das Log.</summary>
 /// <param name="State">idle, armed, planning, dispatching, responding, standby, following, at_aircraft, returning, finished, unavailable.</param>
 /// <param name="Source">atc (Mayday/Pan Pan im Funk) oder tool (fire_service alert).</param>
+/// <param name="Spawn">Wache(n): Namen der OSM-Feuerwachen bzw. der Parkposition.</param>
 /// <param name="Target">Wem die Feuerwehr folgt: own (eigenes Flugzeug) oder das Kennzeichen eines Verkehrstests (DUO01 …).</param>
 public sealed record FireInfo(
     string State,
@@ -57,6 +58,8 @@ public sealed class FireService : BackgroundService
     private readonly ILogger<FireService> _log;
     private readonly object _lock = new();
 
+    private readonly Lazy<FireStationLookup> _stations;
+
     private Run? _run;
     private FireInfo? _last;
     private DateTimeOffset? _handledEmergency;
@@ -71,6 +74,7 @@ public sealed class FireService : BackgroundService
         _simBrief = simBrief;
         _services = services;
         _log = log;
+        _stations = new Lazy<FireStationLookup>(() => new FireStationLookup(_options.Fire.OverpassUrl, _options.ResolveDataDirectory(), log));
     }
 
     /// <summary>Feuerwehr gibt es in dieser Instanz.</summary>
@@ -323,6 +327,14 @@ public sealed class FireService : BackgroundService
             var own = OwnLocal(graph);
             var onGround = _sim.Bool("onGround") == true;
 
+            // Echte Wachen aus OpenStreetMap; ohne (oder ohne Weg von ihnen) eine freie Parkposition
+            IReadOnlyList<FireStation> stations = [];
+            if (_options.Fire.OsmStations)
+            {
+                stations = FireStationLookup.ToStations(await _stations.Value.GetAsync(airport, ct), graph);
+                _log.LogInformation(Loc.Log("log.fire.stations"), airport, stations.Count == 0 ? "-" : string.Join(", ", stations.Select(st => st.Name)));
+            }
+
             FireDispatchPlan? plan;
             if (run.Level == FireAlertLevel.GroundIncident)
             {
@@ -331,14 +343,14 @@ public sealed class FireService : BackgroundService
                     throw new FireUnavailableException(Loc.T("tools.fire.notOnGround"));
                 }
 
-                plan = FirePlanner.PlanToAircraft(graph, units, own.Value.East, own.Value.North, FireCategory.PostUnitM(wake))
+                plan = FirePlanner.PlanToAircraft(graph, units, own.Value.East, own.Value.North, FireCategory.PostUnitM(wake), stations)
                     ?? throw new FireUnavailableException(Loc.T("tools.fire.noRouteToAircraft", airport));
             }
             else
             {
                 var end = ResolveRunway(airport, runways, run.Runway)
                     ?? throw new FireUnavailableException(Loc.T("tools.fire.runwayUnknown", run.Runway ?? "-", airport));
-                plan = FirePlanner.Plan(graph, end, units, wake, onGround ? own : null)
+                plan = FirePlanner.Plan(graph, end, units, wake, onGround ? own : null, stations, allStations: run.Level == FireAlertLevel.FullEmergency)
                     ?? throw new FireUnavailableException(Loc.T("tools.fire.noRouteToRunway", airport, end.Designation));
             }
 
@@ -358,7 +370,7 @@ public sealed class FireService : BackgroundService
 
             _log.LogInformation(
                 Loc.Log("log.fire.planned"),
-                plan.Spawn.Parking?.Label ?? "?",
+                string.Join(", ", plan.Stations.Select(st => st.Name + " (" + st.Source + ")")),
                 plan.Runway?.Designation ?? "-",
                 category,
                 string.Join(", ", plan.Vehicles.Select(v => v.Unit.Name + "@" + (v.Hold is null ? "aircraft" : v.AlongM.ToString("0", System.Globalization.CultureInfo.InvariantCulture)))),
@@ -369,7 +381,6 @@ public sealed class FireService : BackgroundService
                 ? alt - agl
                 : graph.ElevationFt;
             var height = _options.Fire.HeightFt;
-            var (spawnLat, spawnLon) = graph.ToLatLon(plan.Spawn.EastM, plan.Spawn.NorthM);
             var errors = new List<string>();
             for (var i = 0; i < plan.Vehicles.Count; i++)
             {
@@ -383,7 +394,8 @@ public sealed class FireService : BackgroundService
                 uint objectId;
                 try
                 {
-                    var heading = vp.Route.At(0).HeadingDeg;
+                    var (startEast, startNorth, heading) = vp.Route.At(0);
+                    var (spawnLat, spawnLon) = graph.ToLatLon(startEast, startNorth);
                     objectId = await _sim.CreateSimulatedObjectAsync(model, null, new AiInitPosition(spawnLat, spawnLon, groundFt + height, heading, true, 0), ct);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
@@ -929,7 +941,7 @@ public sealed class FireService : BackgroundService
             run.Airport,
             run.Runway,
             run.Category,
-            operation?.Plan.Spawn.Parking?.Label,
+            operation is null ? null : string.Join(", ", operation.Plan.Stations.Select(st => st.Name)),
             vehicles,
             missing,
             run.Error,

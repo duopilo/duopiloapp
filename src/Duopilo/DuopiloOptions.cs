@@ -431,6 +431,15 @@ public sealed class FireOptions
     /// <summary>Ausrücken, sobald das Flugzeug so nah (NM) am Landeflughafen ist.</summary>
     public double DispatchRangeNm { get; set; } = 20;
 
+    /// <summary>
+    /// Feuerwachen aus OpenStreetMap (Overpass API, je Flughafen 30 Tage zwischengespeichert); ohne Treffer oder abgeschaltet spawnen
+    /// die Fahrzeuge auf einer freien Parkposition.
+    /// </summary>
+    public bool OsmStations { get; set; } = true;
+
+    /// <summary>Adresse der Overpass API für die Feuerwachen.</summary>
+    public string OverpassUrl { get; set; } = "https://overpass-api.de/api/interpreter";
+
     /// <summary>Titel der Flugfeldlöschfahrzeuge (Komma-getrennt, abwechselnd eingesetzt).</summary>
     public string FlfModels { get; set; } = "Duopilo_FLF_Panther_Licht,Duopilo_FLF_Z8_Licht";
 

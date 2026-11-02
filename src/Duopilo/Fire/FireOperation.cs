@@ -422,11 +422,10 @@ public sealed class FireOperation
         vehicle.Drive(path, FireVehiclePhase.Positioning, FireVehiclePhase.AtAircraft, path.LengthM > 200 ? FireProfile.MaxMps : FireProfile.PositionMps, heading);
     }
 
-    /// <summary>Zurück zur Wache über die Rollwege (ohne Blaulicht), dort weg.</summary>
+    /// <summary>Zurück zur eigenen Wache über die Rollwege (ohne Blaulicht), dort weg.</summary>
     private void SendBack(FireVehicle vehicle)
     {
-        var spawn = Plan.Spawn;
-        var points = FirePlanner.RouteBetween(Graph, vehicle.EastM, vehicle.NorthM, spawn.EastM, spawn.NorthM);
+        var points = FirePlanner.RouteBetween(Graph, vehicle.EastM, vehicle.NorthM, vehicle.HomeEastM, vehicle.HomeNorthM);
         if (points is null)
         {
             var rad = vehicle.HeadingDeg * Math.PI / 180;

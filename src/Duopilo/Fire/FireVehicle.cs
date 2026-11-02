@@ -62,6 +62,7 @@ public sealed class FireVehicle
         HeightFt = heightFt;
         var (east, north, heading) = route.At(0);
         (EastM, NorthM, HeadingDeg) = (east, north, heading);
+        (HomeEastM, HomeNorthM) = (east, north);
         Phase = FireVehiclePhase.Responding;
         SetPath(route, FireProfile.MaxMps, FireVehiclePhase.Standby, null);
     }
@@ -71,6 +72,11 @@ public sealed class FireVehicle
     public string Model { get; }
 
     public FireVehiclePhase Phase { get; private set; }
+
+    /// <summary>Die eigene Wache (Anfang des ersten Wegs): dorthin fährt das Fahrzeug zurück.</summary>
+    public double HomeEastM { get; }
+
+    public double HomeNorthM { get; }
 
     public double EastM { get; private set; }
 

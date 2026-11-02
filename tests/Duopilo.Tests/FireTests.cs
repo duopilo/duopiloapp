@@ -129,7 +129,7 @@ public sealed class FireTests
         var plan = FirePlanner.Plan(graph, Runway09, FireCategory.Lineup(FireAlertLevel.LocalStandby, 7), TrafficWake.Medium, null);
 
         Assert.NotNull(plan);
-        Assert.Equal("P1", plan!.Spawn.Parking!.Label);
+        Assert.Equal("P1", plan!.Spawn.Name);
         Assert.Empty(plan.Missing);
     }
 
@@ -142,11 +142,11 @@ public sealed class FireTests
         // Ein Flugzeug steht auf P1
         graph.SetObstacles([(p1.Latitude, p1.Longitude)], 25);
         var occupied = FirePlanner.Plan(graph, Runway09, FireCategory.Lineup(FireAlertLevel.LocalStandby, 7), TrafficWake.Medium, null);
-        Assert.NotEqual("P1", occupied!.Spawn.Parking!.Label);
+        Assert.NotEqual("P1", occupied!.Spawn.Name);
 
         // Das eigene Flugzeug steht gleich daneben: Spawnen wäre zu sehen
         var visible = FirePlanner.Plan(Graph(), Runway09, FireCategory.Lineup(FireAlertLevel.LocalStandby, 7), TrafficWake.Medium, (p1.EastM + 50, p1.NorthM));
-        Assert.NotEqual("P1", visible!.Spawn.Parking!.Label);
+        Assert.NotEqual("P1", visible!.Spawn.Name);
     }
 
     [Fact]
@@ -201,6 +201,126 @@ public sealed class FireTests
         var stops = plan.Vehicles.Select(v => v.Route.At(v.Route.LengthM)).Select(p => Distance(p.East, p.North, 600, 200)).ToList();
         Assert.All(stops, d => Assert.InRange(d, 40, 120));
         Assert.True(stops.SequenceEqual(stops.OrderBy(d => d)));
+    }
+
+    // ------------------------------------------------------------------ Wachen aus OpenStreetMap
+
+    private static FireStation Station(TaxiGraph graph, string name, double east, double north)
+    {
+        var (lat, lon) = graph.ToLatLon(east, north);
+        return new FireStation(name, east, north, lat, lon, "osm");
+    }
+
+    [Fact]
+    public void Overpass_Antwort_lesen_Gebaeude_und_Wache_zaehlen_einmal()
+    {
+        const string json = """
+            {"elements":[
+              {"type":"node","id":1,"lat":51.2800,"lon":6.7700,"tags":{"amenity":"fire_station","name":"Feuerwache Nord"}},
+              {"type":"way","id":2,"center":{"lat":51.2801,"lon":6.7701},"tags":{"building":"fire_station"}},
+              {"type":"way","id":3,"center":{"lat":51.2900,"lon":6.8000},"tags":{"amenity":"fire_station"}},
+              {"type":"relation","id":4,"tags":{"amenity":"fire_station"}}
+            ]}
+            """;
+        var stations = FireStationLookup.Parse(json);
+
+        Assert.Equal(2, stations.Count);
+        Assert.Equal("Feuerwache Nord", stations[0].Name);
+        Assert.Null(stations[1].Name);
+        Assert.Equal(51.29, stations[1].Latitude, 4);
+        Assert.Contains("\"icao\"=\"EDDL\"", FireStationLookup.Query("eddl"));
+    }
+
+    [Fact]
+    public void Wachen_aus_OSM_im_Rollweg_Netz_nur_in_der_Naehe()
+    {
+        var graph = Graph();
+        var (nearLat, nearLon) = graph.ToLatLon(100, 260);
+        var osm = new[] { new OsmFireStation(null, nearLat, nearLon), new OsmFireStation("Weit weg", 51.5, 7.5) };
+        var stations = FireStationLookup.ToStations(osm, graph);
+
+        var station = Assert.Single(stations);
+        Assert.Equal("Wache 1", station.Name);
+        Assert.InRange(Distance(station.EastM, station.NorthM, 100, 260), 0, 1);
+    }
+
+    [Fact]
+    public void Wache_aus_OSM_vor_der_Parkposition()
+    {
+        var graph = Graph();
+        var plan = FirePlanner.Plan(graph, Runway09, FireCategory.Lineup(FireAlertLevel.LocalStandby, 7), TrafficWake.Medium, null, [Station(graph, "Feuerwache", 100, 260)])!;
+
+        Assert.True(plan.FromOsm);
+        Assert.All(plan.Vehicles, v => Assert.Equal("Feuerwache", v.Station.Name));
+
+        // Die Wege beginnen an der Wache, nicht auf einer Parkposition
+        var (e, n, _) = plan.Vehicles[0].Route.At(0);
+        Assert.InRange(Distance(e, n, 100, 260), 0, 1);
+    }
+
+    [Fact]
+    public void Mehrere_Wachen_bei_Mayday_jedes_Fahrzeug_von_der_naechsten()
+    {
+        var graph = Graph();
+        IReadOnlyList<FireStation> stations = [Station(graph, "West", -900, 260), Station(graph, "Ost", 900, 260)];
+        var full = FirePlanner.Plan(graph, Runway09, FireCategory.Lineup(FireAlertLevel.FullEmergency, 9), TrafficWake.Heavy, null, stations, allStations: true)!;
+        var byUnit = full.Vehicles.ToDictionary(v => v.Unit.Name, v => v.Station.Name);
+
+        Assert.Equal("West", byUnit["FLF 1"]);   // Aufsetzzone bei x = -400
+        Assert.Equal("Ost", byUnit["FLF 2"]);    // Stoppstelle bei x = 800
+        Assert.Equal(2, full.Stations.Count);
+
+        // Pan Pan: alles von einer Wache
+        var local = FirePlanner.Plan(graph, Runway09, FireCategory.Lineup(FireAlertLevel.LocalStandby, 7), TrafficWake.Medium, null, stations)!;
+        Assert.Single(local.Vehicles.Select(v => v.Station.Name).Distinct());
+    }
+
+    [Fact]
+    public void Wache_weit_weg_vom_Rollweg_Netz_Rueckfall_auf_die_Parkposition()
+    {
+        var graph = Graph();
+        var plan = FirePlanner.Plan(graph, Runway09, FireCategory.Lineup(FireAlertLevel.LocalStandby, 7), TrafficWake.Medium, null, [Station(graph, "Abseits", 0, 900)])!;
+
+        Assert.False(plan.FromOsm);
+        Assert.Equal("P1", plan.Spawn.Name);
+        Assert.Equal("parking", plan.Spawn.Source);
+    }
+
+    [Fact]
+    public void Zurueck_zur_eigenen_Wache()
+    {
+        var graph = Graph();
+        IReadOnlyList<FireStation> stations = [Station(graph, "West", -900, 260), Station(graph, "Ost", 900, 260)];
+        var plan = FirePlanner.Plan(graph, Runway09, FireCategory.Lineup(FireAlertLevel.FullEmergency, 9), TrafficWake.Heavy, null, stations, allStations: true)!;
+        var operation = new FireOperation(graph, FireAlertLevel.FullEmergency, plan, TrafficWake.Heavy, 9);
+        foreach (var vp in plan.Vehicles)
+        {
+            operation.Add(new FireVehicle(vp.Unit, "test", vp.Route, operation.Trail, graph.ToLatLon, 164));
+        }
+
+        for (var t = 0; t < 40; t++)
+        {
+            foreach (var vehicle in operation.Vehicles)
+            {
+                vehicle.Advance(0.25);
+            }
+        }
+
+        operation.ReturnAll();
+        for (var t = 0; t < 4000 && operation.Vehicles.Any(v => v.Phase != FireVehiclePhase.Gone); t++)
+        {
+            foreach (var vehicle in operation.Vehicles)
+            {
+                vehicle.Advance(0.25);
+            }
+        }
+
+        foreach (var vehicle in operation.Vehicles)
+        {
+            var home = plan.Vehicles.Single(v => v.Unit == vehicle.Unit).Station;
+            Assert.Equal(FireVehiclePhase.Gone, vehicle.Phase);
+            Assert.InRange(Distance(vehicle.EastM, vehicle.NorthM, home.EastM, home.NorthM), 0, 1);
+        }
     }
 
     // ------------------------------------------------------------------ Spur

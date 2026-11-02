@@ -1511,7 +1511,7 @@
   "tools.fire.failed": "Fire service failed: {error}",
   "log.fire.alerted": "Fire service alerted ({source}, {level}) for {airport}, runway {runway}",
   "log.fire.dispatched": "Fire service turning out at {airport}, runway {runway}",
-  "log.fire.planned": "Fire service planned: spawn at parking {spawn}, runway {runway}, category {category}, vehicles {vehicles}, {missing} without a route",
+  "log.fire.planned": "Fire service planned: stations {spawn}, runway {runway}, category {category}, vehicles {vehicles}, {missing} without a route",
   "log.fire.spawned": "Fire service {unit} spawned as {model} (object {objectId})",
   "log.fire.spawnFailed": "Fire service {unit} ({model}) could not be created: {error}",
   "log.fire.unavailable": "Fire service unavailable: {reason}",
@@ -1523,5 +1523,9 @@
   "log.fire.updateFailed": "Fire service update failed: {error}",
   "log.fire.obstaclesFailed": "Fire service: aircraft on the ground unknown ({error}) – parking positions may be occupied",
   "log.fire.lightsFailed": "Fire service lights could not be set: {error}",
-  "tools.fire.tailUnknown": "No running traffic test with tail {tail} (see traffic_test_status)."
+  "tools.fire.tailUnknown": "No running traffic test with tail {tail} (see traffic_test_status).",
+  "log.fire.stations": "Fire stations at {airport} from OpenStreetMap: {stations}",
+  "log.fire.osmFetched": "Fire stations of {airport} fetched from OpenStreetMap: {count}",
+  "log.fire.osmFailed": "Fire stations of {airport} could not be fetched from OpenStreetMap: {error}",
+  "log.fire.osmCacheFailed": "Fire station cache {file} could not be read or written: {error}"
 }
