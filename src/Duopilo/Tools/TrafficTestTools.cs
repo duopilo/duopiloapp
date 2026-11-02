@@ -74,8 +74,11 @@ public static class TrafficTestTools
         "under the helicopter on the way); spawn spawnNm (0.5–20, default 3) out from fromDeg (default against the pad's heading, a " +
         "spot from the pilot's side), heightFt (default 1000) above the pad at cruiseKt (default 90), straight to the pad, descent on a " +
         "6° path while decelerating at 0.6 m/s² so it stops over the pad, hover at 40 ft for 5 s and turn to the pad's heading, set down " +
-        "at 300 ft/min (the last 10 ft at 100); the test ends a minute after landing (landed). Without title the Asobo PassiveAircraft " +
-        "B205. rotor tries to spin the rotor (all, event, simvars, off); status heli (phase cruise/approach/hover/descent/landed). " +
+        "at 300 ft/min (the last 10 ft at 100); landing light, strobes and recognition light off after touchdown, rotor stopped after " +
+        "15 s (ENGINE_AUTO_SHUTDOWN, simvars off), all lights off after 45 s, the test ends 75 s after landing (landed). Without title " +
+        "the Eurocopter EC-135T1 Ambulance in the ADAC livery (helicopter titles: traffic_test_models, helicopter: true; the livery goes " +
+        "into livery, not the title). rotor tries to spin the rotor (all, event, simvars, off) – the EC-135 and the PassiveAircraft " +
+        "B212 turned theirs in beta.40; status heli (phase cruise/approach/hover/descent/landed). " +
         "Up to 4 tests at the same time, one per runway (e.g. a parallel approach: one call for 05L, one for 05R); starting a " +
         "test on a runway that already has one replaces it. Pick runways the pilot is not using right now. Samples (1 per second) go to one CSV " +
         "per test in the data folder (traffic-tests). Follow with traffic_test_status, end with traffic_test_stop (the aircraft is removed; " +
@@ -328,7 +331,7 @@ public static class TrafficTestTools
 
     [McpServerTool(Name = "traffic_test_models", ReadOnly = true)]
     [Description(
-        "Aircraft models installed in MSFS 2024 that can be spawned (title and livery, from EnumerateSimObjectsAndLiveries), for " +
+        "Aircraft and helicopter models installed in MSFS 2024 that can be spawned (title and livery, from EnumerateSimObjectsAndLiveries; helicopters with helicopter: true, for H1), for " +
         "traffic_test_start. Filter by words, e.g. 'A320 FSLTL' or 'Lufthansa'. 'suggested' is the model traffic_test_start takes without a title. " +
         "Each model has 'type' (ICAO type from Duopilo's approval list), 'category' (airliner, generalaviation, military) and 'status': 'verified' " +
         "(gear and landing checked in the sim), 'candidate' (landed in a test, not looked at yet), 'untested' (on the list, e.g. the MSFS " +
@@ -377,6 +380,7 @@ public static class TrafficTestTools
                     category = TrafficModels.TypeOf(m.Title, m.Livery)?.Category.ToString().ToLowerInvariant(),
                     approachKt = TrafficModels.TypeOf(m.Title, m.Livery)?.ApproachKt,
                     status = TrafficModels.StatusName(m.Title, m.Livery),
+                    helicopter = m.Helicopter,
                     excluded = TrafficModels.IsExcluded(m.Title, m.Livery),
                 }),
             });

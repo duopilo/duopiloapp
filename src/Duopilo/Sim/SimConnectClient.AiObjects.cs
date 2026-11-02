@@ -21,6 +21,9 @@ public sealed partial class SimConnectClient
     private const uint AiCreateRequestBase = 4_000_000;
     private const uint AiRemoveRequestBase = 4_100_000;
     private const uint AiModelsRequest = 4_200_000;
+
+    /// <summary>Zweite Liste: Helikopter (MSFS führt sie als eigenen Typ, die Flugzeugliste enthält sie nicht).</summary>
+    private const uint AiModelsHeliRequest = 4_200_001;
     private const uint AiReleaseRequestBase = 4_300_000;
 
     /// <summary>Abfragen auf KI-Objekten. Unter <see cref="AdHocRequestBase"/>, damit <see cref="OnData"/> sie nicht als Einzelabfrage nimmt.</summary>
@@ -60,8 +63,8 @@ public sealed partial class SimConnectClient
         _lastException is { } name && DateTimeOffset.UtcNow - _lastExceptionUtc <= window ? name : null;
 
     /// <summary>
-    /// Installierte Flugzeugmodelle mit Livery (EnumerateSimObjectsAndLiveries, MSFS 2024). MSFS schickt die Liste in mehreren
-    /// Paketen; fertig ist sie, wenn alle Pakete da sind oder eine Weile nichts mehr kommt.
+    /// Installierte Flugzeug- und Helikoptermodelle mit Livery (EnumerateSimObjectsAndLiveries, MSFS 2024, je eine Liste). MSFS schickt
+    /// jede Liste in mehreren Paketen; fertig ist es, wenn alle Pakete beider Listen da sind oder eine Weile nichts mehr kommt.
     /// </summary>
     public async Task<IReadOnlyList<AiModel>> EnumerateAircraftModelsAsync(CancellationToken ct)
     {
@@ -655,6 +658,19 @@ public sealed partial class SimConnectClient
         }
 
         method.Invoke(sc, [(SimRequestId)AiModelsRequest, SIMCONNECT_SIMOBJECT_TYPE.AIRCRAFT]);
+        try
+        {
+            method.Invoke(sc, [(SimRequestId)AiModelsHeliRequest, SIMCONNECT_SIMOBJECT_TYPE.HELICOPTER]);
+        }
+        catch (Exception ex) when (ex is TargetInvocationException or ArgumentException)
+        {
+            // Ohne Helikopter-Liste bleibt es bei den Flugzeugen
+            lock (_aiModelsGate)
+            {
+                _aiModels?.Pending.Remove(AiModelsHeliRequest);
+            }
+        }
+
         return true;
     }
 
@@ -698,10 +714,13 @@ public sealed partial class SimConnectClient
     {
         lock (_aiModelsGate)
         {
-            if (_aiModels is not { } enumeration || ReadUInt(data, "dwRequestID") != AiModelsRequest)
+            if (_aiModels is not { } enumeration || ReadUInt(data, "dwRequestID") is not { } request
+                || (request != AiModelsRequest && request != AiModelsHeliRequest))
             {
                 return;
             }
+
+            var helicopter = request == AiModelsHeliRequest;
 
             enumeration.LastPacketUtc = DateTimeOffset.UtcNow;
             if (ReadMember(data, "rgData") is Array items)
@@ -716,7 +735,7 @@ public sealed partial class SimConnectClient
                     var title = ReadText(item, "Title");
                     if (!string.IsNullOrWhiteSpace(title))
                     {
-                        enumeration.Models.Add(new AiModel(title, ReadText(item, "Livery") ?? ""));
+                        enumeration.Models.Add(new AiModel(title, ReadText(item, "Livery") ?? "", helicopter));
                     }
                 }
             }
@@ -725,7 +744,11 @@ public sealed partial class SimConnectClient
             var outOf = ReadUInt(data, "dwOutOf");
             if (outOf is 0 || (entry is { } e && outOf is { } o && e + 1 >= o))
             {
-                enumeration.Completion.TrySetResult([.. enumeration.Models]);
+                enumeration.Pending.Remove(request);
+                if (enumeration.Pending.Count == 0)
+                {
+                    enumeration.Completion.TrySetResult([.. enumeration.Models]);
+                }
             }
         }
     }
@@ -795,6 +818,9 @@ public sealed partial class SimConnectClient
     {
         public List<AiModel> Models { get; } = [];
 
+        /// <summary>Listen, die noch nicht ganz da sind (Flugzeuge, Helikopter).</summary>
+        public HashSet<uint> Pending { get; } = [AiModelsRequest, AiModelsHeliRequest];
+
         public DateTimeOffset? LastPacketUtc { get; set; }
 
         public TaskCompletionSource<IReadOnlyList<AiModel>> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -802,7 +828,8 @@ public sealed partial class SimConnectClient
 }
 
 /// <summary>Installiertes Flugzeugmodell (Titel aus aircraft.cfg bzw. Preset) mit Livery.</summary>
-public sealed record AiModel(string Title, string Livery);
+/// <param name="Helicopter">Aus der Helikopter-Liste (SIMCONNECT_SIMOBJECT_TYPE.HELICOPTER).</param>
+public sealed record AiModel(string Title, string Livery, bool Helicopter = false);
 
 /// <summary>Startposition eines KI-Flugzeugs (SIMCONNECT_DATA_INITPOSITION).</summary>
 /// <param name="AltitudeFt">Höhe über MSL in Fuß.</param>
@@ -1009,10 +1036,11 @@ public enum AiLight
     Landing,
     Taxi,
     Logo,
+    Recognition,
 }
 
 /// <summary>Gewünschte Lichter eines KI-Flugzeugs; null = unverändert lassen.</summary>
-public sealed record AiLights(bool? Nav = null, bool? Beacon = null, bool? Strobe = null, bool? Landing = null, bool? Taxi = null, bool? Logo = null)
+public sealed record AiLights(bool? Nav = null, bool? Beacon = null, bool? Strobe = null, bool? Landing = null, bool? Taxi = null, bool? Logo = null, bool? Recognition = null)
 {
     // Bits von LIGHT STATES laut SDK
     private static readonly (AiLight Light, int Bit, string Short)[] Bits =
@@ -1022,13 +1050,14 @@ public sealed record AiLights(bool? Nav = null, bool? Beacon = null, bool? Strob
         (AiLight.Landing, 0x0004, "landing"),
         (AiLight.Taxi, 0x0008, "taxi"),
         (AiLight.Strobe, 0x0010, "strobe"),
+        (AiLight.Recognition, 0x0040, "recognition"),
         (AiLight.Logo, 0x0100, "logo"),
     ];
 
     /// <summary>Die Lichter, die geschaltet werden sollen, mit Soll-Zustand.</summary>
     public IEnumerable<(AiLight Light, bool On)> Changes()
     {
-        (AiLight Light, bool? On)[] all = [(AiLight.Nav, Nav), (AiLight.Beacon, Beacon), (AiLight.Strobe, Strobe), (AiLight.Landing, Landing), (AiLight.Taxi, Taxi), (AiLight.Logo, Logo)];
+        (AiLight Light, bool? On)[] all = [(AiLight.Nav, Nav), (AiLight.Beacon, Beacon), (AiLight.Strobe, Strobe), (AiLight.Landing, Landing), (AiLight.Taxi, Taxi), (AiLight.Logo, Logo), (AiLight.Recognition, Recognition)];
         return all.Where(l => l.On is not null).Select(l => (l.Light, l.On!.Value));
     }
 
@@ -1041,6 +1070,7 @@ public sealed record AiLights(bool? Nav = null, bool? Beacon = null, bool? Strob
         AiLight.Landing => ("LANDING_LIGHTS_SET", "LIGHT LANDING"),
         AiLight.Taxi => ("TAXI_LIGHTS_SET", "LIGHT TAXI"),
         AiLight.Logo => ("LOGO_LIGHTS_SET", "LIGHT LOGO"),
+        AiLight.Recognition => ("RECOGNITION_LIGHTS_SET", "LIGHT RECOGNITION"),
         _ => throw new ArgumentOutOfRangeException(nameof(light)),
     };
 
