@@ -188,28 +188,44 @@ public static class FirePlanner
     /// <summary>Weg von einer Wache zu einem Rollpunkt: ab der Parkposition bzw. von der OSM-Wache zum nächsten Rollpunkt und weiter.</summary>
     private static List<(double East, double North)>? RouteFrom(TaxiGraph graph, FireStation station, TaxiNode target)
     {
-        var start = station.Parking ?? NearestNode(graph, station.EastM, station.NorthM);
-        if (start is null)
+        foreach (var start in StartNodes(graph, station.EastM, station.NorthM, station.Parking))
         {
-            return null;
-        }
-
-        var points = new List<(double East, double North)> { (station.EastM, station.NorthM) };
-        if (start.Id != target.Id)
-        {
-            if (graph.Route(start.Id, target.Id) is not { Count: >= 2 } nodes)
+            var points = new List<(double East, double North)> { (station.EastM, station.NorthM) };
+            if (start.Id == target.Id)
             {
-                return null;
+                points.Add((target.EastM, target.NorthM));
+                return points;
             }
 
-            points.AddRange(nodes.Select(n => (graph.Nodes[n].EastM, graph.Nodes[n].NorthM)));
-        }
-        else
-        {
-            points.Add((target.EastM, target.NorthM));
+            if (graph.Route(start.Id, target.Id) is { Count: >= 2 } nodes)
+            {
+                points.AddRange(nodes.Select(n => (graph.Nodes[n].EastM, graph.Nodes[n].NorthM)));
+                return points;
+            }
         }
 
-        return points;
+        return null;
+    }
+
+    /// <summary>
+    /// Wo ein Weg ins Rollweg-Netz beginnt: die Parkposition, sonst die nächsten Rollpunkte (bis <see cref="MaxEndNodeTries"/>, höchstens
+    /// <see cref="MaxStationOffNetworkM"/> entfernt, mindestens der nächste). Der nächste kann abgeschnitten sein – an der Wache in EDDL
+    /// ein Stück am Helipad (Test 02.11.: OSM-Wache bekannt, gespawnt wurde trotzdem auf V63).
+    /// </summary>
+    private static IEnumerable<TaxiNode> StartNodes(TaxiGraph graph, double east, double north, TaxiNode? parking)
+    {
+        if (parking is not null)
+        {
+            return [parking];
+        }
+
+        return graph.Nodes
+            .Where(n => !n.IsParking)
+            .Select(n => (Node: n, Distance: Distance(n.EastM, n.NorthM, east, north)))
+            .OrderBy(x => x.Distance)
+            .Take(MaxEndNodeTries)
+            .Where((x, i) => i == 0 || x.Distance <= MaxStationOffNetworkM)
+            .Select(x => x.Node);
     }
 
     private static double LengthM(List<(double East, double North)> points)
@@ -271,35 +287,34 @@ public static class FirePlanner
     /// Weg zwischen zwei Punkten über das Rollweg-Netz: vom Punkt zum nächsten Rollpunkt, die Route, vom letzten Rollpunkt zum Ziel.
     /// <paramref name="fromParking"/>: am Anfang steht das Fahrzeug auf dieser Parkposition (Route ab ihr). Ist der nächste Rollpunkt am
     /// Ziel nicht erreichbar (z. B. ein Helipad abseits des Netzes, Test EDDL 02.11.), probiert es die nächsten bis
-    /// <see cref="MaxEndNodeTries"/>; das letzte Stück fährt das Fahrzeug geradeaus. Null = keine Route.
+    /// <see cref="MaxEndNodeTries"/>; das letzte Stück fährt das Fahrzeug geradeaus. Am Anfang ebenso (<see cref="StartNodes"/>).
+    /// Null = keine Route.
     /// </summary>
     public static List<(double East, double North)>? RouteBetween(TaxiGraph graph, double fromEast, double fromNorth, double toEast, double toNorth, TaxiNode? fromParking = null)
     {
-        var start = fromParking ?? NearestNode(graph, fromEast, fromNorth);
-        if (start is null)
-        {
-            return null;
-        }
-
         var ends = graph.Nodes
             .Where(n => !n.IsParking)
             .OrderBy(n => Distance(n.EastM, n.NorthM, toEast, toNorth))
-            .Take(MaxEndNodeTries);
-        foreach (var end in ends)
+            .Take(MaxEndNodeTries)
+            .ToList();
+        foreach (var start in StartNodes(graph, fromEast, fromNorth, fromParking))
         {
-            var points = new List<(double East, double North)> { (fromEast, fromNorth) };
-            if (start.Id != end.Id)
+            foreach (var end in ends)
             {
-                if (graph.Route(start.Id, end.Id) is not { Count: >= 2 } nodes)
+                var points = new List<(double East, double North)> { (fromEast, fromNorth) };
+                if (start.Id != end.Id)
                 {
-                    continue;
+                    if (graph.Route(start.Id, end.Id) is not { Count: >= 2 } nodes)
+                    {
+                        continue;
+                    }
+
+                    points.AddRange(nodes.Select(n => (graph.Nodes[n].EastM, graph.Nodes[n].NorthM)));
                 }
 
-                points.AddRange(nodes.Select(n => (graph.Nodes[n].EastM, graph.Nodes[n].NorthM)));
+                points.Add((toEast, toNorth));
+                return points;
             }
-
-            points.Add((toEast, toNorth));
-            return points;
         }
 
         return null;

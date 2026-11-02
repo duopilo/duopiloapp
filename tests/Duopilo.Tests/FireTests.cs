@@ -17,7 +17,7 @@ public sealed class FireTests
 
     private static readonly int[] ConnectorX = [-800, -400, 0, 400, 800];
 
-    private static TaxiGraph Graph()
+    private static TaxiGraph Graph(bool stub = false)
     {
         var points = new List<TaxiPointData>();
         for (var i = 0; i <= 10; i++)
@@ -57,6 +57,14 @@ public sealed class FireTests
         paths.Add(new TaxiPathData(3, 10, 0, 0, 5, 0, 0));                    // P1 an A bei x = 0
         paths.Add(new TaxiPathData(3, 10, 0, 0, 10, 1, 0));                   // P2 an A bei x = 1000
         paths.Add(new TaxiPathData(3, 20, 0, 0, 4, 2, 0));                    // Gate A5 an A bei x = -200
+
+        // Abgeschnittenes Stück (wie am Helipad in EDDL): zwei Rollpunkte bei 300/330 und 320/345 ohne Verbindung zum Netz
+        if (stub)
+        {
+            points.Add(new TaxiPointData(1, 0, 300, 330));
+            points.Add(new TaxiPointData(1, 0, 320, 345));
+            paths.Add(new TaxiPathData(1, 15, 0, 0, points.Count - 2, points.Count - 1, 0));
+        }
 
         var data = new AirportTaxiData(
             "EDXF",
@@ -669,5 +677,21 @@ public sealed class FireTests
         {
             Directory.Delete(dir, recursive: true);
         }
+    }
+
+    [Fact]
+    public void Wache_neben_einem_abgeschnittenen_Rollweg_faehrt_ueber_den_naechsten_erreichbaren()
+    {
+        // Der nächste Rollpunkt der Wache gehört zu einem Stück ohne Verbindung; früher fiel das auf eine Parkposition zurück
+        var graph = Graph(stub: true);
+        var station = Station(graph, "Flughafenfeuerwehr", 315, 360);
+
+        var ground = FirePlanner.PlanToAircraft(graph, FireCategory.Lineup(FireAlertLevel.GroundIncident, 6), -600, 200, 30, [station])!;
+        Assert.True(ground.FromOsm);
+        var (e, n, _) = ground.Vehicles[0].Route.At(0);
+        Assert.InRange(Distance(e, n, 315, 360), 0, 1);
+
+        var standby = FirePlanner.Plan(graph, Runway09, FireCategory.Lineup(FireAlertLevel.LocalStandby, 6), TrafficWake.Medium, null, [station])!;
+        Assert.True(standby.FromOsm);
     }
 }
