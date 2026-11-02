@@ -47,7 +47,7 @@ Eigener KI-Verkehr von Duopilo statt des Verkehrs aus dem Simulator, Schritt fü
 - [x] **Takt der Landungen und Mischbetrieb** (beta.34, in der Beta) – Landungen nacheinander mit Abstand nach Wirbelschleppen, Lücken für Abflüge, Starts und Landungen auf einer Bahn (wie in Düsseldorf), Durchstarten, wenn die Bahn noch belegt ist
 - [x] **Übergänge zwischen den Phasen** (beta.37, in der Beta) – Anflüge aus dem Reiseflug (Sinkflug und Kurve auf den Final aus jeder Richtung, dann Landung und Rollen) und Abflüge bis in den Reiseflug (Kurve auf einen Kurs, Steigflug auf die Flugfläche), geflogen von Duopilo selbst
 - [ ] **Follow-me** – eigenes Fahrzeugmodell (Bus mit Vollkaro), führt dein Flugzeug vom Abrollweg zum Gate
-- [ ] **Flughafenfeuerwehr** – europäische Löschfahrzeuge bei Notfällen aus dem ATC-Modul
+- [ ] **Flughafenfeuerwehr** – europäische Löschfahrzeuge bei Notfällen aus dem ATC-Modul; Fahrzeugmodelle mit schaltbarem Licht sind fertig ([Notizen](https://github.com/duopilo/duopiloapp/blob/main/docs/research/feuerwehr-fahrzeuge.md))
 - [ ] **Eigene Passive-Flugzeugmodelle**
 - [ ] **Helikopter** – kinematisch: Anflug, Schweben, senkrechtes Landen und Abheben auf Heliports und Flughäfen
 - [ ] **Fahrplan-Verkehr** – Flüge, über den ICAO-Typ den installierten Modellen zugeordnet
