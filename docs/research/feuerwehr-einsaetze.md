@@ -233,12 +233,29 @@ Sperrung von außen: Holding im Anflug oder Warten am Haltepunkt.
   Folgen geht trotzdem über die Spur, damit es derselbe Code ist.
 - **Arten:** Pan Pan mit Local Standby (häufigste), heiße Bremsen nach der Landung und als Mayday höchstens ein
   Triebwerksbrand (selten): in der Luft gelöscht, Landung, Kontrolle durch die Feuerwehr. Kein Absturz und keine
-  Evakuierung, beides bekämen wir im Sim nicht glaubwürdig dargestellt. Ein sichtbares Feuer gibt es nicht, nur den Ablauf.
+  Evakuierung, beides bekämen wir im Sim nicht glaubwürdig dargestellt. Rauch und Löschwasser siehe [Effekte](#effekte-rauch-feuer-löschwasser).
 - **Ablauf am Flugzeug:** stoppt auf der Bahn, Feuerwehr umstellt es, kurze Kontrolle, dann rollt es mit Begleitung zum
   Gate. Bei Mayday bleibt es etwas länger stehen.
 - **Funk:** Den Notruf der KI hörst du auf der Frequenz, wenn du auf derselben bist (Pan Pan oder Mayday, danach ATC).
 - **Einstellung:** aus, selten, gelegentlich. Nur wenn du am oder nahe dem Flughafen bist, nie mehrere gleichzeitig, nie
   während deines eigenen Notfalls.
+
+## Effekte: Rauch, Feuer, Löschwasser
+
+MSFS 2024 hat einen Effekt-Editor und ein SDK-Beispiel „Engine Smoke“, also genau diese Art Effekt. Zwei Wege, ihn an ein
+Flugzeug zu bringen:
+
+| Weg | Wie | Vor- und Nachteile |
+| --- | --- | --- |
+| Effekt-Träger | unsichtbares eigenes SimObject im Paket `duopilo-fire`, der Effekt hängt in dessen Modell; Duopilo spawnt es per SimConnect an der Triebwerksposition und zieht es mit | kein neues Werkzeug, reicht am Boden; in der Luft vermutlich ruckelig |
+| WASM-Modul | kleines WASM-Modul im Paket ruft `fsVfxSpawnOnSimObject` mit der Objekt-ID, einem Knoten oder Versatz am Triebwerk auf; Duopilo sagt ihm per SimConnect, welches Flugzeug | Effekt hängt fest am Flugzeug, auch im Flug; neue Toolchain (C++, MSFS-SDK) |
+
+- **Löschwasser und Schaum:** als Effekt am Dachwerfer der eigenen FLF-Modelle, geschaltet über eine eigene Variable je
+  Fahrzeug (z. B. `L:1:DUOPILO_WERFER`), wie Blaulicht und Fahrlicht.
+- **Vorschlag:** zuerst am Boden mit Effekt-Träger: Rauch am Triebwerk nach der Landung, FLF löschen, Rauch geht aus.
+  Rauchfahne im Flug erst, wenn das WASM-Modul lohnt.
+- **Offen:** ob die Objekt-IDs aus SimConnect im WASM-Modul gelten; laut SDK schlägt das Spawnen fehl, solange ein
+  KI-Flugzeug noch lädt, also mehrmals versuchen. Gilt auch für Brand am Boden beim eigenen Flugzeug.
 
 ## Weitere Einsätze
 
@@ -299,5 +316,9 @@ Triebwerken.
   Meldung an die Feuerwehr, Schwelle für Treibstoffaustritt
 - [Flughafen Hannover: Flughafenbenutzungsordnung](https://www.hannover-airport.de/fileadmin/downloads/B2B_und_Gesch%C3%A4ftskunden/Entgelte_und_AGB/AGB_und_Entgelttabellen/Flughafenbenutzungsordnung_Dez2024.pdf):
   Kraftstoffaustritt
+- [fsVfxSpawnOnSimObject (MSFS 2024 SDK)](https://docs.flightsimulator.com/msfs2024/retail/programming-apis/wasm/vfx-api/fsvfxspawnonsimobject/index.md):
+  Effekt an ein SimObject hängen
+- [SimpleFX-Beispiel (MSFS 2024 SDK)](https://docs.flightsimulator.com/msfs2024/retail/samples-tutorials/samples/misc/simplefx/index.md):
+  Effekt „Engine Smoke“
 - [SimConnect_AddToFacilityDefinition (MSFS 2024 SDK)](https://docs.flightsimulator.com/msfs2024/html/6_Programming_APIs/SimConnect/API_Reference/Facilities/SimConnect_AddToFacilityDefinition.htm):
   Arten von Wegen und Parkpositionen
