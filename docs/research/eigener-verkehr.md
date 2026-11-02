@@ -607,6 +607,9 @@ auch diese Abschnitte selbst (`EnrouteKinematics`), statt sie an die Wegpunkt-KI
 - **B3:** Von A8 zur 23R. Ab 1500 ft Linkskurve auf 137 mit 25°, 2500 ft/min, bei 10 027 ft Landelicht aus, darüber 300 kt.
 - **Gefunden:** Am Eindrehpunkt hing das Flugzeug noch 12° und stand mit dem Endanflug schlagartig gerade. Außerdem war es schon bei
   8 NM auf 140 kt. Beides ist in beta.38 behoben: Es leitet so früh aus, wie das Rollen dauert, und fliegt bis 4 NM Vapp + 25.
+- **Parkposition belegt (beta.38):** DUO02 (A4 aus 140) stellte sich auf V42 auf eine A310. Beim Start hatte der Scan nur ein
+  Flugzeug am Boden gefunden, vier Minuten vorher waren es 35, danach über 50 – MSFS hatte seinen Bodenverkehr neu aufgebaut. Ab beta.39
+  prüfen A3 und A4 die Parkposition bei 2 NM noch einmal und rollen sonst zu einer anderen, die vom selben Abrollpunkt erreichbar ist.
 
 **Fahrplan des eigenen Verkehrs (Stand 1.11.2026):**
 
