@@ -48,6 +48,12 @@ Only put in what you change. Example:
 | `FollowMe:Enabled` | `true` | [follow-me](ATC#follow-me) on request (tray instance only) |
 | `FollowMe:Model` | `Duopilo_FollowMe_Licht` | vehicle title from its `sim.cfg` |
 | `FollowMe:HeightFt` | `0` | model reference point above the ground |
+| `Fire:Enabled` | `true` | airport fire service on Mayday/Pan Pan (tray instance only, in development) |
+| `Fire:OnAtcEmergency` | `true` | Mayday and Pan Pan in the ATC module alert the fire service |
+| `Fire:DispatchRangeNm` | `20` | the vehicles turn out once the aircraft is this close to the landing airport |
+| `Fire:FlfModels` | `Duopilo_FLF_Panther_Licht,Duopilo_FLF_Z8_Licht` | crash tender titles, used in turn |
+| `Fire:ElwModel`, `HlfModel`, `RtwModel`, `RtfModel` | `Duopilo_ELW_Licht` … | command car, fire engine, ambulance, rescue stairs |
+| `Fire:HeightFt` | `0` | model reference point above the ground |
 | `Speech:Engine` | `auto` | `auto`, `windows`, `kokoro` |
 | `Speech:KokoroVoice` | `bm_george` | default Kokoro voice for callouts |
 | `Speech:KokoroThreads` | `2` | CPU threads for Kokoro |

@@ -92,6 +92,9 @@ public sealed class DuopiloOptions
     /// <summary>Follow-me nach der Landung – nur auf Anfrage beim Ground ("request follow-me").</summary>
     public FollowMeOptions FollowMe { get; set; } = new();
 
+    /// <summary>Flughafenfeuerwehr bei Mayday/Pan Pan (docs/research/feuerwehr-einsaetze.md).</summary>
+    public FireOptions Fire { get; set; } = new();
+
     /// <summary>
     /// Datenordner (Logs, Modelle, Caches, Dashboard-Einstellungen). Leer = %LOCALAPPDATA%\Duopilo – beim ersten Start
     /// übernommen aus %LOCALAPPDATA%\Kopilot (<see cref="DataDirectoryMigration"/>).
@@ -409,6 +412,41 @@ public sealed class FollowMeOptions
     public string Model { get; set; } = "Duopilo_FollowMe_Licht";
 
     /// <summary>Bezugspunkt des Modells über dem Boden (ft); 0 = Ursprung des Modells am Boden.</summary>
+    public double HeightFt { get; set; }
+}
+
+/// <summary>
+/// Flughafenfeuerwehr: Bei Mayday oder Pan Pan im ATC-Modul rückt sie aus, sobald das Flugzeug nahe am Landeflughafen ist. Eigene
+/// Fahrzeuge (SimObjects aus dem Paket duopilo-fire im Community-Ordner) fahren mit Blaulicht an die Bahn, folgen nach dem Aufsetzen
+/// und stellen sich um das Flugzeug. Fehlt das Paket, kommt keine Feuerwehr (Log und fire_service).
+/// </summary>
+public sealed class FireOptions
+{
+    /// <summary>Feuerwehr anbieten. Nur die Tray-Instanz erzeugt Fahrzeuge, die stdio-Instanz nie.</summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>Mayday und Pan Pan im ATC-Modul rufen die Feuerwehr (sonst nur fire_service alert).</summary>
+    public bool OnAtcEmergency { get; set; } = true;
+
+    /// <summary>Ausrücken, sobald das Flugzeug so nah (NM) am Landeflughafen ist.</summary>
+    public double DispatchRangeNm { get; set; } = 20;
+
+    /// <summary>Titel der Flugfeldlöschfahrzeuge (Komma-getrennt, abwechselnd eingesetzt).</summary>
+    public string FlfModels { get; set; } = "Duopilo_FLF_Panther_Licht,Duopilo_FLF_Z8_Licht";
+
+    /// <summary>Titel des Einsatzleitwagens.</summary>
+    public string ElwModel { get; set; } = "Duopilo_ELW_Licht";
+
+    /// <summary>Titel des Hilfeleistungslöschfahrzeugs.</summary>
+    public string HlfModel { get; set; } = "Duopilo_HLF_Licht";
+
+    /// <summary>Titel des Rettungswagens.</summary>
+    public string RtwModel { get; set; } = "Duopilo_RTW_Licht";
+
+    /// <summary>Titel der Rettungstreppe.</summary>
+    public string RtfModel { get; set; } = "Duopilo_RTF_Licht";
+
+    /// <summary>Bezugspunkt der Modelle über dem Boden (ft); 0 = Ursprung des Modells am Boden.</summary>
     public double HeightFt { get; set; }
 }
 

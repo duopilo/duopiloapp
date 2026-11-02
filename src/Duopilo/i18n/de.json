@@ -1233,5 +1233,17 @@
   "tools.followMe.noRoute": "Keine Rollroute zu einer freien Parkposition in {airport}, die für ein Follow-me weit genug ist.",
   "tools.followMe.noRouteToGate": "Keine Rollroute von hier zur Parkposition {gate}, oder sie ist zu nah für ein Follow-me.",
   "tools.followMe.spawnFailed": "Das Follow-me-Fahrzeug {model} ließ sich nicht erzeugen: {error} Liegt das Fahrzeugpaket von Duopilo im Community-Ordner?",
-  "tools.followMe.failed": "Follow-me fehlgeschlagen: {error}"
+  "tools.followMe.failed": "Follow-me fehlgeschlagen: {error}",
+  "tools.fire.disabled": "Die Feuerwehr gibt es in dieser Duopilo-Instanz nicht – sie ist ausgeschaltet (Duopilo:Fire:Enabled), oder das ist die stdio-Instanz von Claude Desktop (die Fahrzeuge kommen nur aus der Tray-Instanz).",
+  "tools.fire.levelUnknown": "Unbekannte Alarmstufe {level} – local, full oder ground.",
+  "tools.fire.busy": "Die Feuerwehr ist schon im Einsatz – erst abbrechen (action cancel).",
+  "tools.fire.noAirport": "Kein Flughafen: einen angeben (ICAO) oder einen SimBrief-Plan laden.",
+  "tools.fire.nothing": "Kein Feuerwehr-Einsatz.",
+  "tools.fire.noTaxiways": "MSFS hat keine Rollwege für {airport}.",
+  "tools.fire.notOnGround": "Für einen Notfall am Boden muss das Flugzeug am Boden stehen und seine Position bekannt sein.",
+  "tools.fire.noRouteToAircraft": "In {airport} gibt es keine Route von einer freien Parkposition zum Flugzeug.",
+  "tools.fire.runwayUnknown": "Bahn {runway} gibt es in {airport} nicht.",
+  "tools.fire.noRouteToRunway": "In {airport} gibt es keine Route von einer freien Parkposition zu einem Haltepunkt der Bahn {runway}.",
+  "tools.fire.spawnFailed": "Die Feuerwehrfahrzeuge konnten nicht erzeugt werden: {errors} Ist das Feuerwehr-Paket von Duopilo (duopilo-fire) im Community-Ordner?",
+  "tools.fire.failed": "Feuerwehr fehlgeschlagen: {error}"
 }

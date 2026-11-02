@@ -56,6 +56,10 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<Duopilo.Vehicles.FollowMeService>();
         services.AddHostedService(sp => sp.GetRequiredService<Duopilo.Vehicles.FollowMeService>());
 
+        // Flughafenfeuerwehr bei Mayday/Pan Pan (in der stdio-Instanz aus, siehe Program.cs)
+        services.AddSingleton<Duopilo.Fire.FireService>();
+        services.AddHostedService(sp => sp.GetRequiredService<Duopilo.Fire.FireService>());
+
         // Zustand der Sprachschleife für duopilo_status – die Tray-Instanz ersetzt den Platzhalter (AddDuopiloVoice)
         services.TryAddSingleton<Duopilo.Voice.IVoiceStatusSource, Duopilo.Voice.NoVoiceLoop>();
         return services;
