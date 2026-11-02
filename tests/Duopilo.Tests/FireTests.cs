@@ -643,4 +643,31 @@ public sealed class FireTests
     [InlineData("full", FireAlertLevel.FullEmergency)]
     [InlineData("ground", FireAlertLevel.GroundIncident)]
     public void Alarmstufe_aus_dem_Werkzeug(string? text, FireAlertLevel level) => Assert.Equal(level, FireService.ParseLevel(text));
+
+    [Fact]
+    public async Task OSM_Fehlschlag_wird_gemerkt_und_alte_Wachen_bleiben()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "duopilo-fire-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            // Kein Server: leer, der Fehlschlag steht im Zwischenspeicher
+            var lookup = new FireStationLookup("http://127.0.0.1:9/api/interpreter", dir, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+            Assert.Empty(await lookup.GetAsync("eddl"));
+            var file = Path.Combine(dir, "cache", "fire-stations", "EDDL.json");
+            Assert.Contains("\"Ok\":false", File.ReadAllText(file), StringComparison.Ordinal);
+
+            // Abgelaufene, aber gute Daten: bleiben, auch wenn die Abfrage scheitert (beide Server)
+            File.WriteAllText(
+                Path.Combine(dir, "cache", "fire-stations", "EDDK.json"),
+                "{\"FetchedUtc\":\"2020-01-01T00:00:00+00:00\",\"Ok\":true,\"Stations\":[{\"Name\":\"Wache 1\",\"Latitude\":50.87,\"Longitude\":7.14}]}");
+            var two = new FireStationLookup("http://127.0.0.1:9/a, http://127.0.0.1:9/b", dir, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+            var old = await two.GetAsync("EDDK");
+            Assert.Equal("Wache 1", Assert.Single(old).Name);
+            Assert.Contains("\"Ok\":true", File.ReadAllText(Path.Combine(dir, "cache", "fire-stations", "EDDK.json")), StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
 }

@@ -437,8 +437,11 @@ public sealed class FireOptions
     /// </summary>
     public bool OsmStations { get; set; } = true;
 
-    /// <summary>Adresse der Overpass API für die Feuerwachen.</summary>
-    public string OverpassUrl { get; set; } = "https://overpass-api.de/api/interpreter";
+    /// <summary>
+    /// Adresse(n) der Overpass API für die Feuerwachen, Komma-getrennt der Reihe nach: der Hauptserver der FOSSGIS ist oft überlastet,
+    /// private.coffee hat kein Abfragelimit.
+    /// </summary>
+    public string OverpassUrl { get; set; } = "https://overpass-api.de/api/interpreter,https://overpass.private.coffee/api/interpreter";
 
     /// <summary>Titel der Flugfeldlöschfahrzeuge (Komma-getrennt, abwechselnd eingesetzt).</summary>
     public string FlfModels { get; set; } = "Duopilo_FLF_Panther_Licht,Duopilo_FLF_Z8_Licht";

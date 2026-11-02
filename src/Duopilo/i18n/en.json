@@ -1525,8 +1525,10 @@
   "log.fire.lightsFailed": "Fire service lights could not be set: {error}",
   "tools.fire.tailUnknown": "No running traffic test with tail {tail} (see traffic_test_status).",
   "log.fire.stations": "Fire stations at {airport} from OpenStreetMap: {stations}",
-  "log.fire.osmFetched": "Fire stations of {airport} fetched from OpenStreetMap: {count}",
-  "log.fire.osmFailed": "Fire stations of {airport} could not be fetched from OpenStreetMap: {error}",
+  "log.fire.osmFetched": "Fire stations of {airport} fetched from OpenStreetMap: {count} ({url})",
+  "log.fire.osmFailed": "Fire stations of {airport} could not be fetched from {url}: {error}",
+  "log.fire.osmPending": "Fire stations of {airport} not there from OpenStreetMap after {seconds} s – this time from a free parking position, the request goes on for the next time",
+  "log.fire.staleEmergency": "Fire service ignores the {kind} since {since} (older than {hours} h, e.g. from a restored ATC session)",
   "log.fire.osmCacheFailed": "Fire station cache {file} could not be read or written: {error}",
   "tools.followMe.noVehicle": "All follow-me vehicles at {airport} are on their way ({count} at most at the same time)."
 }

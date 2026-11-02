@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text.Json;
 using Duopilo.Hosting;
@@ -23,57 +24,74 @@ public sealed record OsmFireStation(string? Name, double Latitude, double Longit
 /// <summary>
 /// Feuerwachen eines Flughafens aus OpenStreetMap über die Overpass API: alles mit <c>amenity=fire_station</c> oder
 /// <c>building=fire_station</c> innerhalb des Flughafen-Umrisses (<c>aeroway=aerodrome</c> mit dem ICAO-Code). Das Ergebnis liegt
-/// 30 Tage im Datenordner (cache\fire-stations), ein Fehlschlag einen Tag, damit nicht jeder Einsatz neu fragt. Daten:
-/// © OpenStreetMap-Mitwirkende, ODbL 1.0 (THIRD-PARTY-NOTICES.md); Duopilo liefert keine Daten mit, es fragt zur Laufzeit.
+/// 30 Tage im Datenordner (cache\fire-stations), ein Fehlschlag 15 Minuten. Die Abfrage läuft unabhängig vom Einsatz bis zum Ende
+/// (Overpass braucht zu Stoßzeiten über 20 s), damit der Zwischenspeicher beim nächsten Mal gefüllt ist; mehrere Server
+/// (Komma-getrennt) werden der Reihe nach gefragt. Daten: © OpenStreetMap-Mitwirkende, ODbL 1.0 (THIRD-PARTY-NOTICES.md); Duopilo
+/// liefert keine Daten mit, es fragt zur Laufzeit.
 /// </summary>
 public sealed class FireStationLookup
 {
     private static readonly TimeSpan Fresh = TimeSpan.FromDays(30);
-    private static readonly TimeSpan RetryAfterFailure = TimeSpan.FromDays(1);
+    private static readonly TimeSpan RetryAfterFailure = TimeSpan.FromMinutes(15);
 
     private readonly HttpClient _http;
-    private readonly string _url;
+    private readonly string[] _urls;
     private readonly string _cacheDirectory;
     private readonly ILogger _log;
+    private readonly ConcurrentDictionary<string, Task<IReadOnlyList<OsmFireStation>>> _running = new(StringComparer.OrdinalIgnoreCase);
 
-    public FireStationLookup(string overpassUrl, string dataDirectory, ILogger log)
+    public FireStationLookup(string overpassUrls, string dataDirectory, ILogger log)
     {
-        _url = overpassUrl;
+        _urls = overpassUrls.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         _cacheDirectory = Path.Combine(dataDirectory, "cache", "fire-stations");
         _log = log;
-        _http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+        _http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
         _http.DefaultRequestHeaders.UserAgent.ParseAdd(AppNames.UserAgent);
     }
 
-    /// <summary>Feuerwachen des Flughafens (aus dem Zwischenspeicher oder neu abgefragt); leer, wenn OSM keine kennt oder nichts geht.</summary>
-    public async Task<IReadOnlyList<OsmFireStation>> GetAsync(string icao, CancellationToken ct)
+    /// <summary>
+    /// Feuerwachen des Flughafens: aus dem Zwischenspeicher, sonst die laufende oder eine neue Abfrage. Leer, wenn OSM keine kennt
+    /// oder nichts geht. Wer nicht warten will, nimmt die Aufgabe mit einer Frist (die Abfrage läuft trotzdem weiter).
+    /// </summary>
+    public Task<IReadOnlyList<OsmFireStation>> GetAsync(string icao)
     {
-        var file = Path.Combine(_cacheDirectory, icao.ToUpperInvariant() + ".json");
+        var key = icao.Trim().ToUpperInvariant();
+        var file = Path.Combine(_cacheDirectory, key + ".json");
         var cached = ReadCache(file);
         if (cached is { } c && DateTimeOffset.UtcNow - c.FetchedUtc < (c.Ok ? Fresh : RetryAfterFailure))
         {
-            return c.Stations;
+            return Task.FromResult(c.Stations);
         }
 
-        try
-        {
-            using var content = new FormUrlEncodedContent([new KeyValuePair<string, string>("data", Query(icao))]);
-            using var response = await _http.PostAsync(_url, content, ct);
-            response.EnsureSuccessStatusCode();
-            var stations = Parse(await response.Content.ReadAsStringAsync(ct));
-            WriteCache(file, new CacheFile(DateTimeOffset.UtcNow, true, stations));
-            _log.LogInformation(Loc.Log("log.fire.osmFetched"), icao, stations.Count);
-            return stations;
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
-        {
-            _log.LogWarning(Loc.Log("log.fire.osmFailed"), icao, ex.Message);
+        var task = _running.GetOrAdd(key, _ => Task.Run(() => FetchAsync(key, file, cached)));
+        _ = task.ContinueWith(_ => _running.TryRemove(new KeyValuePair<string, Task<IReadOnlyList<OsmFireStation>>>(key, task)), TaskScheduler.Default);
+        return task;
+    }
 
-            // Alte Daten weiter nutzen; den Fehlschlag merken, damit nicht jeder Einsatz neu fragt
-            var stations = cached is { Ok: true } old ? old.Stations : [];
-            WriteCache(file, new CacheFile(DateTimeOffset.UtcNow, cached is { Ok: true }, stations));
-            return stations;
+    private async Task<IReadOnlyList<OsmFireStation>> FetchAsync(string icao, string file, CacheFile? cached)
+    {
+        foreach (var url in _urls)
+        {
+            try
+            {
+                using var content = new FormUrlEncodedContent([new KeyValuePair<string, string>("data", Query(icao))]);
+                using var response = await _http.PostAsync(url, content);
+                response.EnsureSuccessStatusCode();
+                var stations = Parse(await response.Content.ReadAsStringAsync());
+                WriteCache(file, new CacheFile(DateTimeOffset.UtcNow, true, stations));
+                _log.LogInformation(Loc.Log("log.fire.osmFetched"), icao, stations.Count, url);
+                return stations;
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(Loc.Log("log.fire.osmFailed"), icao, url, ex.Message);
+            }
         }
+
+        // Alte Daten weiter nutzen; den Fehlschlag merken, damit nicht jeder Einsatz neu fragt
+        var old = cached is { Ok: true } ok ? ok.Stations : [];
+        WriteCache(file, new CacheFile(DateTimeOffset.UtcNow, cached is { Ok: true }, old));
+        return old;
     }
 
     /// <summary>Overpass-Abfrage: Feuerwachen innerhalb des Flughafen-Umrisses, mit Mittelpunkt bei Flächen.</summary>

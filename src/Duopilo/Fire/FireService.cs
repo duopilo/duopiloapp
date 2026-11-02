@@ -48,6 +48,9 @@ public sealed class FireService : BackgroundService
     private static readonly TimeSpan SpawnInterval = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan MaxRun = TimeSpan.FromMinutes(40);
     private static readonly TimeSpan MaxArmed = TimeSpan.FromHours(3);
+
+    /// <summary>So lange wartet die Planung auf die Wachen aus OSM; danach eine freie Parkposition, die Abfrage läuft weiter.</summary>
+    private static readonly TimeSpan OsmWait = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan KeepFailed = TimeSpan.FromSeconds(60);
 
     private readonly DuopiloOptions _options;
@@ -261,6 +264,15 @@ public sealed class FireService : BackgroundService
         lock (_lock)
         {
             var run = _run;
+
+            // Alter Notfall (z. B. aus einer wiederhergestellten ATC-Sitzung von gestern): nicht mehr ausrücken
+            if (order is not null && order.SinceUtc != _handledEmergency && DateTimeOffset.UtcNow - order.SinceUtc > MaxArmed)
+            {
+                _handledEmergency = order.SinceUtc;
+                _log.LogInformation(Loc.Log("log.fire.staleEmergency"), order.Kind, order.SinceUtc, MaxArmed.TotalHours);
+                return;
+            }
+
             if (order is not null && order.SinceUtc != _handledEmergency && (run is null || run.Failed))
             {
                 _handledEmergency = order.SinceUtc;
@@ -272,8 +284,11 @@ public sealed class FireService : BackgroundService
 
                 // Ziel des Notfalls, wenn es ein Flughafen des Plans ist; sonst entscheidet die Nähe beim Ausrücken
                 var airport = PlanAirports().FirstOrDefault(a => string.Equals(a.Icao, order.Target, StringComparison.OrdinalIgnoreCase))?.Icao;
-                var runway = airport is null || string.Equals(airport, order.Destination, StringComparison.OrdinalIgnoreCase) ? order.Runway : null;
-                var next = new Run("atc", level, airport, runway, order.AircraftIcao, DateTimeOffset.UtcNow, order.SinceUtc);
+                // Die Bahn aus dem Plan gilt nur am Zielflughafen; am Boden braucht es keine
+                var runway = level != FireAlertLevel.GroundIncident && (airport is null || string.Equals(airport, order.Destination, StringComparison.OrdinalIgnoreCase))
+                    ? order.Runway
+                    : null;
+                var next = new Run("atc", level, airport, runway, order.AircraftIcao, DateTimeOffset.UtcNow, order.SinceUtc) { RunwayAirport = runway is null ? null : order.Destination };
                 StartLocked(next, dispatchNow: false);
                 return;
             }
@@ -294,9 +309,30 @@ public sealed class FireService : BackgroundService
         _run = run;
         _last = null;
         _log.LogInformation(Loc.Log("log.fire.alerted"), run.Source, LevelName(run.Level), run.Airport ?? "-", run.Runway ?? "-");
+        Prefetch(run);
         if (dispatchNow)
         {
             Dispatch(run);
+        }
+    }
+
+    /// <summary>Wachen aus OSM schon beim Alarm abfragen (Flughafen des Einsatzes, sonst alle des Plans), damit sie beim Ausrücken da sind.</summary>
+    private void Prefetch(Run run)
+    {
+        if (!_options.Fire.OsmStations)
+        {
+            return;
+        }
+
+        List<string> airports = run.Airport is { } icao ? [icao] : [.. PlanAirports().Select(a => a.Icao)];
+        if (run.Airport is null && NearestPlanAirport() is { } nearest && !airports.Contains(nearest, StringComparer.OrdinalIgnoreCase))
+        {
+            airports.Insert(0, nearest);
+        }
+
+        foreach (var airport in airports)
+        {
+            _ = _stations.Value.GetAsync(airport);
         }
     }
 
@@ -331,8 +367,17 @@ public sealed class FireService : BackgroundService
             IReadOnlyList<FireStation> stations = [];
             if (_options.Fire.OsmStations)
             {
-                stations = FireStationLookup.ToStations(await _stations.Value.GetAsync(airport, ct), graph);
-                _log.LogInformation(Loc.Log("log.fire.stations"), airport, stations.Count == 0 ? "-" : string.Join(", ", stations.Select(st => st.Name)));
+                var fetch = _stations.Value.GetAsync(airport);
+                if (await Task.WhenAny(fetch, Task.Delay(OsmWait, ct)) == fetch)
+                {
+                    stations = FireStationLookup.ToStations(await fetch, graph);
+                    _log.LogInformation(Loc.Log("log.fire.stations"), airport, stations.Count == 0 ? "-" : string.Join(", ", stations.Select(st => st.Name)));
+                }
+                else
+                {
+                    ct.ThrowIfCancellationRequested();
+                    _log.LogInformation(Loc.Log("log.fire.osmPending"), airport, OsmWait.TotalSeconds);
+                }
             }
 
             FireDispatchPlan? plan;
@@ -704,6 +749,12 @@ public sealed class FireService : BackgroundService
         }
 
         run.Airport = target.Icao;
+        if (run.RunwayAirport is { } runwayAirport && !string.Equals(runwayAirport, target.Icao, StringComparison.OrdinalIgnoreCase))
+        {
+            // Bahn des Zielflughafens, gelandet wird aber am nächsten: dort die Bahn aus dem Anflug
+            run.Runway = null;
+        }
+
         _log.LogInformation(Loc.Log("log.fire.dispatched"), run.Airport ?? "-", run.Runway ?? "-");
         Dispatch(run);
     }
@@ -957,6 +1008,9 @@ public sealed class FireService : BackgroundService
         public string? Airport { get; set; } = airport;
 
         public string? Runway { get; set; } = runway;
+
+        /// <summary>Flughafen, zu dem <see cref="Runway"/> gehört (ATC: das Ziel des Plans); null = der des Einsatzes.</summary>
+        public string? RunwayAirport { get; init; }
 
         public string? AircraftIcao { get; } = aircraftIcao;
 

@@ -52,7 +52,7 @@ Only put in what you change. Example:
 | `Fire:OnAtcEmergency` | `true` | Mayday and Pan Pan in the ATC module alert the fire service |
 | `Fire:DispatchRangeNm` | `20` | the vehicles turn out once the aircraft is this close to the landing airport |
 | `Fire:OsmStations` | `true` | real fire stations from OpenStreetMap (© OpenStreetMap contributors, ODbL), cached 30 days per airport; otherwise a free parking position |
-| `Fire:OverpassUrl` | `https://overpass-api.de/api/interpreter` | Overpass API used for the fire stations |
+| `Fire:OverpassUrl` | `https://overpass-api.de/api/interpreter,https://overpass.private.coffee/api/interpreter` | Overpass API servers for the fire stations, comma-separated, asked in turn (the request runs on in the background; a failure is retried after 15 minutes) |
 | `Fire:FlfModels` | `Duopilo_FLF_Panther_Licht,Duopilo_FLF_Z8_Licht` | crash tender titles, used in turn |
 | `Fire:ElwModel`, `HlfModel`, `RtwModel`, `RtfModel` | `Duopilo_ELW_Licht` … | command car, fire engine, ambulance, rescue stairs |
 | `Fire:HeightFt` | `0` | model reference point above the ground |
