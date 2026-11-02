@@ -197,11 +197,47 @@ FLF im Panther- und Z8-Stil zufällig gemischt. Heiße Bremsen und Startabbruch:
 
 ## Verkehr und ATC während des Einsatzes
 
-- Ab dem Alarm hält Duopilo die Landebahn für den eigenen Anflug frei: eigene KI-Landungen ins Holding oder Durchstarten,
+### Bahn gesperrt
+
+- Ab dem Alarm hält Duopilo die Landebahn für den Notfall frei: andere KI-Landungen ins Holding oder Durchstarten,
   Abflüge warten am Haltepunkt.
-- Nach der eigenen Landung bleibt die Bahn gesperrt, bis die Feuerwehr sie räumt. Dafür gibt es schon die Bahnbelegung und
-  das Durchstarten im Verkehrsmodul.
+- Nach der Landung bleibt die Bahn gesperrt, bis die Feuerwehr sie geräumt hat. Bei Mayday folgt noch eine kurze
+  Bahnkontrolle (Fahrzeug fährt die Bahn ab), dann ist sie wieder offen.
 - Rollen die Löschfahrzeuge über eine andere Bahn, gilt sie für die Dauer als belegt.
+- Dafür gibt es schon die Bahnbelegung, das Durchstarten und den Takt der Landungen im Verkehrsmodul.
+
+### Flughafen geschlossen
+
+Der ganze Platz ist für den eigenen Verkehr zu, wenn
+
+- keine andere Bahn für Starts und Landungen übrig ist (eine Bahn, oder alle anderen im Moment nicht nutzbar), oder
+- alle Löschfahrzeuge im Einsatz gebunden sind. Dann fehlt der Brandschutz für jeden anderen Flug.
+
+Solange der Platz zu ist:
+
+- **Anflüge:** ins Holding; dauert es zu lange, weichen sie aus (außer Sicht entfernen).
+- **Abflüge:** bleiben am Gate oder am Haltepunkt stehen.
+- **Rollen:** zwischen Gate und Vorfeld geht weiter, nur nicht über die gesperrte Bahn.
+- **Du selbst:** Ist der Notfall nicht deiner, bekommst du es über das ATC-Modul (Holding, „runway closed“), am Boden
+  wartest du wie die KI.
+
+Wieder offen, wenn die Bahn geräumt und kontrolliert ist und genug Löschfahrzeuge zurück an den Wachen bzw. frei sind.
+Dauer begrenzen, damit ein Einsatz den Verkehr nicht ewig blockiert.
+
+## Notfälle der eigenen KI
+
+Gleicher Ablauf wie beim eigenen Notfall, nur mit einem KI-Flugzeug. Das macht den Flughafen lebendiger, und du erlebst die
+Sperrung von außen: Holding im Anflug oder Warten am Haltepunkt.
+
+- **Einfacher als beim Spieler:** Duopilo fliegt das KI-Flugzeug selbst und kennt Abrollweg, Stoppstelle und Gate vorab.
+  Folgen geht trotzdem über die Spur, damit es derselbe Code ist.
+- **Arten:** Pan Pan mit Local Standby (häufigste), Mayday mit Full Emergency (selten), heiße Bremsen nach der Landung.
+  Kein Absturz, keine Evakuierung.
+- **Ablauf am Flugzeug:** stoppt auf der Bahn, Feuerwehr umstellt es, kurze Kontrolle, dann rollt es mit Begleitung zum
+  Gate. Bei Mayday bleibt es etwas länger stehen.
+- **Funk:** Den Notruf der KI hörst du auf der Frequenz, wenn du auf derselben bist (Pan Pan oder Mayday, danach ATC).
+- **Einstellung:** aus, selten, gelegentlich. Nur wenn du am oder nahe dem Flughafen bist, nie mehrere gleichzeitig, nie
+  während deines eigenen Notfalls.
 
 ## Weitere Einsätze
 
@@ -214,7 +250,7 @@ FLF im Panther- und Z8-Stil zufällig gemischt. Heiße Bremsen und Startabbruch:
 | Betanken mit Passagieren an Bord | in echt meist nur Meldung, keine Wache | **Option**, Standard aus: 1 FLF steht auf dem Vorfeld in Sichtweite, solange getankt wird |
 | Beladen ohne Betanken | kein Feuerwehrthema | nein |
 | Treibstoffaustritt | im Sim nicht erkennbar | nein |
-| Notfälle der eigenen KI | belebt den Flughafen: ab und zu ein KI-Flugzeug mit Pan Pan, die Feuerwehr rückt aus, wenn man gerade rollt | später, selten |
+| Notfälle der eigenen KI | belebt den Flughafen, siehe oben | **ja**, als Einstellung, nach dem eigenen Notfall |
 | Wasserfontäne (Water Salute) | Erstflug, letzter Flug, auf Wunsch im Dashboard; zwei FLF bilden einen Bogen über dem Rollweg | später, braucht einen Wasser-Effekt im Modell |
 | Kontrollfahrten, Übungen | Fahrzeuge unterwegs ohne Notfall | später, niedrig |
 
@@ -226,9 +262,10 @@ Triebwerken.
 1. Follow-me fertig: Fahrzeuge spawnen, bewegen, Licht schalten.
 2. Spawn auf freier Parkposition und Mayday/Pan Pan bis zur Bereitstellung an der Bahn, Test in EDDL.
 3. Hinterherfahren, Umstellen, Rückmeldung, Begleitung zum Stand.
-4. Bahnsperre für den eigenen Verkehr.
+4. Bahnsperre und Schließung des Flughafens für den eigenen Verkehr.
 5. Heiße Bremsen, Startabbruch, Brand am Boden, Anforderung durch den Piloten.
-6. Optional: Betankungswache, KI-Notfälle, Wasserfontäne.
+6. Notfälle der eigenen KI.
+7. Optional: Betankungswache, Wasserfontäne.
 
 ## Offen
 
