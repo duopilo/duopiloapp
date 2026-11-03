@@ -246,4 +246,13 @@ public static class FireProfile
 
     /// <summary>Teilen sich Fahrzeuge einen Haltepunkt, hält jedes weitere so viel früher.</summary>
     public const double QueueSpacingM = 22;
+
+    /// <summary>
+    /// Betriebsstraßen kosten auf der Anfahrt 0,7 Meter Rollweg je Meter: Ein Umweg über die Straße bis zum 1,4-Fachen ist es wert,
+    /// mehr nicht – im Einsatz zählt die Zeit, und zur Bahn geht es ohnehin über Rollwege.
+    /// </summary>
+    public const double RoadCostFactor = 0.7;
+
+    /// <summary>Auf der Rückfahrt ohne Blaulicht bleiben die Fahrzeuge noch lieber auf den Straßen (Umweg bis zum Doppelten).</summary>
+    public const double ReturnRoadCostFactor = 0.5;
 }

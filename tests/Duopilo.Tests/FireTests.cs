@@ -960,4 +960,16 @@ public sealed class FireTests
         Assert.Equal(FireOperation.StandPost(units[0], u), candidates[0]);
         Assert.DoesNotContain(candidates, c => c.X > 0 && c.Y < 0);
     }
+
+    [Fact]
+    public void Betriebsstrassen_werden_bevorzugt()
+    {
+        // Von A bei x = 200 zum Stück am Ende: über den Fahrweg (164 m) statt … es gibt nur ihn; Kosten mit Faktor 0,7
+        var graph = Graph(stub: true, roads: true);
+        var stub = graph.Nodes.Count(n => !n.IsParking) - 2;
+        var route = graph.Route(6, stub)!;
+        var full = graph.CostM(route);
+        graph.RoadCostFactor = 0.7;
+        Assert.InRange(graph.CostM(route), full * 0.7, full * 0.99);
+    }
 }

@@ -530,10 +530,23 @@ public sealed class FireOperation
     {
         _posts.Remove(vehicle);
         var station = Plan.Vehicles.FirstOrDefault(v => v.Unit == vehicle.Unit)?.Station;
-        var points = station?.Parking is { } parking
-            ? FirePlanner.RouteToNode(Graph, vehicle.EastM, vehicle.NorthM, parking)
-            : null;
-        points ??= FirePlanner.RouteBetween(Graph, vehicle.EastM, vehicle.NorthM, vehicle.HomeEastM, vehicle.HomeNorthM);
+
+        // Ohne Blaulicht noch lieber über die Betriebsstraßen
+        var roadCost = Graph.RoadCostFactor;
+        Graph.RoadCostFactor = Math.Min(roadCost, FireProfile.ReturnRoadCostFactor);
+        List<(double East, double North)>? points;
+        try
+        {
+            points = station?.Parking is { } parking
+                ? FirePlanner.RouteToNode(Graph, vehicle.EastM, vehicle.NorthM, parking)
+                : null;
+            points ??= FirePlanner.RouteBetween(Graph, vehicle.EastM, vehicle.NorthM, vehicle.HomeEastM, vehicle.HomeNorthM);
+        }
+        finally
+        {
+            Graph.RoadCostFactor = roadCost;
+        }
+
         if (points is null)
         {
             vehicle.Remove();
