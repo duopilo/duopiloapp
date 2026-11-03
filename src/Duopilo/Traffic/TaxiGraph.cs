@@ -154,6 +154,111 @@ public sealed class TaxiGraph
     /// <summary>Ob ein Abschnitt zu nah an einem anderen Flugzeug vorbeiführt.</summary>
     public bool IsBlocked(TaxiEdge edge) => _blocked.Contains(edge);
 
+    // Gebäude (Umrisse in Metern, mit Rahmen zum schnellen Aussortieren), siehe SetBuildings
+    private List<(double MinE, double MinN, double MaxE, double MaxN, (double East, double North)[] Points)> _buildings = [];
+
+    /// <summary>Anzahl der Gebäude (<see cref="SetBuildings"/>).</summary>
+    public int Buildings => _buildings.Count;
+
+    /// <summary>
+    /// Gebäude als Hindernis für gerade Fahrten außerhalb des Netzes (aus OSM, Feuerwehr): Umrisse in Metern. Die Abschnitte des Netzes
+    /// selbst bleiben frei – Betriebsstraßen führen unter Fluggastbrücken durch, und Szenerie und OSM passen nicht überall genau.
+    /// </summary>
+    public void SetBuildings(IEnumerable<IReadOnlyList<(double East, double North)>> polygons) =>
+        _buildings = [.. polygons
+            .Where(p => p.Count >= 3)
+            .Select(p => (p.Min(q => q.East), p.Min(q => q.North), p.Max(q => q.East), p.Max(q => q.North), p.ToArray()))];
+
+    /// <summary>Ob die gerade Strecke von a nach b durch ein Gebäude führt (Kante geschnitten oder ein Ende darin).</summary>
+    public bool CrossesBuilding(double ax, double ay, double bx, double by) => BuildingHit(ax, ay, bx, by) is not null;
+
+    /// <summary>Strecke entlang des Linienzugs bis zum ersten Gebäude (Meter), null = frei.</summary>
+    public double? FirstBuildingHitM(IReadOnlyList<(double East, double North)> path)
+    {
+        var travelled = 0.0;
+        for (var i = 0; i + 1 < path.Count; i++)
+        {
+            var (a, b) = (path[i], path[i + 1]);
+            var length = Math.Sqrt(((b.East - a.East) * (b.East - a.East)) + ((b.North - a.North) * (b.North - a.North)));
+            if (BuildingHit(a.East, a.North, b.East, b.North) is { } t)
+            {
+                return travelled + (t * length);
+            }
+
+            travelled += length;
+        }
+
+        return null;
+    }
+
+    /// <summary>Kleinster Anteil t (0–1) entlang a→b, an dem die Strecke ein Gebäude trifft; null = frei.</summary>
+    private double? BuildingHit(double ax, double ay, double bx, double by)
+    {
+        double? first = null;
+        var (minE, maxE, minN, maxN) = (Math.Min(ax, bx), Math.Max(ax, bx), Math.Min(ay, by), Math.Max(ay, by));
+        foreach (var (bMinE, bMinN, bMaxE, bMaxN, points) in _buildings)
+        {
+            if (bMaxE < minE || bMinE > maxE || bMaxN < minN || bMinN > maxN)
+            {
+                continue;
+            }
+
+            if (Inside(points, ax, ay))
+            {
+                return 0;
+            }
+
+            for (var i = 0; i + 1 < points.Length; i++)
+            {
+                if (SegmentIntersection(ax, ay, bx, by, points[i].East, points[i].North, points[i + 1].East, points[i + 1].North) is { } t && (first is null || t < first))
+                {
+                    first = t;
+                }
+            }
+
+            // Nicht geschlossene Umrisse: auch die letzte Kante
+            var (l, f) = (points[^1], points[0]);
+            if ((l.East != f.East || l.North != f.North) && SegmentIntersection(ax, ay, bx, by, l.East, l.North, f.East, f.North) is { } u && (first is null || u < first))
+            {
+                first = u;
+            }
+        }
+
+        return first;
+    }
+
+    /// <summary>Punkt im Umriss (Strahlverfahren).</summary>
+    private static bool Inside((double East, double North)[] polygon, double x, double y)
+    {
+        var inside = false;
+        for (int i = 0, j = polygon.Length - 1; i < polygon.Length; j = i++)
+        {
+            var (xi, yi) = polygon[i];
+            var (xj, yj) = polygon[j];
+            if ((yi > y) != (yj > y) && x < ((xj - xi) * (y - yi) / (yj - yi)) + xi)
+            {
+                inside = !inside;
+            }
+        }
+
+        return inside;
+    }
+
+    /// <summary>Schnitt der Strecken p→q und r→s: Anteil t entlang p→q, sonst null.</summary>
+    private static double? SegmentIntersection(double px, double py, double qx, double qy, double rx, double ry, double sx, double sy)
+    {
+        var (dx, dy, ex, ey) = (qx - px, qy - py, sx - rx, sy - ry);
+        var denominator = (dx * ey) - (dy * ex);
+        if (Math.Abs(denominator) < 1e-12)
+        {
+            return null;
+        }
+
+        var t = (((rx - px) * ey) - ((ry - py) * ex)) / denominator;
+        var u = (((rx - px) * dy) - ((ry - py) * dx)) / denominator;
+        return t is >= 0 and <= 1 && u is >= 0 and <= 1 ? t : null;
+    }
+
     /// <summary>Ob ein anderes Flugzeug näher als <paramref name="radiusM"/> an einem Punkt steht.</summary>
     /// <summary>
     /// Parkpositionen anderer eigener Testflugzeuge (Start oder Ziel) als belegt merken – ohne Rollwege zu sperren; sie rollen ja selbst

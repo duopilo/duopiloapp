@@ -112,17 +112,23 @@ public static class FirePlanner
             .Concat(SpawnCandidates(graph, aircraftEast, aircraftNorth, (aircraftEast, aircraftNorth)).Take(MaxSpawnTries).Select(FireStation.FromParking));
         foreach (var station in candidates)
         {
-            var route = stand is not null
-                ? RouteFrom(graph, station, stand)
-                : RouteBetween(graph, station.EastM, station.NorthM, aircraftEast, aircraftNorth, fromParking: station.Parking);
-            if (route is null)
-            {
-                continue;
-            }
-
+            // Je Fahrzeug ein eigener Platz an der Wache (nebeneinander), also ein eigener Weg
             var vehicles = new List<FireVehiclePlan>();
             for (var i = 0; i < units.Count; i++)
             {
+                var route = stand is not null
+                    ? RouteFrom(graph, station, stand, i)
+                    : FromStation(station, i, (sx, sy) => RouteBetween(graph, sx, sy, aircraftEast, aircraftNorth, fromParking: station.Parking));
+                if (route is null)
+                {
+                    if (i == 0)
+                    {
+                        break;
+                    }
+
+                    continue;
+                }
+
                 var points = Truncate(route, (postUnitM * 1.5) + (i * FireProfile.QueueSpacingM));
                 if (points.Count >= 2)
                 {
@@ -148,6 +154,7 @@ public static class FirePlanner
         var vehicles = new List<FireVehiclePlan>();
         var missing = new List<FireUnit>();
         var queue = new Dictionary<int, int>();
+        var used = new Dictionary<FireStation, int>();
         foreach (var unit in units)
         {
             var target = TargetAlongM(unit.Role, runway.LengthM, wake);
@@ -158,7 +165,7 @@ public static class FirePlanner
                 var ranked = holds.OrderBy(h => Math.Abs(h.Along - target) + (Math.Sign(h.Cross) == Math.Sign(stationCross) ? 0 : 300));
                 foreach (var hold in ranked)
                 {
-                    if (RouteFrom(graph, station, hold.Node) is not { Count: >= 2 } points)
+                    if (RouteFrom(graph, station, hold.Node, used.GetValueOrDefault(station)) is not { Count: >= 2 } points)
                     {
                         continue;
                     }
@@ -188,6 +195,7 @@ public static class FirePlanner
             }
 
             queue[chosen.Hold.Node.Id] = waiting + 1;
+            used[chosen.Station] = used.GetValueOrDefault(chosen.Station) + 1;
             vehicles.Add(new FireVehiclePlan(unit, chosen.Station, chosen.Hold.Node, Math.Round(chosen.Hold.Along), BuildPath(truncated, FireProfile.MaxMps)));
         }
 
@@ -196,26 +204,85 @@ public static class FirePlanner
             : new FireDispatchPlan([.. vehicles.Select(v => v.Station).Distinct()], runway, vehicles, missing);
     }
 
-    /// <summary>Weg von einer Wache zu einem Rollpunkt: ab der Parkposition bzw. von der OSM-Wache zum nächsten Rollpunkt und weiter.</summary>
-    private static List<(double East, double North)>? RouteFrom(TaxiGraph graph, FireStation station, TaxiNode target)
-    {
-        foreach (var start in StartNodes(graph, station.EastM, station.NorthM, station.Parking))
+    /// <summary>
+    /// Weg von einer Wache zu einem Rollpunkt bzw. einer Parkposition für das Fahrzeug <paramref name="index"/>: von seinem Platz
+    /// (<see cref="ExitStart"/>) zum nächsten Rollpunkt, zu dem die gerade Strecke nicht durch ein Gebäude führt, und weiter.
+    /// </summary>
+    private static List<(double East, double North)>? RouteFrom(TaxiGraph graph, FireStation station, TaxiNode target, int index = 0) =>
+        FromStation(station, index, (sx, sy) =>
         {
-            var points = new List<(double East, double North)> { (station.EastM, station.NorthM) };
-            if (start.Id == target.Id)
+            foreach (var start in ClearFirst(graph, sx, sy, StartNodes(graph, sx, sy, station.Parking)))
             {
-                points.Add((target.EastM, target.NorthM));
-                return points;
+                var points = new List<(double East, double North)> { (sx, sy) };
+                if (start.Id == target.Id)
+                {
+                    points.Add((target.EastM, target.NorthM));
+                    return points;
+                }
+
+                if (graph.Route(start.Id, target.Id) is { Count: >= 2 } nodes)
+                {
+                    points.AddRange(nodes.Select(n => (graph.Nodes[n].EastM, graph.Nodes[n].NorthM)));
+                    return points;
+                }
             }
 
-            if (graph.Route(start.Id, target.Id) is { Count: >= 2 } nodes)
-            {
-                points.AddRange(nodes.Select(n => (graph.Nodes[n].EastM, graph.Nodes[n].NorthM)));
-                return points;
-            }
+            return null;
+        });
+
+    /// <summary>
+    /// Anfang des Wegs an der Wache für das Fahrzeug <paramref name="index"/>: sein Platz (nebeneinander, <see cref="FireStation.Exits"/>),
+    /// vor einem Tor dazu <see cref="FireExits.RollOutM"/> geradeaus aus der Halle. Ohne Plätze der Mittelpunkt.
+    /// </summary>
+    public static List<(double East, double North)> ExitStart(FireStation station, int index)
+    {
+        if (station.Exits.Count == 0)
+        {
+            return [(station.EastM, station.NorthM)];
         }
 
-        return null;
+        var exit = station.Exits[index % station.Exits.Count];
+        var points = new List<(double East, double North)> { (exit.EastM, exit.NorthM) };
+        if (exit.RollOut)
+        {
+            var rad = exit.HeadingDeg * Math.PI / 180;
+            points.Add((exit.EastM + (Math.Sin(rad) * FireExits.RollOutM), exit.NorthM + (Math.Cos(rad) * FireExits.RollOutM)));
+        }
+
+        return points;
+    }
+
+    /// <summary>
+    /// Weg ab dem Platz eines Fahrzeugs: <paramref name="route"/> rechnet ab dem letzten Punkt von <see cref="ExitStart"/>. Neben einer
+    /// Parkposition (nicht auf ihr) geht es gleich zum nächsten Punkt statt erst seitlich auf die Position.
+    /// </summary>
+    private static List<(double East, double North)>? FromStation(FireStation station, int index, Func<double, double, List<(double East, double North)>?> route)
+    {
+        var prefix = ExitStart(station, index);
+        var (sx, sy) = prefix[^1];
+        if (route(sx, sy) is not { Count: >= 2 } points)
+        {
+            return null;
+        }
+
+        IEnumerable<(double East, double North)> rest = points.Skip(1);
+        if (station.Parking is { } parking && Distance(sx, sy, parking.EastM, parking.NorthM) > 0.5)
+        {
+            rest = rest.SkipWhile(p => Distance(p.East, p.North, parking.EastM, parking.NorthM) < 0.5);
+        }
+
+        var result = new List<(double East, double North)>(prefix);
+        result.AddRange(rest);
+        return result.Count >= 2 ? result : null;
+    }
+
+    /// <summary>Rollpunkte, zu denen die gerade Strecke ab (x, y) frei von Gebäuden ist, zuerst; danach die übrigen (lieber knapp als gar nicht).</summary>
+    private static IEnumerable<TaxiNode> ClearFirst(TaxiGraph graph, double x, double y, IEnumerable<TaxiNode> nodes)
+    {
+        var list = nodes.ToList();
+        return list.Where(n => graph.Buildings == 0 || n.IsParking || !graph.CrossesBuilding(x, y, n.EastM, n.NorthM))
+            .Concat(list)
+            .Distinct();
     }
 
     /// <summary>
@@ -303,12 +370,14 @@ public static class FirePlanner
     /// </summary>
     public static List<(double East, double North)>? RouteBetween(TaxiGraph graph, double fromEast, double fromNorth, double toEast, double toNorth, TaxiNode? fromParking = null)
     {
+        // Das letzte Stück fährt geradeaus: erst Rollpunkte, von denen aus es nicht durch ein Gebäude führt
         var ends = graph.Nodes
             .Where(n => !n.IsParking)
             .OrderBy(n => Distance(n.EastM, n.NorthM, toEast, toNorth))
             .Take(MaxEndNodeTries)
             .ToList();
-        foreach (var start in StartNodes(graph, fromEast, fromNorth, fromParking))
+        ends = [.. ends.Where(n => graph.Buildings == 0 || !graph.CrossesBuilding(n.EastM, n.NorthM, toEast, toNorth)).Concat(ends).Distinct()];
+        foreach (var start in ClearFirst(graph, fromEast, fromNorth, StartNodes(graph, fromEast, fromNorth, fromParking)))
         {
             foreach (var end in ends)
             {
@@ -421,6 +490,29 @@ public static class FirePlanner
         }
 
         return [.. points.Where((_, i) => keep[i])];
+    }
+
+    /// <summary>Linienzug nach <paramref name="meters"/> Metern enden lassen (das Ende rückt auf den Weg); mindestens der Anfang bleibt.</summary>
+    public static List<(double East, double North)> CutAt(IReadOnlyList<(double East, double North)> points, double meters)
+    {
+        var result = new List<(double East, double North)> { points[0] };
+        var left = Math.Max(0, meters);
+        for (var i = 0; i + 1 < points.Count; i++)
+        {
+            var (a, b) = (points[i], points[i + 1]);
+            var length = Distance(a.East, a.North, b.East, b.North);
+            if (length >= left)
+            {
+                var f = length < 1e-9 ? 0 : left / length;
+                result.Add((a.East + ((b.East - a.East) * f), a.North + ((b.North - a.North) * f)));
+                return result;
+            }
+
+            result.Add(b);
+            left -= length;
+        }
+
+        return result;
     }
 
     /// <summary>Die letzten <paramref name="meters"/> eines Linienzugs abschneiden (das Ende rückt entlang des Wegs nach vorn).</summary>

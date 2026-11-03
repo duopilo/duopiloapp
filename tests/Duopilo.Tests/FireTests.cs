@@ -664,7 +664,7 @@ public sealed class FireTests
         {
             // Kein Server: leer, der Fehlschlag steht im Zwischenspeicher
             var lookup = new FireStationLookup("http://127.0.0.1:9/api/interpreter", dir, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
-            Assert.Empty(await lookup.GetAsync("eddl"));
+            Assert.Empty((await lookup.GetAsync("eddl")).Stations);
             var file = Path.Combine(dir, "cache", "fire-stations", "EDDL.json");
             Assert.Contains("\"Ok\":false", File.ReadAllText(file), StringComparison.Ordinal);
 
@@ -674,7 +674,7 @@ public sealed class FireTests
                 "{\"FetchedUtc\":\"2020-01-01T00:00:00+00:00\",\"Ok\":true,\"Stations\":[{\"Name\":\"Wache 1\",\"Latitude\":50.87,\"Longitude\":7.14}]}");
             var two = new FireStationLookup("http://127.0.0.1:9/a, http://127.0.0.1:9/b", dir, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
             var old = await two.GetAsync("EDDK");
-            Assert.Equal("Wache 1", Assert.Single(old).Name);
+            Assert.Equal("Wache 1", Assert.Single(old.Stations).Name);
             Assert.Contains("\"Ok\":true", File.ReadAllText(Path.Combine(dir, "cache", "fire-stations", "EDDK.json")), StringComparison.Ordinal);
         }
         finally
@@ -826,5 +826,85 @@ public sealed class FireTests
         var (e, n, _) = plan.Vehicles[0].Route.At(plan.Vehicles[0].Route.LengthM);
         Assert.InRange(TaxiGraph.SegmentDistance(e, n, 0, 200, 100, 320), 0, 1.5);
         Assert.InRange(Distance(e, n, 100, 320), 40, 50);
+    }
+
+    [Fact]
+    public void Overpass_mit_Umriss_Toren_und_Gebaeuden()
+    {
+        // Wache als Fläche (Halle 40 × 20 m) mit einem Hallentor, dazu ein Terminal und eine Fluggastbrücke
+        const string json = """
+            {"elements":[
+              {"type":"way","id":1,"tags":{"amenity":"fire_station","building":"fire_station","name":"Flughafenfeuerwehr"},
+               "geometry":[{"lat":51.0030,"lon":7.0000},{"lat":51.0030,"lon":7.0006},{"lat":51.0032,"lon":7.0006},{"lat":51.0032,"lon":7.0000},{"lat":51.0030,"lon":7.0000}]},
+              {"type":"node","id":2,"lat":51.0030,"lon":7.0003,"tags":{"door":"overhead"}},
+              {"type":"way","id":3,"tags":{"building":"terminal"},
+               "geometry":[{"lat":51.0040,"lon":7.0010},{"lat":51.0040,"lon":7.0020},{"lat":51.0045,"lon":7.0020},{"lat":51.0045,"lon":7.0010},{"lat":51.0040,"lon":7.0010}]},
+              {"type":"way","id":4,"tags":{"aeroway":"jet_bridge"},"geometry":[{"lat":51.0040,"lon":7.0012},{"lat":51.0038,"lon":7.0012}]}
+            ]}
+            """;
+        var data = FireStationLookup.ParseAll(json);
+
+        var station = Assert.Single(data.Stations);
+        Assert.Equal("Flughafenfeuerwehr", station.Name);
+        Assert.NotNull(station.Outline);
+        Assert.True(Assert.Single(station.Doors).Garage);
+        Assert.Equal(3, data.Buildings.Count);
+        Assert.Contains(data.Buildings, b => !b.Closed);
+    }
+
+    [Fact]
+    public void Plaetze_vor_der_Halle_nebeneinander_und_nicht_im_Gebaeude()
+    {
+        // Halle 40 × 20 m bei (100/270 … 140/290), Südseite zum Rollweg A (y = 200); ohne Tor: an der Hallenseite zur Straße
+        var graph = Graph();
+        var outline = new List<(double East, double North)> { (100, 270), (140, 270), (140, 290), (100, 290), (100, 270) };
+        graph.SetBuildings([outline]);
+        var (exits, source) = FireExits.ForOsm(120, 280, outline, [], graph);
+
+        Assert.Equal("outline", source);
+        Assert.All(exits.Take(7), e =>
+        {
+            Assert.InRange(e.NorthM, 262, 267);                  // 4 m vor der Südwand (erste Reihe)
+            Assert.InRange(e.HeadingDeg, 170, 190);              // Front nach Süden, aus der Halle
+        });
+        var firstRow = exits.Take(5).ToList();
+        Assert.All(firstRow, a => Assert.All(firstRow.Where(b => !ReferenceEquals(a, b)), b => Assert.True(Distance(a.EastM, a.NorthM, b.EastM, b.NorthM) >= 5.9)));
+
+        // Mit Hallentor: das Tor gewinnt
+        var (doorExits, doorSource) = FireExits.ForOsm(120, 280, outline, [(110, 270, true)], graph);
+        Assert.Equal("door", doorSource);
+        Assert.InRange(Distance(doorExits[0].EastM, doorExits[0].NorthM, 110, 266), 0, 0.5);
+
+        // Die Wege beginnen vor der Halle und rollen nach Süden heraus, keiner durch das Gebäude
+        var station = new FireStation("Halle", 120, 280, 0, 0, "osm") { Exits = exits };
+        var plan = FirePlanner.PlanToAircraft(graph, FireCategory.Lineup(FireAlertLevel.GroundIncident, 7), -600, 200, 30, [station])!;
+        Assert.Equal(3, plan.Vehicles.Count);
+        var starts = plan.Vehicles.Select(v => v.Route.At(0)).ToList();
+        Assert.All(starts, a => Assert.All(starts.Where(b => b != a), b => Assert.True(Distance(a.East, a.North, b.East, b.North) >= 5.9)));
+        Assert.All(plan.Vehicles, v => Assert.False(graph.CrossesBuilding(v.Route.At(0).East, v.Route.At(0).North, v.Route.At(2).East, v.Route.At(2).North)));
+    }
+
+    [Fact]
+    public void Parkposition_als_Wache_nebeneinander()
+    {
+        var graph = Graph();
+        var plan = FirePlanner.Plan(graph, Runway09, FireCategory.Lineup(FireAlertLevel.FullEmergency, 7), TrafficWake.Medium, null)!;
+        Assert.Equal("P1", plan.Spawn.Name);
+        var starts = plan.Vehicles.Where(v => v.Station.Name == "P1").Select(v => v.Route.At(0)).ToList();
+        Assert.True(starts.Count >= 3);
+        Assert.All(starts, a => Assert.All(starts.Where(b => b != a), b => Assert.True(Distance(a.East, a.North, b.East, b.North) >= 5.9)));
+    }
+
+    [Fact]
+    public void Gebaeude_als_Hindernis_fuer_gerade_Strecken()
+    {
+        var graph = Graph();
+        graph.SetBuildings([new List<(double East, double North)> { (0, 0), (10, 0), (10, 10), (0, 10), (0, 0) }]);
+        Assert.True(graph.CrossesBuilding(-5, 5, 15, 5));
+        Assert.True(graph.CrossesBuilding(5, 5, 50, 50));                 // Anfang im Gebäude
+        Assert.False(graph.CrossesBuilding(-5, 20, 15, 20));
+        Assert.InRange(graph.FirstBuildingHitM([(-20, 5), (-5, 5), (15, 5)])!.Value, 19.9, 20.1);
+        Assert.Null(graph.FirstBuildingHitM([(-20, 20), (20, 20)]));
+        Assert.Equal((-5.0, 5.0), FirePlanner.CutAt([(-20, 5), (-5, 5), (15, 5)], 15)[^1]);
     }
 }

@@ -52,6 +52,9 @@ public sealed class FireOperation
     private bool _inspected;
     private bool _released;
 
+    /// <summary>So weit vor einem Gebäude hält ein Fahrzeug, wenn sein gerader Weg zum Platz hineinführen würde.</summary>
+    public const double BuildingClearM = 5;
+
     public FireOperation(TaxiGraph graph, FireAlertLevel level, FireDispatchPlan plan, TrafficWake wake, int category)
     {
         Graph = graph;
@@ -441,11 +444,28 @@ public sealed class FireOperation
         // Geradeaus (auch über Gras, wie echte Löschfahrzeuge), nur von weit weg und nicht von derselben Bahn über die Rollwege
         var sameRunway = Graph.RunwayAt(vehicle.EastM, vehicle.NorthM) is { } on && ReferenceEquals(on, Graph.RunwayAt(aircraft.EastM, aircraft.NorthM));
         var far = !sameRunway && FirePlanner.Distance(vehicle.EastM, vehicle.NorthM, aircraft.EastM, aircraft.NorthM) > PositionRouteM;
+        var offNetwork = 0;
         if (far && FirePlanner.RouteBetween(Graph, vehicle.EastM, vehicle.NorthM, local[^1].East, local[^1].North) is { } route)
         {
             // Von weit weg (z. B. vom Haltepunkt am Bahnende) über die Rollwege, die letzten Meter wie geplant
             route.RemoveAt(route.Count - 1);
             local = [.. route, .. local.Skip(Math.Max(1, local.Count - 2))];
+            offNetwork = route.Count - 1;
+        }
+
+        // Führt das gerade Stück abseits des Netzes durch ein Gebäude (Terminal, Halle, Fluggastbrücke), hält das Fahrzeug davor
+        var straight = local.Skip(offNetwork).ToList();
+        if (Graph.FirstBuildingHitM(straight) is { } hit)
+        {
+            var before = FirePlanner.CutAt(straight, Math.Max(0, hit - BuildingClearM));
+            local = [.. local.Take(offNetwork), .. before];
+            if (local.Count < 2 || FirePlanner.Distance(local[0].East, local[0].North, local[^1].East, local[^1].North) < 1)
+            {
+                // Schon am Gebäude: stehen bleiben, nur zum Flugzeug drehen
+                var (dx, dy) = (aircraft.EastM - vehicle.EastM, aircraft.NorthM - vehicle.NorthM);
+                var length = Math.Max(0.1, Math.Sqrt((dx * dx) + (dy * dy)));
+                local = [(vehicle.EastM, vehicle.NorthM), (vehicle.EastM + (dx / length * 0.5), vehicle.NorthM + (dy / length * 0.5))];
+            }
         }
 
         var (pe, pn) = local[^1];

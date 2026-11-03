@@ -386,8 +386,14 @@ public sealed class FireService : BackgroundService
                 var fetch = _stations.Value.GetAsync(airport);
                 if (await Task.WhenAny(fetch, Task.Delay(OsmWait, ct)) == fetch)
                 {
-                    stations = FireStationLookup.ToStations(await fetch, graph);
-                    _log.LogInformation(Loc.Log("log.fire.stations"), airport, stations.Count == 0 ? "-" : string.Join(", ", stations.Select(st => st.Name)));
+                    var osm = await fetch;
+                    stations = FireStationLookup.ToStations(osm.Stations, graph);
+                    graph.SetBuildings(FireStationLookup.ToBuildings(osm.Buildings, graph));
+                    _log.LogInformation(
+                        Loc.Log("log.fire.stations"),
+                        airport,
+                        stations.Count == 0 ? "-" : string.Join(", ", stations.Select(st => st.Name + " (" + st.ExitSource + ")")),
+                        graph.Buildings);
                 }
                 else
                 {
