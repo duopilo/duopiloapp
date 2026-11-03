@@ -96,8 +96,9 @@ Motoren sind synthetisch (CC0), das Folgetonhorn ist aus MuseScore gerendert (So
   anderen entfernen.
 - In der XML stehen die Variablen ohne `L:1:` als `LocalVarEX1="DUOPILO_SIRENE"`, die Wahl des Horns über `<Requires LocalVarEX1="DUOPILO_HORN">`
   mit `<Range>`, Tonhöhe und Lautstärke über `<PitchCurve LocalVarEX1="DUOPILO_TEMPO">` und `<VolumeCurve …>`.
-- **Offen, im Sim prüfen:** Spielen Wave-Data-Sounds bei gespawnten Bodenfahrzeugen? (Im Forum: mit 1.0.72 kaputt, mit 1.0.77 behoben.)
-  Greift `LocalVarEX1` bei Z-Variablen (`L:1:`)? Laut SDK nehmen `PitchCurve`/`VolumeCurve` nur `SimVar`; ob `LocalVarEX1` dort geht,
+- **Im Sim (03.11.2026):** Wave-Data-Sounds spielen bei per SimConnect gespawnten Bodenfahrzeugen (im Forum: mit 1.0.72 kaputt, mit
+  1.0.77 behoben). Jedes Fahrzeug spielt seinen eigenen Motor, obwohl alle denselben Slot `custom_sound_05` nutzen.
+- **Offen, im Sim prüfen:** Greift `LocalVarEX1` bei Z-Variablen (`L:1:`), also Horn an/aus und Wahl des Horns? Laut SDK nehmen `PitchCurve`/`VolumeCurve` nur `SimVar`; ob `LocalVarEX1` dort geht,
   ist ungeprüft. Wenn nicht: Duopilo müsste eine SimVar am Objekt setzen, die der Sound lesen darf.
 - Die SDK-Seite nennt die `WwiseData="False"`-Attribute „für das Portieren alter Inhalte“. Für KI-Objekte sind nur die Slots
   `custom_sound_01` bis `_12` freigegeben. Dasselbe `WwiseEvent` nicht zweimal verwenden (bekannter Fehler).
