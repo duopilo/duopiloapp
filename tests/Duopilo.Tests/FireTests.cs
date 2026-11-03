@@ -795,4 +795,36 @@ public sealed class FireTests
         Assert.Equal(0, graph.BlockedEdges);
         Assert.Equal("P1", graph.FindParking("p01")?.Parking?.Label);
     }
+
+    [Fact]
+    public void Am_Gate_nur_hinter_und_rechts_neben_dem_Flugzeug()
+    {
+        // Vor der Nase das Terminal, links vorn die Fluggastbrücke (Test EDDL B9, 03.11.: ein FLF stand halb in der Brücke)
+        const double u = 30;
+        var units = FireCategory.Lineup(FireAlertLevel.FullEmergency, 9);
+        Assert.All(units, unit =>
+        {
+            var (x, y) = FireOperation.StandPost(unit, u);
+            Assert.True(x <= 0.5 * u, unit.Name + " vor der Nase");
+            Assert.False(x > 0 && y < 0, unit.Name + " links vorn");
+        });
+
+        // Umweg auf die andere Seite immer hinter dem Heck, nie vor der Nase
+        var points = FireOperation.DetourPoints((-0.5 * u, -1.2 * u), FireOperation.StandPost(units[0], u), u, noseBlocked: true);
+        Assert.All(points, p => Assert.True(p.X <= 0.01, $"Umweg über {p.X:0}/{p.Y:0}"));
+    }
+
+    [Fact]
+    public void Am_Gate_ueber_die_Zufahrt_der_Position()
+    {
+        // P1 (100/320) hängt über seine Zufahrt an A bei x = 0; die Fahrzeuge halten auf dieser Zufahrt, 1,5 Grundmaß vor der Position
+        var graph = Graph();
+        var p1 = graph.FindParking("P1")!;
+        var plan = FirePlanner.PlanToAircraft(graph, FireCategory.Lineup(FireAlertLevel.GroundIncident, 6), p1.EastM, p1.NorthM, 30, [Station(graph, "Wache", 900, 260)], p1)!;
+
+        Assert.Same(p1, plan.Stand);
+        var (e, n, _) = plan.Vehicles[0].Route.At(plan.Vehicles[0].Route.LengthM);
+        Assert.InRange(TaxiGraph.SegmentDistance(e, n, 0, 200, 100, 320), 0, 1.5);
+        Assert.InRange(Distance(e, n, 100, 320), 40, 50);
+    }
 }

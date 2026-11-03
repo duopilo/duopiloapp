@@ -265,22 +265,42 @@ public sealed class FireOperation
     };
 
     /// <summary>
+    /// Platz an einem Flugzeug auf einer Parkposition: nur hinter und rechts neben ihm – vor der Nase steht das Terminal, links vorn die
+    /// Fluggastbrücke. FLF rechts am Flügel und hinter dem Heck, ELW mit Überblick hinter dem Heck, Rettungstreppe an der rechten Tür.
+    /// </summary>
+    public static (double X, double Y) StandPost(FireUnit unit, double u) => unit.Kind switch
+    {
+        FireVehicleKind.Flf => unit.Number switch
+        {
+            1 => (0, 1.4 * u),
+            2 => (-1.4 * u, 0.6 * u),
+            _ => (-1.4 * u, -0.6 * u),
+        },
+        FireVehicleKind.Elw => (-2.1 * u, 0),
+        FireVehicleKind.Hlf => (-0.9 * u, 1.6 * u),
+        FireVehicleKind.Rtf => unit.Number == 1 ? (0.45 * u, 1.35 * u) : (-0.9 * u, 1.4 * u),
+        _ => (-2.4 * u, 1.1 * u),
+    };
+
+    /// <summary>
     /// Weg vom Fahrzeug zu seinem Platz im Flugzeug-System, um das Flugzeug herum: Steht es auf der anderen Seite, zuerst hinter das Heck
     /// bzw. vor die Nase, dann auf die Seite des Platzes; führt die gerade Linie nah am Flugzeug vorbei, über einen Punkt seitlich.
     /// </summary>
-    public static List<(double X, double Y)> DetourPoints((double X, double Y) from, (double X, double Y) post, double u)
+    /// <param name="noseBlocked">An einer Parkposition: nie vor der Nase herum (Terminal), immer hinter dem Heck.</param>
+    public static List<(double X, double Y)> DetourPoints((double X, double Y) from, (double X, double Y) post, double u, bool noseBlocked = false)
     {
         var points = new List<(double X, double Y)> { from };
         var side = post.Y != 0 ? Math.Sign(post.Y) : (from.Y != 0 ? Math.Sign(from.Y) : 1);
-        var end = from.X < 0 ? -1.6 * u : 1.6 * u;
+        var end = from.X < 0 || noseBlocked ? -1.6 * u : 1.6 * u;
         if (Math.Sign(from.Y) != side && Math.Abs(from.X) < 1.6 * u)
         {
+            // Parallel zum Rumpf hinter das Heck (bzw. vor die Nase), dann auf die Seite des Platzes
             points.Add((end, from.Y));
             points.Add((end, side * 1.4 * u));
         }
         else if (SegmentDistance(0, 0, from.X, from.Y, post.X, post.Y) < 0.9 * u)
         {
-            points.Add((Math.Clamp(from.X, -1.4 * u, 1.4 * u), side * 1.4 * u));
+            points.Add((Math.Clamp(from.X, -1.4 * u, noseBlocked ? 0 : 1.4 * u), side * 1.4 * u));
         }
 
         points.Add(post);
@@ -414,9 +434,10 @@ public sealed class FireOperation
     private void Position(FireVehicle vehicle, FireAircraftState aircraft)
     {
         var u = FireCategory.PostUnitM(Wake);
-        var post = Post(vehicle.Unit, u);
+        var atStand = Plan.Stand is not null;
+        var post = atStand ? StandPost(vehicle.Unit, u) : Post(vehicle.Unit, u);
         var from = ToAircraft(aircraft, vehicle.EastM, vehicle.NorthM);
-        var local = DetourPoints(from, post, u).Select(p => ToLocal(aircraft, p.X, p.Y)).ToList();
+        var local = DetourPoints(from, post, u, atStand).Select(p => ToLocal(aircraft, p.X, p.Y)).ToList();
         // Geradeaus (auch über Gras, wie echte Löschfahrzeuge), nur von weit weg und nicht von derselben Bahn über die Rollwege
         var sameRunway = Graph.RunwayAt(vehicle.EastM, vehicle.NorthM) is { } on && ReferenceEquals(on, Graph.RunwayAt(aircraft.EastM, aircraft.NorthM));
         var far = !sameRunway && FirePlanner.Distance(vehicle.EastM, vehicle.NorthM, aircraft.EastM, aircraft.NorthM) > PositionRouteM;

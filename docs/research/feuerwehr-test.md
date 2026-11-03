@@ -32,6 +32,10 @@ im Sim ist offen. Planung: [Feuerwehr-Einsätze](feuerwehr-einsaetze.md) (PR #13
   einer Wache abgeschnitten (in EDDL ein Stück am Helipad), probiert Duopilo die nächsten bis 400 m.
 - **Einsatzort Parkposition:** `alert` mit `parking` (z. B. `V61A`) ist ein Notfall am Boden an dieser Position statt an einem
   Flugzeug. Die Fahrzeuge stellen sich auf, als stünde dort ein Flugzeug, und rücken nach 3 Minuten wieder ein.
+- **Am Gate:** Bei einer Parkposition als Einsatzort, und wenn das eigene Flugzeug auf einer steht, fahren die Fahrzeuge über die
+  Zufahrt der Position von hinten an (nie geradeaus vom nächsten Rollpunkt, der hinter dem Terminal liegen kann) und stellen sich
+  nur hinter und rechts neben das Flugzeug: FLF rechts am Flügel und hinter dem Heck, ELW hinter dem Heck. Vor der Nase steht das
+  Terminal, links vorn die Fluggastbrücke (Test B9, 03.11.: ein FLF fuhr durch den Abflug und stand halb in der Brücke).
 - **Alte Notfälle:** Ein Mayday oder Pan Pan, das älter als 3 Stunden ist (etwa aus einer wiederhergestellten ATC-Sitzung), löst
   nichts mehr aus. Die Bahn aus dem Plan gilt nur am Zielflughafen; am Boden und an einem anderen Flughafen gibt es keine.
 - **KI-Flüge:** `alert` mit `tail` (DUO01 …) folgt einem KI-Flugzeug eines laufenden Verkehrstests statt dem eigenen.

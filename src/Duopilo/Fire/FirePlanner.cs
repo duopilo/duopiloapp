@@ -17,6 +17,12 @@ public sealed record FireDispatchPlan(IReadOnlyList<FireStation> Stations, Runwa
 
     /// <summary>Echte Wachen aus OpenStreetMap (sonst freie Parkposition).</summary>
     public bool FromOsm => Stations.Any(s => s.Source == "osm");
+
+    /// <summary>
+    /// Einsatz an einer Parkposition (Gate, Vorfeld): Vor der Nase steht das Terminal, links die Fluggastbrücke. Die Fahrzeuge kommen
+    /// über die Zufahrt der Position von hinten und stellen sich nur hinter und rechts neben das Flugzeug (<see cref="FireOperation.StandPost"/>).
+    /// </summary>
+    public TaxiNode? Stand { get; init; }
 }
 
 /// <summary>
@@ -96,7 +102,9 @@ public static class FirePlanner
     /// Notfall am Boden: von der nächsten Wache (OSM, sonst freie Parkposition außer Sicht) über die Rollwege bis kurz vor das
     /// Flugzeug, die Fahrzeuge hintereinander.
     /// </summary>
-    public static FireDispatchPlan? PlanToAircraft(TaxiGraph graph, IReadOnlyList<FireUnit> units, double aircraftEast, double aircraftNorth, double postUnitM, IReadOnlyList<FireStation>? stations = null)
+    /// <param name="stand">Steht das Flugzeug (oder der Einsatzort) auf einer Parkposition: über deren Zufahrt anfahren, nie geradeaus –
+    /// der nächste Rollpunkt kann hinter dem Terminal liegen (Test EDDL B9, 03.11.: ein FLF fuhr durch den Abflug in die Fluggastbrücke).</param>
+    public static FireDispatchPlan? PlanToAircraft(TaxiGraph graph, IReadOnlyList<FireUnit> units, double aircraftEast, double aircraftNorth, double postUnitM, IReadOnlyList<FireStation>? stations = null, TaxiNode? stand = null)
     {
         var candidates = (stations ?? [])
             .Where(s => NearestNode(graph, s.EastM, s.NorthM) is { } n && Distance(n.EastM, n.NorthM, s.EastM, s.NorthM) <= MaxStationOffNetworkM)
@@ -104,7 +112,10 @@ public static class FirePlanner
             .Concat(SpawnCandidates(graph, aircraftEast, aircraftNorth, (aircraftEast, aircraftNorth)).Take(MaxSpawnTries).Select(FireStation.FromParking));
         foreach (var station in candidates)
         {
-            if (RouteBetween(graph, station.EastM, station.NorthM, aircraftEast, aircraftNorth, fromParking: station.Parking) is not { } route)
+            var route = stand is not null
+                ? RouteFrom(graph, station, stand)
+                : RouteBetween(graph, station.EastM, station.NorthM, aircraftEast, aircraftNorth, fromParking: station.Parking);
+            if (route is null)
             {
                 continue;
             }
@@ -121,7 +132,7 @@ public static class FirePlanner
 
             if (vehicles.Count > 0)
             {
-                return new FireDispatchPlan([station], null, vehicles, units.Where(u => vehicles.All(v => v.Unit != u)).ToList());
+                return new FireDispatchPlan([station], null, vehicles, units.Where(u => vehicles.All(v => v.Unit != u)).ToList()) { Stand = stand };
             }
         }
 

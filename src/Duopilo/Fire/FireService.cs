@@ -401,12 +401,14 @@ public sealed class FireService : BackgroundService
             if (run.Level == FireAlertLevel.GroundIncident)
             {
                 (double East, double North) at;
+                TaxiNode? stand = null;
                 if (run.TargetParking is { } label)
                 {
                     // Einsatzort Parkposition: die Fahrzeuge stellen sich auf, als stünde dort ein Flugzeug (Nase in Richtung der Position)
                     var node = graph.FindParking(label) ?? throw new FireUnavailableException(Loc.T("tools.fire.parkingUnknown", label, airport));
                     place = new FireAircraftState(node.EastM, node.NorthM, node.Parking?.HeadingDeg ?? 0, 0, true);
                     at = (node.EastM, node.NorthM);
+                    stand = node;
                 }
                 else if (!onGround || own is null)
                 {
@@ -415,12 +417,17 @@ public sealed class FireService : BackgroundService
                 else
                 {
                     at = own.Value;
+
+                    // Steht das eigene Flugzeug auf einer Parkposition (Gate), dieselbe Anfahrt und Aufstellung wie dort
+                    stand = graph.Nodes
+                        .Where(n => n.Parking is { } p && FirePlanner.Distance(n.EastM, n.NorthM, at.East, at.North) <= Math.Max(8, p.RadiusM * 0.6))
+                        .MinBy(n => FirePlanner.Distance(n.EastM, n.NorthM, at.East, at.North));
                 }
 
                 // Am Einsatzort ist das Flugzeug (und was daneben parkt) das Ziel, kein Hindernis (EDDL V81 zwischen V80 und V82)
                 graph.ClearObstacles(at.East, at.North, SceneClearM);
                 var target = at;
-                plan = PlanAvoidingObstacles(graph, airport, () => FirePlanner.PlanToAircraft(graph, units, target.East, target.North, FireCategory.PostUnitM(wake), stations))
+                plan = PlanAvoidingObstacles(graph, airport, () => FirePlanner.PlanToAircraft(graph, units, target.East, target.North, FireCategory.PostUnitM(wake), stations, stand))
                     ?? throw new FireUnavailableException(Loc.T("tools.fire.noRouteToAircraft", airport));
             }
             else
