@@ -964,7 +964,7 @@ public sealed class FireTests
     [Fact]
     public void Betriebsstrassen_werden_bevorzugt()
     {
-        // Von A bei x = 200 zum Stück am Ende: über den Fahrweg (164 m) statt … es gibt nur ihn; Kosten mit Faktor 0,7
+        // Von A bei x = 200 zum Stück führt nur der Fahrweg (164 m): mit Faktor 0,7 kostet er 30 % weniger als ein Rollweg
         var graph = Graph(stub: true, roads: true);
         var stub = graph.Nodes.Count(n => !n.IsParking) - 2;
         var route = graph.Route(6, stub)!;
