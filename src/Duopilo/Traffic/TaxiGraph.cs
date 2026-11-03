@@ -138,6 +138,19 @@ public sealed class TaxiGraph
         }
     }
 
+    /// <summary>
+    /// Hindernisse näher als <paramref name="radiusM"/> an einem Punkt entfernen, etwa am Einsatzort der Feuerwehr: Das Flugzeug dort
+    /// (oder die Nachbarn an der Parkposition) ist das Ziel, kein Hindernis. Ohne Radius: alle.
+    /// </summary>
+    public void ClearObstacles(double eastM = 0, double northM = 0, double radiusM = double.PositiveInfinity)
+    {
+        var keep = _obstacles
+            .Where(o => Math.Sqrt(Math.Pow(o.EastM - eastM, 2) + Math.Pow(o.NorthM - northM, 2)) > radiusM)
+            .Select(o => ToLatLon(o.EastM, o.NorthM))
+            .ToList();
+        SetObstacles(keep, ClearanceM);
+    }
+
     /// <summary>Ob ein Abschnitt zu nah an einem anderen Flugzeug vorbeiführt.</summary>
     public bool IsBlocked(TaxiEdge edge) => _blocked.Contains(edge);
 
@@ -197,12 +210,17 @@ public sealed class TaxiGraph
         return ((longitude - Longitude) * meterPerDegLon, (latitude - Latitude) * meterPerDegLat);
     }
 
-    /// <summary>Parkposition nach Bezeichnung ("A12", "a 12", "P5"), sonst null.</summary>
+    /// <summary>Parkposition nach Bezeichnung ("A12", "a 12", "P5"; "A01" findet A1), sonst null.</summary>
     public TaxiNode? FindParking(string label)
     {
         var wanted = Compact(label);
-        return _nodes.FirstOrDefault(n => n.Parking is { } p && Compact(p.Label) == wanted);
+        return _nodes.FirstOrDefault(n => n.Parking is { } p && Compact(p.Label) == wanted)
+            ?? _nodes.FirstOrDefault(n => n.Parking is { } p && WithoutLeadingZeros(Compact(p.Label)) == WithoutLeadingZeros(wanted));
     }
+
+    /// <summary>Führende Nullen in Zahlen weg: "A01" → "A1", "V061A" → "V61A" (aber "A10" bleibt).</summary>
+    private static string WithoutLeadingZeros(string label) =>
+        System.Text.RegularExpressions.Regex.Replace(label, "(?<![0-9])0+(?=[0-9])", "");
 
     /// <summary>Haltepunkte aller Bahnen mit Bahn, Abstand zur Mittellinie und dem Rollweg daran.</summary>
     public IReadOnlyList<TaxiHold> Holds()

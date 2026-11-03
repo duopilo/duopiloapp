@@ -737,4 +737,25 @@ public sealed class FireTests
         Assert.Equal(vehicle.OdometerM, pose.WheelDistanceM);
         Assert.Equal(vehicle.CurvaturePerM, pose.CurvaturePerM);
     }
+
+    [Fact]
+    public void Hindernisse_am_Einsatzort_zaehlen_nicht()
+    {
+        // Ein geparktes Flugzeug 20 m neben P1 sperrt die Zufahrt; am Einsatzort P1 ist es kein Hindernis mehr, weiter weg schon
+        var graph = Graph();
+        var (lat, lon) = graph.ToLatLon(100, 290);
+        var (farLat, farLon) = graph.ToLatLon(-600, 230);
+        graph.SetObstacles([(lat, lon), (farLat, farLon)], 30);
+        var blocked = graph.BlockedEdges;
+        Assert.True(blocked > 0);
+
+        graph.ClearObstacles(100, 320, 60);
+        Assert.Single(graph.Obstacles);
+        Assert.InRange(graph.BlockedEdges, 1, blocked - 1);
+
+        graph.ClearObstacles();
+        Assert.Empty(graph.Obstacles);
+        Assert.Equal(0, graph.BlockedEdges);
+        Assert.Equal("P1", graph.FindParking("p01")?.Parking?.Label);
+    }
 }

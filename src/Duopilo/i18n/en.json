@@ -1534,6 +1534,7 @@
   "log.fire.osmPending": "Fire stations of {airport} not there from OpenStreetMap after {seconds} s – this time from a free parking position, the request goes on for the next time",
   "log.fire.staleEmergency": "Fire service ignores the {kind} since {since} (older than {hours} h, e.g. from a restored ATC session)",
   "log.fire.network": "Fire service network at {airport}: {nodes} points, {roads} service road sections",
+  "log.fire.ignoringObstacles": "Fire service at {airport}: no route around the parked aircraft ({blocked} sections blocked) – planning without them",
   "log.fire.osmCacheFailed": "Fire station cache {file} could not be read or written: {error}",
   "tools.followMe.noVehicle": "All follow-me vehicles at {airport} are on their way ({count} at most at the same time)."
 }

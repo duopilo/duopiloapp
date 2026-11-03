@@ -51,6 +51,9 @@ public sealed class FireService : BackgroundService
 
     /// <summary>So lange wartet die Planung auf die Wachen aus OSM; danach eine freie Parkposition, die Abfrage läuft weiter.</summary>
     private static readonly TimeSpan OsmWait = TimeSpan.FromSeconds(8);
+
+    /// <summary>Im Umkreis des Einsatzorts sind geparkte Flugzeuge kein Hindernis (Meter).</summary>
+    private const double SceneClearM = 60;
     private static readonly TimeSpan KeepFailed = TimeSpan.FromSeconds(60);
 
     private readonly DuopiloOptions _options;
@@ -414,14 +417,17 @@ public sealed class FireService : BackgroundService
                     at = own.Value;
                 }
 
-                plan = FirePlanner.PlanToAircraft(graph, units, at.East, at.North, FireCategory.PostUnitM(wake), stations)
+                // Am Einsatzort ist das Flugzeug (und was daneben parkt) das Ziel, kein Hindernis (EDDL V81 zwischen V80 und V82)
+                graph.ClearObstacles(at.East, at.North, SceneClearM);
+                var target = at;
+                plan = PlanAvoidingObstacles(graph, airport, () => FirePlanner.PlanToAircraft(graph, units, target.East, target.North, FireCategory.PostUnitM(wake), stations))
                     ?? throw new FireUnavailableException(Loc.T("tools.fire.noRouteToAircraft", airport));
             }
             else
             {
                 var end = ResolveRunway(airport, runways, run.Runway)
                     ?? throw new FireUnavailableException(Loc.T("tools.fire.runwayUnknown", run.Runway ?? "-", airport));
-                plan = FirePlanner.Plan(graph, end, units, wake, onGround ? own : null, stations, allStations: run.Level == FireAlertLevel.FullEmergency)
+                plan = PlanAvoidingObstacles(graph, airport, () => FirePlanner.Plan(graph, end, units, wake, onGround ? own : null, stations, allStations: run.Level == FireAlertLevel.FullEmergency))
                     ?? throw new FireUnavailableException(Loc.T("tools.fire.noRouteToRunway", airport, end.Designation));
             }
 
@@ -572,6 +578,27 @@ public sealed class FireService : BackgroundService
     }
 
     /// <summary>Andere Flugzeuge am Boden: ihre Parkpositionen sind belegt, dort spawnt keine Wache.</summary>
+    /// <summary>
+    /// Planen mit den geparkten Flugzeugen als Hindernis; geht so kein Weg, ohne sie – lieber knapp an einem Flugzeug vorbei als gar
+    /// nicht ausrücken.
+    /// </summary>
+    private FireDispatchPlan? PlanAvoidingObstacles(TaxiGraph graph, string airport, Func<FireDispatchPlan?> plan)
+    {
+        if (plan() is { } avoiding)
+        {
+            return avoiding;
+        }
+
+        if (graph.BlockedEdges == 0)
+        {
+            return null;
+        }
+
+        _log.LogInformation(Loc.Log("log.fire.ignoringObstacles"), airport, graph.BlockedEdges);
+        graph.ClearObstacles();
+        return plan();
+    }
+
     private async Task SetObstaclesAsync(TaxiGraph graph, CancellationToken ct)
     {
         try
