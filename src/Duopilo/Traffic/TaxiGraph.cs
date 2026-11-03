@@ -105,6 +105,12 @@ public sealed class TaxiGraph
     /// <summary>Geladene Fahrweg-Abschnitte der Bodenfahrzeuge (nur mit <c>vehicleRoads</c>).</summary>
     public int VehicleRoads { get; private set; }
 
+    /// <summary>
+    /// Abschnitte je TAXI_PATH-Typ in den Daten der Szenerie, geladen oder nicht (1 Rollweg, 2 Bahn, 3 Parkposition, 4 Weg,
+    /// 5 gesperrt, 6 Fahrzeug, 7 Straße, 8 Markierung) – zeigt, ob eine Szenerie überhaupt Fahrwege für Bodenfahrzeuge hat.
+    /// </summary>
+    public IReadOnlyDictionary<int, int> PathTypes { get; private set; } = new Dictionary<int, int>();
+
     /// <summary>Längstes Fahrweg-Stück, das als echt gilt.</summary>
     public const double MaxVehicleRoadSegmentM = 400;
 
@@ -493,6 +499,20 @@ public sealed class TaxiGraph
     /// <summary>Abschnitt zwischen zwei Knoten, sonst null.</summary>
     public TaxiEdge? Edge(int a, int b) => _adjacency[a].FirstOrDefault(e => e.Other(a) == b);
 
+    /// <summary>TAXI_PATH-Typ als Wort für Status und Log.</summary>
+    public static string PathTypeName(int type) => type switch
+    {
+        1 => "taxi",
+        2 => "runway",
+        3 => "parking",
+        4 => "path",
+        5 => "closed",
+        6 => "vehicle",
+        7 => "road",
+        8 => "painted_line",
+        _ => "type" + type.ToString(CultureInfo.InvariantCulture),
+    };
+
     /// <summary>Kostenfaktor eines Abschnitts: Bahnen <see cref="RunwayCostFactor"/>, Betriebsstraßen <see cref="RoadCostFactor"/>, sonst 1.</summary>
     private double Factor(int type) => type switch
     {
@@ -670,6 +690,7 @@ public sealed class TaxiGraph
         }
 
         var points = data.Points.Count;
+        PathTypes = data.Paths.GroupBy(p => p.Type).OrderBy(g => g.Key).ToDictionary(g => g.Key, g => g.Count());
         foreach (var path in data.Paths)
         {
             var road = path.Type is 6 or 7;

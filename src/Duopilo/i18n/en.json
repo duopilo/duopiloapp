@@ -1533,7 +1533,7 @@
   "log.fire.osmFailed": "Fire stations of {airport} could not be fetched from {url}: {error}",
   "log.fire.osmPending": "Fire stations of {airport} not there from OpenStreetMap after {seconds} s – this time from a free parking position, the request goes on for the next time",
   "log.fire.staleEmergency": "Fire service ignores the {kind} since {since} (older than {hours} h, e.g. from a restored ATC session)",
-  "log.fire.network": "Fire service network at {airport}: {nodes} points, {roads} service road sections",
+  "log.fire.network": "Fire service network at {airport}: {nodes} points, {roads} service road sections (scenery paths: {types})",
   "log.fire.ignoringObstacles": "Fire service at {airport}: no route around the parked aircraft ({blocked} sections blocked) – planning without them",
   "log.fire.buildingsMismatch": "Fire service at {airport}: the OpenStreetMap buildings do not fit this scenery ({parkings} % of the parking spots and {taxi} % of the taxiways inside buildings) – no buildings as obstacles",
   "log.fire.post": "Fire service {unit}: post {x}/{y} m at the aircraft ({how}, {mode})",

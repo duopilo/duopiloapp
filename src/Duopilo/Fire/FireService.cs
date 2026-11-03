@@ -377,7 +377,12 @@ public sealed class FireService : BackgroundService
             // Mit den Fahrwegen der Bodenfahrzeuge: von der Wache über die Betriebsstraßen auf die Rollwege
             var graph = TaxiGraph.Build(data, runways, vehicleRoads: true);
             graph.RoadCostFactor = FireProfile.RoadCostFactor;
-            _log.LogInformation(Loc.Log("log.fire.network"), airport, graph.Nodes.Count, graph.VehicleRoads);
+            _log.LogInformation(
+                Loc.Log("log.fire.network"),
+                airport,
+                graph.Nodes.Count,
+                graph.VehicleRoads,
+                string.Join(", ", graph.PathTypes.Select(t => TaxiGraph.PathTypeName(t.Key) + " " + t.Value.ToString(System.Globalization.CultureInfo.InvariantCulture))));
             await SetObstaclesAsync(graph, ct);
             await LogGroundVehiclesAsync(graph, airport, ct);
             var wake = TrafficRules.WakeOf(run.AircraftIcao, TrafficCategory.Airliner);

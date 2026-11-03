@@ -256,7 +256,8 @@ public sealed record TrafficTaxiInfo(
     int Obstacles = 0,
     int BlockedPaths = 0,
     int OccupiedParkings = 0,
-    string? ObstacleError = null);
+    string? ObstacleError = null,
+    IReadOnlyDictionary<string, int>? PathTypes = null);
 
 /// <param name="Occupied">Ein anderes Flugzeug steht darauf (innerhalb des Radius, mindestens 10 m).</param>
 public sealed record TrafficTaxiInfoParking(string Label, string Type, double RadiusM, double HeadingDeg, bool Occupied = false);
@@ -3137,7 +3138,8 @@ public sealed partial class TrafficTestService : IHostedService, IDisposable
             obstacles,
             graph.BlockedEdges,
             graph.Nodes.Count(n => n.Parking is not null && graph.IsOccupied(n)),
-            obstacleError);
+            obstacleError,
+            graph.PathTypes.ToDictionary(t => TaxiGraph.PathTypeName(t.Key), t => t.Value));
     }
 
     /// <summary>
