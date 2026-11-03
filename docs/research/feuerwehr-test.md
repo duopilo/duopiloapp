@@ -53,6 +53,13 @@ im Sim ist offen. Planung: [Feuerwehr-Einsätze](feuerwehr-einsaetze.md) (PR #13
   abseits des Netzes – von der Wache zum ersten Rollpunkt, vom letzten Rollpunkt zum Ziel, zum Platz am Flugzeug – meiden sie: erst
   Rollpunkte mit freier Strecke, und führt der Weg zum Platz doch hinein, hält das Fahrzeug 5 m davor. Rollwege und
   Betriebsstraßen selbst bleiben frei (sie führen unter Brücken durch, und OSM und Szenerie passen nicht überall genau).
+- **Abstand untereinander:** Wer einen Weg fährt (Anfahrt, Aufstellen, Rückfahrt), schaut 40 m auf seinem Weg voraus. Steht oder
+  fährt dort ein eigenes Fahrzeug (bis 3,5 m neben dem Weg), bremst es und hält 16 m Mitte zu Mitte dahinter bzw. folgt mit dessen
+  Tempo. Entgegenkommende zählen nicht. Stehen zwei ineinander oder sehen sich gegenseitig, fährt das mit Blaulicht zuerst, sonst das
+  zuerst alarmierte. Hinter einem Fahrzeug am Platz wartet es 6 s und fährt dann weiter (nichts bleibt hängen). Test EDDL 03.11.:
+  FLF 2 und ELW fuhren gleichzeitig zurück und hingen ineinander.
+- **Notfall am Boden:** Alle stellen sich auf, auch wenn sie über die Zufahrt von hinten kommen (Test V81 03.11.: FLF 2 und ELW
+  drehten um, weil die Regel „ohne Halt auf der Bahn abgerollt, nur FLF 1 folgt“ griff).
 - **Am Gate:** Bei einer Parkposition als Einsatzort, und wenn das eigene Flugzeug auf einer steht, fahren die Fahrzeuge über die
   Zufahrt der Position von hinten an (nie geradeaus vom nächsten Rollpunkt, der hinter dem Terminal liegen kann) und stellen sich
   nur hinter und rechts neben das Flugzeug: FLF rechts am Flügel und hinter dem Heck, ELW hinter dem Heck. Vor der Nase steht das

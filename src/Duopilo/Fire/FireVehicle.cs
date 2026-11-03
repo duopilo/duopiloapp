@@ -104,6 +104,7 @@ public sealed class FireVehicle
     public const double BrakeHoldS = 0.6;
 
     private double _brakeHoldS;
+    private double? _yieldMps;
 
     /// <summary>Martinshorn erlaubt (Duopilo:Fire:Siren).</summary>
     public bool SirenAllowed { get; init; } = true;
@@ -200,6 +201,64 @@ public sealed class FireVehicle
     /// </summary>
     public double? SimGroundSpeedKt { get; set; }
 
+    /// <summary>
+    /// Höchstgeschwindigkeit, um Abstand zu einem Fahrzeug davor zu halten (null = frei); setzt <see cref="FireOperation"/> in jedem
+    /// Takt. Bei 0 steht es (kein Anrollen mit Schrittgeschwindigkeit).
+    /// </summary>
+    public double? YieldMps
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _yieldMps;
+            }
+        }
+
+        set
+        {
+            lock (_lock)
+            {
+                _yieldMps = value is { } mps ? Math.Max(0, mps) : null;
+            }
+        }
+    }
+
+    /// <summary>Ob es gerade einen Weg fährt (Anfahrt, auf die Spur, Aufstellen, Rückfahrt).</summary>
+    public bool OnPath => Phase is FireVehiclePhase.Responding or FireVehiclePhase.Joining or FireVehiclePhase.Positioning or FireVehiclePhase.Returning;
+
+    /// <summary>
+    /// Wie weit voraus auf dem eigenen Weg (bis <paramref name="lookAheadM"/>) ein Punkt höchstens <paramref name="halfWidthM"/> neben
+    /// dem Weg liegt; nur vor dem Fahrzeug, null = nicht.
+    /// </summary>
+    public double? AheadOnPath(double east, double north, double lookAheadM, double halfWidthM)
+    {
+        lock (_lock)
+        {
+            if (_path is not { } path || !OnPath)
+            {
+                return null;
+            }
+
+            var rad = HeadingDeg * Math.PI / 180;
+            if (((east - EastM) * Math.Sin(rad)) + ((north - NorthM) * Math.Cos(rad)) <= 0)
+            {
+                return null;
+            }
+
+            for (var s = 0.0; s <= lookAheadM && DistanceM + s <= path.LengthM; s += 2)
+            {
+                var (e, n, _) = path.At(DistanceM + s);
+                if (Math.Sqrt(((e - east) * (e - east)) + ((n - north) * (n - north))) <= halfWidthM)
+                {
+                    return s;
+                }
+            }
+
+            return null;
+        }
+    }
+
     /// <summary>Neue Lage des Flugzeugs auf der Spur und seine Geschwindigkeit über Grund (m/s).</summary>
     public void SetAircraft(double trailS, double groundSpeedMps)
     {
@@ -227,6 +286,7 @@ public sealed class FireVehicle
             Phase = phase;
             TrailS = double.NaN;
             _joinS = joinS;
+            _yieldMps = null;
             if (gapM > 0)
             {
                 _gapM = gapM;
@@ -398,8 +458,13 @@ public sealed class FireVehicle
         }
 
         var allowed = Math.Min(_pathMaxMps, path.AllowedMps(DistanceM, FireProfile.DecelMps2));
+        if (_yieldMps is { } yieldMps)
+        {
+            allowed = Math.Min(allowed, yieldMps);
+        }
+
         Accelerate(allowed, dt);
-        if (SpeedMps <= 0 && path.LengthM - DistanceM > 0.05)
+        if (SpeedMps <= 0 && path.LengthM - DistanceM > 0.05 && _yieldMps is not < 0.05)
         {
             SpeedMps = Math.Min(0.3, path.LengthM - DistanceM);
         }

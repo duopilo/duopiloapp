@@ -62,6 +62,22 @@ public sealed class FireOperation
     // Plätze der Fahrzeuge am Flugzeug (Ost/Nord), damit keins auf ein anderes fährt
     private readonly Dictionary<FireVehicle, (double East, double North)> _posts = [];
 
+    /// <summary>So weit voraus auf dem eigenen Weg schaut ein Fahrzeug nach einem anderen.</summary>
+    public const double LookAheadM = 40;
+
+    /// <summary>Halbe Fahrspur: ein Fahrzeug so weit neben dem Weg steht im Weg.</summary>
+    public const double LaneHalfWidthM = 3.5;
+
+    /// <summary>Abstand Mitte zu Mitte, bei dem es hinter einem anderen hält (ein FLF ist rund 12 m lang).</summary>
+    public const double StopGapM = 16;
+
+    /// <summary>So lange wartet es hinter einem Fahrzeug, das nicht fährt (am Platz), dann fährt es weiter.</summary>
+    public const double PatienceS = 6;
+
+    private readonly Dictionary<FireVehicle, double> _waitedS = [];
+    private readonly Dictionary<FireVehicle, double> _ignoreStandingUntil = [];
+    private double _clock;
+
     private readonly ILogger? _log;
 
     public FireOperation(TaxiGraph graph, FireAlertLevel level, FireDispatchPlan plan, TrafficWake wake, int category, ILogger? log = null)
@@ -180,6 +196,8 @@ public sealed class FireOperation
         {
             vehicle.SetAircraft(aircraftS, aircraft.GroundSpeedMps);
         }
+
+        KeepDistance(vehicles, dt);
 
         if (Returning || !_landed)
         {
@@ -567,6 +585,79 @@ public sealed class FireOperation
     }
 
     private double BaseGap(bool onRunway) => onRunway ? FireCategory.RunwayGapM(Wake) : FireCategory.TaxiGapM(Wake);
+
+    /// <summary>
+    /// Abstand zwischen den eigenen Fahrzeugen (Test EDDL 03.11.: auf der Rückfahrt fuhren sie gleichzeitig los und hingen ineinander).
+    /// Wer einen Weg fährt, schaut <see cref="LookAheadM"/> auf seinem Weg voraus: Steht oder fährt dort ein anderes Fahrzeug
+    /// (höchstens <see cref="LaneHalfWidthM"/> neben dem Weg), bremst es so, dass es <see cref="StopGapM"/> dahinter hält bzw. mit dessen
+    /// Tempo folgt. Entgegenkommende zählen nicht (sie fahren aneinander vorbei). Sehen sich zwei gegenseitig oder stehen sie
+    /// ineinander bzw. dicht nebeneinander (gleichzeitig losgefahren), fährt das mit Blaulicht zuerst, sonst das zuerst alarmierte.
+    /// Hinter einem Fahrzeug, das nicht fährt (am Platz), wartet es <see cref="PatienceS"/>, dann fährt es weiter, damit nichts auf Dauer
+    /// hängen bleibt.
+    /// </summary>
+    private void KeepDistance(IReadOnlyList<FireVehicle> vehicles, double dt)
+    {
+        _clock += dt;
+        var order = vehicles.Select((v, i) => (v, i)).ToDictionary(x => x.v, x => x.i);
+        int Rank(FireVehicle v) => (v.BlueLight ? 0 : 1000) + order[v];
+        double? Ahead(FireVehicle from, FireVehicle other)
+        {
+            if (other.Phase == FireVehiclePhase.Gone || ReferenceEquals(from, other))
+            {
+                return null;
+            }
+
+            var turn = Math.Abs(((other.HeadingDeg - from.HeadingDeg + 540) % 360) - 180);
+            return other.SpeedMps > 0.5 && turn > 120 ? null : from.AheadOnPath(other.EastM, other.NorthM, LookAheadM, LaneHalfWidthM);
+        }
+
+        foreach (var vehicle in vehicles)
+        {
+            if (!vehicle.OnPath)
+            {
+                vehicle.YieldMps = null;
+                _waitedS.Remove(vehicle);
+                continue;
+            }
+
+            double? limit = null;
+            var behindStanding = false;
+            foreach (var other in vehicles)
+            {
+                var close = other.OnPath && !ReferenceEquals(other, vehicle) &&
+                    FirePlanner.Distance(vehicle.EastM, vehicle.NorthM, other.EastM, other.NorthM) < StopGapM / 2;
+                var ahead = Ahead(vehicle, other) ?? (close && Ahead(other, vehicle) is null ? 0 : null);
+                if (ahead is null || ((Ahead(other, vehicle) is not null || close) && Rank(other) > Rank(vehicle)))
+                {
+                    continue;
+                }
+
+                var standing = other.SpeedMps < 0.3 && !other.OnPath;
+                if (standing && _ignoreStandingUntil.TryGetValue(vehicle, out var until) && _clock < until)
+                {
+                    continue;
+                }
+
+                var turn = Math.Abs(((other.HeadingDeg - vehicle.HeadingDeg + 540) % 360) - 180);
+                // Bremsweg bis zum Halt hinter dem anderen; mit dessen Tempo erst ab halbem Abstand (sonst führen Fahrzeuge, die ineinander
+                // stehen, gemeinsam los)
+                var follow = turn < 60 ? other.SpeedMps * Math.Clamp((ahead.Value - (StopGapM / 2)) / (StopGapM / 2), 0, 1) : 0;
+                var mps = Math.Sqrt(2 * FireProfile.DecelMps2 * Math.Max(0, ahead.Value - StopGapM)) + follow;
+                limit = limit is { } l ? Math.Min(l, mps) : mps;
+                behindStanding |= standing;
+            }
+
+            vehicle.YieldMps = limit;
+            var waited = limit is < 0.1 && behindStanding && vehicle.SpeedMps < 0.1 ? _waitedS.GetValueOrDefault(vehicle) + dt : 0;
+            if (waited > PatienceS)
+            {
+                _ignoreStandingUntil[vehicle] = _clock + 30;
+                waited = 0;
+            }
+
+            _waitedS[vehicle] = waited;
+        }
+    }
 
     /// <summary>Platz in der Kolonne: Reihenfolge der Alarmierung unter den folgenden Fahrzeugen.</summary>
     private int ColumnIndex(FireVehicle vehicle)

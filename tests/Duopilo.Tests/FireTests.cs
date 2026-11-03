@@ -843,6 +843,38 @@ public sealed class FireTests
     }
 
     [Fact]
+    public void Auf_demselben_Weg_mit_Abstand_statt_ineinander()
+    {
+        // Test EDDL 03.11.: FLF 2 und ELW fuhren gleichzeitig zurück und hingen ineinander. Zwei Fahrzeuge starten am selben Punkt auf
+        // demselben 300-m-Weg: das zweite wartet, bis das erste weg ist, und bleibt dahinter; am Ende kommen beide an
+        var graph = Graph();
+        var plan = FirePlanner.Plan(graph, Runway09, FireCategory.Lineup(FireAlertLevel.LocalStandby, 7), TrafficWake.Medium, null)!;
+        var operation = new FireOperation(graph, FireAlertLevel.LocalStandby, plan, TrafficWake.Medium, 7);
+        var first = new FireVehicle(new FireUnit(FireVehicleKind.Flf, 2, FireStandbyRole.Rollout), "test", FirePlanner.BuildPath([(0, 0), (0, 300)], FireProfile.ReturnMps), operation.Trail, graph.ToLatLon, 164);
+        var second = new FireVehicle(new FireUnit(FireVehicleKind.Elw, 1, FireStandbyRole.Rollout), "test", FirePlanner.BuildPath([(0, 0), (0, 300)], FireProfile.ReturnMps), operation.Trail, graph.ToLatLon, 164);
+        operation.Add(first);
+        operation.Add(second);
+
+        var airborne = new FireAircraftState(-6000, 0, 90, 80, false);
+        var closest = double.MaxValue;
+        for (var t = 0; t < 4 * 120; t++)
+        {
+            operation.Update(airborne, 0.25);
+            first.Advance(0.25);
+            second.Advance(0.25);
+            if (t > 4 * 5 && first.OnPath && second.OnPath)
+            {
+                closest = Math.Min(closest, Distance(first.EastM, first.NorthM, second.EastM, second.NorthM));
+            }
+        }
+
+        Assert.InRange(closest, FireOperation.StopGapM - 2, double.MaxValue);
+        Assert.False(first.OnPath);
+        Assert.False(second.OnPath);
+        Assert.InRange(Distance(second.EastM, second.NorthM, 0, 300), 0, 1);
+    }
+
+    [Fact]
     public void Am_Gate_ueber_die_Zufahrt_der_Position()
     {
         // P1 (100/320) hängt über seine Zufahrt an A bei x = 0; die Fahrzeuge halten auf dieser Zufahrt, 1,5 Grundmaß vor der Position
