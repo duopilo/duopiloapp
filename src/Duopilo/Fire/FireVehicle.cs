@@ -98,6 +98,40 @@ public sealed class FireVehicle
     /// <summary>Glättung der Krümmung: Zeitkonstante in Sekunden (die Spur hat alle 3 m einen Knick).</summary>
     public const double CurvatureSmoothingS = 0.4;
 
+    /// <summary>Ab dieser Verzögerung leuchtet das Bremslicht (m/s²), danach noch <see cref="BrakeHoldS"/> Sekunden.</summary>
+    public const double BrakeDecelMps2 = 0.3;
+
+    public const double BrakeHoldS = 0.6;
+
+    private double _brakeHoldS;
+
+    /// <summary>Martinshorn erlaubt (Duopilo:Fire:Siren).</summary>
+    public bool SirenAllowed { get; init; } = true;
+
+    /// <summary>Bremslicht: das Fahrzeug wird gerade langsamer (oder hat eben gehalten).</summary>
+    public bool Braking
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _brakeHoldS > 0;
+            }
+        }
+    }
+
+    /// <summary>Martinshorn: nur auf der Anfahrt mit Blaulicht und in Fahrt, nicht beim Folgen, Aufstellen oder Einrücken.</summary>
+    public bool Siren
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return SirenAllowed && Phase == FireVehiclePhase.Responding && SpeedMps > 0.5;
+            }
+        }
+    }
+
     /// <summary>Strecke auf dem aktuellen Weg (nicht beim Folgen).</summary>
     public double DistanceM { get; private set; }
 
@@ -255,7 +289,7 @@ public sealed class FireVehicle
                 _aircraftS = Math.Min(_trail.LengthM + 5, _aircraftS + (_aircraftMps * dt));
             }
 
-            var (east, north, heading) = (EastM, NorthM, HeadingDeg);
+            var (east, north, heading, speed) = (EastM, NorthM, HeadingDeg, SpeedMps);
             switch (Phase)
             {
                 case FireVehiclePhase.Responding:
@@ -273,6 +307,7 @@ public sealed class FireVehicle
             }
 
             Roll(east, north, heading, dt);
+            _brakeHoldS = speed - SpeedMps > BrakeDecelMps2 * dt ? BrakeHoldS : Math.Max(0, _brakeHoldS - dt);
         }
     }
 
@@ -300,7 +335,26 @@ public sealed class FireVehicle
         lock (_lock)
         {
             var (lat, lon) = _toLatLon(EastM, NorthM);
-            return new AiPose(lat, lon, GroundFt + HeightFt, 0, 0, HeadingDeg, OdometerM, CurvaturePerM);
+            return new AiPose(lat, lon, GroundFt + HeightFt, 0, 0, HeadingDeg, Vars());
+        }
+    }
+
+    /// <summary>
+    /// Z-Variablen für das Modell (docs/research/feuerwehr-fahrzeuge.md): Strecke für die Räder, Krümmung für die Lenkung, Tempo für das
+    /// Motorgeräusch, Bremslicht und Martinshorn.
+    /// </summary>
+    public AiObjectVar[] Vars()
+    {
+        lock (_lock)
+        {
+            return
+            [
+                new("L:1:DUOPILO_WEG", OdometerM, 0.001),
+                new("L:1:DUOPILO_KURVE", CurvaturePerM, 0.0002),
+                new("L:1:DUOPILO_TEMPO", SpeedMps, 0.05),
+                new("L:1:DUOPILO_BREMSE", _brakeHoldS > 0 ? 1 : 0, 0.5),
+                new("L:1:DUOPILO_SIRENE", SirenAllowed && Phase == FireVehiclePhase.Responding && SpeedMps > 0.5 ? 1 : 0, 0.5),
+            ];
         }
     }
 

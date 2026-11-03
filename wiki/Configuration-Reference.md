@@ -56,6 +56,7 @@ Only put in what you change. Example:
 | `Fire:FlfModels` | `Duopilo_FLF_Panther_Licht,Duopilo_FLF_Z8_Licht` | crash tender titles, used in turn |
 | `Fire:ElwModel`, `HlfModel`, `RtwModel`, `RtfModel` | `Duopilo_ELW_Licht` … | command car, fire engine, ambulance, rescue stairs |
 | `Fire:HeightFt` | `0` | model reference point above the ground |
+| `Fire:Siren` | `true` | siren on the way to the scene or standby (`L:1:DUOPILO_SIRENE`); `false` = blue lights only |
 | `Speech:Engine` | `auto` | `auto`, `windows`, `kokoro` |
 | `Speech:KokoroVoice` | `bm_george` | default Kokoro voice for callouts |
 | `Speech:KokoroThreads` | `2` | CPU threads for Kokoro |

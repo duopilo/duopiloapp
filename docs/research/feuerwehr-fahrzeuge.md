@@ -27,6 +27,9 @@ Die `_Licht`-Variante hat echte Lichter, die wie bei den Standard-Bodenfahrzeuge
 | Fahrlicht (Scheinwerfer) | `L:1:DUOPILO_FAHRLICHT` | 0/1 | `A:LIGHT LANDING` |
 | Räder drehen | `L:1:DUOPILO_WEG` | Strecke in m seit dem Spawn, jeden Frame | – |
 | Lenkung | `L:1:DUOPILO_KURVE` | Krümmung in 1/m, + = rechts, 0 = gerade, jeden Frame | – |
+| Motorgeräusch (geplant) | `L:1:DUOPILO_TEMPO` | Tempo in m/s (0 bis 25), jeden Frame | – |
+| Bremslicht (geplant) | `L:1:DUOPILO_BREMSE` | 0/1: bremst gerade oder hat eben gehalten | – |
+| Martinshorn (geplant) | `L:1:DUOPILO_SIRENE` | 0/1: nur auf der Anfahrt in Fahrt (`Duopilo:Fire:Siren`) | – |
 | Rettungstreppe (nur RTF) | `L:1:DUOPILO_TREPPE` | 0 bis 100 (siehe unten) | – |
 
 - Blaulicht und Fahrlicht sind unabhängig voneinander.

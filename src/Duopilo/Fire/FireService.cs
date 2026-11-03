@@ -483,7 +483,10 @@ public sealed class FireService : BackgroundService
                     continue;
                 }
 
-                var vehicle = new FireVehicle(vp.Unit, model, vp.Route, operation.Trail, graph.ToLatLon, groundFt, height);
+                var vehicle = new FireVehicle(vp.Unit, model, vp.Route, operation.Trail, graph.ToLatLon, groundFt, height)
+                {
+                    SirenAllowed = _options.Fire.Siren,
+                };
                 bool keep;
                 lock (_lock)
                 {

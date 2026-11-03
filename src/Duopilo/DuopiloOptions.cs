@@ -460,6 +460,9 @@ public sealed class FireOptions
 
     /// <summary>Bezugspunkt der Modelle über dem Boden (ft); 0 = Ursprung des Modells am Boden.</summary>
     public double HeightFt { get; set; }
+
+    /// <summary>Martinshorn auf der Anfahrt (<c>L:1:DUOPILO_SIRENE</c>); aus = nur Blaulicht.</summary>
+    public bool Siren { get; set; } = true;
 }
 
 public sealed class InputOptions

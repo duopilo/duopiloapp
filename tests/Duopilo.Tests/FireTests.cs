@@ -733,9 +733,46 @@ public sealed class FireTests
         Assert.InRange(maxRight, 0.5 / FirePlanner.CornerRadiusM(Math.PI / 2), FireVehicle.MaxCurvaturePerM);
         Assert.InRange(vehicle.CurvaturePerM, -0.005, 0.005);
 
-        var pose = vehicle.Pose();
-        Assert.Equal(vehicle.OdometerM, pose.WheelDistanceM);
-        Assert.Equal(vehicle.CurvaturePerM, pose.CurvaturePerM);
+        var vars = vehicle.Pose().Vars!.ToDictionary(v => v.Name, v => v.Value);
+        Assert.Equal(vehicle.OdometerM, vars["L:1:DUOPILO_WEG"]);
+        Assert.Equal(vehicle.CurvaturePerM, vars["L:1:DUOPILO_KURVE"]);
+        Assert.Equal(0, vars["L:1:DUOPILO_TEMPO"]);
+        Assert.Equal(0, vars["L:1:DUOPILO_SIRENE"]);
+    }
+
+    [Fact]
+    public void Martinshorn_nur_auf_der_Anfahrt_Bremslicht_beim_Langsamerwerden()
+    {
+        var route = FirePlanner.BuildPath([(0, 0), (0, 400)], FireProfile.MaxMps);
+        var vehicle = new FireVehicle(new FireUnit(FireVehicleKind.Flf, 1, FireStandbyRole.Rollout), "test", route, new FireTrail(), (e, n) => (51 + (n / 111_000), 7 + (e / 70_000)), 164);
+        var quiet = new FireVehicle(new FireUnit(FireVehicleKind.Flf, 2, FireStandbyRole.Rollout), "test", route, new FireTrail(), (e, n) => (51 + (n / 111_000), 7 + (e / 70_000)), 164)
+        {
+            SirenAllowed = false,
+        };
+
+        // Anfahren: Horn an, kein Bremslicht
+        for (var i = 0; i < 40; i++)
+        {
+            vehicle.Advance(0.05);
+            quiet.Advance(0.05);
+        }
+
+        Assert.True(vehicle.Siren);
+        Assert.False(quiet.Siren);
+        Assert.False(vehicle.Braking);
+
+        // Bremsen vor dem Haltepunkt: Bremslicht; angekommen (Standby): Horn aus
+        var braked = false;
+        for (var i = 0; i < 2000 && vehicle.Phase == FireVehiclePhase.Responding; i++)
+        {
+            vehicle.Advance(0.05);
+            braked |= vehicle.Braking;
+        }
+
+        Assert.True(braked);
+        Assert.Equal(FireVehiclePhase.Standby, vehicle.Phase);
+        Assert.False(vehicle.Siren);
+        Assert.InRange(vehicle.Vars().Single(v => v.Name == "L:1:DUOPILO_TEMPO").Value, 0, 0.01);
     }
 
     [Fact]
