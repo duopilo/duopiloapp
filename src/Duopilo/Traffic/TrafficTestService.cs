@@ -476,8 +476,6 @@ public sealed partial class TrafficTestService : IHostedService, IDisposable
     /// <summary>H1: Bezugspunkt über den Kufen, wenn der Sim nichts meldet.</summary>
     private const double DefaultHeliCgHeightFt = 5;
 
-    /// <summary>H1 auf ein Pad der Datenbank: Den gemessenen Boden nimmt es nur so nah an der Pad-Mitte (und höchstens <see cref="MaxGroundCorrectionFt"/> daneben).</summary>
-    private const double HeliGroundCheckM = 150;
 
     private readonly SimConnectClient _sim;
     private readonly TrafficConnection _traffic;
@@ -831,7 +829,8 @@ public sealed partial class TrafficTestService : IHostedService, IDisposable
                     : plan.IsHeli ? TrafficLights.HeliApproach
                     : plan.IsTaxi ? TrafficLights.Rollout : TrafficLights.Approach,
                 TaxiGraph = taxiGraph,
-                FullModel = !title.Contains("Passive", StringComparison.OrdinalIgnoreCase),
+                // Helis schalten ihre Lichter je Abschnitt selbst – kein Nachschicken alle 15 s
+                FullModel = !title.Contains("Passive", StringComparison.OrdinalIgnoreCase) && !plan.IsHeli,
                 Wake = wake,
                 Runways = runways,
                 ReleaseNm = releaseNm,
@@ -1158,7 +1157,7 @@ public sealed partial class TrafficTestService : IHostedService, IDisposable
             Math.Round(heli.PitchDeg, 1),
             Math.Round(heli.HeadingTrueDeg),
             Math.Round(heli.GroundFt, 1),
-            leg.Pad.Measured ? "measured" : "database",
+            pad.Measured ? "measured" : "database",
             Math.Round(heli.CgHeightFt, 1),
             heli.DecelFromM is { } decel ? Math.Round(decel) : null,
             Math.Round(heli.HoverSeconds, 1),
@@ -1979,14 +1978,14 @@ public sealed partial class TrafficTestService : IHostedService, IDisposable
             : leg.Pad.ElevationFt;
         var (along, _) = plan.Runway.Offsets(sample.Latitude, sample.Longitude);
         if (leg.IsDeparture && !leg.Pad.Measured && sample.AltitudeAglFt > 0
-            && Math.Abs(sample.AltitudeFt - sample.AltitudeAglFt - leg.Pad.ElevationFt) <= MaxGroundCorrectionFt)
+            && Math.Abs(sample.AltitudeFt - sample.AltitudeAglFt - leg.Pad.ElevationFt) <= HeliPads.MaxPadGroundCorrectionFt)
         {
             // Abflug vom Pad der Datenbank: steht er schon, gilt der gemessene Boden
             ground = sample.AltitudeFt - sample.AltitudeAglFt;
         }
 
         var heli = leg.IsDeparture
-            ? HeliKinematics.Departure(plan.Runway, leg.Profile, leg.StartHeightFt, plan.Spawn.HeadingTrueDeg, ground, cg, GroundPitch(sample.StaticPitchDeg))
+            ? HeliKinematics.Departure(plan.Runway, leg.Profile, leg.StartHeightFt, plan.Spawn.HeadingTrueDeg, ground, cg, GroundPitch(sample.StaticPitchDeg), HeliMission.TowerFor(leg.Pad))
             : new HeliKinematics(plan.Runway, leg.Profile, -along, leg.StartHeightFt, leg.Profile.CruiseKt, leg.Pad.HeadingDeg, ground, cg)
             {
                 GroundPitchDeg = GroundPitch(sample.StaticPitchDeg),
@@ -2064,7 +2063,7 @@ public sealed partial class TrafficTestService : IHostedService, IDisposable
             return pad.ElevationFt;
         }
 
-        return pad.Measured || (onGround && Math.Abs(measured - pad.ElevationFt) <= MaxGroundCorrectionFt) ? measured : pad.ElevationFt;
+        return pad.Measured || (onGround && Math.Abs(measured - pad.ElevationFt) <= HeliPads.MaxPadGroundCorrectionFt) ? measured : pad.ElevationFt;
     }
 
     /// <summary>H3: Einsatzflug ab dem ersten Messpunkt (<see cref="HeliMission"/>), am ersten Stopp am Boden.</summary>
@@ -2192,9 +2191,9 @@ public sealed partial class TrafficTestService : IHostedService, IDisposable
     }
 
     /// <summary>
-    /// H1: Boden unter dem Heli nachführen. Auf einen Punkt (Koordinaten) immer der gemessene – der Heli hält so seine Höhe über Grund;
-    /// auf ein Pad der Datenbank nur nahe der Pad-Mitte und höchstens <see cref="MaxGroundCorrectionFt"/> neben dessen Höhe (Dach-Pads:
-    /// gemessen wird dort womöglich der Boden unter dem Gebäude).
+    /// Heli: Boden unter dem Heli nachführen. Auf einen Punkt (Koordinaten) immer der gemessene – der Heli hält so seine Höhe über Grund;
+    /// auf ein Pad der Datenbank nur direkt über dem Pad und höchstens <see cref="HeliPads.MaxPadGroundCorrectionFt"/> neben dessen Höhe
+    /// (<see cref="HeliPads.AcceptsMeasuredGround"/>) – vor einem Dach-Pad misst er sonst die Straße.
     /// </summary>
     private static void CorrectHeliGround(TrafficTestRun run, HeliKinematics heli, AiProbeSample sample)
     {
@@ -2212,8 +2211,8 @@ public sealed partial class TrafficTestService : IHostedService, IDisposable
             return;
         }
 
-        var (along, cross) = heli.Frame.Offsets(sample.Latitude, sample.Longitude);
-        if (Math.Sqrt((along * along) + (cross * cross)) <= HeliGroundCheckM && Math.Abs(ground - pad.ElevationFt) <= MaxGroundCorrectionFt)
+        var distance = RouteMath.DistanceNm(sample.Latitude, sample.Longitude, pad.Latitude, pad.Longitude) * RunwayEnd.MetersPerNm;
+        if (HeliPads.AcceptsMeasuredGround(pad, distance, ground))
         {
             heli.GroundTargetFt = ground;
         }
