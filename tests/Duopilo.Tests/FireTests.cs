@@ -992,6 +992,7 @@ public sealed class FireTests
         Assert.True(merge.Added);
         Assert.Equal(3, merge.Sections);
         Assert.Equal(2, merge.Links);
+        Assert.Equal(0, merge.Crossings);
         Assert.Equal(4, merge.Cut);          // Zaun, außerhalb, zweimal an der Schranke
         Assert.Equal(1, merge.Dropped);      // Landseite ohne Verbindung
         Assert.Equal(3, graph.AddedRoads);
@@ -1002,6 +1003,38 @@ public sealed class FireTests
         var route = graph.Route(from, to)!;
         Assert.Contains(route, id => Math.Abs(graph.Nodes[id].NorthM - 300) < 1);
         Assert.DoesNotContain(route, id => graph.Nodes[id].NorthM > 350);
+    }
+
+    [Fact]
+    public void Betriebsstrassen_aus_OSM_kreuzen_Rollwege_und_haengen_daneben_am_Netz()
+    {
+        // Eine Straße quer über Rollweg A bei x = -500, eine zweite 15 m daneben von x = -350 bis -250; beide Enden der ersten 80 m weg
+        var graph = Graph();
+        int At(double east, double north) => graph.Nodes.Single(n => !n.IsParking && Distance(n.EastM, n.NorthM, east, north) < 0.5).Id;
+        var (a600, a400, a200) = (At(-600, 200), At(-400, 200), At(-200, 200));
+        Assert.NotNull(graph.Edge(a600, a400));
+        List<(double East, double North)> crossing = [(-500, 120), (-500, 280)];
+        List<(double East, double North)> beside = [(-350, 215), (-250, 215)];
+
+        var merge = graph.AddRoads([crossing, beside], [], 0.08);
+
+        Assert.True(merge.Added);
+        Assert.Equal(1, merge.Crossings);
+        Assert.Equal(3, merge.Links);
+        Assert.Equal(3, merge.Sections);
+
+        // A ist an der Kreuzung geteilt: ein Punkt bei -500/200 mit beiden Nachbarn auf A und der Straße nach Süden und Norden
+        var junction = At(-500, 200);
+        Assert.Equal(4, graph.EdgesOf(junction).Count);
+        Assert.Null(graph.Edge(a600, a400));
+
+        // Neben A: zweimal geteilt (bei -350 und -250), dort je eine Verbindung zur Straße
+        Assert.Null(graph.Edge(a400, a200));
+        Assert.Equal(3, graph.EdgesOf(At(-350, 200)).Count);
+        Assert.Equal(3, graph.EdgesOf(At(-250, 200)).Count);
+
+        // Vom Rollweg über die Kreuzung ans Straßenende
+        Assert.NotNull(graph.Route(a600, At(-500, 280)));
     }
 
     [Fact]

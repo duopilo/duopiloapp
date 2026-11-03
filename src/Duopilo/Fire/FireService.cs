@@ -691,6 +691,7 @@ public sealed class FireService : BackgroundService
             merge.Sections,
             Math.Round(merge.LengthM / 1000, 1),
             merge.Links,
+            merge.Crossings,
             merge.Cut,
             merge.Dropped);
     }

@@ -31,11 +31,12 @@ public sealed record TaxiEdge(int From, int To, double LengthM, int Type, string
 /// <param name="Added">Ob die Straßen ins Netz kamen (nicht, wenn zu viele auf Parkpositionen liegen).</param>
 /// <param name="Sections">Hinzugefügte Straßenabschnitte.</param>
 /// <param name="LengthM">Ihre Länge zusammen.</param>
-/// <param name="Links">Verbindungen zu Rollpunkten.</param>
+/// <param name="Links">Anschlüsse ans Rollweg-Netz (Kreuzungen und Verbindungen von Straßenpunkten daneben).</param>
+/// <param name="Crossings">Davon Kreuzungen mit einem Rollweg.</param>
 /// <param name="Dropped">Abschnitte ohne Verbindung zum Netz (Landseite, Parkplätze), weggelassen.</param>
 /// <param name="Cut">Abschnitte außerhalb des Flughafens, über einen Zaun oder an einer Schranke, weggelassen.</param>
 /// <param name="ParkingShare">Anteil der Straßenmeter mitten auf Parkpositionen.</param>
-public sealed record RoadMerge(bool Added, int Sections, double LengthM, int Links, int Dropped, int Cut, double ParkingShare);
+public sealed record RoadMerge(bool Added, int Sections, double LengthM, int Links, int Crossings, int Dropped, int Cut, double ParkingShare);
 
 /// <summary>Haltepunkt mit der Bahn, zu der er gehört.</summary>
 /// <param name="Runway">Bahn, z. B. "05R/23L".</param>
@@ -128,8 +129,11 @@ public sealed class TaxiGraph
     /// <summary>Betriebsstraßen-Abschnitte aus einer anderen Quelle (<see cref="AddRoads"/>, OpenStreetMap).</summary>
     public int AddedRoads { get; private set; }
 
-    /// <summary>Eine hinzugefügte Straße hängt am Netz, wo einer ihrer Punkte so nah an einem Rollpunkt liegt.</summary>
+    /// <summary>Eine hinzugefügte Straße hängt am Netz, wo einer ihrer Punkte so nah an einem Rollweg liegt (oder wo sie ihn kreuzt).</summary>
     public const double RoadLinkM = 20;
+
+    /// <summary>Liegt der Anschluss so nah an einem Rollpunkt (oder an einem Straßenpunkt), wird der genommen statt neu geteilt.</summary>
+    public const double RoadSnapM = 3;
 
     /// <summary>Wie <see cref="RoadLinkM"/> für Straßenenden (sie enden oft am Rand des Vorfelds).</summary>
     public const double RoadEndLinkM = 50;
@@ -782,13 +786,17 @@ public sealed class TaxiGraph
     /// <summary>
     /// Betriebsstraßen aus einer anderen Quelle ins Netz (OpenStreetMap, für die Feuerwehr, wenn die Szenerie keine Fahrwege hat):
     /// Linienzüge in Metern; gleiche Punkte verschiedener Linien werden Kreuzungen. An <paramref name="cuts"/> (Schranken und Tore)
-    /// endet eine Straße – dort geht es meist von der Luft- auf die Landseite. Eine Straße hängt am Netz, wo einer ihrer Punkte höchstens
-    /// <see cref="RoadLinkM"/> (Straßenende <see cref="RoadEndLinkM"/>) neben einem Rollpunkt liegt, der nicht nur an einer Bahn hängt,
-    /// und die Verbindung durch kein Gebäude und keinen Zaun führt. Straßenteile ohne eine solche Verbindung fallen weg (Landseite,
-    /// Parkplätze). Die Landseite trennen außerdem: <paramref name="fences"/> (Zäune und Mauern: Abschnitte darüber fallen weg) und
-    /// <paramref name="boundary"/> (Flughafen-Umriss: Abschnitte, deren Mitte draußen liegt, fallen weg). Liegen mehr als
-    /// <paramref name="maxParkingShare"/> der Straßenmeter mitten auf Parkpositionen, passt die Quelle nicht zur Szenerie (anderer
-    /// Ausbaustand, verschoben): dann kommt nichts dazu. Abschnitte und Verbindungen sind Straßen (Typ 7).
+    /// endet eine Straße – dort geht es meist von der Luft- auf die Landseite. Die Landseite trennen außerdem
+    /// <paramref name="fences"/> (Zäune und Mauern: Abschnitte darüber fallen weg) und <paramref name="boundary"/> (Flughafen-Umriss:
+    /// Abschnitte, deren Mitte draußen liegt, fallen weg).
+    /// <para>
+    /// Anschluss ans Netz: Wo eine Straße einen Rollweg kreuzt, bekommen beide dort einen gemeinsamen Punkt; ein Straßenpunkt höchstens
+    /// <see cref="RoadLinkM"/> (Straßenende <see cref="RoadEndLinkM"/>) neben einem Rollweg wird mit dem nächsten Punkt des Rollwegs
+    /// verbunden, wenn kein Gebäude und kein Zaun dazwischen ist. Der Rollweg wird dafür geteilt (bis <see cref="RoadSnapM"/> an einem
+    /// Rollpunkt: dieser). Nie an Bahnen und Zufahrten zu Parkpositionen. Straßenteile ohne Anschluss fallen weg (Landseite, Parkplätze).
+    /// </para>
+    /// Liegen mehr als <paramref name="maxParkingShare"/> der Straßenmeter mitten auf Parkpositionen, passt die Quelle nicht zur Szenerie
+    /// (anderer Ausbaustand, verschoben): dann kommt nichts dazu. Abschnitte und Verbindungen sind Straßen (Typ 7).
     /// </summary>
     public RoadMerge AddRoads(
         IEnumerable<IReadOnlyList<(double East, double North)>> lines,
@@ -802,7 +810,7 @@ public sealed class TaxiGraph
         bool Outside(double x, double y) => areas.Count > 0 && !areas.Any(a => Inside(a, x, y));
         var cut = 0;
 
-        // Punkte und Abschnitte; an Schranken, Zäunen und am Flughafen-Umriss getrennt
+        // 1. Punkte und Abschnitte; an Schranken, Zäunen und am Flughafen-Umriss getrennt
         var cutKeys = cuts.Select(c => VertexKey(c.East, c.North)).ToHashSet();
         var vertices = new List<(double East, double North)>();
         var index = new Dictionary<(long, long), int>();
@@ -821,58 +829,158 @@ public sealed class TaxiGraph
         }
 
         static bool Far((double East, double North) p) => Math.Abs(p.East) > 6000 || Math.Abs(p.North) > 6000;
+        static double Length((double East, double North) a, (double East, double North) b) =>
+            Math.Sqrt(((b.East - a.East) * (b.East - a.East)) + ((b.North - a.North) * (b.North - a.North)));
 
         foreach (var line in lines)
         {
             for (var i = 0; i + 1 < line.Count; i++)
             {
                 var (a, b) = (line[i], line[i + 1]);
-                var length = Math.Sqrt(((b.East - a.East) * (b.East - a.East)) + ((b.North - a.North) * (b.North - a.North)));
+                var length = Length(a, b);
                 if (Far(a) || Far(b) || length < 0.1 || length > MaxAddedRoadSegmentM)
                 {
                     continue;
                 }
 
-                if (cutKeys.Contains(VertexKey(a.East, a.North)) || cutKeys.Contains(VertexKey(b.East, b.North)))
-                {
-                    cut++;
-                    continue;
-                }
-
-                if (Outside((a.East + b.East) / 2, (a.North + b.North) / 2) || CrossesWall(walls, a.East, a.North, b.East, b.North))
+                if (cutKeys.Contains(VertexKey(a.East, a.North)) || cutKeys.Contains(VertexKey(b.East, b.North)) ||
+                    Outside((a.East + b.East) / 2, (a.North + b.North) / 2) || CrossesWall(walls, a.East, a.North, b.East, b.North))
                 {
                     cut++;
                     continue;
                 }
 
                 var (va, vb) = (Vertex(a), Vertex(b));
-                segments.Add(va < vb ? (va, vb) : (vb, va));
+                if (va != vb)
+                {
+                    segments.Add(va < vb ? (va, vb) : (vb, va));
+                }
             }
         }
 
-        // Verbindungen zum Netz
-        var degree = new int[vertices.Count];
+        var roadVertices = vertices.Count;
+        var degree = new int[roadVertices];
         foreach (var (a, b) in segments)
         {
             degree[a]++;
             degree[b]++;
         }
 
-        var anchors = _nodes.Where(n => !n.IsParking && _adjacency[n.Id].Any(e => e.Type != 2)).ToList();
-        var links = new List<(int Vertex, int Node, double LengthM)>();
-        for (var v = 0; v < vertices.Count && anchors.Count > 0; v++)
+        // 2. Rollwege, an die Straßen anschließen dürfen: keine Bahnen, keine Zufahrten zu Parkpositionen
+        var targets = _edges
+            .Where(e => e.Type is 1 or 4 or 6 or 7 && !_nodes[e.From].IsParking && !_nodes[e.To].IsParking)
+            .Select(e => (Edge: e, A: _nodes[e.From], B: _nodes[e.To]))
+            .ToList();
+        var splits = new Dictionary<TaxiEdge, List<(double U, int Vertex)>>();
+        var atNode = new Dictionary<int, int>();
+        var attached = new HashSet<int>();
+        void Attach(int v, TaxiEdge edge, double u)
         {
-            var (e, n) = vertices[v];
-            var nearest = anchors.MinBy(a => ((a.EastM - e) * (a.EastM - e)) + ((a.NorthM - n) * (a.NorthM - n)))!;
-            var distance = Math.Sqrt(((nearest.EastM - e) * (nearest.EastM - e)) + ((nearest.NorthM - n) * (nearest.NorthM - n)));
-            if ((distance <= RoadLinkM || (degree[v] == 1 && distance <= RoadEndLinkM)) && !CrossesBuilding(e, n, nearest.EastM, nearest.NorthM) &&
-                !CrossesWall(walls, e, n, nearest.EastM, nearest.NorthM))
+            attached.Add(v);
+            var length = Distance(_nodes[edge.From], _nodes[edge.To]);
+            if (u * length <= RoadSnapM)
             {
-                links.Add((v, nearest.Id, distance));
+                atNode.TryAdd(v, edge.From);
+            }
+            else if ((1 - u) * length <= RoadSnapM)
+            {
+                atNode.TryAdd(v, edge.To);
+            }
+            else
+            {
+                if (!splits.TryGetValue(edge, out var list))
+                {
+                    splits[edge] = list = [];
+                }
+
+                list.Add((u, v));
             }
         }
 
-        // Nur Straßenteile mit Verbindung
+        // 3. Kreuzungen: Straße und Rollweg bekommen einen gemeinsamen Punkt
+        var pieces = new Dictionary<(int A, int B), List<(double T, int Vertex)>>();
+        var crossings = 0;
+        foreach (var (a, b) in segments)
+        {
+            var (pa, pb) = (vertices[a], vertices[b]);
+            var roadLength = Length(pa, pb);
+            var (minE, maxE, minN, maxN) = (Math.Min(pa.East, pb.East), Math.Max(pa.East, pb.East), Math.Min(pa.North, pb.North), Math.Max(pa.North, pb.North));
+            foreach (var (edge, na, nb) in targets)
+            {
+                if (Math.Max(na.EastM, nb.EastM) < minE || Math.Min(na.EastM, nb.EastM) > maxE ||
+                    Math.Max(na.NorthM, nb.NorthM) < minN || Math.Min(na.NorthM, nb.NorthM) > maxN ||
+                    SegmentHit(pa.East, pa.North, pb.East, pb.North, na.EastM, na.NorthM, nb.EastM, nb.NorthM) is not { } hit)
+                {
+                    continue;
+                }
+
+                var v = hit.T * roadLength <= RoadSnapM ? a
+                    : (1 - hit.T) * roadLength <= RoadSnapM ? b
+                    : Vertex((pa.East + ((pb.East - pa.East) * hit.T), pa.North + ((pb.North - pa.North) * hit.T)));
+                if (v != a && v != b)
+                {
+                    if (!pieces.TryGetValue((a, b), out var list))
+                    {
+                        pieces[(a, b)] = list = [];
+                    }
+
+                    list.Add((hit.T, v));
+                }
+
+                Attach(v, edge, hit.U);
+                crossings++;
+            }
+        }
+
+        // 4. Straßenpunkte neben einem Rollweg (parallel, Straßenende am Vorfeldrand): Verbindung zum nächsten Punkt des Rollwegs
+        var links = new List<(int A, int B)>();
+        for (var v = 0; v < roadVertices && targets.Count > 0; v++)
+        {
+            if (attached.Contains(v) || degree[v] == 0)
+            {
+                continue;
+            }
+
+            var (e, n) = vertices[v];
+            var best = targets.Select(t => (t.Edge, Hit: Project(e, n, t.A, t.B))).MinBy(x => x.Hit.DistanceM);
+            if (best.Hit.DistanceM > (degree[v] == 1 ? RoadEndLinkM : RoadLinkM) ||
+                CrossesBuilding(e, n, best.Hit.East, best.Hit.North) || CrossesWall(walls, e, n, best.Hit.East, best.Hit.North))
+            {
+                continue;
+            }
+
+            var q = best.Hit.DistanceM < 0.5 ? v : Vertex((best.Hit.East, best.Hit.North));
+            if (q != v)
+            {
+                links.Add(v < q ? (v, q) : (q, v));
+            }
+
+            Attach(q, best.Edge, best.Hit.U);
+        }
+
+        // 5. Straßen an den Kreuzungen teilen
+        var roads = new List<(int A, int B)>();
+        foreach (var (a, b) in segments)
+        {
+            if (!pieces.TryGetValue((a, b), out var list))
+            {
+                roads.Add((a, b));
+                continue;
+            }
+
+            var chain = new List<int> { a };
+            chain.AddRange(list.OrderBy(p => p.T).Select(p => p.Vertex));
+            chain.Add(b);
+            for (var i = 0; i + 1 < chain.Count; i++)
+            {
+                if (chain[i] != chain[i + 1])
+                {
+                    roads.Add((chain[i], chain[i + 1]));
+                }
+            }
+        }
+
+        // 6. Nur Straßenteile mit Anschluss
         var parent = Enumerable.Range(0, vertices.Count).ToArray();
         int Find(int x)
         {
@@ -885,16 +993,16 @@ public sealed class TaxiGraph
             return x;
         }
 
-        foreach (var (a, b) in segments)
+        foreach (var (a, b) in roads.Concat(links))
         {
             parent[Find(a)] = Find(b);
         }
 
-        var linked = links.Select(l => Find(l.Vertex)).ToHashSet();
-        var kept = segments.Where(s => linked.Contains(Find(s.A))).ToList();
-        var dropped = segments.Count - kept.Count;
+        var linked = attached.Select(Find).ToHashSet();
+        var kept = roads.Where(s => linked.Contains(Find(s.A))).ToList();
+        var dropped = roads.Count - kept.Count;
 
-        // Passt es zur Szenerie? Straßen mitten über Parkpositionen (ohne Fahrzeugstellplätze) sprechen dagegen
+        // 7. Passt es zur Szenerie? Straßen mitten über Parkpositionen (ohne Fahrzeugstellplätze) sprechen dagegen
         var cores = _nodes
             .Where(p => p.Parking is { Type: not 13 })
             .Select(p => (p.EastM, p.NorthM, R: Math.Max(5, p.Parking!.RadiusM * ParkingCoreShare)))
@@ -903,7 +1011,7 @@ public sealed class TaxiGraph
         foreach (var (a, b) in kept)
         {
             var (pa, pb) = (vertices[a], vertices[b]);
-            var steps = Math.Max(1, (int)(Math.Sqrt(((pb.East - pa.East) * (pb.East - pa.East)) + ((pb.North - pa.North) * (pb.North - pa.North))) / 10));
+            var steps = Math.Max(1, (int)(Length(pa, pb) / 10));
             for (var i = 0; i < steps; i++)
             {
                 var f = (i + 0.5) / steps;
@@ -919,13 +1027,18 @@ public sealed class TaxiGraph
         var parkingShare = samples == 0 ? 0 : onParking / (double)samples;
         if (parkingShare > maxParkingShare)
         {
-            return new RoadMerge(false, 0, 0, 0, dropped, cut, parkingShare);
+            return new RoadMerge(false, 0, 0, 0, 0, dropped, cut, parkingShare);
         }
 
-        // Ins Netz
+        // 8. Ins Netz: Straßenpunkte als Rollpunkte, die Rollwege an den Anschlüssen geteilt
         var nodeOf = new Dictionary<int, int>();
         int NodeOf(int v)
         {
+            if (atNode.TryGetValue(v, out var existing))
+            {
+                return existing;
+            }
+
             if (!nodeOf.TryGetValue(v, out var id))
             {
                 id = _nodes.Count;
@@ -936,23 +1049,70 @@ public sealed class TaxiGraph
             return id;
         }
 
+        foreach (var (edge, list) in splits)
+        {
+            var chain = new List<int> { edge.From };
+            chain.AddRange(list.OrderBy(s => s.U).Select(s => NodeOf(s.Vertex)));
+            chain.Add(edge.To);
+            RemoveEdge(edge);
+            for (var i = 0; i + 1 < chain.Count; i++)
+            {
+                if (chain[i] != chain[i + 1])
+                {
+                    AddEdge(edge with { From = chain[i], To = chain[i + 1], LengthM = Distance(_nodes[chain[i]], _nodes[chain[i + 1]]) });
+                }
+            }
+        }
+
         var total = 0.0;
-        foreach (var (a, b) in kept)
+        foreach (var (a, b) in kept.Concat(links.Where(l => linked.Contains(Find(l.A)))))
         {
             var (na, nb) = (NodeOf(a), NodeOf(b));
+            if (na == nb)
+            {
+                continue;
+            }
+
             var edge = new TaxiEdge(na, nb, Distance(_nodes[na], _nodes[nb]), 7, "", 6, null, RunwayShareOf(_nodes[na], _nodes[nb]));
             AddEdge(edge);
             total += edge.LengthM;
         }
 
-        foreach (var (v, node, length) in links)
-        {
-            AddEdge(new TaxiEdge(NodeOf(v), node, length, 7, "", 6, null));
-        }
-
         AddedRoads += kept.Count;
         RefreshBlocked();
-        return new RoadMerge(true, kept.Count, total, links.Count, dropped, cut, parkingShare);
+        return new RoadMerge(true, kept.Count, total, attached.Count, crossings, dropped, cut, parkingShare);
+    }
+
+    private void RemoveEdge(TaxiEdge edge)
+    {
+        _edges.Remove(edge);
+        _adjacency[edge.From].Remove(edge);
+        _adjacency[edge.To].Remove(edge);
+    }
+
+    /// <summary>Nächster Punkt der Strecke A–B zu (x, y): Abstand, Anteil U entlang A→B und Lage.</summary>
+    private static (double DistanceM, double U, double East, double North) Project(double x, double y, TaxiNode a, TaxiNode b)
+    {
+        var (dx, dy) = (b.EastM - a.EastM, b.NorthM - a.NorthM);
+        var lengthSq = (dx * dx) + (dy * dy);
+        var u = lengthSq < 1e-9 ? 0 : Math.Clamp((((x - a.EastM) * dx) + ((y - a.NorthM) * dy)) / lengthSq, 0, 1);
+        var (px, py) = (a.EastM + (dx * u), a.NorthM + (dy * u));
+        return (Math.Sqrt(((x - px) * (x - px)) + ((y - py) * (y - py))), u, px, py);
+    }
+
+    /// <summary>Schnitt der Strecken p→q und r→s: Anteile T entlang p→q und U entlang r→s, sonst null.</summary>
+    private static (double T, double U)? SegmentHit(double px, double py, double qx, double qy, double rx, double ry, double sx, double sy)
+    {
+        var (dx, dy, ex, ey) = (qx - px, qy - py, sx - rx, sy - ry);
+        var denominator = (dx * ey) - (dy * ex);
+        if (Math.Abs(denominator) < 1e-12)
+        {
+            return null;
+        }
+
+        var t = (((rx - px) * ey) - ((ry - py) * ex)) / denominator;
+        var u = (((rx - px) * dy) - ((ry - py) * dx)) / denominator;
+        return t is >= 0 and <= 1 && u is >= 0 and <= 1 ? (t, u) : null;
     }
 
     /// <summary>Zaun-Strecken mit Rahmen (schnelles Aussortieren).</summary>
