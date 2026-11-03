@@ -58,6 +58,12 @@ im Sim ist offen. Planung: [Feuerwehr-Einsätze](feuerwehr-einsaetze.md) (PR #13
 Noch nicht gebaut: Bahnsperre und Schließung für den eigenen Verkehr, ATC-Meldungen der Feuerwehr, Hochstufen von Pan Pan auf
 Mayday (mehr Fahrzeuge), heiße Bremsen und Startabbruch als Auslöser, Notfälle der eigenen KI, Effekte.
 
+## Test ohne MCP-Client
+
+`tools\feuerwehr.ps1` spricht die lokale Schnittstelle `/fire` an (nur von diesem Rechner, kein Token):
+`.\feuerwehr.ps1 -Parking B9 -Watch`, `-Level ground`, `-Level full -Runway 23L`, `-Level local -Tail DUO01`, `-Cancel`,
+`-Reset`, ohne Schalter der Stand. Heruntergeladen ggf. vorher `Unblock-File .\feuerwehr.ps1`.
+
 ## Test im Sim
 
 Voraussetzung: Paket `duopilo-fire` mit den `_Licht`-Varianten im Community-Ordner, Duopilo aus diesem Branch.

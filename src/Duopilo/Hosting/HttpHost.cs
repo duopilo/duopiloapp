@@ -108,6 +108,12 @@ public static class HttpHost
         app.MapGet("/traffic-test/models", async (Duopilo.Traffic.TrafficTestService tests, string? filter, int? limit, bool? approved, bool? approvalList, CancellationToken ct) =>
             JsonText(await TrafficTestTools.Models(tests, filter, limit ?? TrafficTestTools.DefaultModelLimit, approved ?? false, approvalList ?? false, ct))).LocalOnly();
 
+        // Flughafenfeuerwehr (wie fire_service) – nur lokal, zum Testen ohne MCP-Client (feuerwehr.ps1):
+        // GET /fire = Stand; POST /fire/alert?parking=B9&airport=EDDL, /fire/cancel, /fire/reset
+        app.MapGet("/fire", (Duopilo.Fire.FireService fire) => Utf8Json(FireTools.Fire(fire))).LocalOnly();
+        app.MapPost("/fire/{action}", (Duopilo.Fire.FireService fire, string action, string? level, string? airport, string? runway, string? tail, string? parking) =>
+            Utf8Json(FireTools.Fire(fire, action, level, airport, runway, tail, parking))).LocalOnly();
+
         if (remote.OAuthEnabled)
         {
             app.MapOAuth();
@@ -119,6 +125,9 @@ public static class HttpHost
     }
 
     private static IResult JsonText(string json) => Results.Content(json, "application/json");
+
+    /// <summary>JSON mit ausdrücklichem UTF-8 (Windows PowerShell 5.1 liest sonst Umlaute wie „Düsseldorf“ falsch).</summary>
+    private static IResult Utf8Json(string json) => Results.Content(json, "application/json; charset=utf-8");
 
     internal static RouteHandlerBuilder LocalOnly(this RouteHandlerBuilder builder) =>
         builder.AddEndpointFilter(async (context, next) =>
