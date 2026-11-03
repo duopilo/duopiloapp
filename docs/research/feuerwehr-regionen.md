@@ -42,8 +42,11 @@ Die Angaben zu Farben und Rufzeichen sind typisch, nicht überall gleich. Sie we
 - **Keine Herstellernamen:** „Panther“ (Rosenbauer) und „Z8“ (Ziegler) sind Produktnamen. Die SimObjects bekommen neutrale Namen,
   etwa `Duopilo_FLF_Rund_Licht` und `Duopilo_FLF_Eckig_Licht`; Duopilo stellt die Voreinstellung `Fire:FlfModels` gleichzeitig
   um. Logos haben die Modelle schon keine.
-- **Sounds nur synthetisch oder CC0**, mit Quellenliste im Paket. Die ersten Töne erzeugt ein Python-Skript
-  (`Duopilo-Modelle\Sounds\sounds_erzeugen.py`): Folgetonhorn, Wail, Yelp, Hi-Lo und ein Dieselmotor als Schleife.
+- **Sounds mit klarer Lizenz**, mit Quellenliste im Paket (`Duopilo-Modelle\Sounds\QUELLEN.txt`). Wail, Yelp, Hi-Lo und zwei
+  Dieselmotoren sind synthetisch (`sounds_erzeugen.py`, CC0). Das synthetische Folgetonhorn klang zu künstlich; das Horn kommt aus
+  MuseScore (`folgetonhorn.mid`, Horn und Trompete übereinander, Soundfont MS Basic) und wird mit `folgeton_aus_aufnahme.py` zur
+  rauen Schleife. MS Basic steht laut Lizenzdatei im MuseScore-Repo unter MIT: Den Lizenztext vor der Veröffentlichung wörtlich in
+  `QUELLEN.txt` übernehmen.
 - **Paket mit ausliefern:** `duopilo-fire` wird bisher lokal aus Blender gebaut. Für ein Release braucht es eine Version im
   Manifest, einen Download oder Installer-Schritt und eine Prüfung in Duopilo, ob die passende Version im Community-Ordner liegt
   (sonst Hinweis statt stummer Fehlversuche beim Spawnen).
