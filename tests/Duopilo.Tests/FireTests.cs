@@ -939,4 +939,25 @@ public sealed class FireTests
         graph.SetBuildings([new List<(double East, double North)> { (-900, 180), (-100, 180), (-100, 220), (-900, 220), (-900, 180) }]);
         Assert.True(graph.BuildingOverlap().TaxiShare > 0.02);
     }
+
+    [Fact]
+    public void Plaetze_am_Gate_ohne_Gebaeude_und_ohne_Doppelbelegung()
+    {
+        // Alle Plätze am Gate liegen mindestens 10 m auseinander
+        const double u = 30;
+        var units = FireCategory.Lineup(FireAlertLevel.FullEmergency, 9);
+        var posts = units.Select(unit => FireOperation.StandPost(unit, u)).ToList();
+        for (var a = 0; a < posts.Count; a++)
+        {
+            for (var b = a + 1; b < posts.Count; b++)
+            {
+                Assert.True(Distance(posts[a].X, posts[a].Y, posts[b].X, posts[b].Y) >= 10, units[a].Name + " und " + units[b].Name);
+            }
+        }
+
+        // Ausweichplätze: der geplante zuerst, am Gate nie vor die Nase links
+        var candidates = FireOperation.PostCandidates(FireOperation.StandPost(units[0], u), u, atStand: true).ToList();
+        Assert.Equal(FireOperation.StandPost(units[0], u), candidates[0]);
+        Assert.DoesNotContain(candidates, c => c.X > 0 && c.Y < 0);
+    }
 }

@@ -1536,6 +1536,8 @@
   "log.fire.network": "Fire service network at {airport}: {nodes} points, {roads} service road sections",
   "log.fire.ignoringObstacles": "Fire service at {airport}: no route around the parked aircraft ({blocked} sections blocked) – planning without them",
   "log.fire.buildingsMismatch": "Fire service at {airport}: the OpenStreetMap buildings do not fit this scenery ({parkings} % of the parking spots and {taxi} % of the taxiways inside buildings) – no buildings as obstacles",
+  "log.fire.post": "Fire service {unit}: post {x}/{y} m at the aircraft ({how}, {mode})",
+  "log.fire.scene": "Fire service scene: parking {parking} at {lat}/{lon}, heading {heading}°",
   "log.fire.osmCacheFailed": "Fire station cache {file} could not be read or written: {error}",
   "tools.followMe.noVehicle": "All follow-me vehicles at {airport} are on their way ({count} at most at the same time)."
 }

@@ -449,7 +449,12 @@ public sealed class FireService : BackgroundService
                     ?? throw new FireUnavailableException(Loc.T("tools.fire.noRouteToRunway", airport, end.Designation));
             }
 
-            var operation = new FireOperation(graph, run.Level, plan, wake, category);
+            var operation = new FireOperation(graph, run.Level, plan, wake, category, _log);
+            if (place is { } scene)
+            {
+                var (sceneLat, sceneLon) = graph.ToLatLon(scene.EastM, scene.NorthM);
+                _log.LogInformation(Loc.Log("log.fire.scene"), run.TargetParking, Math.Round(sceneLat, 6), Math.Round(sceneLon, 6), Math.Round(scene.HeadingDeg));
+            }
             lock (_lock)
             {
                 if (!ReferenceEquals(_run, run) || ct.IsCancellationRequested)

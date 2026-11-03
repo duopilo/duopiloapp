@@ -1,3 +1,4 @@
+using Duopilo.Localization;
 using Duopilo.Traffic;
 
 namespace Duopilo.Fire;
@@ -55,8 +56,17 @@ public sealed class FireOperation
     /// <summary>So weit vor einem Gebäude hält ein Fahrzeug, wenn sein gerader Weg zum Platz hineinführen würde.</summary>
     public const double BuildingClearM = 5;
 
-    public FireOperation(TaxiGraph graph, FireAlertLevel level, FireDispatchPlan plan, TrafficWake wake, int category)
+    /// <summary>So weit müssen die Plätze zweier Fahrzeuge am Flugzeug mindestens auseinander liegen.</summary>
+    public const double MinPostSpacingM = 10;
+
+    // Plätze der Fahrzeuge am Flugzeug (Ost/Nord), damit keins auf ein anderes fährt
+    private readonly Dictionary<FireVehicle, (double East, double North)> _posts = [];
+
+    private readonly ILogger? _log;
+
+    public FireOperation(TaxiGraph graph, FireAlertLevel level, FireDispatchPlan plan, TrafficWake wake, int category, ILogger? log = null)
     {
+        _log = log;
         Graph = graph;
         Level = level;
         Plan = plan;
@@ -280,7 +290,7 @@ public sealed class FireOperation
             _ => (-1.4 * u, -0.6 * u),
         },
         FireVehicleKind.Elw => (-2.1 * u, 0),
-        FireVehicleKind.Hlf => (-0.9 * u, 1.6 * u),
+        FireVehicleKind.Hlf => (-1.9 * u, 1.5 * u),
         FireVehicleKind.Rtf => unit.Number == 1 ? (0.45 * u, 1.35 * u) : (-0.9 * u, 1.4 * u),
         _ => (-2.4 * u, 1.1 * u),
     };
@@ -440,38 +450,76 @@ public sealed class FireOperation
         var atStand = Plan.Stand is not null;
         var post = atStand ? StandPost(vehicle.Unit, u) : Post(vehicle.Unit, u);
         var from = ToAircraft(aircraft, vehicle.EastM, vehicle.NorthM);
-        var local = DetourPoints(from, post, u, atStand).Select(p => ToLocal(aircraft, p.X, p.Y)).ToList();
+
         // Geradeaus (auch über Gras, wie echte Löschfahrzeuge), nur von weit weg und nicht von derselben Bahn über die Rollwege
         var sameRunway = Graph.RunwayAt(vehicle.EastM, vehicle.NorthM) is { } on && ReferenceEquals(on, Graph.RunwayAt(aircraft.EastM, aircraft.NorthM));
         var far = !sameRunway && FirePlanner.Distance(vehicle.EastM, vehicle.NorthM, aircraft.EastM, aircraft.NorthM) > PositionRouteM;
-        var offNetwork = 0;
-        if (far && FirePlanner.RouteBetween(Graph, vehicle.EastM, vehicle.NorthM, local[^1].East, local[^1].North) is { } route)
-        {
-            // Von weit weg (z. B. vom Haltepunkt am Bahnende) über die Rollwege, die letzten Meter wie geplant
-            route.RemoveAt(route.Count - 1);
-            local = [.. route, .. local.Skip(Math.Max(1, local.Count - 2))];
-            offNetwork = route.Count - 1;
-        }
+        _posts.Remove(vehicle);
 
-        // Führt das gerade Stück abseits des Netzes durch ein Gebäude (Terminal, Halle, Fluggastbrücke), hält das Fahrzeug davor
-        var straight = local.Skip(offNetwork).ToList();
-        if (Graph.FirstBuildingHitM(straight) is { } hit)
+        // Der geplante Platz, sonst ein Ausweichplatz: keiner durch ein Gebäude, keiner auf einem anderen Fahrzeug (Test EDDL B9, 03.11.:
+        // zwei FLF hielten vor demselben Gebäude und standen ineinander)
+        List<(double East, double North)>? chosen = null;
+        var how = "post";
+        foreach (var (candidate, index) in PostCandidates(post, u, atStand).Select((c, i) => (c, i)))
         {
-            var before = FirePlanner.CutAt(straight, Math.Max(0, hit - BuildingClearM));
-            local = [.. local.Take(offNetwork), .. before];
-            if (local.Count < 2 || FirePlanner.Distance(local[0].East, local[0].North, local[^1].East, local[^1].North) < 1)
+            var local = DetourPoints(from, candidate, u, atStand).Select(p => ToLocal(aircraft, p.X, p.Y)).ToList();
+            var offNetwork = 0;
+            if (far && FirePlanner.RouteBetween(Graph, vehicle.EastM, vehicle.NorthM, local[^1].East, local[^1].North) is { } route)
             {
-                // Schon am Gebäude: stehen bleiben, nur zum Flugzeug drehen
-                var (dx, dy) = (aircraft.EastM - vehicle.EastM, aircraft.NorthM - vehicle.NorthM);
-                var length = Math.Max(0.1, Math.Sqrt((dx * dx) + (dy * dy)));
-                local = [(vehicle.EastM, vehicle.NorthM), (vehicle.EastM + (dx / length * 0.5), vehicle.NorthM + (dy / length * 0.5))];
+                // Von weit weg (z. B. vom Haltepunkt am Bahnende) über die Rollwege, die letzten Meter wie geplant
+                route.RemoveAt(route.Count - 1);
+                local = [.. route, .. local.Skip(Math.Max(1, local.Count - 2))];
+                offNetwork = route.Count - 1;
             }
+
+            var end = local[^1];
+            if (_posts.Values.Any(p => FirePlanner.Distance(p.East, p.North, end.East, end.North) < Math.Min(MinPostSpacingM, 0.35 * u))
+                || Graph.FirstBuildingHitM([.. local.Skip(offNetwork)]) is not null)
+            {
+                continue;
+            }
+
+            chosen = local;
+            how = index == 0 ? "post" : "alternative";
+            post = candidate;
+            break;
         }
 
-        var (pe, pn) = local[^1];
+        if (chosen is null)
+        {
+            // Kein freier Platz: stehen bleiben (am Ende der Anfahrt, in der Kolonne), nur zum Flugzeug drehen
+            var (dx, dy) = (aircraft.EastM - vehicle.EastM, aircraft.NorthM - vehicle.NorthM);
+            var length = Math.Max(0.1, Math.Sqrt((dx * dx) + (dy * dy)));
+            chosen = [(vehicle.EastM, vehicle.NorthM), (vehicle.EastM + (dx / length * 0.5), vehicle.NorthM + (dy / length * 0.5))];
+            how = "stay";
+            post = ToAircraft(aircraft, vehicle.EastM, vehicle.NorthM);
+        }
+
+        _posts[vehicle] = chosen[^1];
+        _log?.LogInformation(Loc.Log("log.fire.post"), vehicle.Unit.Name, Math.Round(post.X), Math.Round(post.Y), how, atStand ? "stand" : "open");
+        var (pe, pn) = chosen[^1];
         var heading = TaxiPath.Heading(aircraft.EastM - pe, aircraft.NorthM - pn);
-        var path = FirePlanner.BuildPath(local, FireProfile.MaxMps);
+        var path = FirePlanner.BuildPath(chosen, FireProfile.MaxMps);
         vehicle.Drive(path, FireVehiclePhase.Positioning, FireVehiclePhase.AtAircraft, path.LengthM > 200 ? FireProfile.MaxMps : FireProfile.PositionMps, heading);
+    }
+
+    /// <summary>
+    /// Plätze zur Auswahl, der geplante zuerst: weiter hinten, weiter außen, noch weiter hinten, die andere Seite (am Gate nur hinter
+    /// dem Flügel) und zuletzt schräg hinter dem Heck.
+    /// </summary>
+    public static IEnumerable<(double X, double Y)> PostCandidates((double X, double Y) post, double u, bool atStand)
+    {
+        yield return post;
+        yield return (post.X - (0.5 * u), post.Y);
+        yield return (post.X, post.Y * 1.35);
+        yield return (post.X - u, post.Y);
+        if (!atStand || post.X < 0)
+        {
+            yield return (post.X, -post.Y);
+        }
+
+        yield return (post.X - (1.5 * u), post.Y * 0.5);
+        yield return (post.X - (1.5 * u), -post.Y * 0.5);
     }
 
     /// <summary>
@@ -480,6 +528,7 @@ public sealed class FireOperation
     /// </summary>
     private void SendBack(FireVehicle vehicle)
     {
+        _posts.Remove(vehicle);
         var station = Plan.Vehicles.FirstOrDefault(v => v.Unit == vehicle.Unit)?.Station;
         var points = station?.Parking is { } parking
             ? FirePlanner.RouteToNode(Graph, vehicle.EastM, vehicle.NorthM, parking)
