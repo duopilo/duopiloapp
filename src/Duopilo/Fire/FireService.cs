@@ -505,6 +505,11 @@ public sealed class FireService : BackgroundService
                     try
                     {
                         objectId = await _sim.CreateSimulatedObjectAsync(title, null, new AiInitPosition(spawnLat, spawnLon, groundFt + height, heading, true, 0), ct);
+                        if (LegacyTitles.ContainsKey(title))
+                        {
+                            _missingTitles.Clear();
+                        }
+
                         model = title;
                         failure = null;
                         break;
@@ -1054,13 +1059,26 @@ public sealed class FireService : BackgroundService
         ["Duopilo_FLF_Eckig_Licht"] = "Duopilo_FLF_Z8_Licht",
     };
 
-    // Neue Titel, die es in dieser Sitzung nicht gab; nur PrepareAsync liest und schreibt, ein Einsatz nach dem anderen
+    // Neue Titel, die es mit dem installierten Paket nicht gab; gilt bis MSFS neu verbunden ist (danach kann das Paket neu sein).
+    // Nur PrepareAsync liest und schreibt, ein Einsatz nach dem anderen.
     private readonly HashSet<string> _missingTitles = new(StringComparer.OrdinalIgnoreCase);
+    private DateTimeOffset? _missingTitlesFor;
 
-    /// <summary>Titel zum Spawnen in dieser Reihenfolge: der eingestellte (außer er fehlte schon), dann der alte.</summary>
+    /// <summary>
+    /// Titel zum Spawnen in dieser Reihenfolge: der eingestellte (außer er fehlte schon), dann der alte, und fehlte der eingestellte,
+    /// zuletzt doch noch er. Nach einem Neustart von MSFS (neu gebautes Paket) zählt nichts mehr als fehlend (Test 03.11.: nach dem
+    /// Umbenennen fehlten die alten Titel, die neuen wurden aus der Zeit davor übersprungen).
+    /// </summary>
     private IEnumerable<string> Titles(string model)
     {
-        if (!_missingTitles.Contains(model))
+        if (_missingTitlesFor != _sim.Connection.SinceUtc)
+        {
+            _missingTitles.Clear();
+            _missingTitlesFor = _sim.Connection.SinceUtc;
+        }
+
+        var missing = _missingTitles.Contains(model);
+        if (!missing)
         {
             yield return model;
         }
@@ -1068,6 +1086,11 @@ public sealed class FireService : BackgroundService
         if (LegacyTitles.TryGetValue(model, out var legacy))
         {
             yield return legacy;
+        }
+
+        if (missing)
+        {
+            yield return model;
         }
     }
 
