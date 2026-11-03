@@ -744,7 +744,7 @@ public sealed class FireTests
         // Ein geparktes Flugzeug 20 m neben P1 sperrt die Zufahrt; am Einsatzort P1 ist es kein Hindernis mehr, weiter weg schon
         var graph = Graph();
         var (lat, lon) = graph.ToLatLon(100, 290);
-        var (farLat, farLon) = graph.ToLatLon(-600, 230);
+        var (farLat, farLon) = graph.ToLatLon(-600, 215);
         graph.SetObstacles([(lat, lon), (farLat, farLon)], 30);
         var blocked = graph.BlockedEdges;
         Assert.True(blocked > 0);
