@@ -972,4 +972,80 @@ public sealed class FireTests
         graph.RoadCostFactor = 0.7;
         Assert.InRange(graph.CostM(route), full * 0.7, full * 0.99);
     }
+
+    [Fact]
+    public void Betriebsstrassen_aus_OSM_nur_auf_der_Luftseite()
+    {
+        // Luftseite: Straße 100 m nördlich von Rollweg A (y = 300) mit Enden 15 m neben A bei x = ±600. Zaun bei y = 400, Flughafen bis x = 1100.
+        var graph = Graph();
+        graph.RoadCostFactor = 0.7;
+        List<(double East, double North)> airside = [(-600, 215), (-600, 300), (600, 300), (600, 215)];
+        List<(double East, double North)> overFence = [(-600, 300), (-600, 450)];            // über den Zaun
+        List<(double East, double North)> landside = [(-300, 450), (300, 450)];              // hinter dem Zaun, ohne Verbindung
+        List<(double East, double North)> outside = [(1000, 215), (1300, 215)];             // Mitte außerhalb des Flughafens
+        List<(double East, double North)> gated = [(-400, 215), (-400, 260), (-400, 290)];   // Schranke bei -400/260
+        List<(double East, double North)> fence = [(-1100, 400), (1100, 400)];
+        List<(double East, double North)> boundary = [(-1100, -100), (1100, -100), (1100, 500), (-1100, 500), (-1100, -100)];
+
+        var merge = graph.AddRoads([airside, overFence, landside, outside, gated], [(-400, 260)], 0.08, [fence], [boundary]);
+
+        Assert.True(merge.Added);
+        Assert.Equal(3, merge.Sections);
+        Assert.Equal(2, merge.Links);
+        Assert.Equal(4, merge.Cut);          // Zaun, außerhalb, zweimal an der Schranke
+        Assert.Equal(1, merge.Dropped);      // Landseite ohne Verbindung
+        Assert.Equal(3, graph.AddedRoads);
+
+        // Von A bei x = -600 nach x = 600 geht es über die Straße (Faktor 0,7) statt über den Rollweg
+        var from = graph.Nodes.Single(n => !n.IsParking && Distance(n.EastM, n.NorthM, -600, 200) < 1).Id;
+        var to = graph.Nodes.Single(n => !n.IsParking && Distance(n.EastM, n.NorthM, 600, 200) < 1).Id;
+        var route = graph.Route(from, to)!;
+        Assert.Contains(route, id => Math.Abs(graph.Nodes[id].NorthM - 300) < 1);
+        Assert.DoesNotContain(route, id => graph.Nodes[id].NorthM > 350);
+    }
+
+    [Fact]
+    public void Betriebsstrassen_aus_OSM_die_nicht_zur_Szenerie_passen_bleiben_weg()
+    {
+        // Straße mitten über Gate A5 (-200/330): zu viel davon auf der Parkposition, nichts kommt dazu
+        var graph = Graph();
+        var nodes = graph.Nodes.Count;
+        var merge = graph.AddRoads([[(-200, 215), (-200, 340)]], [], 0.05);
+
+        Assert.False(merge.Added);
+        Assert.True(merge.ParkingShare > 0.05);
+        Assert.Equal(nodes, graph.Nodes.Count);
+        Assert.Equal(0, graph.AddedRoads);
+    }
+
+    [Fact]
+    public void Overpass_mit_Strassen_Schranken_Zaeunen_und_Flughafen_Umriss()
+    {
+        // Eine Betriebsstraße, dazu Parkplatzgasse und Tunnel (bleiben weg), eine Schranke, ein Zaun und der Flughafen als Relation aus
+        // zwei Wegen (der zweite andersherum)
+        const string json = """
+            {"elements":[
+              {"type":"way","id":1,"tags":{"highway":"service","access":"private"},"geometry":[{"lat":51.001,"lon":7.000},{"lat":51.001,"lon":7.002}]},
+              {"type":"way","id":2,"tags":{"highway":"service","service":"parking_aisle"},"geometry":[{"lat":51.002,"lon":7.000},{"lat":51.002,"lon":7.002}]},
+              {"type":"way","id":3,"tags":{"highway":"service","tunnel":"yes"},"geometry":[{"lat":51.003,"lon":7.000},{"lat":51.003,"lon":7.002}]},
+              {"type":"node","id":4,"lat":51.001,"lon":7.001,"tags":{"barrier":"lift_gate"}},
+              {"type":"way","id":5,"tags":{"barrier":"fence"},"geometry":[{"lat":51.004,"lon":6.990},{"lat":51.004,"lon":7.010}]},
+              {"type":"relation","id":6,"tags":{"aeroway":"aerodrome","icao":"EDXF","type":"multipolygon"},"members":[
+                {"type":"way","ref":7,"role":"outer","geometry":[{"lat":50.990,"lon":6.990},{"lat":50.990,"lon":7.010},{"lat":51.010,"lon":7.010}]},
+                {"type":"way","ref":8,"role":"outer","geometry":[{"lat":50.990,"lon":6.990},{"lat":51.010,"lon":6.990},{"lat":51.010,"lon":7.010}]}
+              ]}
+            ]}
+            """;
+        var data = FireStationLookup.ParseAll(json);
+
+        Assert.Empty(data.Stations);
+        Assert.Empty(data.Buildings);
+        Assert.Single(data.Roads);
+        Assert.Single(data.Barriers);
+        Assert.Single(data.Fences);
+        var ring = Assert.Single(data.Boundary);
+        Assert.True(ring.Closed);
+        Assert.Equal(5, ring.Points.Count);
+        Assert.Contains("highway", FireStationLookup.Query("eddl"), StringComparison.Ordinal);
+    }
 }

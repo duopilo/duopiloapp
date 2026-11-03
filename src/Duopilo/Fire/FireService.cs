@@ -57,6 +57,12 @@ public sealed class FireService : BackgroundService
 
     private const double MaxTaxiInBuildings = 0.02;
 
+    /// <summary>Hat die Szenerie weniger Fahrweg-Abschnitte, kommen die Betriebsstraßen aus OSM dazu.</summary>
+    private const int MinSceneryRoads = 20;
+
+    /// <summary>Höchstens so viel der OSM-Straßenmeter darf mitten auf Parkpositionen liegen, sonst passen sie nicht zur Szenerie.</summary>
+    private const double MaxRoadsOnParking = 0.08;
+
     /// <summary>Im Umkreis des Einsatzorts sind geparkte Flugzeuge kein Hindernis (Meter).</summary>
     private const double SceneClearM = 60;
     private static readonly TimeSpan KeepFailed = TimeSpan.FromSeconds(60);
@@ -399,8 +405,9 @@ public sealed class FireService : BackgroundService
                 if (await Task.WhenAny(fetch, Task.Delay(OsmWait, ct)) == fetch)
                 {
                     var osm = await fetch;
-                    stations = FireStationLookup.ToStations(osm.Stations, graph, osm.Buildings);
                     UseBuildings(graph, airport, osm.Buildings);
+                    UseRoads(graph, airport, osm);
+                    stations = FireStationLookup.ToStations(osm.Stations, graph, osm.Buildings);
                     _log.LogInformation(
                         Loc.Log("log.fire.stations"),
                         airport,
@@ -652,6 +659,40 @@ public sealed class FireService : BackgroundService
         }
 
         graph.SetBuildings(FireStationLookup.ToBuildings(shapes, graph));
+    }
+
+    /// <summary>
+    /// Betriebsstraßen aus OSM, wenn die Szenerie (fast) keine Fahrwege mitbringt (Aerosoft EDDL: keine). Nur die Luftseite: Straßen
+    /// außerhalb des Flughafen-Umrisses, über Zäune, hinter Schranken und ohne Verbindung zu einem Rollweg fallen weg
+    /// (<see cref="TaxiGraph.AddRoads"/>); liegen mehr als 8 % der Straßenmeter mitten auf Parkpositionen, passen sie nicht zur Szenerie.
+    /// </summary>
+    private void UseRoads(TaxiGraph graph, string airport, OsmAirportData osm)
+    {
+        if (graph.VehicleRoads >= MinSceneryRoads || osm.Roads.Count == 0)
+        {
+            return;
+        }
+
+        var merge = graph.AddRoads(
+            FireStationLookup.ToLines(osm.Roads, graph),
+            FireStationLookup.ToPoints(osm.Barriers, graph),
+            MaxRoadsOnParking,
+            FireStationLookup.ToLines(osm.Fences, graph),
+            FireStationLookup.ToLines(osm.Boundary, graph));
+        if (!merge.Added)
+        {
+            _log.LogInformation(Loc.Log("log.fire.osmRoadsMismatch"), airport, Math.Round(merge.ParkingShare * 100, 1));
+            return;
+        }
+
+        _log.LogInformation(
+            Loc.Log("log.fire.osmRoads"),
+            airport,
+            merge.Sections,
+            Math.Round(merge.LengthM / 1000, 1),
+            merge.Links,
+            merge.Cut,
+            merge.Dropped);
     }
 
     /// <summary>

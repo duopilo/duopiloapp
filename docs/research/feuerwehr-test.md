@@ -37,8 +37,15 @@ im Sim ist offen. Planung: [Feuerwehr-Einsätze](feuerwehr-einsaetze.md) (PR #13
   die Wache, dann die Hallenseite, die zum nächsten Rollpunkt zeigt (aus dem Gebäudeumriss in OSM), sonst quer um den Mittelpunkt.
   Vor Toren und Hallenwand stehen sie 4 m davor, Front nach außen, und rollen 12 m geradeaus heraus.
 - **Betriebsstraßen bevorzugt:** Auf der Anfahrt kostet ein Meter Straße 0,7 Meter Rollweg (Umweg über die Straße bis zum 1,4-Fachen),
-  auf der Rückfahrt ohne Blaulicht 0,5. Bahnen kosten weiter das Achtfache. Hat die Szenerie keine Betriebsstraßen (z. B. EDDL
-  Standard), ändert sich nichts.
+  auf der Rückfahrt ohne Blaulicht 0,5. Bahnen kosten weiter das Achtfache.
+- **Betriebsstraßen aus OSM:** Bringt die Szenerie weniger als 20 Fahrweg-Abschnitte mit (Aerosoft EDDL: keine, hu277: 514), nimmt
+  Duopilo die Straßen aus OpenStreetMap (`highway=service` im Flughafen, ohne Parkplatzgassen, Drive-in, Flächen, Tunnel und
+  überdachte Stücke). Nur die Luftseite: Abschnitte, deren Mitte außerhalb des Flughafen-Umrisses liegt, die einen Zaun oder eine
+  Mauer kreuzen oder an einer Schranke liegen (`barrier=gate`, `lift_gate` …), fallen weg; eine Straße hängt nur dort am Netz, wo
+  einer ihrer Punkte höchstens 20 m (ein Straßenende 50 m) neben einem Rollpunkt liegt und kein Gebäude und kein Zaun dazwischen ist,
+  und Straßenteile ohne eine solche Verbindung fallen ebenfalls weg. Liegen mehr als 8 % der Straßenmeter mitten auf Parkpositionen,
+  passt OSM nicht zur Szenerie und es bleibt bei den Rollwegen. Kreuzt eine Straße eine Bahn, kostet das Stück auf der Bahn wie eine
+  Bahn. Das Log sagt, wie viele Abschnitte dazukamen und wie viele wegfielen.
 - **Gebäude:** Die Overpass-Abfrage holt alle Gebäude (ohne Dächer/Carports) und Fluggastbrücken im Flughafen. Gerade Stücke
   abseits des Netzes – von der Wache zum ersten Rollpunkt, vom letzten Rollpunkt zum Ziel, zum Platz am Flugzeug – meiden sie: erst
   Rollpunkte mit freier Strecke, und führt der Weg zum Platz doch hinein, hält das Fahrzeug 5 m davor. Rollwege und

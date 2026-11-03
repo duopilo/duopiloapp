@@ -50,17 +50,30 @@ public sealed record OsmFireStation(string? Name, double Latitude, double Longit
     public IReadOnlyList<OsmDoor> Doors { get; init; } = [];
 }
 
-/// <summary>Was Duopilo aus OSM zu einem Flughafen braucht: Wachen und Gebäude.</summary>
+/// <summary>Was Duopilo aus OSM zu einem Flughafen braucht: Wachen, Gebäude und Betriebsstraßen.</summary>
 public sealed record OsmAirportData(IReadOnlyList<OsmFireStation> Stations, IReadOnlyList<OsmShape> Buildings)
 {
     public static readonly OsmAirportData Empty = new([], []);
+
+    /// <summary>Betriebsstraßen (highway=service ohne Parkplatzgassen, Tunnel und Flächen) als Linien.</summary>
+    public IReadOnlyList<OsmShape> Roads { get; init; } = [];
+
+    /// <summary>Schranken und Tore auf diesen Straßen (barrier=gate, lift_gate …): dort endet die Luftseite meist.</summary>
+    public IReadOnlyList<OsmPoint> Barriers { get; init; } = [];
+
+    /// <summary>Zäune und Mauern im Flughafen (barrier=fence, wall): trennen Luft- und Landseite.</summary>
+    public IReadOnlyList<OsmShape> Fences { get; init; } = [];
+
+    /// <summary>Umriss des Flughafens (aeroway=aerodrome), Außenringe.</summary>
+    public IReadOnlyList<OsmShape> Boundary { get; init; } = [];
 }
 
 /// <summary>
 /// Feuerwachen und Gebäude eines Flughafens aus OpenStreetMap über die Overpass API: alles mit <c>amenity=fire_station</c> oder
 /// <c>building=fire_station</c> innerhalb des Flughafen-Umrisses (<c>aeroway=aerodrome</c> mit dem ICAO-Code) samt Umriss, Tore
 /// (<c>entrance</c>, <c>door</c>) bis 60 m darum, dazu alle Gebäude (außer Dächern/Carports) und Fluggastbrücken im Flughafen als
-/// Hindernis für gerade Fahrten. Das Ergebnis liegt 30 Tage im Datenordner (cache\fire-stations), ein Fehlschlag 15 Minuten. Die
+/// Hindernis für gerade Fahrten und die Betriebsstraßen (<c>highway=service</c>) mit ihren Schranken für Szenerien ohne Fahrwege.
+/// Das Ergebnis liegt 30 Tage im Datenordner (cache\fire-stations), ein Fehlschlag 15 Minuten. Die
 /// Abfrage läuft unabhängig vom Einsatz bis zum Ende (Overpass braucht zu Stoßzeiten über 20 s), damit der Zwischenspeicher beim
 /// nächsten Mal gefüllt ist; mehrere Server (Komma-getrennt) werden der Reihe nach gefragt. Daten: © OpenStreetMap-Mitwirkende,
 /// ODbL 1.0 (THIRD-PARTY-NOTICES.md); Duopilo liefert keine Daten mit, es fragt zur Laufzeit.
@@ -69,6 +82,12 @@ public sealed class FireStationLookup
 {
     private static readonly TimeSpan Fresh = TimeSpan.FromDays(30);
     private static readonly TimeSpan RetryAfterFailure = TimeSpan.FromMinutes(15);
+
+    /// <summary>Fehlen im Zwischenspeicher neuere Teile (Gebäude, Straßen), so lange auf die neue Abfrage warten, sonst das Alte nehmen.</summary>
+    private static readonly TimeSpan UpgradeWait = TimeSpan.FromSeconds(6);
+
+    /// <summary>Straßenarten (service=*), die keine Betriebsstraßen sind.</summary>
+    private static readonly HashSet<string> SkippedServices = new(StringComparer.Ordinal) { "parking_aisle", "drive-through" };
 
     /// <summary>Tore so weit um die Wache gehören zu ihr.</summary>
     private const double DoorRadiusM = 60;
@@ -100,17 +119,38 @@ public sealed class FireStationLookup
 
         if (cached is { } c && DateTimeOffset.UtcNow - c.FetchedUtc < (c.Ok ? Fresh : RetryAfterFailure))
         {
-            if (c.Ok && c.Buildings is null)
+            if (c.Ok && (c.Buildings is null || c.Roads is null))
             {
-                // Zwischenspeicher von vor den Gebäuden: die Wachen gleich nehmen, Umrisse und Gebäude im Hintergrund nachholen
-                _ = Fetch(key, file, cached);
+                // Zwischenspeicher von vor den Gebäuden oder Straßen: kurz auf die neue Abfrage warten, sonst die Wachen gleich nehmen
+                // (die Abfrage läuft weiter und füllt den Zwischenspeicher fürs nächste Mal)
+                return Upgrade(Fetch(key, file, cached), FromCache(c));
             }
 
-            return Task.FromResult(new OsmAirportData(c.Stations, c.Buildings ?? []));
+            return Task.FromResult(FromCache(c));
         }
 
         return Fetch(key, file, cached);
     }
+
+    private static async Task<OsmAirportData> Upgrade(Task<OsmAirportData> fetch, OsmAirportData fallback)
+    {
+        await Task.WhenAny(fetch, Task.Delay(UpgradeWait));
+        return fetch.IsCompletedSuccessfully ? fetch.Result : fallback;
+    }
+
+    private static OsmAirportData FromCache(CacheFile cache) =>
+        new(cache.Stations, cache.Buildings ?? [])
+        {
+            Roads = cache.Roads ?? [],
+            Barriers = cache.Barriers ?? [],
+            Fences = cache.Fences ?? [],
+            Boundary = cache.Boundary ?? [],
+        };
+
+    private static CacheFile ToCache(bool ok, OsmAirportData data, bool complete) =>
+        complete
+            ? new(DateTimeOffset.UtcNow, ok, data.Stations, data.Buildings, data.Roads, data.Barriers, data.Fences, data.Boundary)
+            : new(DateTimeOffset.UtcNow, ok, data.Stations);
 
     /// <summary>Die laufende Abfrage für den Flughafen oder eine neue (eine je Flughafen zugleich).</summary>
     private Task<OsmAirportData> Fetch(string key, string file, CacheFile? cached)
@@ -130,8 +170,8 @@ public sealed class FireStationLookup
                 using var response = await _http.PostAsync(url, content);
                 response.EnsureSuccessStatusCode();
                 var data = ParseAll(await response.Content.ReadAsStringAsync());
-                WriteCache(file, new CacheFile(DateTimeOffset.UtcNow, true, data.Stations, data.Buildings));
-                _log.LogInformation(Loc.Log("log.fire.osmFetched"), icao, data.Stations.Count, url);
+                WriteCache(file, ToCache(true, data, complete: true));
+                _log.LogInformation(Loc.Log("log.fire.osmFetched"), icao, data.Stations.Count, data.Roads.Count, url);
                 return data;
             }
             catch (Exception ex)
@@ -141,26 +181,35 @@ public sealed class FireStationLookup
         }
 
         // Alte Daten weiter nutzen; den Fehlschlag merken, damit nicht jeder Einsatz neu fragt
-        var old = cached is { Ok: true } ok ? new OsmAirportData(ok.Stations, ok.Buildings ?? []) : OsmAirportData.Empty;
-        WriteCache(file, new CacheFile(DateTimeOffset.UtcNow, cached is { Ok: true }, old.Stations, cached is { Ok: true } ? old.Buildings : null));
+        var old = cached is { Ok: true } ok ? FromCache(ok) : OsmAirportData.Empty;
+        WriteCache(file, ToCache(cached is { Ok: true }, old, complete: cached is { Ok: true, Buildings: not null, Roads: not null }));
         return old;
     }
 
     /// <summary>
     /// Overpass-Abfrage: Wachen mit Umriss (out geom), Tore und Türen bis 60 m darum, Gebäude (ohne Dächer/Carports/Vordächer) und
-    /// Fluggastbrücken im Flughafen-Umriss.
+    /// Fluggastbrücken im Flughafen-Umriss, die Betriebsstraßen (highway=service ohne Flächen, Tunnel und überdachte Stücke) mit ihren
+    /// Schranken, Zäune und Mauern und der Umriss des Flughafens selbst.
     /// </summary>
-    public static string Query(string icao) =>
-        "[out:json][timeout:60];area[\"aeroway\"=\"aerodrome\"][\"icao\"=\"" + icao.ToUpperInvariant().Replace("\"", "", StringComparison.Ordinal) + "\"]->.platz;" +
-        "(nwr[\"amenity\"=\"fire_station\"](area.platz);nwr[\"building\"=\"fire_station\"](area.platz);)->.wachen;.wachen out geom;" +
-        "(node(around.wachen:60)[\"entrance\"];node(around.wachen:60)[\"door\"];);out;" +
-        "(way[\"building\"][\"building\"!~\"^(roof|carport|canopy)$\"](area.platz);way[\"aeroway\"=\"jet_bridge\"](area.platz););out geom;";
+    public static string Query(string icao)
+    {
+        var code = icao.ToUpperInvariant().Replace("\"", "", StringComparison.Ordinal);
+        return "[out:json][timeout:60];area[\"aeroway\"=\"aerodrome\"][\"icao\"=\"" + code + "\"]->.platz;" +
+            "(nwr[\"amenity\"=\"fire_station\"](area.platz);nwr[\"building\"=\"fire_station\"](area.platz);)->.wachen;.wachen out geom;" +
+            "(node(around.wachen:60)[\"entrance\"];node(around.wachen:60)[\"door\"];);out;" +
+            "(way[\"building\"][\"building\"!~\"^(roof|carport|canopy)$\"](area.platz);way[\"aeroway\"=\"jet_bridge\"](area.platz););out geom;" +
+            "way[\"highway\"=\"service\"][\"area\"!=\"yes\"][\"tunnel\"!~\".\"][\"covered\"!=\"yes\"](area.platz)->.strassen;.strassen out geom;" +
+            "node(w.strassen)[\"barrier\"~\"^(gate|lift_gate|swing_gate|sliding_gate|bollard|block|chain|border_control|toll_booth)$\"];out;" +
+            "way[\"barrier\"~\"^(fence|wall)$\"](area.platz);out geom;" +
+            "nwr[\"aeroway\"=\"aerodrome\"][\"icao\"=\"" + code + "\"];out geom;";
+    }
 
     /// <summary>Nur die Wachen aus einer Antwort (siehe <see cref="ParseAll"/>).</summary>
     public static IReadOnlyList<OsmFireStation> Parse(string json) => ParseAll(json).Stations;
 
     /// <summary>
-    /// Antwort der Overpass API lesen: Wachen (Knoten mit lat/lon, Flächen mit Umriss oder center), Tore, Gebäude und Brücken.
+    /// Antwort der Overpass API lesen: Wachen (Knoten mit lat/lon, Flächen mit Umriss oder center), Tore, Gebäude und Brücken,
+    /// Betriebsstraßen (ohne Parkplatzgassen und Drive-in), Schranken, Zäune und den Flughafen-Umriss.
     /// Gebäude und Einrichtung derselben Wache (näher als 80 m) zählen einmal, mit Namen und Umriss, wenn eins davon einen hat; die Tore
     /// gehören zur nächsten Wache bis 60 m.
     /// </summary>
@@ -170,6 +219,10 @@ public sealed class FireStationLookup
         var stations = new List<OsmFireStation>();
         var doors = new List<OsmDoor>();
         var buildings = new List<OsmShape>();
+        var roads = new List<OsmShape>();
+        var barriers = new List<OsmPoint>();
+        var fences = new List<OsmShape>();
+        var boundary = new List<OsmShape>();
         if (!doc.RootElement.TryGetProperty("elements", out var elements) || elements.ValueKind != JsonValueKind.Array)
         {
             return OsmAirportData.Empty;
@@ -192,6 +245,36 @@ public sealed class FireStationLookup
 
                 AddStation(stations, new OsmFireStation(Tag("name"), lat, lon) { Outline = outline });
                 buildings.AddRange(shapes.Where(s => s.Points.Count >= 2));
+                continue;
+            }
+
+            if (Tag("highway") == "service")
+            {
+                if (Tag("area") != "yes" && (Tag("tunnel") is null or "no") && Tag("covered") != "yes" && !SkippedServices.Contains(Tag("service") ?? ""))
+                {
+                    roads.AddRange(shapes);
+                }
+
+                continue;
+            }
+
+            if (Tag("barrier") is { } barrier)
+            {
+                if (barrier is "fence" or "wall")
+                {
+                    fences.AddRange(shapes);
+                }
+                else if (element.TryGetProperty("lat", out var bLat) && element.TryGetProperty("lon", out var bLon))
+                {
+                    barriers.Add(new OsmPoint(bLat.GetDouble(), bLon.GetDouble()));
+                }
+
+                continue;
+            }
+
+            if (Tag("aeroway") == "aerodrome")
+            {
+                boundary.AddRange(shapes);
                 continue;
             }
 
@@ -221,7 +304,74 @@ public sealed class FireStationLookup
             }
         }
 
-        return new OsmAirportData(stations, buildings);
+        return new OsmAirportData(stations, buildings) { Roads = roads, Barriers = barriers, Fences = fences, Boundary = Rings(boundary) };
+    }
+
+    /// <summary>Teilstücke eines Umrisses (Relation aus mehreren Wegen) zu geschlossenen Ringen zusammensetzen; offene Reste fallen weg.</summary>
+    public static IReadOnlyList<OsmShape> Rings(IReadOnlyList<OsmShape> parts)
+    {
+        static bool Same(OsmPoint a, OsmPoint b) => DistanceM(a.Lat, a.Lon, b.Lat, b.Lon) < 0.5;
+        var rings = parts.Where(p => p.Closed).ToList();
+        var open = parts.Where(p => !p.Closed && p.Points.Count >= 2).Select(p => p.Points.ToList()).ToList();
+        while (open.Count > 0)
+        {
+            var ring = open[0];
+            open.RemoveAt(0);
+            var grown = true;
+            while (grown && !Same(ring[0], ring[^1]))
+            {
+                grown = false;
+                for (var i = 0; i < open.Count; i++)
+                {
+                    var part = open[i];
+                    if (Same(ring[^1], part[0]))
+                    {
+                        ring.AddRange(part.Skip(1));
+                    }
+                    else if (Same(ring[^1], part[^1]))
+                    {
+                        ring.AddRange(Enumerable.Reverse(part).Skip(1));
+                    }
+                    else if (Same(ring[0], part[^1]))
+                    {
+                        ring.InsertRange(0, part.Take(part.Count - 1));
+                    }
+                    else if (Same(ring[0], part[0]))
+                    {
+                        ring.InsertRange(0, Enumerable.Reverse(part).Take(part.Count - 1));
+                    }
+                    else
+                    {
+                        continue;
+                    }
+
+                    open.RemoveAt(i);
+                    grown = true;
+                    break;
+                }
+            }
+
+            if (ring.Count >= 4 && Same(ring[0], ring[^1]))
+            {
+                rings.Add(new OsmShape(ring, true));
+            }
+        }
+
+        return rings;
+    }
+
+    /// <summary>Linien in Metern im Rollweg-Netz (Straßen, Zäune, Umriss).</summary>
+    public static IReadOnlyList<IReadOnlyList<(double East, double North)>> ToLines(IReadOnlyList<OsmShape> shapes, TaxiGraph graph) =>
+        shapes.Select(s => (IReadOnlyList<(double East, double North)>)ToPoints(s.Points, graph)).ToList();
+
+    /// <summary>Punkte in Metern im Rollweg-Netz (Schranken).</summary>
+    public static IReadOnlyList<(double East, double North)> ToPoints(IReadOnlyList<OsmPoint> points, TaxiGraph graph) =>
+        points.Select(p => Local(graph, p)).ToList();
+
+    private static (double East, double North) Local(TaxiGraph graph, OsmPoint point)
+    {
+        var (east, north) = graph.ToLocal(point.Lat, point.Lon);
+        return (east, north);
     }
 
     /// <summary>
@@ -422,6 +572,17 @@ public sealed class FireStationLookup
         }
     }
 
-    /// <summary>Zwischenspeicher je Flughafen; <paramref name="Buildings"/> null = Datei von vor den Gebäuden (neu abfragen).</summary>
-    private sealed record CacheFile(DateTimeOffset FetchedUtc, bool Ok, IReadOnlyList<OsmFireStation> Stations, IReadOnlyList<OsmShape>? Buildings = null);
+    /// <summary>
+    /// Zwischenspeicher je Flughafen; <paramref name="Buildings"/> bzw. <paramref name="Roads"/> null = Datei von vor den Gebäuden bzw.
+    /// Straßen (neu abfragen).
+    /// </summary>
+    private sealed record CacheFile(
+        DateTimeOffset FetchedUtc,
+        bool Ok,
+        IReadOnlyList<OsmFireStation> Stations,
+        IReadOnlyList<OsmShape>? Buildings = null,
+        IReadOnlyList<OsmShape>? Roads = null,
+        IReadOnlyList<OsmPoint>? Barriers = null,
+        IReadOnlyList<OsmShape>? Fences = null,
+        IReadOnlyList<OsmShape>? Boundary = null);
 }

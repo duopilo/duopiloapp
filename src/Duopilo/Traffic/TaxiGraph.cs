@@ -19,12 +19,23 @@ public sealed record TaxiParking(int Index, string Label, int Type, double Headi
 }
 
 /// <summary>Rollweg-Abschnitt (in beide Richtungen befahrbar).</summary>
-/// <param name="Type">TAXI_PATH TYPE: 1 Rollweg, 2 Bahn, 3 Parkposition, 4 Pfad.</param>
+/// <param name="Type">TAXI_PATH TYPE: 1 Rollweg, 2 Bahn, 3 Parkposition, 4 Pfad, 6/7 Betriebsstraße.</param>
 /// <param name="Runway">Bei Bahn-Abschnitten die Bahn, z. B. "05R".</param>
-public sealed record TaxiEdge(int From, int To, double LengthM, int Type, string Name, double WidthM, string? Runway)
+/// <param name="RunwayShare">Anteil des Abschnitts auf einer Bahn (Betriebsstraßen, die eine Bahn kreuzen): kostet dort wie eine Bahn.</param>
+public sealed record TaxiEdge(int From, int To, double LengthM, int Type, string Name, double WidthM, string? Runway, double RunwayShare = 0)
 {
     public int Other(int node) => node == From ? To : From;
 }
+
+/// <summary>Ergebnis von <see cref="TaxiGraph.AddRoads"/>.</summary>
+/// <param name="Added">Ob die Straßen ins Netz kamen (nicht, wenn zu viele auf Parkpositionen liegen).</param>
+/// <param name="Sections">Hinzugefügte Straßenabschnitte.</param>
+/// <param name="LengthM">Ihre Länge zusammen.</param>
+/// <param name="Links">Verbindungen zu Rollpunkten.</param>
+/// <param name="Dropped">Abschnitte ohne Verbindung zum Netz (Landseite, Parkplätze), weggelassen.</param>
+/// <param name="Cut">Abschnitte außerhalb des Flughafens, über einen Zaun oder an einer Schranke, weggelassen.</param>
+/// <param name="ParkingShare">Anteil der Straßenmeter mitten auf Parkpositionen.</param>
+public sealed record RoadMerge(bool Added, int Sections, double LengthM, int Links, int Dropped, int Cut, double ParkingShare);
 
 /// <summary>Haltepunkt mit der Bahn, zu der er gehört.</summary>
 /// <param name="Runway">Bahn, z. B. "05R/23L".</param>
@@ -114,6 +125,21 @@ public sealed class TaxiGraph
     /// <summary>Längstes Fahrweg-Stück, das als echt gilt.</summary>
     public const double MaxVehicleRoadSegmentM = 400;
 
+    /// <summary>Betriebsstraßen-Abschnitte aus einer anderen Quelle (<see cref="AddRoads"/>, OpenStreetMap).</summary>
+    public int AddedRoads { get; private set; }
+
+    /// <summary>Eine hinzugefügte Straße hängt am Netz, wo einer ihrer Punkte so nah an einem Rollpunkt liegt.</summary>
+    public const double RoadLinkM = 20;
+
+    /// <summary>Wie <see cref="RoadLinkM"/> für Straßenenden (sie enden oft am Rand des Vorfelds).</summary>
+    public const double RoadEndLinkM = 50;
+
+    /// <summary>Längeres Straßenstück aus einer anderen Quelle gilt als Fehler.</summary>
+    private const double MaxAddedRoadSegmentM = 3000;
+
+    /// <summary>Parkpositionen, auf denen keine Straße liegen sollte: der innere Teil des Radius, mindestens 5 m.</summary>
+    private const double ParkingCoreShare = 0.35;
+
     public IReadOnlyList<TaxiEdge> EdgesOf(int node) => _adjacency[node];
 
     /// <summary>Andere Flugzeuge am Boden (Meter östlich/nördlich), <see cref="SetObstacles"/>.</summary>
@@ -134,6 +160,12 @@ public sealed class TaxiGraph
     {
         _obstacles = [.. positions.Select(p => ToLocal(p.Latitude, p.Longitude))];
         ClearanceM = clearanceM;
+        RefreshBlocked();
+    }
+
+    /// <summary>Gesperrte Abschnitte neu bestimmen (nach neuen Hindernissen oder neuen Abschnitten).</summary>
+    private void RefreshBlocked()
+    {
         _blocked.Clear();
         if (_obstacles.Count == 0)
         {
@@ -143,7 +175,7 @@ public sealed class TaxiGraph
         foreach (var edge in _edges)
         {
             var (a, b) = (_nodes[edge.From], _nodes[edge.To]);
-            if (_obstacles.Any(o => SegmentDistance(o.EastM, o.NorthM, a.EastM, a.NorthM, b.EastM, b.NorthM) < clearanceM))
+            if (_obstacles.Any(o => SegmentDistance(o.EastM, o.NorthM, a.EastM, a.NorthM, b.EastM, b.NorthM) < ClearanceM))
             {
                 _blocked.Add(edge);
             }
@@ -454,7 +486,7 @@ public sealed class TaxiGraph
                     continue;
                 }
 
-                var step = edge.LengthM * Factor(edge.Type);
+                var step = edge.LengthM * Factor(edge);
                 if (cost[node] + step < cost[next])
                 {
                     cost[next] = cost[node] + step;
@@ -513,13 +545,25 @@ public sealed class TaxiGraph
         _ => "type" + type.ToString(CultureInfo.InvariantCulture),
     };
 
-    /// <summary>Kostenfaktor eines Abschnitts: Bahnen <see cref="RunwayCostFactor"/>, Betriebsstraßen <see cref="RoadCostFactor"/>, sonst 1.</summary>
-    private double Factor(int type) => type switch
+    /// <summary>
+    /// Kostenfaktor eines Abschnitts: Bahnen <see cref="RunwayCostFactor"/>, Betriebsstraßen <see cref="RoadCostFactor"/>, sonst 1;
+    /// kreuzt eine Straße eine Bahn, kostet ihr Anteil auf der Bahn wie eine Bahn.
+    /// </summary>
+    private double Factor(TaxiEdge? edge)
     {
-        2 => RunwayCostFactor,
-        6 or 7 => RoadCostFactor,
-        _ => 1,
-    };
+        if (edge is null)
+        {
+            return 1;
+        }
+
+        var factor = edge.Type switch
+        {
+            2 => RunwayCostFactor,
+            6 or 7 => RoadCostFactor,
+            _ => 1,
+        };
+        return edge.RunwayShare > 0 ? (factor * (1 - edge.RunwayShare)) + (RunwayCostFactor * edge.RunwayShare) : factor;
+    }
 
     /// <summary>Kosten einer Route wie bei <see cref="Route"/>: Meter, Bahn-Abschnitte <see cref="RunwayCostFactor"/>-fach.</summary>
     public double CostM(IReadOnlyList<int> route)
@@ -529,7 +573,7 @@ public sealed class TaxiGraph
         {
             var edge = Edge(route[i - 1], route[i]);
             var length = Distance(_nodes[route[i - 1]], _nodes[route[i]]);
-            cost += length * Factor(edge?.Type ?? 1);
+            cost += length * Factor(edge);
         }
 
         return cost;
@@ -721,12 +765,261 @@ public sealed class TaxiGraph
             if (road)
             {
                 VehicleRoads++;
+                edge = edge with { RunwayShare = RunwayShareOf(_nodes[from], _nodes[to]) };
             }
 
-            _edges.Add(edge);
-            _adjacency[from].Add(edge);
-            _adjacency[to].Add(edge);
+            AddEdge(edge);
         }
+    }
+
+    private void AddEdge(TaxiEdge edge)
+    {
+        _edges.Add(edge);
+        _adjacency[edge.From].Add(edge);
+        _adjacency[edge.To].Add(edge);
+    }
+
+    /// <summary>
+    /// Betriebsstraßen aus einer anderen Quelle ins Netz (OpenStreetMap, für die Feuerwehr, wenn die Szenerie keine Fahrwege hat):
+    /// Linienzüge in Metern; gleiche Punkte verschiedener Linien werden Kreuzungen. An <paramref name="cuts"/> (Schranken und Tore)
+    /// endet eine Straße – dort geht es meist von der Luft- auf die Landseite. Eine Straße hängt am Netz, wo einer ihrer Punkte höchstens
+    /// <see cref="RoadLinkM"/> (Straßenende <see cref="RoadEndLinkM"/>) neben einem Rollpunkt liegt, der nicht nur an einer Bahn hängt,
+    /// und die Verbindung durch kein Gebäude und keinen Zaun führt. Straßenteile ohne eine solche Verbindung fallen weg (Landseite,
+    /// Parkplätze). Die Landseite trennen außerdem: <paramref name="fences"/> (Zäune und Mauern: Abschnitte darüber fallen weg) und
+    /// <paramref name="boundary"/> (Flughafen-Umriss: Abschnitte, deren Mitte draußen liegt, fallen weg). Liegen mehr als
+    /// <paramref name="maxParkingShare"/> der Straßenmeter mitten auf Parkpositionen, passt die Quelle nicht zur Szenerie (anderer
+    /// Ausbaustand, verschoben): dann kommt nichts dazu. Abschnitte und Verbindungen sind Straßen (Typ 7).
+    /// </summary>
+    public RoadMerge AddRoads(
+        IEnumerable<IReadOnlyList<(double East, double North)>> lines,
+        IEnumerable<(double East, double North)> cuts,
+        double maxParkingShare,
+        IEnumerable<IReadOnlyList<(double East, double North)>>? fences = null,
+        IEnumerable<IReadOnlyList<(double East, double North)>>? boundary = null)
+    {
+        var walls = Walls(fences ?? []);
+        var areas = (boundary ?? []).Where(b => b.Count >= 4).Select(b => b.ToArray()).ToList();
+        bool Outside(double x, double y) => areas.Count > 0 && !areas.Any(a => Inside(a, x, y));
+        var cut = 0;
+
+        // Punkte und Abschnitte; an Schranken, Zäunen und am Flughafen-Umriss getrennt
+        var cutKeys = cuts.Select(c => VertexKey(c.East, c.North)).ToHashSet();
+        var vertices = new List<(double East, double North)>();
+        var index = new Dictionary<(long, long), int>();
+        var segments = new HashSet<(int A, int B)>();
+        int Vertex((double East, double North) p)
+        {
+            var key = VertexKey(p.East, p.North);
+            if (!index.TryGetValue(key, out var i))
+            {
+                i = vertices.Count;
+                vertices.Add(p);
+                index[key] = i;
+            }
+
+            return i;
+        }
+
+        static bool Far((double East, double North) p) => Math.Abs(p.East) > 6000 || Math.Abs(p.North) > 6000;
+
+        foreach (var line in lines)
+        {
+            for (var i = 0; i + 1 < line.Count; i++)
+            {
+                var (a, b) = (line[i], line[i + 1]);
+                var length = Math.Sqrt(((b.East - a.East) * (b.East - a.East)) + ((b.North - a.North) * (b.North - a.North)));
+                if (Far(a) || Far(b) || length < 0.1 || length > MaxAddedRoadSegmentM)
+                {
+                    continue;
+                }
+
+                if (cutKeys.Contains(VertexKey(a.East, a.North)) || cutKeys.Contains(VertexKey(b.East, b.North)))
+                {
+                    cut++;
+                    continue;
+                }
+
+                if (Outside((a.East + b.East) / 2, (a.North + b.North) / 2) || CrossesWall(walls, a.East, a.North, b.East, b.North))
+                {
+                    cut++;
+                    continue;
+                }
+
+                var (va, vb) = (Vertex(a), Vertex(b));
+                segments.Add(va < vb ? (va, vb) : (vb, va));
+            }
+        }
+
+        // Verbindungen zum Netz
+        var degree = new int[vertices.Count];
+        foreach (var (a, b) in segments)
+        {
+            degree[a]++;
+            degree[b]++;
+        }
+
+        var anchors = _nodes.Where(n => !n.IsParking && _adjacency[n.Id].Any(e => e.Type != 2)).ToList();
+        var links = new List<(int Vertex, int Node, double LengthM)>();
+        for (var v = 0; v < vertices.Count && anchors.Count > 0; v++)
+        {
+            var (e, n) = vertices[v];
+            var nearest = anchors.MinBy(a => ((a.EastM - e) * (a.EastM - e)) + ((a.NorthM - n) * (a.NorthM - n)))!;
+            var distance = Math.Sqrt(((nearest.EastM - e) * (nearest.EastM - e)) + ((nearest.NorthM - n) * (nearest.NorthM - n)));
+            if ((distance <= RoadLinkM || (degree[v] == 1 && distance <= RoadEndLinkM)) && !CrossesBuilding(e, n, nearest.EastM, nearest.NorthM) &&
+                !CrossesWall(walls, e, n, nearest.EastM, nearest.NorthM))
+            {
+                links.Add((v, nearest.Id, distance));
+            }
+        }
+
+        // Nur Straßenteile mit Verbindung
+        var parent = Enumerable.Range(0, vertices.Count).ToArray();
+        int Find(int x)
+        {
+            while (parent[x] != x)
+            {
+                parent[x] = parent[parent[x]];
+                x = parent[x];
+            }
+
+            return x;
+        }
+
+        foreach (var (a, b) in segments)
+        {
+            parent[Find(a)] = Find(b);
+        }
+
+        var linked = links.Select(l => Find(l.Vertex)).ToHashSet();
+        var kept = segments.Where(s => linked.Contains(Find(s.A))).ToList();
+        var dropped = segments.Count - kept.Count;
+
+        // Passt es zur Szenerie? Straßen mitten über Parkpositionen (ohne Fahrzeugstellplätze) sprechen dagegen
+        var cores = _nodes
+            .Where(p => p.Parking is { Type: not 13 })
+            .Select(p => (p.EastM, p.NorthM, R: Math.Max(5, p.Parking!.RadiusM * ParkingCoreShare)))
+            .ToList();
+        var (samples, onParking) = (0, 0);
+        foreach (var (a, b) in kept)
+        {
+            var (pa, pb) = (vertices[a], vertices[b]);
+            var steps = Math.Max(1, (int)(Math.Sqrt(((pb.East - pa.East) * (pb.East - pa.East)) + ((pb.North - pa.North) * (pb.North - pa.North))) / 10));
+            for (var i = 0; i < steps; i++)
+            {
+                var f = (i + 0.5) / steps;
+                var (x, y) = (pa.East + ((pb.East - pa.East) * f), pa.North + ((pb.North - pa.North) * f));
+                samples++;
+                if (cores.Any(c => ((c.EastM - x) * (c.EastM - x)) + ((c.NorthM - y) * (c.NorthM - y)) < c.R * c.R))
+                {
+                    onParking++;
+                }
+            }
+        }
+
+        var parkingShare = samples == 0 ? 0 : onParking / (double)samples;
+        if (parkingShare > maxParkingShare)
+        {
+            return new RoadMerge(false, 0, 0, 0, dropped, cut, parkingShare);
+        }
+
+        // Ins Netz
+        var nodeOf = new Dictionary<int, int>();
+        int NodeOf(int v)
+        {
+            if (!nodeOf.TryGetValue(v, out var id))
+            {
+                id = _nodes.Count;
+                AddNode(false, vertices[v], 1, null);
+                nodeOf[v] = id;
+            }
+
+            return id;
+        }
+
+        var total = 0.0;
+        foreach (var (a, b) in kept)
+        {
+            var (na, nb) = (NodeOf(a), NodeOf(b));
+            var edge = new TaxiEdge(na, nb, Distance(_nodes[na], _nodes[nb]), 7, "", 6, null, RunwayShareOf(_nodes[na], _nodes[nb]));
+            AddEdge(edge);
+            total += edge.LengthM;
+        }
+
+        foreach (var (v, node, length) in links)
+        {
+            AddEdge(new TaxiEdge(NodeOf(v), node, length, 7, "", 6, null));
+        }
+
+        AddedRoads += kept.Count;
+        RefreshBlocked();
+        return new RoadMerge(true, kept.Count, total, links.Count, dropped, cut, parkingShare);
+    }
+
+    /// <summary>Zaun-Strecken mit Rahmen (schnelles Aussortieren).</summary>
+    private static List<(double MinE, double MinN, double MaxE, double MaxN, double Ax, double Ay, double Bx, double By)> Walls(
+        IEnumerable<IReadOnlyList<(double East, double North)>> fences)
+    {
+        var walls = new List<(double, double, double, double, double, double, double, double)>();
+        foreach (var fence in fences)
+        {
+            for (var i = 0; i + 1 < fence.Count; i++)
+            {
+                var (a, b) = (fence[i], fence[i + 1]);
+                walls.Add((Math.Min(a.East, b.East), Math.Min(a.North, b.North), Math.Max(a.East, b.East), Math.Max(a.North, b.North), a.East, a.North, b.East, b.North));
+            }
+        }
+
+        return walls;
+    }
+
+    /// <summary>Ob die Strecke a→b einen Zaun kreuzt.</summary>
+    private static bool CrossesWall(
+        List<(double MinE, double MinN, double MaxE, double MaxN, double Ax, double Ay, double Bx, double By)> walls,
+        double ax,
+        double ay,
+        double bx,
+        double by)
+    {
+        var (minE, maxE, minN, maxN) = (Math.Min(ax, bx), Math.Max(ax, bx), Math.Min(ay, by), Math.Max(ay, by));
+        foreach (var w in walls)
+        {
+            if (w.MaxE < minE || w.MinE > maxE || w.MaxN < minN || w.MinN > maxN)
+            {
+                continue;
+            }
+
+            if (SegmentIntersection(ax, ay, bx, by, w.Ax, w.Ay, w.Bx, w.By) is not null)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>Schlüssel eines Straßenpunkts (auf 10 cm): gleiche Punkte verschiedener Linien sind eine Kreuzung.</summary>
+    private static (long, long) VertexKey(double east, double north) => ((long)Math.Round(east * 10), (long)Math.Round(north * 10));
+
+    /// <summary>Anteil eines Abschnitts auf einer Bahn (Proben alle 5 m).</summary>
+    private double RunwayShareOf(TaxiNode a, TaxiNode b)
+    {
+        if (_runways.Count == 0)
+        {
+            return 0;
+        }
+
+        var steps = Math.Max(1, (int)Math.Ceiling(Distance(a, b) / 5));
+        var on = 0;
+        for (var i = 0; i < steps; i++)
+        {
+            var f = (i + 0.5) / steps;
+            if (RunwayAt(a.EastM + ((b.EastM - a.EastM) * f), a.NorthM + ((b.NorthM - a.NorthM) * f)) is not null)
+            {
+                on++;
+            }
+        }
+
+        return on / (double)steps;
     }
 
     private void AddNode(bool isParking, (double East, double North) local, int pointType, TaxiParking? parking)
