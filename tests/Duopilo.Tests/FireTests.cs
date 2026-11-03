@@ -815,6 +815,34 @@ public sealed class FireTests
     }
 
     [Fact]
+    public void Notfall_am_Boden_alle_stellen_sich_auf_auch_von_hinten()
+    {
+        // Test EDDL V81 (03.11.): Die Fahrzeuge kamen über die Zufahrt von hinten an die Position; FLF 2 und ELW drehten um, weil das
+        // Flugzeug schon über 10 s abseits der Bahn stand (Regel für das Abrollen nach der Landung)
+        var graph = Graph();
+        var p1 = graph.FindParking("P1")!;
+        var plan = FirePlanner.PlanToAircraft(graph, FireCategory.Lineup(FireAlertLevel.GroundIncident, 7), p1.EastM, p1.NorthM, 30, [Station(graph, "Wache", 900, 260)], p1)!;
+        var operation = new FireOperation(graph, FireAlertLevel.GroundIncident, plan, TrafficWake.Medium, 7);
+        foreach (var vp in plan.Vehicles)
+        {
+            operation.Add(new FireVehicle(vp.Unit, "test", vp.Route, operation.Trail, graph.ToLatLon, 164));
+        }
+
+        var scene = new FireAircraftState(p1.EastM, p1.NorthM, p1.Parking!.HeadingDeg, 0, true);
+        for (var t = 0; t < 4 * 150; t++)
+        {
+            operation.Update(scene, 0.25);
+            foreach (var vehicle in operation.Vehicles)
+            {
+                vehicle.Advance(0.25);
+            }
+        }
+
+        Assert.Equal(3, operation.Vehicles.Count);
+        Assert.All(operation.Vehicles, v => Assert.Contains(v.Phase, new[] { FireVehiclePhase.Positioning, FireVehiclePhase.AtAircraft }));
+    }
+
+    [Fact]
     public void Am_Gate_ueber_die_Zufahrt_der_Position()
     {
         // P1 (100/320) hängt über seine Zufahrt an A bei x = 0; die Fahrzeuge halten auf dieser Zufahrt, 1,5 Grundmaß vor der Position

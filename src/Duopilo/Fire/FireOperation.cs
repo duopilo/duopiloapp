@@ -236,8 +236,9 @@ public sealed class FireOperation
         }
 
         // Ohne Halt auf der Bahn abgerollt: auch dann folgt nur noch FLF 1; wer noch wartet (etwa hinter dem Abrollweg, an dem das
-        // Flugzeug nie vorbeikam – Test EDDL 02.11.), rückt gleich ein
-        if (_offRunwaySeconds > 10 && !_stoppedOnRunway)
+        // Flugzeug nie vorbeikam – Test EDDL 02.11.), rückt gleich ein. Nicht beim Notfall am Boden: da steht das Flugzeug von Anfang an
+        // abseits der Bahn, und alle sollen sich aufstellen (Test EDDL V81, 03.11.: FLF 2 und ELW kamen von hinten an und drehten um).
+        if (Level != FireAlertLevel.GroundIncident && _offRunwaySeconds > 10 && !_stoppedOnRunway)
         {
             _released = true;
         }
