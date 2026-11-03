@@ -379,6 +379,7 @@ public sealed class FireService : BackgroundService
             graph.RoadCostFactor = FireProfile.RoadCostFactor;
             _log.LogInformation(Loc.Log("log.fire.network"), airport, graph.Nodes.Count, graph.VehicleRoads);
             await SetObstaclesAsync(graph, ct);
+            await LogGroundVehiclesAsync(graph, airport, ct);
             var wake = TrafficRules.WakeOf(run.AircraftIcao, TrafficCategory.Airliner);
             var category = FireCategory.Of(run.AircraftIcao, wake);
             var units = FireCategory.Lineup(run.Level, category);
@@ -662,6 +663,49 @@ public sealed class FireService : BackgroundService
         _log.LogInformation(Loc.Log("log.fire.ignoringObstacles"), airport, graph.BlockedEdges);
         graph.ClearObstacles();
         return plan();
+    }
+
+    /// <summary>
+    /// Bodenfahrzeuge, die SimConnect im Flughafen meldet (Bodendienste, als SimObject platzierte Fahrzeuge), ins Log: Art (ATC MODEL),
+    /// Lage im Netz und Tempo, die nächsten 40 zum Bezugspunkt. Erst einmal nur zum Ansehen – danach sollen die stehenden wie geparkte
+    /// Flugzeuge als Hindernis zählen. Statische Modelle der Szenerie sieht SimConnect nicht.
+    /// </summary>
+    private async Task LogGroundVehiclesAsync(TaxiGraph graph, string airport, CancellationToken ct)
+    {
+        try
+        {
+            var scan = await _traffic.ScanGroundAsync((uint)Math.Min(ObstacleMarginM, TrafficConnection.MaxScanRadiusMeters), ct);
+            if (scan.Error is { } error)
+            {
+                _log.LogInformation(Loc.Log("log.fire.groundVehiclesFailed"), airport, error);
+                return;
+            }
+
+            var own = new HashSet<uint>();
+            lock (_lock)
+            {
+                if (_run is { } current)
+                {
+                    own.UnionWith(current.Objects.Values);
+                }
+            }
+
+            var vehicles = scan.Samples
+                .Where(s => !own.Contains(s.ObjectId))
+                .Select(s => (Sample: s, Local: graph.ToLocal(s.Latitude, s.Longitude)))
+                .Where(v => Math.Abs(v.Local.EastM) < ObstacleMarginM && Math.Abs(v.Local.NorthM) < ObstacleMarginM)
+                .OrderBy(v => Math.Sqrt((v.Local.EastM * v.Local.EastM) + (v.Local.NorthM * v.Local.NorthM)))
+                .ToList();
+            var parked = vehicles.Count(v => v.Sample.GroundSpeedKt < 0.5);
+            var list = string.Join("; ", vehicles.Take(40).Select(v => string.Create(
+                System.Globalization.CultureInfo.InvariantCulture,
+                $"{(string.IsNullOrWhiteSpace(v.Sample.AtcModel) ? "?" : v.Sample.AtcModel.Trim())} {v.Local.EastM:0}/{v.Local.NorthM:0} m {v.Sample.GroundSpeedKt:0} kt")));
+            _log.LogInformation(Loc.Log("log.fire.groundVehicles"), airport, vehicles.Count, parked, scan.Complete, list.Length == 0 ? "-" : list);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _log.LogInformation(Loc.Log("log.fire.groundVehiclesFailed"), airport, ex.Message);
+        }
     }
 
     private async Task SetObstaclesAsync(TaxiGraph graph, CancellationToken ct)

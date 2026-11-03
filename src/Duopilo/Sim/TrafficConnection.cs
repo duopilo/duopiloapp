@@ -108,6 +108,28 @@ public sealed class TrafficConnection : IDisposable
         }
     }
 
+    /// <summary>
+    /// Fragt alle Bodenfahrzeuge im Umkreis einmalig ab (SIMCONNECT_SIMOBJECT_TYPE_GROUND, mit ATC MODEL als Hinweis auf die Art).
+    /// Statische Modelle einer Szenerie sind keine SimObjects und fehlen. Kategorie der Einträge: "ground".
+    /// </summary>
+    public async Task<AircraftScan> ScanGroundAsync(uint radiusMeters, CancellationToken ct)
+    {
+        if (!_sim.Connection.IsConnected)
+        {
+            return AircraftScan.Fail(Loc.T("sim.notConnected"));
+        }
+
+        await _gate.WaitAsync(ct);
+        try
+        {
+            return await Task.Run(() => ScanGround(Math.Min(radiusMeters, MaxScanRadiusMeters), ct), ct);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     public void Dispose()
     {
         _gate.Wait(TimeSpan.FromSeconds(2));
@@ -192,6 +214,58 @@ public sealed class TrafficConnection : IDisposable
 
             LogSummaryIfDue();
             return new AircraftScan(collector.Samples(), complete, null);
+        }
+        catch (TrafficConnectionException ex)
+        {
+            Close(ex.Message);
+            return AircraftScan.Fail(ex.Message);
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
+        {
+            _unavailable = Loc.T("traffic.connection.dllUnusable", ex.Message);
+            _log.LogError(ex, Loc.Log("log.traffic.dllUnusable"));
+            _handle = IntPtr.Zero;
+            return AircraftScan.Fail(_unavailable);
+        }
+    }
+
+    private AircraftScan ScanGround(uint radiusMeters, CancellationToken ct)
+    {
+        try
+        {
+            var since = _sim.Connection.SinceUtc;
+            if (_handle != IntPtr.Zero && _openedFor != since)
+            {
+                Close(Loc.T("traffic.connection.closeReconnected"));
+            }
+
+            if (_handle == IntPtr.Zero && Open(since) is { } openError)
+            {
+                return AircraftScan.Fail(openError);
+            }
+
+            Dispatch(null);
+            if (_handle == IntPtr.Zero)
+            {
+                return AircraftScan.Fail(Loc.T("traffic.connection.endedBySim"));
+            }
+
+            var collector = new ByTypeCollector();
+            var requestId = Request(collector, TextLayout, radiusMeters, NativeSimConnect.ObjectTypeGround, "ground");
+            var deadline = DateTimeOffset.UtcNow.AddMilliseconds(Math.Max(1000, _options.ReadTimeoutMs));
+            while (!collector.IsDone(requestId) && DateTimeOffset.UtcNow < deadline)
+            {
+                ct.ThrowIfCancellationRequested();
+                Dispatch(collector);
+                if (_handle == IntPtr.Zero)
+                {
+                    return AircraftScan.Fail(Loc.T("traffic.connection.endedBySim"));
+                }
+
+                _event.WaitOne(20);
+            }
+
+            return new AircraftScan(collector.Samples(), collector.IsDone(requestId), null);
         }
         catch (TrafficConnectionException ex)
         {
