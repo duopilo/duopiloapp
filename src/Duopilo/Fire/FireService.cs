@@ -52,6 +52,11 @@ public sealed class FireService : BackgroundService
     /// <summary>So lange wartet die Planung auf die Wachen aus OSM; danach eine freie Parkposition, die Abfrage läuft weiter.</summary>
     private static readonly TimeSpan OsmWait = TimeSpan.FromSeconds(8);
 
+    /// <summary>Höchstens so viele Parkpositionen bzw. Rollweg-Meter dürfen in OSM-Gebäuden liegen, sonst passt OSM nicht zur Szenerie.</summary>
+    private const double MaxParkingInBuildings = 0.08;
+
+    private const double MaxTaxiInBuildings = 0.02;
+
     /// <summary>Im Umkreis des Einsatzorts sind geparkte Flugzeuge kein Hindernis (Meter).</summary>
     private const double SceneClearM = 60;
     private static readonly TimeSpan KeepFailed = TimeSpan.FromSeconds(60);
@@ -388,7 +393,7 @@ public sealed class FireService : BackgroundService
                 {
                     var osm = await fetch;
                     stations = FireStationLookup.ToStations(osm.Stations, graph, osm.Buildings);
-                    graph.SetBuildings(FireStationLookup.ToBuildings(osm.Buildings, graph));
+                    UseBuildings(graph, airport, osm.Buildings);
                     _log.LogInformation(
                         Loc.Log("log.fire.stations"),
                         airport,
@@ -613,6 +618,25 @@ public sealed class FireService : BackgroundService
     }
 
     /// <summary>Andere Flugzeuge am Boden: ihre Parkpositionen sind belegt, dort spawnt keine Wache.</summary>
+    /// <summary>
+    /// Gebäude aus OSM als Hindernis – nur, wenn sie zur Szenerie dieses Nutzers passen. OSM zeigt die echte Welt, die Szenerie
+    /// (Standard oder Zusatz, Ausbaustand) kann anders sein: Liegen mehr als 8 % der Parkpositionen oder 2 % der Rollweg-Meter in einem
+    /// Gebäude, bleiben die Gebäude für diesen Einsatz aus (Brücken zählen dabei nicht, sie hängen über den Positionen).
+    /// </summary>
+    private void UseBuildings(TaxiGraph graph, string airport, IReadOnlyList<OsmShape> shapes)
+    {
+        graph.SetBuildings(FireStationLookup.ToBuildings([.. shapes.Where(s => s.Closed)], graph));
+        var (parkingShare, taxiShare) = graph.BuildingOverlap();
+        if (parkingShare > MaxParkingInBuildings || taxiShare > MaxTaxiInBuildings)
+        {
+            _log.LogInformation(Loc.Log("log.fire.buildingsMismatch"), airport, Math.Round(parkingShare * 100, 1), Math.Round(taxiShare * 100, 1));
+            graph.SetBuildings([]);
+            return;
+        }
+
+        graph.SetBuildings(FireStationLookup.ToBuildings(shapes, graph));
+    }
+
     /// <summary>
     /// Planen mit den geparkten Flugzeugen als Hindernis; geht so kein Weg, ohne sie – lieber knapp an einem Flugzeug vorbei als gar
     /// nicht ausrücken.

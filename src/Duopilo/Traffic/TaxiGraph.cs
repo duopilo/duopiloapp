@@ -169,6 +169,42 @@ public sealed class TaxiGraph
             .Where(p => p.Count >= 3)
             .Select(p => (p.Min(q => q.East), p.Min(q => q.North), p.Max(q => q.East), p.Max(q => q.North), p.ToArray()))];
 
+    /// <summary>
+    /// Wie gut die Gebäude zur Szenerie passen: Anteil der Parkpositionen und der Rollweg-Meter (Rollwege, Bahnen, Wege – ohne
+    /// Betriebsstraßen), die in einem Gebäude liegen. In der passenden Szenerie ist beides fast null; liegt ein Gebäude über den
+    /// Rollwegen, passt OSM nicht zu dieser Szenerie (andere Szenerie, anderer Ausbaustand).
+    /// </summary>
+    public (double ParkingShare, double TaxiShare) BuildingOverlap()
+    {
+        if (_buildings.Count == 0)
+        {
+            return (0, 0);
+        }
+
+        var parkings = _nodes.Where(n => n.IsParking).ToList();
+        var parkingShare = parkings.Count == 0 ? 0 : parkings.Count(n => InsideAnyBuilding(n.EastM, n.NorthM)) / (double)parkings.Count;
+        var (samples, inside) = (0, 0);
+        foreach (var edge in _edges.Where(e => e.Type is 1 or 2 or 4))
+        {
+            var (a, b) = (_nodes[edge.From], _nodes[edge.To]);
+            var steps = Math.Max(1, (int)(edge.LengthM / 10));
+            for (var i = 0; i < steps; i++)
+            {
+                var f = (i + 0.5) / steps;
+                samples++;
+                if (InsideAnyBuilding(a.EastM + ((b.EastM - a.EastM) * f), a.NorthM + ((b.NorthM - a.NorthM) * f)))
+                {
+                    inside++;
+                }
+            }
+        }
+
+        return (parkingShare, samples == 0 ? 0 : inside / (double)samples);
+    }
+
+    private bool InsideAnyBuilding(double x, double y) =>
+        _buildings.Any(b => x >= b.MinE && x <= b.MaxE && y >= b.MinN && y <= b.MaxN && Inside(b.Points, x, y));
+
     /// <summary>Ob die gerade Strecke von a nach b durch ein Gebäude führt (Kante geschnitten oder ein Ende darin).</summary>
     public bool CrossesBuilding(double ax, double ay, double bx, double by) => BuildingHit(ax, ay, bx, by) is not null;
 

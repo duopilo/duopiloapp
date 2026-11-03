@@ -925,4 +925,18 @@ public sealed class FireTests
         Assert.Equal("outline", station.ExitSource);
         Assert.InRange(station.Exits[0].NorthM, 265, 267);
     }
+
+    [Fact]
+    public void Gebaeude_die_ueber_den_Rollwegen_liegen_passen_nicht_zur_Szenerie()
+    {
+        // Eine Halle neben dem Netz passt; ein „Gebäude“ über Rollweg A (andere Szenerie) liegt auf den Rollwegen
+        var graph = Graph();
+        graph.SetBuildings([new List<(double East, double North)> { (500, 270), (540, 270), (540, 290), (500, 290), (500, 270) }]);
+        var (parkings, taxi) = graph.BuildingOverlap();
+        Assert.Equal(0, parkings);
+        Assert.Equal(0, taxi);
+
+        graph.SetBuildings([new List<(double East, double North)> { (-900, 180), (-100, 180), (-100, 220), (-900, 220), (-900, 180) }]);
+        Assert.True(graph.BuildingOverlap().TaxiShare > 0.02);
+    }
 }
