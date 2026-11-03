@@ -108,6 +108,12 @@ public sealed class FireVehicle
     /// <summary>Martinshorn erlaubt (Duopilo:Fire:Siren).</summary>
     public bool SirenAllowed { get; init; } = true;
 
+    /// <summary>Art des Horns für <c>L:1:DUOPILO_HORN</c>: 0 Folgetonhorn, 1 Wail, 2 Yelp, 3 Hi-Lo (später je Region).</summary>
+    public int Horn { get; init; }
+
+    /// <summary>Warnlichtfarbe für <c>L:1:DUOPILO_LICHTFARBE</c>: 0 blau, 1 rot/weiß, 2 rot (später je Region).</summary>
+    public int LightColour { get; init; }
+
     /// <summary>Bremslicht: das Fahrzeug wird gerade langsamer (oder hat eben gehalten).</summary>
     public bool Braking
     {
@@ -354,6 +360,8 @@ public sealed class FireVehicle
                 new("L:1:DUOPILO_TEMPO", SpeedMps, 0.05),
                 new("L:1:DUOPILO_BREMSE", _brakeHoldS > 0 ? 1 : 0, 0.5),
                 new("L:1:DUOPILO_SIRENE", SirenAllowed && Phase == FireVehiclePhase.Responding && SpeedMps > 0.5 ? 1 : 0, 0.5),
+                new("L:1:DUOPILO_HORN", Horn, 0.5),
+                new("L:1:DUOPILO_LICHTFARBE", LightColour, 0.5),
             ];
         }
     }

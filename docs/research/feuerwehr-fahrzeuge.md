@@ -30,6 +30,8 @@ Die `_Licht`-Variante hat echte Lichter, die wie bei den Standard-Bodenfahrzeuge
 | Motorgeräusch (geplant) | `L:1:DUOPILO_TEMPO` | Tempo in m/s (0 bis 25), jeden Frame | – |
 | Bremslicht (geplant) | `L:1:DUOPILO_BREMSE` | 0/1: bremst gerade oder hat eben gehalten | – |
 | Martinshorn (geplant) | `L:1:DUOPILO_SIRENE` | 0/1: nur auf der Anfahrt in Fahrt (`Duopilo:Fire:Siren`) | – |
+| Art des Horns (geplant) | `L:1:DUOPILO_HORN` | 0 Folgetonhorn, 1 Wail, 2 Yelp, 3 Hi-Lo; je Region ([Regionen](feuerwehr-regionen.md)), bisher immer 0 | – |
+| Warnlichtfarbe (geplant) | `L:1:DUOPILO_LICHTFARBE` | 0 blau, 1 rot/weiß, 2 rot; je Region, bisher immer 0 | – |
 | Rettungstreppe (nur RTF) | `L:1:DUOPILO_TREPPE` | 0 bis 100 (siehe unten) | – |
 
 - Blaulicht und Fahrlicht sind unabhängig voneinander.
