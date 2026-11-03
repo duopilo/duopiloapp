@@ -387,7 +387,7 @@ public sealed class FireService : BackgroundService
                 if (await Task.WhenAny(fetch, Task.Delay(OsmWait, ct)) == fetch)
                 {
                     var osm = await fetch;
-                    stations = FireStationLookup.ToStations(osm.Stations, graph);
+                    stations = FireStationLookup.ToStations(osm.Stations, graph, osm.Buildings);
                     graph.SetBuildings(FireStationLookup.ToBuildings(osm.Buildings, graph));
                     _log.LogInformation(
                         Loc.Log("log.fire.stations"),

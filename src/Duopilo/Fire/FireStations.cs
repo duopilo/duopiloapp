@@ -224,14 +224,18 @@ public sealed class FireStationLookup
         return new OsmAirportData(stations, buildings);
     }
 
-    /// <summary>Wachen aus OSM als <see cref="FireStation"/> im Rollweg-Netz, mit Plätzen; nur bis 6 km vom Bezugspunkt, Name sonst "Wache n".</summary>
-    public static IReadOnlyList<FireStation> ToStations(IReadOnlyList<OsmFireStation> osm, TaxiGraph graph) =>
+    /// <summary>
+    /// Wachen aus OSM als <see cref="FireStation"/> im Rollweg-Netz, mit Plätzen; nur bis 6 km vom Bezugspunkt, Name sonst "Wache n".
+    /// Ist die Wache nur ein Punkt (amenity=fire_station ohne building=fire_station, z. B. die Flughafenfeuerwehr Düsseldorf), gilt das
+    /// Gebäude aus <paramref name="buildings"/> als ihr Umriss, in dem der Punkt liegt.
+    /// </summary>
+    public static IReadOnlyList<FireStation> ToStations(IReadOnlyList<OsmFireStation> osm, TaxiGraph graph, IReadOnlyList<OsmShape>? buildings = null) =>
         [.. osm
             .Select((s, i) =>
             {
                 var (east, north) = graph.ToLocal(s.Latitude, s.Longitude);
                 var name = string.IsNullOrWhiteSpace(s.Name) ? "Wache " + (i + 1).ToString(CultureInfo.InvariantCulture) : s.Name.Trim();
-                var outline = s.Outline?.Select(p => graph.ToLocal(p.Lat, p.Lon)).ToList();
+                var outline = (s.Outline ?? ContainingBuilding(buildings, s.Latitude, s.Longitude))?.Select(p => graph.ToLocal(p.Lat, p.Lon)).ToList();
                 var doors = s.Doors.Select(d =>
                 {
                     var (de, dn) = graph.ToLocal(d.Lat, d.Lon);
@@ -241,6 +245,28 @@ public sealed class FireStationLookup
                 return new FireStation(name, east, north, s.Latitude, s.Longitude, "osm") { Exits = exits, ExitSource = source };
             })
             .Where(s => Math.Abs(s.EastM) < 6000 && Math.Abs(s.NorthM) < 6000)];
+
+    /// <summary>Das kleinste geschlossene Gebäude, in dem der Punkt liegt.</summary>
+    private static IReadOnlyList<OsmPoint>? ContainingBuilding(IReadOnlyList<OsmShape>? buildings, double lat, double lon) =>
+        buildings?
+            .Where(b => b.Closed && Contains(b.Points, lat, lon))
+            .MinBy(b => (b.Points.Max(p => p.Lat) - b.Points.Min(p => p.Lat)) * (b.Points.Max(p => p.Lon) - b.Points.Min(p => p.Lon)))?
+            .Points;
+
+    private static bool Contains(IReadOnlyList<OsmPoint> polygon, double lat, double lon)
+    {
+        var inside = false;
+        for (int i = 0, j = polygon.Count - 1; i < polygon.Count; j = i++)
+        {
+            var (a, b) = (polygon[i], polygon[j]);
+            if ((a.Lat > lat) != (b.Lat > lat) && lon < ((b.Lon - a.Lon) * (lat - a.Lat) / (b.Lat - a.Lat)) + a.Lon)
+            {
+                inside = !inside;
+            }
+        }
+
+        return inside;
+    }
 
     /// <summary>Gebäude und Brücken als Umrisse in Metern (Brücken als 4 m breite Bänder), nur bis 6 km vom Bezugspunkt.</summary>
     public static IReadOnlyList<IReadOnlyList<(double East, double North)>> ToBuildings(IReadOnlyList<OsmShape> shapes, TaxiGraph graph)

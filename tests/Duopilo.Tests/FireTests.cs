@@ -910,4 +910,19 @@ public sealed class FireTests
         Assert.Null(graph.FirstBuildingHitM([(-20, 20), (20, 20)]));
         Assert.Equal((-5.0, 5.0), FirePlanner.CutAt([(-20, 5), (-5, 5), (15, 5)], 15)[^1]);
     }
+
+    [Fact]
+    public void Wache_als_Punkt_bekommt_den_Umriss_des_Gebaeudes_darum()
+    {
+        // Nur amenity=fire_station als Punkt; das Gebäude darum (Halle 500/270 … 540/290) liefert die Hallenseite
+        var graph = Graph();
+        (double Lat, double Lon) At(double e, double n) => graph.ToLatLon(e, n);
+        var corners = new[] { At(500, 270), At(540, 270), At(540, 290), At(500, 290), At(500, 270) };
+        var hall = new OsmShape([.. corners.Select(c => new OsmPoint(c.Lat, c.Lon))], true);
+        var (lat, lon) = At(520, 280);
+        var station = Assert.Single(FireStationLookup.ToStations([new OsmFireStation("Wache", lat, lon)], graph, [hall]));
+
+        Assert.Equal("outline", station.ExitSource);
+        Assert.InRange(station.Exits[0].NorthM, 265, 267);
+    }
 }
