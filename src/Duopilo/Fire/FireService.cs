@@ -469,17 +469,36 @@ public sealed class FireService : BackgroundService
 
                 var vp = plan.Vehicles[i];
                 var model = ModelFor(vp.Unit);
-                uint objectId;
-                try
+                uint objectId = 0;
+                var (startEast, startNorth, heading) = vp.Route.At(0);
+                var (spawnLat, spawnLon) = graph.ToLatLon(startEast, startNorth);
+                Exception? failure = null;
+
+                // Neue, neutrale Titel zuerst; fehlt das umbenannte Paket noch, der alte Titel (und für den Rest der Sitzung nur noch er)
+                foreach (var title in Titles(model))
                 {
-                    var (startEast, startNorth, heading) = vp.Route.At(0);
-                    var (spawnLat, spawnLon) = graph.ToLatLon(startEast, startNorth);
-                    objectId = await _sim.CreateSimulatedObjectAsync(model, null, new AiInitPosition(spawnLat, spawnLon, groundFt + height, heading, true, 0), ct);
+                    try
+                    {
+                        objectId = await _sim.CreateSimulatedObjectAsync(title, null, new AiInitPosition(spawnLat, spawnLon, groundFt + height, heading, true, 0), ct);
+                        model = title;
+                        failure = null;
+                        break;
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        failure = ex;
+                        _log.LogWarning(Loc.Log("log.fire.spawnFailed"), vp.Unit.Name, title, Loc.ToEnglish(ex.Message) ?? ex.Message);
+                        if (LegacyTitles.ContainsKey(title))
+                        {
+                            // Fehlt ein neuer Titel, ist es das alte Paket: alle neuen überspringen (jeder Versuch wartet 10 s)
+                            _missingTitles.UnionWith(LegacyTitles.Keys);
+                        }
+                    }
                 }
-                catch (Exception ex) when (ex is not OperationCanceledException)
+
+                if (failure is not null || objectId == 0)
                 {
-                    errors.Add(vp.Unit.Name + ": " + ex.Message);
-                    _log.LogWarning(Loc.Log("log.fire.spawnFailed"), vp.Unit.Name, model, Loc.ToEnglish(ex.Message) ?? ex.Message);
+                    errors.Add(vp.Unit.Name + ": " + (failure?.Message ?? "-"));
                     continue;
                 }
 
@@ -938,6 +957,33 @@ public sealed class FireService : BackgroundService
         _sim.Num("lat") is { } lat && _sim.Num("lon") is { } lon ? graph.ToLocal(lat, lon) : null;
 
     /// <summary>Titel des Fahrzeugs aus den Einstellungen; FLF abwechselnd im Panther- und Z8-Stil.</summary>
+    /// <summary>
+    /// Alte Titel der Modelle mit Herstellernamen (vor der Umbenennung für die Veröffentlichung, docs/research/feuerwehr-regionen.md):
+    /// Solange im Community-Ordner noch das alte Paket liegt, spawnt Duopilo damit.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, string> LegacyTitles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Duopilo_FLF_Rund_Licht"] = "Duopilo_FLF_Panther_Licht",
+        ["Duopilo_FLF_Eckig_Licht"] = "Duopilo_FLF_Z8_Licht",
+    };
+
+    // Neue Titel, die es in dieser Sitzung nicht gab; nur PrepareAsync liest und schreibt, ein Einsatz nach dem anderen
+    private readonly HashSet<string> _missingTitles = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Titel zum Spawnen in dieser Reihenfolge: der eingestellte (außer er fehlte schon), dann der alte.</summary>
+    private IEnumerable<string> Titles(string model)
+    {
+        if (!_missingTitles.Contains(model))
+        {
+            yield return model;
+        }
+
+        if (LegacyTitles.TryGetValue(model, out var legacy))
+        {
+            yield return legacy;
+        }
+    }
+
     private string ModelFor(FireUnit unit)
     {
         var fire = _options.Fire;
@@ -945,7 +991,7 @@ public sealed class FireService : BackgroundService
         {
             case FireVehicleKind.Flf:
                 var models = fire.FlfModels.Split(new[] { ',', ';' },StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                return models.Length == 0 ? "Duopilo_FLF_Panther_Licht" : models[(unit.Number - 1) % models.Length];
+                return models.Length == 0 ? "Duopilo_FLF_Rund_Licht" : models[(unit.Number - 1) % models.Length];
             case FireVehicleKind.Elw:
                 return fire.ElwModel;
             case FireVehicleKind.Hlf:

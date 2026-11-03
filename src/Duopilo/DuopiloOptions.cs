@@ -443,8 +443,11 @@ public sealed class FireOptions
     /// </summary>
     public string OverpassUrl { get; set; } = "https://overpass-api.de/api/interpreter,https://overpass.private.coffee/api/interpreter";
 
-    /// <summary>Titel der Flugfeldlöschfahrzeuge (Komma-getrennt, abwechselnd eingesetzt).</summary>
-    public string FlfModels { get; set; } = "Duopilo_FLF_Panther_Licht,Duopilo_FLF_Z8_Licht";
+    /// <summary>
+    /// Titel der Flugfeldlöschfahrzeuge (Komma-getrennt, abwechselnd eingesetzt). Fehlen die neutralen Titel noch (altes Paket mit
+    /// Panther/Z8), nimmt Duopilo die alten.
+    /// </summary>
+    public string FlfModels { get; set; } = "Duopilo_FLF_Rund_Licht,Duopilo_FLF_Eckig_Licht";
 
     /// <summary>Titel des Einsatzleitwagens.</summary>
     public string ElwModel { get; set; } = "Duopilo_ELW_Licht";
