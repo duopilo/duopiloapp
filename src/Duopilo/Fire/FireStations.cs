@@ -98,12 +98,23 @@ public sealed class FireStationLookup
         var file = Path.Combine(_cacheDirectory, key + ".json");
         var cached = ReadCache(file);
 
-        // Zwischenspeicher von vor den Gebäuden gelten als abgelaufen
-        if (cached is { } c && (!c.Ok || c.Buildings is not null) && DateTimeOffset.UtcNow - c.FetchedUtc < (c.Ok ? Fresh : RetryAfterFailure))
+        if (cached is { } c && DateTimeOffset.UtcNow - c.FetchedUtc < (c.Ok ? Fresh : RetryAfterFailure))
         {
+            if (c.Ok && c.Buildings is null)
+            {
+                // Zwischenspeicher von vor den Gebäuden: die Wachen gleich nehmen, Umrisse und Gebäude im Hintergrund nachholen
+                _ = Fetch(key, file, cached);
+            }
+
             return Task.FromResult(new OsmAirportData(c.Stations, c.Buildings ?? []));
         }
 
+        return Fetch(key, file, cached);
+    }
+
+    /// <summary>Die laufende Abfrage für den Flughafen oder eine neue (eine je Flughafen zugleich).</summary>
+    private Task<OsmAirportData> Fetch(string key, string file, CacheFile? cached)
+    {
         var task = _running.GetOrAdd(key, _ => Task.Run(() => FetchAsync(key, file, cached)));
         _ = task.ContinueWith(_ => _running.TryRemove(new KeyValuePair<string, Task<OsmAirportData>>(key, task)), TaskScheduler.Default);
         return task;
