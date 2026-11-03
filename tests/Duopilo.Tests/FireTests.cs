@@ -855,11 +855,11 @@ public sealed class FireTests
     [Fact]
     public void Plaetze_vor_der_Halle_nebeneinander_und_nicht_im_Gebaeude()
     {
-        // Halle 40 × 20 m bei (100/270 … 140/290), Südseite zum Rollweg A (y = 200); ohne Tor: an der Hallenseite zur Straße
+        // Halle 40 × 20 m bei (500/270 … 540/290), Südseite zum Rollweg A (y = 200); ohne Tor: an der Hallenseite zur Straße
         var graph = Graph();
-        var outline = new List<(double East, double North)> { (100, 270), (140, 270), (140, 290), (100, 290), (100, 270) };
+        var outline = new List<(double East, double North)> { (500, 270), (540, 270), (540, 290), (500, 290), (500, 270) };
         graph.SetBuildings([outline]);
-        var (exits, source) = FireExits.ForOsm(120, 280, outline, [], graph);
+        var (exits, source) = FireExits.ForOsm(520, 280, outline, [], graph);
 
         Assert.Equal("outline", source);
         Assert.All(exits.Take(7), e =>
@@ -871,12 +871,15 @@ public sealed class FireTests
         Assert.All(firstRow, a => Assert.All(firstRow.Where(b => !ReferenceEquals(a, b)), b => Assert.True(Distance(a.EastM, a.NorthM, b.EastM, b.NorthM) >= 5.9)));
 
         // Mit Hallentor: das Tor gewinnt
-        var (doorExits, doorSource) = FireExits.ForOsm(120, 280, outline, [(110, 270, true)], graph);
+        var (doorExits, doorSource) = FireExits.ForOsm(520, 280, outline, [(510, 270, true)], graph);
         Assert.Equal("door", doorSource);
-        Assert.InRange(Distance(doorExits[0].EastM, doorExits[0].NorthM, 110, 266), 0, 0.5);
+        Assert.InRange(Distance(doorExits[0].EastM, doorExits[0].NorthM, 510, 266), 0, 0.5);
+
+        // Liegt ein Fahrzeugstellplatz der Szenerie davor (P1 bei 100/320), nimmt die Wache dort Aufstellung
+        Assert.Equal("vehicle_parking", FireExits.ForOsm(120, 280, null, [], graph).Source);
 
         // Die Wege beginnen vor der Halle und rollen nach Süden heraus, keiner durch das Gebäude
-        var station = new FireStation("Halle", 120, 280, 0, 0, "osm") { Exits = exits };
+        var station = new FireStation("Halle", 520, 280, 0, 0, "osm") { Exits = exits };
         var plan = FirePlanner.PlanToAircraft(graph, FireCategory.Lineup(FireAlertLevel.GroundIncident, 7), -600, 200, 30, [station])!;
         Assert.Equal(3, plan.Vehicles.Count);
         var starts = plan.Vehicles.Select(v => v.Route.At(0)).ToList();
