@@ -46,6 +46,12 @@ Die `_Licht`-Variante hat echte Lichter, die wie bei den Standard-Bodenfahrzeuge
 | Rettungstreppe (nur RTF) | `L:1:DUOPILO_TREPPE` | 0 bis 100 (siehe unten) | – |
 
 - Blaulicht, Fahrlicht und Bremslicht sind unabhängig voneinander. Das Rücklicht hängt am Fahrlicht.
+- **Feste Reihenfolge der `L:1`-Variablen:** Alle Duopilo-Fahrzeuge legen sie in derselben Reihenfolge an:
+  `BLAULICHT LICHTFARBE FAHRLICHT BREMSE WEG KURVE SIRENE HORN TEMPO TREPPE RUNDUMLICHT`. Neue Variablen kommen nur hinten dazu.
+  SimConnect ordnet die Namen beim Schreiben offenbar nach Position zu: Beim RTF stand `TREPPE` vor `WEG`/`KURVE`, und im
+  Behaviors-Fenster landeten die Werte verschoben (04.11.2026: `TREPPE` = Wert von `WEG`, `WEG` = `KURVE`, `BREMSE` = `TEMPO`,
+  Blau- und Fahrlicht 0). Der Exporter setzt dafür als ersten Eintrag in `<Behaviors>` die Komponente `Duopilo_Variablen`
+  (`<Update Once="True">`), die alle Variablen in dieser Reihenfolge einmal liest. `check_release.py` prüft die Reihenfolge.
 - `L:1:` ist eine Z-Variable und gilt in MSFS 2024 nur für das eine SimObject. Die globalen `L:DUOPILO_*` werden nicht mehr ausgewertet. Mit ihnen gingen im Test alle Fahrzeuge gleichzeitig an.
 - Im Modell schalten die Variablen über `<Behaviors>`/`<Visibility>` Knoten sichtbar (siehe [Licht-Knoten](#licht-knoten)).
 
