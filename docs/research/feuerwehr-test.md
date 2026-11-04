@@ -128,10 +128,11 @@ Flughafenfeuerwehr Düsseldorf (OSM) über die Betriebsstraßen aus OSM, ohne Fa
   hängt also am Modell und nicht an Duopilo. Prüfen im Behaviors-Fenster des Sims am RTF.
 - **Wache bei Pan Pan:** Ohne `allStations` kommen alle Fahrzeuge von der Wache, die in Luftlinie der Bahnmitte am nächsten ist
   (23R: Wache Nord). Bei Mayday nimmt Duopilo je Fahrzeug den kürzesten Weg (Hauptwache). Besser: auch bei Pan Pan nach dem Fahrweg
-  wählen.
+  wählen. **Behoben in beta.44.feuerwehr.13:** Pan Pan und Notfall am Boden nehmen die Wache mit dem kürzesten Weg.
 - **SimConnect DATA_ERROR:** bei jedem Lichtwechsel (Spawn: dreimal je Fahrzeug, Einrücken: einmal) zwei je Fahrzeug, vermutlich
   `LIGHT BEACON`/`LIGHT LANDING` über `SetDataOnSimObject` an Bodenfahrzeugen. Die `L:1:`-Variablen greifen, der Weg über
-  `A:LIGHT` ist bei den eigenen Fahrzeugen nicht nötig.
+  `A:LIGHT` ist bei den eigenen Fahrzeugen nicht nötig. **Behoben in beta.44.feuerwehr.13:** Feuerwehr und Follow-me schalten nur
+  noch über `L:1:` und die Events, ohne die SimVars.
 - Kosmetik im Verkehrstest: `taxi_crossings 05R/23L hold on  at …` und `holding_short 05R/23L on ` ohne Rollweg-Namen.
 
 Noch offen: Landung auf der anderen Bahn, anderer Abrollweg als erwartet, Alarm per Funk (Mayday/Pan Pan im ATC-Modul), Ausrücken
