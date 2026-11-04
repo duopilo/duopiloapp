@@ -101,3 +101,38 @@ Im Status von `fire_service` stehen je Fahrzeug Phase, Geschwindigkeit und Absta
 
 Offen für den Test: ob `AICreateSimulatedObject` bei einem Flugzeug 20 NM entfernt schon Fahrzeuge am Flughafen erzeugt (sonst
 später ausrücken), wie schnell die Fahrzeuge in Kurven wirken, und ob die Abstände zum Abgasstrahl passen.
+
+## Ergebnis Test im Sim (04.11.2026, beta.44.feuerwehr.12, EDDL)
+
+Beide Tests mit einem KI-A320 (`traffic_test_start`) und `fire_service alert` mit `tail: DUO01`, Bahn 23R, Nacht.
+
+**Test 1 – Mayday, A320 bleibt auf der Bahn stehen (A1):** Kategorie 6, alle sechs Fahrzeuge (2 FLF, ELW, HLF, RTF, RTW) von der
+Flughafenfeuerwehr Düsseldorf (OSM) über die Betriebsstraßen aus OSM, ohne Fahrzeug ohne Weg.
+- Bereitstellung: FLF 1 an der Aufsetzzone (329 m), die anderen hintereinander am Haltepunkt bei 2064 m, rund 100 m neben der
+  Mittellinie. Die Wege waren laut Florian sinnvoll.
+- Licht: Blaulicht und Fahrlicht an (FLF, ELW, HLF, RTW), auf der Rückfahrt alle Blaulichter aus.
+- Umstellen: Der A320 stand nach 29 s Ausrollen bei 1480 m. FLF 1 kam von hinten, die anderen fünf kamen entgegen. Alle standen nach
+  gut einer Minute auf ihren Plätzen: FLF 1 vorn links, FLF 2 und HLF hinten rechts, ELW schräg vor der Nase, RTW vorn links, RTF
+  links neben dem Rumpf. Keins stand unter dem Flugzeug oder in der Linie der Hauptfahrwerke.
+- Einrücken: Nach `cancel` sind alle zur Wache gefahren und dort verschwunden.
+
+**Test 2 – Pan Pan, Landung mit Rollen zu B10 (A3):** 2 FLF und ELW, diesmal von der **Feuerwache Nord**.
+- FLF 1 ist ab der Aufsetzzone gefolgt: Es lag erst 1,3 km zurück, hatte mit 30 kt nach rund einer Minute aufgeholt, danach
+  48–51 m (Soll 50). Die 23L hat es direkt hinter dem A320 gekreuzt.
+- FLF 2 und ELW standen hinter dem Abrollweg (2064 m, K3 bei 1786 m) und sind zurückgefahren, als der A320 abgerollt war.
+- Am Gate: Nach gut einer Minute ist auch FLF 1 eingerückt.
+
+**Befunde:**
+- **RTF (Modell):** kein Fahrlicht und kein Blaulicht; die Treppe steht bei `L:1:DUOPILO_TREPPE` = 0 nach Florian ausgefahren
+  (Duopilo setzt die Variable nicht). Das Rücklicht leuchtet. Die XML und die Lichtknoten im glTF sehen aus wie bei HLF/RTW. Es
+  hängt also am Modell und nicht an Duopilo. Prüfen im Behaviors-Fenster des Sims am RTF.
+- **Wache bei Pan Pan:** Ohne `allStations` kommen alle Fahrzeuge von der Wache, die in Luftlinie der Bahnmitte am nächsten ist
+  (23R: Wache Nord). Bei Mayday nimmt Duopilo je Fahrzeug den kürzesten Weg (Hauptwache). Besser: auch bei Pan Pan nach dem Fahrweg
+  wählen.
+- **SimConnect DATA_ERROR:** bei jedem Lichtwechsel (Spawn: dreimal je Fahrzeug, Einrücken: einmal) zwei je Fahrzeug, vermutlich
+  `LIGHT BEACON`/`LIGHT LANDING` über `SetDataOnSimObject` an Bodenfahrzeugen. Die `L:1:`-Variablen greifen, der Weg über
+  `A:LIGHT` ist bei den eigenen Fahrzeugen nicht nötig.
+- Kosmetik im Verkehrstest: `taxi_crossings 05R/23L hold on  at …` und `holding_short 05R/23L on ` ohne Rollweg-Namen.
+
+Noch offen: Landung auf der anderen Bahn, anderer Abrollweg als erwartet, Alarm per Funk (Mayday/Pan Pan im ATC-Modul), Ausrücken
+ab 20 NM bei eigenem Anflug, Abstand zum Abgasstrahl.
