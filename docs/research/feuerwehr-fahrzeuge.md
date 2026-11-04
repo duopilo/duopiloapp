@@ -62,11 +62,14 @@ deshalb hat jede Warnlichtfarbe eigene Knoten mit eigenen Lichtern.
 | `Fahrlicht_LODn` | Fahrlicht | Scheinwerfer, Kegel nach vorn |
 | `Ruecklicht_LODn` | Fahrlicht | 2 rote Lichter (60 cd, nur nachts) und leuchtende Glaskopien `Ruecklicht_Glas_LODn` |
 | `Bremslicht_LODn` | `BREMSE` | 2 rote Lichter (400 cd, am Tag 250 cd) und hellere Glaskopien `Bremslicht_Glas_LODn` |
-| `<Farbe>_Treppe_Buehne_LODn` (nur RTF) | wie die Farbe | Warnlichter auf der Bühne, fahren mit |
+| `<Farbe>_Treppe_Buehne_LODn` (nur RTF) | wie die Farbe und `TREPPE` < 5 | Warnlichter auf der Bühne, fest in Transportstellung; aus, sobald die Bühne hochfährt |
 
 - In der `_Licht`-Variante sind die Warnlichtgläser neutral grau, weil die Farbe je Region wechselt; es leuchten die Lichter.
 - Die Rückleuchtengläser des Modells leuchten nicht selbst. Es leuchten die Glaskopien, die mit dem Rück- oder Bremslicht sichtbar werden.
 - Vergleiche im Code stehen in der Modell-XML als `&lt;` (ein rohes `<` macht die XML ungültig, auch für den Exporter).
+- **Keine Lichter an animierten Knoten.** Hängt auch nur ein Straßenlicht unter einem animierten Knoten, zeigt MSFS 2024 beim ganzen
+  Fahrzeug kein Straßenlicht mehr (RTF, 04.11.2026: weder Fahr- noch Blaulicht, nur die selbstleuchtenden Rückleuchtengläser). Lichter
+  auf beweglichen Teilen sitzen deshalb fest in Ruhelage und gehen aus, sobald sich das Teil bewegt (`MOVING_PART_AT_REST` im Exporter).
 
 | Fahrzeug | Warnlicht-Gruppen | Lichter je Stufe | Rückleuchten (Lage im Modell) |
 | --- | --- | --- | --- |
@@ -116,7 +119,7 @@ Gleiche Modelle, andere Lackfarben, ausgewählt über den Titel. Duopilo hängt 
 - Umsetzung: `livery.cfg` und `szLivery` (`AICreateSimulatedObject_EX1`) gelten laut SDK nur für modulare SimObjects. Die Modelle haben
   keine Texturen, nur Materialfarben. Jede Livery ist deshalb eine Kopie von `model.licht` (`model.licht_gelbgruen`, `model.licht_gelb`)
   mit geänderten Grundfarben der Materialien `Lack_Leuchtrot`, `Lack_Rot`, `Folie_Leuchtgelb` und `Kontur_Gelb`, als eigener
-  `[fltsim.3]`/`[fltsim.4]`-Eintrag. Lichter, Animationen, Behaviors und Sound sind gleich.
+  `[fltsim.3]`/`[fltsim.4]`-Eintrag mit eigener Modell-GUID. Lichter, Animationen, Behaviors und Sound sind gleich.
 - Keine Wappen, Logos oder echten Wachennamen. Die Schrift („AIRPORT FIRE DEPARTMENT“, „RTW 1“ …) ist Folie und wechselt die Farbe mit:
   auf Gelb ist sie weiß und schlechter lesbar.
 
@@ -154,7 +157,8 @@ Gebraucht für Follow-me und die Flughafenfeuerwehr (siehe [Roadmap](../../wiki/
 
 ## Rettungstreppe anlegen (RTF, offen)
 
-Stand: 02.11.2026. Das Modell ist fertig und exportiert, im Sim aber noch nicht getestet. Die Logik in Duopilo fehlt noch.
+Stand: 04.11.2026. Das Modell ist fertig und exportiert. Im Sim stand die Treppe bei `TREPPE` = 0 oben (Fehler in den Stufen 1 und 2,
+siehe unten, behoben am 04.11.2026, im Sim noch zu prüfen). Die Logik in Duopilo fehlt noch.
 
 Beim RTF hebt sich die Bühne über dem Fahrerhaus, und an der rechten Seite fährt eine Brücke aus. Die Treppe ist zweiteilig und teleskopisch: Sie schwenkt mit, und ihr Fuß bleibt hinten am Fahrzeug.
 
@@ -169,7 +173,14 @@ Beim RTF hebt sich die Bühne über dem Fahrerhaus, und an der rechten Seite fä
 | Tempo | Lag 5, also etwa 20 s von 0 bis 100 |
 
 - **Andocken seitlich rechts:** Das Fahrzeug steht parallel zum Rumpf, mit der rechten Seite zur Tür. Die Türmitte liegt auf Höhe der Brückenmitte, 1,80 m vor dem Modell-Nullpunkt (Fahrzeugmitte am Boden). Die ausgefahrene Brücke reicht bis 1,81 m rechts der Fahrzeugmitte.
-- **Im Modell:** Animation `Treppe` (Länge 100, `Type="Sim"`) in `<Behaviors>`. Bewegt werden die Knoten `Treppe_Buehne`, `Treppe_Bruecke`, `Treppe_Oben` und `Treppe_Unten`. Die Blaulichter auf der Bühne fahren mit, eigener Schalter-Knoten `Blaulicht_Treppe_Buehne`.
+- **Im Modell:** Animation `Treppe` (Länge 100, `Type="Sim"`) in `<Behaviors>`. Bewegt werden die Knoten `Treppe_Buehne`, `Treppe_Bruecke`, `Treppe_Oben` und `Treppe_Unten`. Die Warnlichter auf der Bühne fahren nicht mit (siehe [Licht-Knoten](#licht-knoten)): Sie sitzen fest in Transportstellung
+  (`Blaulicht_Treppe_Buehne`, `Rotweisslicht_Treppe_Buehne`, `Rotlicht_Treppe_Buehne`) und gehen bei `TREPPE` ab 5 aus.
+- **Transportstellung:** Bei `TREPPE` = 0 sitzt die Bühne auf dem Fahrerhausdach, die Brücke ist eingefahren und die Treppe fällt nach
+  hinten ab (Bühnenboden 3,15 m über Grund). So soll es aussehen.
+- **Ruhelage in allen Stufen gleich:** Der Multi-Export setzte in `_LOD1` und `_LOD2` die Ruhelage der animierten Knoten auf das letzte
+  Bild der Animation (Treppe oben, Lenkung voll rechts). MSFS zeigt die Ruhelage, solange sich der Wert der Animation nicht ändert;
+  aus normaler Entfernung (Stufe 1) stand die Treppe deshalb bei 0 oben. Seit dem 04.11.2026 übernimmt der Exporter die Ruhelage
+  aus Stufe 0 (`fix_lod_rest`), `check_release.py` prüft das. Betraf auch die Lenkung aller Fahrzeuge.
 - **Prüfen:** Ob MSFS 0 bis 100 auf die ganze Bewegung legt. Exportiert sind 100 Bilder bei 24 fps, also 4,17 s.
 
 Ablauf in Duopilo (offen):
@@ -189,13 +200,16 @@ Die Schwellenhöhe der Türen gehört ins Flugzeugprofil. Grobe Richtwerte, noch
 - Lenkung: `L:1:DUOPILO_KURVE` auf 0,04 setzen, die Vorderräder lenken nach rechts. Bei −0,04 lenken sie nach links, bei 0 stehen sie gerade.
 - Zwei Fahrzeuge desselben Typs: Nur das, dessen Werte gesetzt sind, darf sich bewegen.
 - RTF: `L:1:DUOPILO_TREPPE` auf 10, 55 und 100 setzen. Die Brücke muss rechts herausfahren, die Bühne auf halbe bzw. volle Höhe gehen, und die Treppe muss geschlossen bleiben.
+- RTF ohne gesetzte Treppe (0), auch aus etwas Entfernung: Transportstellung (Bühne auf dem Dach). Fahrlicht und Blaulicht müssen
+  leuchten; die Bühnen-Blaulichter gehen aus, sobald `TREPPE` 5 oder mehr ist.
 - Rück- und Bremslicht: `FAHRLICHT` 1 → Rücklicht an; `BREMSE` 1 → deutlich heller, auch bei `FAHRLICHT` 0; beides 0 → aus.
 - Warnlichtfarbe: `BLAULICHT` 1 mit `LICHTFARBE` 0, 1, 2 → blau, rot/weiß, rot, auf dem Fahrzeug und auf dem Boden.
 - Horn: `SIRENE` 1 mit `HORN` 0 bis 3 → die vier Töne, leiser mit Abstand; `SIRENE` 0 → still.
 - Motor: `TEMPO` 0 → 10 → 25 → der Motor geht hoch und wird lauter.
 - Liveries: `_Licht`, `_Licht_Gelbgruen` und `_Licht_Gelb` spawnen und ansehen.
 - Prüfskripte im Ordner `Duopilo-Modelle\MSFS`: `check_raeder.py` (Räder, Lenkung, Treppe) und `check_release.py` (XML lesbar,
-  Schalt-Knoten, Lichter je Knoten, Glaskopien, Lackfarben der Liveries, Sound-Ordner und Titel).
+  Schalt-Knoten, Lichter je Knoten, Lichter an animierten Knoten, Ruhelage je Stufe, Glaskopien, Lackfarben der Liveries, Sound-Ordner
+  und Titel). `paket_vergleichen.py` (über `_paket_vergleichen.bat`) vergleicht das installierte Paket mit dem gebauten.
 
 ## Später
 
