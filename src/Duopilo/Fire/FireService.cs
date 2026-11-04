@@ -807,7 +807,8 @@ public sealed class FireService : BackgroundService
     {
         await _sim.SetObjectNumberAsync(objectId, "L:1:DUOPILO_BLAULICHT", "Number", blue ? 1 : 0, ct);
         await _sim.SetObjectNumberAsync(objectId, "L:1:DUOPILO_FAHRLICHT", "Number", 1, ct);
-        await _sim.SetAiLightsAsync(objectId, new AiLights(Beacon: blue, Landing: true), ct);
+        // Geschaltet wird über die L:1-Variablen; die SimVars LIGHT … lehnt der Sim an Bodenfahrzeugen ab (DATA_ERROR), nur die Events
+        await _sim.SetAiLightsAsync(objectId, new AiLights(Beacon: blue, Landing: true), ct, simVars: false);
     }
 
     /// <summary>Boden unter dem Fahrzeug aus der Abfrage (eingefroren: Höhe minus Höhe über Grund), nur in der Nähe des Erwarteten.</summary>

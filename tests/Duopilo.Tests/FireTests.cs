@@ -288,6 +288,36 @@ public sealed class FireTests
     }
 
     [Fact]
+    public void Pan_Pan_alles_von_der_Wache_mit_dem_kuerzesten_Weg_nicht_der_naechsten_in_Luftlinie()
+    {
+        // Test EDDL 23R, 04.11.: Bei Pan Pan kam alles von der Wache Nord, die in Luftlinie näher an der Bahnmitte liegt, obwohl die
+        // Hauptwache den kürzeren Weg hat (bei Mayday kamen sie von dort). Hier liegt "Nord" mittig, aber fast 400 m vom Rollweg weg,
+        // "Ost" in Luftlinie weiter weg, dafür direkt an A: Wege gut 2,7 km gegen gut 2,2 km (Aufsetzzone x = -400, Mitte 0, Stoppstelle 800)
+        var graph = Graph();
+        IReadOnlyList<FireStation> stations = [Station(graph, "Nord", 0, 598), Station(graph, "Ost", 600, 230)];
+        Assert.True(Distance(0, 598, 0, 0) < Distance(600, 230, 0, 0));
+
+        var plan = FirePlanner.Plan(graph, Runway09, FireCategory.Lineup(FireAlertLevel.LocalStandby, 7), TrafficWake.Medium, null, stations)!;
+
+        Assert.Equal(["Ost"], plan.Vehicles.Select(v => v.Station.Name).Distinct());
+        Assert.Equal(3, plan.Vehicles.Count);
+        Assert.Empty(plan.Missing);
+    }
+
+    [Fact]
+    public void Notfall_am_Boden_von_der_Wache_mit_dem_kuerzesten_Weg()
+    {
+        // Einsatzort A bei x = -600; "Weit" steht zuerst in der Liste, gewählt wird nach dem Weg (gut 200 m gegen 1,5 km), nicht nach der Reihenfolge
+        var graph = Graph();
+        IReadOnlyList<FireStation> stations = [Station(graph, "Weit", 900, 260), Station(graph, "Nah", -400, 260)];
+
+        var plan = FirePlanner.PlanToAircraft(graph, FireCategory.Lineup(FireAlertLevel.GroundIncident, 6), -600, 200, 30, stations)!;
+
+        Assert.True(plan.FromOsm);
+        Assert.Equal(["Nah"], plan.Vehicles.Select(v => v.Station.Name).Distinct());
+    }
+
+    [Fact]
     public void Wache_weit_weg_vom_Rollweg_Netz_Rueckfall_auf_die_Parkposition()
     {
         var graph = Graph();

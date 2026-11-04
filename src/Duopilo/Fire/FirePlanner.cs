@@ -28,7 +28,7 @@ public sealed record FireDispatchPlan(IReadOnlyList<FireStation> Stations, Runwa
 /// <summary>
 /// Planung ohne Sim. Wachen: echte Feuerwachen aus OpenStreetMap, sonst eine freie Parkposition nahe der Bahnmitte (am liebsten eine
 /// Fahrzeug-Parkposition, Gates zuletzt, außer Sicht des eigenen Flugzeugs). Bei Local Standby und Notfall am Boden kommt alles von
-/// einer Wache (der nächsten), bei Full Emergency nimmt jedes Fahrzeug die Wache mit dem kürzesten Weg. Ziele sind Haltepunkte der
+/// einer Wache (der mit dem kürzesten Weg), bei Full Emergency nimmt jedes Fahrzeug die Wache mit dem kürzesten Weg. Ziele sind Haltepunkte der
 /// Landebahn: Aufsetzzone, Mitte, Stoppstelle, Bahnende. Teilen sich Fahrzeuge einen Haltepunkt, hält jedes weitere etwas früher.
 /// </summary>
 public static class FirePlanner
@@ -75,11 +75,11 @@ public static class FirePlanner
         var osm = (stations ?? []).Where(s => NearestNode(graph, s.EastM, s.NorthM) is { } n && Distance(n.EastM, n.NorthM, s.EastM, s.NorthM) <= MaxStationOffNetworkM).ToList();
         if (osm.Count > 0)
         {
+            // Alle von einer Wache: die mit dem kürzesten Weg, nicht die mit der kürzesten Luftlinie zur Bahnmitte – so kam am 04.11.
+            // (EDDL 23R, Pan Pan) alles von der Wache Nord, bei Mayday mit Wahl nach dem Weg dagegen von der Hauptwache
             var plan = allStations
                 ? PlanUnits(graph, runway, units, wake, holds, osm)
-                : osm.OrderBy(s => Distance(s.EastM, s.NorthM, midEast, midNorth))
-                    .Select(s => PlanUnits(graph, runway, units, wake, holds, [s]))
-                    .FirstOrDefault(p => p is not null);
+                : Shortest(osm.Select(s => PlanUnits(graph, runway, units, wake, holds, [s])), v => StandbyCost(v, runway, wake));
             if (plan is not null)
             {
                 return plan;
@@ -99,18 +99,34 @@ public static class FirePlanner
     }
 
     /// <summary>
-    /// Notfall am Boden: von der nächsten Wache (OSM, sonst freie Parkposition außer Sicht) über die Rollwege bis kurz vor das
+    /// Notfall am Boden: von der Wache mit dem kürzesten Weg (OSM, sonst freie Parkposition außer Sicht) über die Rollwege bis kurz vor das
     /// Flugzeug, die Fahrzeuge hintereinander.
     /// </summary>
     /// <param name="stand">Steht das Flugzeug (oder der Einsatzort) auf einer Parkposition: über deren Zufahrt anfahren, nie geradeaus –
     /// der nächste Rollpunkt kann hinter dem Terminal liegen (Test EDDL B9, 03.11.: ein FLF fuhr durch den Abflug in die Fluggastbrücke).</param>
     public static FireDispatchPlan? PlanToAircraft(TaxiGraph graph, IReadOnlyList<FireUnit> units, double aircraftEast, double aircraftNorth, double postUnitM, IReadOnlyList<FireStation>? stations = null, TaxiNode? stand = null)
     {
-        var candidates = (stations ?? [])
+        // Von den Wachen aus OSM die mit dem kürzesten Weg zum Einsatzort (nicht die mit der kürzesten Luftlinie)
+        var osm = (stations ?? [])
             .Where(s => NearestNode(graph, s.EastM, s.NorthM) is { } n && Distance(n.EastM, n.NorthM, s.EastM, s.NorthM) <= MaxStationOffNetworkM)
-            .OrderBy(s => Distance(s.EastM, s.NorthM, aircraftEast, aircraftNorth))
-            .Concat(SpawnCandidates(graph, aircraftEast, aircraftNorth, (aircraftEast, aircraftNorth)).Take(MaxSpawnTries).Select(FireStation.FromParking));
-        foreach (var station in candidates)
+            .ToList();
+        if (Shortest(osm.Select(PlanFrom), v => v.Route.LengthM) is { } best)
+        {
+            return best;
+        }
+
+        // Rückfall: freie Parkposition außer Sicht, die nächste zuerst
+        foreach (var station in SpawnCandidates(graph, aircraftEast, aircraftNorth, (aircraftEast, aircraftNorth)).Take(MaxSpawnTries).Select(FireStation.FromParking))
+        {
+            if (PlanFrom(station) is { } plan)
+            {
+                return plan;
+            }
+        }
+
+        return null;
+
+        FireDispatchPlan? PlanFrom(FireStation station)
         {
             // Je Fahrzeug ein eigener Platz an der Wache (nebeneinander), also ein eigener Weg
             var vehicles = new List<FireVehiclePlan>();
@@ -136,14 +152,25 @@ public static class FirePlanner
                 }
             }
 
-            if (vehicles.Count > 0)
-            {
-                return new FireDispatchPlan([station], null, vehicles, units.Where(u => vehicles.All(v => v.Unit != u)).ToList()) { Stand = stand };
-            }
+            return vehicles.Count == 0
+                ? null
+                : new FireDispatchPlan([station], null, vehicles, units.Where(u => vehicles.All(v => v.Unit != u)).ToList()) { Stand = stand };
         }
-
-        return null;
     }
+
+    /// <summary>
+    /// Von den Plänen je einer Wache der mit den meisten Fahrzeugen, bei Gleichstand der mit den kleinsten Kosten (Summe je Fahrzeug).
+    /// Null, wenn keine Wache einen Plan hat.
+    /// </summary>
+    private static FireDispatchPlan? Shortest(IEnumerable<FireDispatchPlan?> plans, Func<FireVehiclePlan, double> cost) =>
+        plans.OfType<FireDispatchPlan>()
+            .OrderBy(p => p.Missing.Count)
+            .ThenBy(p => p.Vehicles.Sum(cost))
+            .FirstOrDefault();
+
+    /// <summary>Kosten eines Wegs zur Bereitstellung wie bei der Wahl je Fahrzeug: Länge plus dreifach die Abweichung vom Ziel an der Bahn.</summary>
+    private static double StandbyCost(FireVehiclePlan vehicle, RunwayEnd runway, TrafficWake wake) =>
+        vehicle.Route.LengthM + (3 * Math.Abs(vehicle.AlongM - TargetAlongM(vehicle.Unit.Role, runway.LengthM, wake)));
 
     /// <summary>
     /// Haltepunkt und Weg je Fahrzeug von den möglichen Wachen: je Wache der beste Haltepunkt (nah am Ziel, möglichst auf ihrer Seite der

@@ -179,7 +179,8 @@ public sealed class FollowMeSpawner(SimConnectClient sim, IOptions<DuopiloOption
                 await Task.Delay(TimeSpan.FromSeconds(delay), ct);
                 await sim.SetObjectNumberAsync(objectId, "L:1:DUOPILO_RUNDUMLICHT", "Number", 1, ct);
                 await sim.SetObjectNumberAsync(objectId, "L:1:DUOPILO_FAHRLICHT", "Number", 1, ct);
-                await sim.SetAiLightsAsync(objectId, new AiLights(Beacon: true, Landing: true), ct);
+                // Nur die Events: die SimVars LIGHT … lehnt der Sim an Bodenfahrzeugen ab (DATA_ERROR, Test Feuerwehr 04.11.)
+                await sim.SetAiLightsAsync(objectId, new AiLights(Beacon: true, Landing: true), ct, simVars: false);
             }
             catch (OperationCanceledException)
             {
