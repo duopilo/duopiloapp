@@ -60,7 +60,8 @@ Stand: 02.11.2026. Alle sechs `_Licht`-Varianten sind exportiert und die Werte i
 Gebraucht für Follow-me und die Flughafenfeuerwehr (siehe [Roadmap](../../wiki/Roadmap.md)):
 
 1. Die `_Licht`-Variante spawnen und die ObjectID aus `SIMCONNECT_RECV_ASSIGNED_OBJECT_ID` merken.
-2. Je Variable eine eigene DataDefinition anlegen: `AddToDataDefinition(def, "L:1:DUOPILO_BLAULICHT", "Number", SIMCONNECT_DATATYPE_FLOAT64)`.
+2. Je Fahrzeug und Variable eine eigene DataDefinition anlegen: `AddToDataDefinition(def, "L:1:DUOPILO_BLAULICHT", "Number", SIMCONNECT_DATATYPE_FLOAT64)`.
+   Eine Definition für alle Fahrzeuge traf beim RTF die falsche Variable (Test EDDK 05.11., siehe [Feuerwehr: Test](feuerwehr-test.md)).
 3. Mit `SetDataOnSimObject(def, objectId, …)` 0 oder 1 setzen.
 4. Während das Objekt lädt, wird der Wert ignoriert. Nach einem Respawn oder Reload steht er wieder auf 0. Deshalb kurz nach dem Spawn setzen und bei jeder Zustandsänderung erneut senden.
 5. Falls `L:1:` per SimConnect nicht greift: die A-Variablen `LIGHT BEACON` und `LIGHT LANDING` (Bool) auf dieselbe ObjectID setzen. Das Modell wertet beide aus.

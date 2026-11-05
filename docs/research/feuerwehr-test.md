@@ -21,13 +21,17 @@ Fahrzeuge: [Feuerwehr-Fahrzeuge](feuerwehr-fahrzeuge.md).
 - **Fahrzeuge:** nach Feuerwehr-Kategorie aus der Länge des Flugzeugtyps (A320 = 6, A321 = 7, B77W = 9). Bis 5: 1 FLF, 6–7: 2 FLF
   und ELW, ab 8: 3 FLF und ELW; bei Full Emergency dazu HLF, Rettungstreppe(n), RTW.
 - **Bereitstellung:** Haltepunkte der Landebahn: FLF 1 an der Aufsetzzone, FLF 2 hinter der erwarteten Stoppstelle, FLF 3 am
-  Bahnende, ELW und der Rest an der Mitte (hintereinander, je 22 m).
+  Bahnende, ELW und der Rest an der Mitte (hintereinander, je 22 m). Haltepunkte auf einer Bahn (Hold-Short-Punkte an Kreuzungen)
+  und solche näher als halbe Bahnbreite plus 15 m an der Mittellinie fallen weg.
 - **Folgen:** Ab dem Aufsetzen zeichnet Duopilo die Spur des Flugzeugs auf. Ist das Flugzeug an einem Fahrzeug vorbei und langsamer
-  als 40 kt, fährt das Fahrzeug auf die Spur und folgt mit Abstand (Bahn 80 m, Rollweg 50 m bei Medium, Kolonne je 25 m mehr).
+  als 40 kt, fährt das Fahrzeug auf die Spur und folgt mit Abstand (Bahn 80 m, Rollweg 50 m bei Medium, Kolonne je 25 m mehr). Ist
+  es noch unterwegs und das Flugzeug schon an ihm und seinem Haltepunkt vorbei (später Alarm), fährt es gleich auf die Spur. Die
+  Kolonne ordnet sich nach dem Abstand zum Flugzeug: Wer später kommt, reiht sich hinten ein.
 - **Umstellen:** Steht das Flugzeug 6 s auf der Bahn (20 s daneben), fahren alle auf ihre Plätze: FLF vorn links, hinten rechts,
   hinten links, ELW schräg vor der Nase, die anderen weiter weg. Fahrzeuge vor dem Flugzeug kommen ihm entgegen.
 - **Weiter:** Rollt das Flugzeug wieder, folgt nur FLF 1, die anderen fahren ohne Blaulicht zurück zur Wache und verschwinden dort.
-  Steht das Flugzeug danach eine Minute abseits der Bahn, rückt auch FLF 1 ein. „cancel Mayday“ / „cancel Pan Pan“: alle zurück.
+  Ist ein anderes FLF schon beim Flugzeug und mehr als 200 m näher dran als FLF 1, folgt dieses. Steht das Flugzeug danach eine
+  Minute abseits der Bahn, rückt auch der Begleiter ein. „cancel Mayday“ / „cancel Pan Pan“: alle zurück.
 - **Fahrwege:** Für die Feuerwehr lädt Duopilo auch die Betriebsstraßen der Bodenfahrzeuge (TAXI_PATH VEHICLE und ROAD), damit
   die Fahrzeuge von der Wache aus aufs Rollweg-Netz finden. Flugzeuge rollen weiter nur über Rollwege. Ist der nächste Rollpunkt
   einer Wache abgeschnitten (in EDDL ein Stück am Helipad), probiert Duopilo die nächsten bis 400 m.
@@ -68,7 +72,11 @@ Fahrzeuge: [Feuerwehr-Fahrzeuge](feuerwehr-fahrzeuge.md).
 - **Alte Notfälle:** Ein Mayday oder Pan Pan, das älter als 3 Stunden ist (etwa aus einer wiederhergestellten ATC-Sitzung), löst
   nichts mehr aus. Die Bahn aus dem Plan gilt nur am Zielflughafen; am Boden und an einem anderen Flughafen gibt es keine.
 - **KI-Flüge:** `alert` mit `tail` (DUO01 …) folgt einem KI-Flugzeug eines laufenden Verkehrstests statt dem eigenen.
-- **Licht:** `L:1:DUOPILO_BLAULICHT` und `L:1:DUOPILO_FAHRLICHT` je Fahrzeug, dazu `A:LIGHT BEACON` und `A:LIGHT LANDING`.
+- **Licht:** `L:1:DUOPILO_BLAULICHT` und `L:1:DUOPILO_FAHRLICHT` je Fahrzeug und die Events (seit beta.44.feuerwehr.13 ohne
+  `A:LIGHT BEACON`/`A:LIGHT LANDING`), 2, 3 und 5 s nach dem Spawn. Die Z-Variablen gehen erst 2 s nach dem Spawn hinaus, und jedes
+  Fahrzeug hat eigene Data Definitions (seit beta.44.feuerwehr.14, siehe Ergebnis 05.11.).
+- **Bodenhöhe:** Gespawnt wird auf der Platzhöhe, auf der Höhe unter dem eigenen Flugzeug nur, wenn es höchstens 300 m vom Spawnpunkt
+  am Boden steht. In den ersten 3 s übernimmt das Fahrzeug den gemessenen Boden sofort, danach gleitet es mit 6 ft/s.
 - **Räder und Lenkung:** Jeden Frame, solange sich etwas ändert, `L:1:DUOPILO_WEG` (gefahrene Strecke seit dem Spawn) und
   `L:1:DUOPILO_KURVE` (Krümmung der Fahrspur, rechts positiv, über 0,4 s geglättet, höchstens 1/6 m). Im Stand bleibt die Lenkung
   stehen. Die Modelle rechnen daraus Drehwinkel und Lenkeinschlag ([Feuerwehr-Fahrzeuge](feuerwehr-fahrzeuge.md#räder-und-lenkung)).
@@ -181,33 +189,46 @@ waren nicht nötig. Die 06/24 kreuzt die 14L.
   `L:1:DUOPILO_TREPPE` gar nicht, und am RTF gab es keine eigenen Fehler. Vermutung: Duopilo legt je Variablenname eine einzige
   DataDefinition an und schreibt sie an alle Modelle. Löst MSFS `L:1:` über die Reihenfolge der ersten Verwendung im Modell auf, dann
   landet WEG beim RTF auf TREPPE, sobald TREPPE dort vor WEG registriert wird, und alle Variablen dahinter rutschen mit. Das würde
-  auch das fehlende Blau- und Fahrlicht am 04.11. erklären. Zu prüfen im Behaviors-Fenster des Sims. Abhilfe im Modell: TREPPE ans
-  Ende hinter FAHRLICHT, oder in allen Modellen dieselbe vollständige Liste in derselben Reihenfolge, TREPPE eingeschlossen.
+  auch das fehlende Blau- und Fahrlicht am 04.11. erklären. Zu prüfen im Behaviors-Fenster des Sims.
+  Nachgesehen (Quelle und gebautes Paket in `Documents\Duopilo-Modelle`): Das RTF-XML legt die Variablen wie alle anderen in fester
+  Reihenfolge an (`Duopilo_Variablen`, `Update Once`), die Treppe-Animation liest `DUOPILO_TREPPE`, im glTF bewegt `Treppe` nur die
+  vier Treppen-Knoten. Modell und Paket sind also in Ordnung. Einziger Unterschied zu den anderen: Beim RTF ist `Treppe` die erste
+  Animation (vor `Raeder` und `Lenkung`). Legt MSFS die Variablen in der Reihenfolge an, in der die Animationen sie zuerst benutzen,
+  ist beim RTF TREPPE die erste und WEG die zweite Stelle, bei FLF, ELW, HLF und RTW ist WEG die erste. Bindet SimConnect eine Data
+  Definition beim ersten Setzen an die Stelle im ersten Fahrzeug (FLF 1), landet WEG beim RTF genau auf TREPPE, KURVE auf WEG und
+  BLAULICHT/FAHRLICHT eine Stelle daneben. Das passt zu beiden Beobachtungen. **Geändert in beta.44.feuerwehr.14:** Duopilo legt
+  die Data Definitions je Objekt an statt je Variablenname und gibt sie beim Entfernen frei (`ClearDataDefinition`). Bleibt die
+  Treppe beim Fahren eingefahren und gehen Blau- und Fahrlicht am RTF, war es das. Sonst im Modell `Anim_Treppe` hinter
+  `Anim_Lenkung` stellen.
 - **DATA_ERROR:** Beim Einrücken (Blaulicht aus) gab es keinen DATA_ERROR mehr, auch nicht beim Folgen und Umstellen. Der Fix aus .13
   greift. Beim Spawn kommen weiter 3 bis 9 je Fahrzeug, fast alle in der Sekunde des Spawns, mit fortlaufenden SendIDs und `index 1`
   (43 und 54 bei 8 Fahrzeugen, 12 bei 3). Das zuerst gespawnte Fahrzeug eines Einsatzes hatte in allen drei Läufen keinen. Das passt
   zu den 7 Z-Variablen aus `FireVehicle.Vars()`: Im ersten Frame lädt das Objekt noch. Beim ersten Fahrzeug läuft der Pose-Takt erst
   danach an. Folge:
   `_aiVarSent` merkt sich die verworfenen Werte trotzdem, unveränderte Variablen (HORN, LICHTFARBE) gehen nie mehr hinaus. Heute
-  sind beide 0, das fällt also noch nicht auf. Vorschlag: Z-Variablen erst etwa 2 s nach dem Spawn senden, oder bei den
-  Lichtschaltungen (1, 2, 5 s) den Cache des Objekts leeren.
+  sind beide 0, das fällt also noch nicht auf. **Geändert in beta.44.feuerwehr.14:** Z-Variablen erst 2 s nach dem Spawn
+  (`FireVehicle.VarsDelayS`), das Licht nach 2, 3 und 5 s statt 1, 3 und 8 s. Im nächsten Test prüfen, ob die DATA_ERROR damit weg sind.
 
 **Befunde:**
 - **FLF 2 auf der Landebahn:** Der Haltepunkt 744 (2105 m) liegt 2 m neben der Mittellinie der 14L, also auf der Bahn. Welcher Knoten
   der Szenerie das genau ist (Hold-Short-Punkt einer Kreuzung auf der Bahn?), ist noch offen. `TaxiGraph.Holds()` ordnet jeden
   Hold-Knoten der nächsten Bahn zu (bis 400 m), auch wenn er auf ihr liegt, und `FirePlanner` filtert nur nach der Lage entlang der
-  Bahn. Der A330 hielt 540 m davor. Bei längerem Ausrollen wäre er durch FLF 2 gerollt. Vorschlag: im Planer Haltepunkte verwerfen,
-  die auf einer Bahn liegen (`Graph.RunwayAt`) oder näher als die halbe Bahnbreite plus Sicherheitsabstand an der Mittellinie.
+  Bahn. Der A330 hielt 540 m davor. Bei längerem Ausrollen wäre er durch FLF 2 gerollt. **Behoben in beta.44.feuerwehr.14:** Der
+  Planer verwirft Haltepunkte, die auf einer Bahn liegen (`Graph.RunwayAt`) oder näher als halbe Bahnbreite plus 15 m an der
+  Mittellinie (`FirePlanner.MinHoldEdgeClearM`).
 - **Spawnhöhe:** Florian sah die Fahrzeuge an der Hauptwache aus dem Boden kommen. Duopilo nimmt als Boden für alle Fahrzeuge die
   Höhe unter dem eigenen Flugzeug, wenn es am Boden steht. Der Jetson One stand 1,3 km entfernt auf 223 ft MSL, Bahn und Wache liegen
   bei etwa 253 ft. Die Fahrzeuge erschienen also rund 30 ft zu tief. Die Bodenabfrage je Fahrzeug liegt unter der Grenze von 60 ft
   und wird übernommen, dann steigen sie mit 6 ft/s (`GroundSlewFtPerSec`), also etwa 5 s sichtbar. In EDDL war der Platz flach.
-  Vorschlag: die Höhe unter dem eigenen Flugzeug nur nahe der Wache nehmen, sonst die Platzhöhe, und die erste Bodenabfrage direkt
-  übernehmen (oder das Fahrzeug erst danach zeigen).
+  **Behoben in beta.44.feuerwehr.14:** Die Höhe unter dem eigenen Flugzeug gilt nur bis 300 m vom Spawnpunkt (`OwnGroundRangeM`),
+  sonst die Platzhöhe. In den ersten 3 s nach dem Spawn springt das Fahrzeug auf den gemessenen Boden (`FireVehicle.GroundSnapS`).
 - **Begleiter bei spätem Alarm:** `FireOperation.Escort()` ist immer FLF 1, auch wenn es noch unterwegs ist. In Test 2 folgten FLF 2
   und ELW schon direkt hinter dem A320 und wurden eingerückt, während FLF 1 2 km aufholen musste. Besser: das FLF, das auf der Spur
   am nächsten am Flugzeug ist. Ein Fahrzeug, an dessen Haltepunkt das Flugzeug schon vorbei ist, könnte auch gleich auf die Spur
-  gehen, statt erst zum Haltepunkt zu fahren.
+  gehen, statt erst zum Haltepunkt zu fahren. **Behoben in beta.44.feuerwehr.14:** Ein FLF, das schon beim Flugzeug ist und mehr als
+  200 m näher dran als FLF 1, begleitet; nach dem Abrollen bleibt es dabei. Wer noch unterwegs ist und dessen Haltepunkt das Flugzeug
+  schon passiert hat, fährt gleich auf die Spur; die Kolonne ordnet sich nach dem Abstand, ein spät kommendes FLF 1 überholt nicht.
+  Wer nicht begleitet, rückt nach dem Abrollen auch von unterwegs ein.
 - **Gebäudebrandschutzwache:** In OSM ist sie als Feuerwache mit Umriss getaggt und zählt deshalb als volle Wache. FLF 1 kam bei
   Mayday von dort. `amenity` und `building` werden gleich behandelt: Treffer unter 80 m werden zusammengelegt, ein Umriss gewinnt für
   die Lage, der Name kommt vom zuerst gefundenen Treffer. Offen: ob Wachen nach Name oder einem weiteren Tag gefiltert werden sollen.
@@ -217,6 +238,6 @@ waren nicht nötig. Die 06/24 kreuzt die 14L.
 - **Heavy im Verkehrstest:** Mit der Wegpunkt-KI startete der A330 durch (an 0,5 NM 110 ft, an der Schwelle 157 ft zu hoch). Für
   Feuerwehr-Tests mit Heavies `kinematicNm` nehmen.
 
-Noch offen: FLF auf Haltepunkten auf der Bahn, Spawnhöhe, Begleiter bei spätem Alarm, RTF-Variablen im Modell, DATA_ERROR beim
-Spawn, Landung auf der anderen Bahn, Alarm per Funk (Mayday/Pan Pan im ATC-Modul), Ausrücken ab 20 NM bei eigenem Anflug, Abstand
-zum Abgasstrahl.
+Noch offen: Nachtest von beta.44.feuerwehr.14 (Haltepunkte, Spawnhöhe, Begleiter, RTF-Treppe und -Licht, DATA_ERROR beim Spawn),
+Gebäudebrandschutzwache als Wache, Halt vor kreuzenden Bahnen, Landung auf der anderen Bahn, Alarm per Funk (Mayday/Pan Pan im
+ATC-Modul), Ausrücken ab 20 NM bei eigenem Anflug, Abstand zum Abgasstrahl.
