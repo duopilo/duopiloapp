@@ -1,4 +1,5 @@
 using Duopilo.Localization;
+using Duopilo.Sim;
 using Duopilo.Traffic;
 
 namespace Duopilo.Fire;
@@ -155,9 +156,10 @@ public sealed class FireOperation
         }
     }
 
-    /// <summary>Gespawntes Fahrzeug übernehmen.</summary>
+    /// <summary>Gespawntes Fahrzeug übernehmen; auf jedem seiner Wege hält es vor den Bahnen (<see cref="NeedsClearance"/>).</summary>
     public void Add(FireVehicle vehicle)
     {
+        vehicle.UseCrossings(path => FireCrossings.Find(Graph, path));
         lock (_lock)
         {
             _vehicles.Add(vehicle);
@@ -177,6 +179,20 @@ public sealed class FireOperation
             _vehicles.Remove(vehicle);
         }
     }
+
+    /// <summary>
+    /// Braucht das Fahrzeug eine Freigabe für diese Bahn (Halt, frei von Verkehr auf der Bahn und im Endanflug)? Nicht für die Bahn des
+    /// Notfalls, sobald das Flugzeug gelandet ist und solange der Einsatz läuft – dort arbeitet die Feuerwehr. Vor der Landung (das
+    /// Flugzeug kommt im Endanflug) und auf der Rückfahrt vor jeder Bahn.
+    /// </summary>
+    public bool NeedsClearance(FireVehicle vehicle, FireCrossing crossing) =>
+        vehicle.Phase == FireVehiclePhase.Returning || Returning || !_landed || !IsEmergencyRunway(crossing.Runway);
+
+    /// <summary>Die Landebahn des Notfalls (beide Richtungen).</summary>
+    public bool IsEmergencyRunway(AirportRunway runway) =>
+        Plan.Runway is { } end
+        && (AirportRunway.Normalize(runway.Primary) == AirportRunway.Normalize(end.Designation)
+            || (runway.Secondary.Length > 0 && AirportRunway.Normalize(runway.Secondary) == AirportRunway.Normalize(end.Designation)));
 
     /// <summary>Alle zurück zur Wache (Abbruch, Einsatz zu Ende).</summary>
     public void ReturnAll()
@@ -292,6 +308,15 @@ public sealed class FireOperation
             && vehicles.All(v => v.Phase is not (FireVehiclePhase.Responding or FireVehiclePhase.Joining or FireVehiclePhase.Positioning)))
         {
             ReturnAll();
+        }
+
+        // Die Bahn des Notfalls nach der Landung gleich freigeben (auch für die eben neu gesetzten Wege): dort hält niemand
+        foreach (var vehicle in vehicles)
+        {
+            if (vehicle.NextCrossing is { } crossing && !NeedsClearance(vehicle, crossing))
+            {
+                vehicle.ClearCrossing();
+            }
         }
     }
 

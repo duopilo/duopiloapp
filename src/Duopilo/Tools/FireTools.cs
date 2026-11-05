@@ -22,7 +22,9 @@ public static class FireTools
         "length): up to cat 5 one crash tender, 6–7 two, 8+ three, plus command car; full emergency adds rescue/fire engine, rescue " +
         "stairs and ambulance. 'cancel Mayday' or 'cancel Pan Pan' stands them down. Only the tray instance runs it. action status: state " +
         "(idle, armed, planning, dispatching, responding, standby, following, at_aircraft, returning, finished, unavailable with error), " +
-        "level, airport, runway, category, spawn parking, vehicles (unit, model, phase, speed, gap). action alert: developer test without " +
+        "level, airport, runway, category, spawn parking, vehicles (unit, model, phase, speed, gap, holdingShort = the runway it is " +
+        "holding short of: vehicles stop at every runway on their way and cross when nothing is on it or on final, except the emergency " +
+        "runway after the landing). action alert: developer test without " +
         "the radio: level (local, full, ground), airport (else the nearest airport of the SimBrief plan), runway (else the one the " +
         "aircraft is lined up for), tail (follow an AI aircraft of a running traffic test instead of the own aircraft, e.g. DUO01 of an " +
         "A3 landing with taxi-in – airport and runway then come from the test), parking (a ground incident at this parking spot " +

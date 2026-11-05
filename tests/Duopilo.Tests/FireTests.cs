@@ -860,6 +860,69 @@ public sealed class FireTests
     }
 
     [Fact]
+    public void Bahn_auf_dem_Weg_Halt_an_der_Haltelinie_bis_zur_Freigabe()
+    {
+        // Test EDDK 05.11.: die Fahrzeuge kreuzten Bahnen ohne Halt. Weg von Norden über die 09/27 (45 m breit) nach Süden
+        var graph = Graph();
+        var path = FirePlanner.BuildPath([(0, 200), (0, -200)], FireProfile.MaxMps);
+        var crossing = Assert.Single(FireCrossings.Find(graph, path));
+        Assert.Equal("09/27", crossing.Designation);
+        Assert.InRange(crossing.EntryS, 172, 178);                                        // Bahnrand 25,5 m neben der Mittellinie
+        Assert.InRange(crossing.StopS, 200 - 62.5 - 3, 200 - 62.5);                     // halbe Breite plus 40 m davor
+
+        var vehicle = new FireVehicle(new FireUnit(FireVehicleKind.Flf, 1, FireStandbyRole.Rollout), "test", path, new FireTrail(), graph.ToLatLon, 164);
+        vehicle.UseCrossings(p => FireCrossings.Find(graph, p));
+        Assert.Equal(crossing, vehicle.NextCrossing);
+        for (var i = 0; i < 400; i++)
+        {
+            vehicle.Advance(0.1);
+        }
+
+        Assert.True(vehicle.HoldingShort);
+        Assert.InRange(vehicle.NorthM, 62.5, 66);
+        Assert.InRange(vehicle.CrossingHeldS, 10, 40);
+        Assert.Equal(FireVehiclePhase.Responding, vehicle.Phase);
+
+        // Freigabe: über die Bahn bis ans Ende des Wegs
+        vehicle.ClearCrossing();
+        for (var i = 0; i < 600 && vehicle.Phase == FireVehiclePhase.Responding; i++)
+        {
+            vehicle.Advance(0.1);
+        }
+
+        Assert.Equal(FireVehiclePhase.Standby, vehicle.Phase);
+        Assert.InRange(vehicle.NorthM, -201, -199);
+        Assert.Null(vehicle.NextCrossing);
+    }
+
+    [Fact]
+    public void Freigabe_nur_auf_der_Bahn_des_Notfalls_nach_der_Landung_nicht_noetig()
+    {
+        var graph = Graph();
+        var plan = FirePlanner.Plan(graph, Runway09, FireCategory.Lineup(FireAlertLevel.LocalStandby, 7), TrafficWake.Medium, null)!;
+        var operation = new FireOperation(graph, FireAlertLevel.LocalStandby, plan, TrafficWake.Medium, 7);
+        var vehicle = new FireVehicle(plan.Vehicles[0].Unit, "test", plan.Vehicles[0].Route, operation.Trail, graph.ToLatLon, 164);
+        operation.Add(vehicle);
+        var emergency = new FireCrossing(Runway, 0, 10);
+        var other = new FireCrossing(new AirportRunway(51.0, 7.0, 50, 0, 1500, 30, "18", "36"), 0, 10);
+        Assert.True(operation.IsEmergencyRunway(Runway));
+        Assert.False(operation.IsEmergencyRunway(other.Runway));
+
+        // Vor der Landung (das Flugzeug kommt im Endanflug): vor jeder Bahn halten
+        operation.Update(new FireAircraftState(-3000, 0, 90, 75, false), 0.25);
+        Assert.True(operation.NeedsClearance(vehicle, emergency));
+
+        // Gelandet: auf der Landebahn arbeitet die Feuerwehr, andere Bahnen nur mit Freigabe
+        operation.Update(new FireAircraftState(-700, 0, 90, 70, true), 0.25);
+        Assert.False(operation.NeedsClearance(vehicle, emergency));
+        Assert.True(operation.NeedsClearance(vehicle, other));
+
+        // Rückfahrt: wieder vor jeder Bahn
+        operation.ReturnAll();
+        Assert.True(operation.NeedsClearance(vehicle, emergency));
+    }
+
+    [Fact]
     public void Z_Variablen_erst_nach_dem_Laden_des_Objekts()
     {
         // Test EDDK 05.11.: sieben DATA_ERROR je Fahrzeug im ersten Frame, solange das Objekt noch lädt

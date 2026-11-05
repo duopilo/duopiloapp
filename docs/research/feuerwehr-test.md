@@ -32,6 +32,13 @@ Fahrzeuge: [Feuerwehr-Fahrzeuge](feuerwehr-fahrzeuge.md).
 - **Weiter:** Rollt das Flugzeug wieder, folgt nur FLF 1, die anderen fahren ohne Blaulicht zurück zur Wache und verschwinden dort.
   Ist ein anderes FLF schon beim Flugzeug und mehr als 200 m näher dran als FLF 1, folgt dieses. Steht das Flugzeug danach eine
   Minute abseits der Bahn, rückt auch der Begleiter ein. „cancel Mayday“ / „cancel Pan Pan“: alle zurück.
+- **Bahnen kreuzen:** Führt ein Weg (Anfahrt, auf die Spur, Aufstellen, Rückfahrt) auf eine Bahn, hält das Fahrzeug an der Stelle,
+  die halbe Bahnbreite plus 40 m neben der Mittellinie liegt, mindestens 2 s mit Blaulicht, 5 s ohne. Dann fragt Duopilo den Verkehr
+  ab und kreuzt, wenn nichts auf der Bahn ist und nichts im Endanflug (mit Blaulicht bis 2 NM, sonst bis 4 NM, wie beim eigenen
+  KI-Verkehr). Ohne Antwort aus der Abfrage nach 20 s trotzdem. Die Bahn des Notfalls ist nach der Landung frei, solange der Einsatz
+  läuft; davor (das Flugzeug im Endanflug) und auf der Rückfahrt gilt sie wie jede andere. Das Flugzeug des Notfalls zählt nach der
+  Landung nicht als Verkehr. Wer der Spur folgt, kreuzt hinter dem Flugzeug ohne eigenen Halt. Im Status steht `holdingShort`, das
+  Log schreibt `holding short of runway …`, `waiting for runway …` und `crossing runway … after … s`.
 - **Fahrwege:** Für die Feuerwehr lädt Duopilo auch die Betriebsstraßen der Bodenfahrzeuge (TAXI_PATH VEHICLE und ROAD), damit
   die Fahrzeuge von der Wache aus aufs Rollweg-Netz finden. Flugzeuge rollen weiter nur über Rollwege. Ist der nächste Rollpunkt
   einer Wache abgeschnitten (in EDDL ein Stück am Helipad), probiert Duopilo die nächsten bis 400 m.
@@ -232,12 +239,16 @@ waren nicht nötig. Die 06/24 kreuzt die 14L.
 - **Gebäudebrandschutzwache:** In OSM ist sie als Feuerwache mit Umriss getaggt und zählt deshalb als volle Wache. FLF 1 kam bei
   Mayday von dort. `amenity` und `building` werden gleich behandelt: Treffer unter 80 m werden zusammengelegt, ein Umriss gewinnt für
   die Lage, der Name kommt vom zuerst gefundenen Treffer. Offen: ob Wachen nach Name oder einem weiteren Tag gefiltert werden sollen.
+  Ein Tag dafür gibt es in OSM nicht: `fire_station:type` kennt nur `occupation` (Berufsfeuerwehr), `voluntary` und `concern`
+  (Werkfeuerwehr), eine Flughafenfeuerwehr ist meist `concern` wie eine Gebäudebrandschutzwache. Zuverlässig wäre nur eine Liste je
+  Flughafen; ein Namensfilter (z. B. „Gebäudebrandschutz“) fängt nur Fälle, die man schon kennt.
 - **Kreuzende Bahnen:** Die Feuerwehrfahrzeuge halten vor kreuzenden Bahnen nicht (keine Logik dafür, Bahnen kosten im Weg nur das
   Achtfache). Ob ein Fahrzeug auf der Anfahrt eine Bahn gekreuzt hat, ist nicht ausgewertet. FLF 1 hielt in Test 2 vor der 06/24 nur,
-  weil es dem A320 folgte.
+  weil es dem A320 folgte. **Gebaut in beta.44.feuerwehr.15:** Halt an der Haltelinie und Freigabe nach der Verkehrsabfrage (siehe
+  „Bahnen kreuzen“ oben).
 - **Heavy im Verkehrstest:** Mit der Wegpunkt-KI startete der A330 durch (an 0,5 NM 110 ft, an der Schwelle 157 ft zu hoch). Für
   Feuerwehr-Tests mit Heavies `kinematicNm` nehmen.
 
-Noch offen: Nachtest von beta.44.feuerwehr.14 (Haltepunkte, Spawnhöhe, Begleiter, RTF-Treppe und -Licht, DATA_ERROR beim Spawn),
-Gebäudebrandschutzwache als Wache, Halt vor kreuzenden Bahnen, Landung auf der anderen Bahn, Alarm per Funk (Mayday/Pan Pan im
+Noch offen: Nachtest von beta.44.feuerwehr.15 (Haltepunkte, Spawnhöhe, Begleiter, RTF-Treppe und -Licht, DATA_ERROR beim Spawn,
+Halt vor kreuzenden Bahnen), Gebäudebrandschutzwache als Wache, Landung auf der anderen Bahn, Alarm per Funk (Mayday/Pan Pan im
 ATC-Modul), Ausrücken ab 20 NM bei eigenem Anflug, Abstand zum Abgasstrahl.

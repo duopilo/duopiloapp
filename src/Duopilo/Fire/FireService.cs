@@ -10,7 +10,8 @@ namespace Duopilo.Fire;
 /// <summary>Ein Fahrzeug im Status von fire_service.</summary>
 /// <param name="RemainingM">Restweg bis zum Ziel des aktuellen Wegs (Haltepunkt, Platz am Flugzeug, Wache), beim Folgen und Stehen null.</param>
 /// <param name="SimSpeedKt">GROUND VELOCITY des Objekts laut Sim (für die Raddrehung im Modell), null = noch keine Abfrage.</param>
-public sealed record FireVehicleInfo(string Unit, string Model, string Phase, uint? ObjectId, string? Hold, double? AlongM, double? SpeedKt, double? SimSpeedKt, double? RemainingM, double? GapM, double? TargetGapM, double Latitude, double Longitude);
+/// <param name="HoldingShort">Steht vor dieser Bahn und wartet auf die Freigabe (z. B. "06/24"), sonst null.</param>
+public sealed record FireVehicleInfo(string Unit, string Model, string Phase, uint? ObjectId, string? Hold, double? AlongM, double? SpeedKt, double? SimSpeedKt, double? RemainingM, double? GapM, double? TargetGapM, double Latitude, double Longitude, string? HoldingShort = null);
 
 /// <summary>Stand der Feuerwehr für fire_service und das Log.</summary>
 /// <param name="State">idle, armed, planning, dispatching, responding, standby, following, at_aircraft, returning, finished, unavailable.</param>
@@ -817,6 +818,135 @@ public sealed class FireService : BackgroundService
         await _sim.SetAiLightsAsync(objectId, new AiLights(Beacon: blue, Landing: true), ct, simVars: false);
     }
 
+    /// <summary>Mindesthalt vor einer Bahn mit Blaulicht (Anfahrt, auf die Spur, Aufstellen).</summary>
+    public const double CrossingHoldBlueS = 2;
+
+    /// <summary>Mindesthalt vor einer Bahn ohne Blaulicht (Rückfahrt), wie beim eigenen KI-Verkehr.</summary>
+    public const double CrossingHoldS = 5;
+
+    /// <summary>Mit Blaulicht zählt der Endanflug nur bis 2 NM (rund 45 s); auf der Rückfahrt wie beim KI-Verkehr bis 4 NM.</summary>
+    public const double CrossingFinalBlueNm = 2;
+
+    /// <summary>Ohne Antwort aus der Verkehrsabfrage kreuzt ein Fahrzeug nach so vielen Sekunden Halt trotzdem.</summary>
+    public const double CrossingGiveUpS = 20;
+
+    /// <summary>So alt darf die Verkehrsabfrage für eine Freigabe höchstens sein.</summary>
+    private static readonly TimeSpan CrossingScanMaxAge = TimeSpan.FromSeconds(3);
+
+    /// <summary>So weit um den Flughafen fragt Duopilo den Verkehr ab (dazu der Abstand des eigenen Flugzeugs zum Flughafen).</summary>
+    private const double CrossingScanRadiusM = 15000;
+
+    /// <summary>
+    /// Halt vor Bahnen (Test EDDK 05.11.: die Fahrzeuge kreuzten ohne Halt). Bahnen ohne Freigabepflicht (<see cref="FireOperation.NeedsClearance"/>)
+    /// gibt der Einsatz selbst frei, dort hält niemand. Sonst hält das Fahrzeug an der Haltelinie, nach dem Mindesthalt fragt Duopilo
+    /// den Verkehr ab (eine Abfrage zugleich) und gibt die Bahn frei, wenn nichts auf ihr oder im Endanflug ist (<see cref="RunwayOccupancy"/>).
+    /// Ohne Antwort aus der Abfrage nach <see cref="CrossingGiveUpS"/> trotzdem.
+    /// </summary>
+    private void CheckCrossingsLocked(Run run, FireOperation operation, TaxiGraph graph, DateTimeOffset now)
+    {
+        var needScan = false;
+        foreach (var vehicle in run.Objects.Keys)
+        {
+            if (vehicle.NextCrossing is not { } crossing)
+            {
+                run.CrossingLogged.Remove(vehicle);
+                run.CrossingBlocker.Remove(vehicle);
+                continue;
+            }
+
+            // Ohne Freigabepflicht gibt der Einsatz selbst frei (FireOperation.Update)
+            if (!operation.NeedsClearance(vehicle, crossing))
+            {
+                continue;
+            }
+
+            if (!vehicle.HoldingShort)
+            {
+                continue;
+            }
+
+            var key = crossing.Designation + "@" + crossing.EntryS.ToString("0", System.Globalization.CultureInfo.InvariantCulture);
+            if (run.CrossingLogged.GetValueOrDefault(vehicle) != key)
+            {
+                run.CrossingLogged[vehicle] = key;
+                run.CrossingBlocker.Remove(vehicle);
+                _log.LogInformation(Loc.Log("log.fire.holdingShort"), vehicle.Unit.Name, crossing.Designation);
+            }
+
+            needScan = true;
+            var held = vehicle.CrossingHeldS;
+            if (held < (vehicle.BlueLight ? CrossingHoldBlueS : CrossingHoldS) || run.CrossingScan is not { } scan || now - run.CrossingScanUtc > CrossingScanMaxAge)
+            {
+                continue;
+            }
+
+            if (scan.Error is not null)
+            {
+                if (held >= CrossingGiveUpS)
+                {
+                    vehicle.ClearCrossing();
+                    _log.LogWarning(Loc.Log("log.fire.crossingUnchecked"), vehicle.Unit.Name, crossing.Designation, Loc.ToEnglish(scan.Error) ?? scan.Error);
+                }
+
+                continue;
+            }
+
+            // Das Flugzeug des Notfalls zählt nach der Landung nicht: um das stehende oder rollende Flugzeug fährt die Feuerwehr ohnehin
+            // (sonst wartete etwa ein FLF auf der Rückfahrt vor der Landebahn, solange das Flugzeug darauf steht)
+            var samples = operation.Landed ? scan.Samples.Where(sample => !IsEmergencyAircraft(run, sample)) : scan.Samples;
+            var blocker = RunwayOccupancy.Blocker(graph.Icao, crossing.Runway, samples, uint.MaxValue, vehicle.BlueLight ? CrossingFinalBlueNm : RunwayOccupancy.FinalNm);
+            if (blocker is null)
+            {
+                vehicle.ClearCrossing();
+                _log.LogInformation(Loc.Log("log.fire.crossing"), vehicle.Unit.Name, crossing.Designation, Math.Round(held));
+            }
+            else if (run.CrossingBlocker.GetValueOrDefault(vehicle) != RunwayOccupancy.Key(blocker))
+            {
+                run.CrossingBlocker[vehicle] = RunwayOccupancy.Key(blocker);
+                _log.LogInformation(Loc.Log("log.fire.crossingBusy"), vehicle.Unit.Name, crossing.Designation, blocker);
+            }
+        }
+
+        if (!needScan || run.CrossingScanBusy || now - run.CrossingScanUtc < TimeSpan.FromSeconds(1))
+        {
+            return;
+        }
+
+        run.CrossingScanBusy = true;
+        var radius = CrossingScanRadiusM;
+        if (_sim.Num("lat") is { } lat && _sim.Num("lon") is { } lon)
+        {
+            radius += RouteMath.DistanceNm(lat, lon, graph.Latitude, graph.Longitude) * RunwayEnd.MetersPerNm;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            AircraftScan scan;
+            try
+            {
+                scan = await _traffic.ScanAsync((uint)Math.Min(radius, TrafficConnection.MaxScanRadiusMeters), includeHelicopters: true, withText: false, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                // Jeder Fehler zählt als Fehlschlag der Abfrage, sonst bliebe sie für immer „busy“ und niemand käme über die Bahn
+                scan = AircraftScan.Fail(ex.Message);
+            }
+
+            lock (_lock)
+            {
+                run.CrossingScan = scan;
+                run.CrossingScanUtc = DateTimeOffset.UtcNow;
+                run.CrossingScanBusy = false;
+            }
+        });
+    }
+
+    /// <summary>Das Flugzeug des Einsatzes in der Verkehrsabfrage: das KI-Flugzeug des Verkehrstests (Kennung) bzw. das eigene.</summary>
+    private static bool IsEmergencyAircraft(Run run, AircraftSample sample) =>
+        run.TargetTail is { } tail
+            ? string.Equals(sample.AtcId?.Trim(), tail, StringComparison.OrdinalIgnoreCase)
+            : run.TargetPlace is null && sample.IsUser;
+
     /// <summary>So nah muss das eigene Flugzeug am Spawnpunkt stehen, damit die Höhe des Bodens unter ihm auch für das Fahrzeug gilt.</summary>
     public const double OwnGroundRangeM = 300;
 
@@ -884,6 +1014,8 @@ public sealed class FireService : BackgroundService
             {
                 operation.Update(aircraft, dt);
             }
+
+            CheckCrossingsLocked(run, operation, graph, now);
 
             if (now - run.StartedUtc > MaxRun && !operation.Returning)
             {
@@ -1260,7 +1392,8 @@ public sealed class FireService : BackgroundService
                     double.IsNaN(vehicle.GapM) ? null : Math.Round(vehicle.GapM),
                     vehicle.Phase == FireVehiclePhase.Following ? Math.Round(vehicle.TargetGapM) : null,
                     Math.Round(pose.Latitude, 6),
-                    Math.Round(pose.Longitude, 6));
+                    Math.Round(pose.Longitude, 6),
+                    vehicle.HoldingShort ? vehicle.NextCrossing?.Designation : null);
             })
             .ToList();
         var missing = operation?.Plan.Missing.Select(u => u.Name).ToList() ?? [];
@@ -1317,6 +1450,19 @@ public sealed class FireService : BackgroundService
         public Dictionary<FireVehicle, bool> BlueSent { get; } = [];
 
         public Dictionary<FireVehicle, FireVehiclePhase> LoggedPhase { get; } = [];
+
+        /// <summary>Für welche Bahn (Bezeichnung und Stelle auf dem Weg) der Halt eines Fahrzeugs schon im Log steht.</summary>
+        public Dictionary<FireVehicle, string> CrossingLogged { get; } = [];
+
+        /// <summary>Was die Bahn zuletzt belegte, je wartendes Fahrzeug (nur neue Gründe ins Log).</summary>
+        public Dictionary<FireVehicle, string> CrossingBlocker { get; } = [];
+
+        /// <summary>Letzte Verkehrsabfrage für die Bahnen, die die Fahrzeuge kreuzen wollen, und wann sie kam.</summary>
+        public AircraftScan? CrossingScan { get; set; }
+
+        public DateTimeOffset CrossingScanUtc { get; set; }
+
+        public bool CrossingScanBusy { get; set; }
 
         public List<string> SpawnErrors { get; set; } = [];
 

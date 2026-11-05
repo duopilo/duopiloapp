@@ -52,6 +52,11 @@ public sealed class FireVehicle
     private double _aircraftS = double.NaN;
     private double _aircraftMps;
     private double _ageS;
+    private Func<TaxiPath, IReadOnlyList<FireCrossing>>? _crossingsOf;
+    private IReadOnlyList<FireCrossing> _crossings = [];
+    private int _crossingsDone;
+    private bool _crossingClear;
+    private double _crossingHeldS;
 
     public FireVehicle(FireUnit unit, string model, TaxiPath route, FireTrail trail, Func<double, double, (double Latitude, double Longitude)> toLatLon, double groundFt, double heightFt = 0)
     {
@@ -262,6 +267,68 @@ public sealed class FireVehicle
             lock (_lock)
             {
                 _yieldMps = value is { } mps ? Math.Max(0, mps) : null;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Bahnen auf jedem neuen Weg suchen (<see cref="FireCrossings.Find"/>); vor jeder hält das Fahrzeug, bis <see cref="ClearCrossing"/>
+    /// kommt. Gilt auch für den Weg, den es gerade fährt.
+    /// </summary>
+    public void UseCrossings(Func<TaxiPath, IReadOnlyList<FireCrossing>> crossingsOf)
+    {
+        lock (_lock)
+        {
+            _crossingsOf = crossingsOf;
+            ResetCrossings();
+        }
+    }
+
+    /// <summary>Die nächste Bahn auf dem Weg, die es noch nicht erreicht hat, sonst null.</summary>
+    public FireCrossing? NextCrossing
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _path is not null && OnPath && _crossingsDone < _crossings.Count ? _crossings[_crossingsDone] : null;
+            }
+        }
+    }
+
+    /// <summary>Steht vor der nächsten Bahn und wartet auf die Freigabe.</summary>
+    public bool HoldingShort
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _path is not null && OnPath && _crossingsDone < _crossings.Count && !_crossingClear
+                    && DistanceM >= _crossings[_crossingsDone].StopS - 0.5 && SpeedMps < 0.1;
+            }
+        }
+    }
+
+    /// <summary>So lange steht es schon vor der nächsten Bahn.</summary>
+    public double CrossingHeldS
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _crossingHeldS;
+            }
+        }
+    }
+
+    /// <summary>Freigabe für die nächste Bahn: es fährt weiter (bzw. hält gar nicht erst, wenn sie früh genug kommt).</summary>
+    public void ClearCrossing()
+    {
+        lock (_lock)
+        {
+            if (_crossingsDone < _crossings.Count)
+            {
+                _crossingClear = true;
             }
         }
     }
@@ -495,6 +562,15 @@ public sealed class FireVehicle
         _arrive = arrive;
         _arriveHeading = finalHeadingDeg;
         DistanceM = 0;
+        ResetCrossings();
+    }
+
+    private void ResetCrossings()
+    {
+        _crossings = _path is { } path && _crossingsOf is { } find ? find(path) : [];
+        _crossingsDone = 0;
+        _crossingClear = false;
+        _crossingHeldS = 0;
     }
 
     private void MoveOnPath(double dt)
@@ -505,19 +581,41 @@ public sealed class FireVehicle
             return;
         }
 
+        // Auf der Bahn angekommen: diese Bahn ist erledigt, die Freigabe gilt nur für sie
+        while (_crossingsDone < _crossings.Count && DistanceM >= _crossings[_crossingsDone].EntryS)
+        {
+            _crossingsDone++;
+            _crossingClear = false;
+            _crossingHeldS = 0;
+        }
+
+        // Vor einer Bahn ohne Freigabe: an der Haltelinie anhalten
+        double? stopAt = _crossingsDone < _crossings.Count && !_crossingClear ? _crossings[_crossingsDone].StopS : null;
+        var end = Math.Min(path.LengthM, stopAt is { } stop ? Math.Max(DistanceM, stop) : path.LengthM);
         var allowed = Math.Min(_pathMaxMps, path.AllowedMps(DistanceM, FireProfile.DecelMps2));
+        if (stopAt is not null)
+        {
+            allowed = Math.Min(allowed, Math.Sqrt(2 * FireProfile.DecelMps2 * Math.Max(0, end - DistanceM)));
+        }
+
         if (_yieldMps is { } yieldMps)
         {
             allowed = Math.Min(allowed, yieldMps);
         }
 
         Accelerate(allowed, dt);
-        if (SpeedMps <= 0 && path.LengthM - DistanceM > 0.05 && _yieldMps is not < 0.05)
+        if (SpeedMps <= 0 && end - DistanceM > 0.05 && _yieldMps is not < 0.05)
         {
-            SpeedMps = Math.Min(0.3, path.LengthM - DistanceM);
+            SpeedMps = Math.Min(0.3, end - DistanceM);
         }
 
-        DistanceM = Math.Min(path.LengthM, DistanceM + (SpeedMps * dt));
+        DistanceM = Math.Min(end, DistanceM + (SpeedMps * dt));
+        if (stopAt is not null && DistanceM >= end - 0.05 && end < path.LengthM)
+        {
+            SpeedMps = 0;
+            _crossingHeldS += dt;
+        }
+
         var (east, north, heading) = path.At(DistanceM);
         (EastM, NorthM, HeadingDeg) = (east, north, heading);
         if (DistanceM >= path.LengthM - 0.05)

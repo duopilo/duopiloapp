@@ -653,6 +653,9 @@ public sealed class TaxiGraph
         return null;
     }
 
+    /// <summary>Lage eines Punkts zu einer Bahn: entlang ab der Bahnmitte (Richtung primäres Ende) und quer zur Mittellinie, in Metern.</summary>
+    public (double AlongM, double CrossM) OffsetsTo(AirportRunway runway, double eastM, double northM) => RunwayOffsets(runway, eastM, northM);
+
     /// <summary>Nächste Bahn zu einem Punkt mit Abstand zur Mittellinie (innerhalb der Länge plus 300 m), sonst null.</summary>
     public (AirportRunway Runway, double CrossM)? NearestRunway(double eastM, double northM)
     {
