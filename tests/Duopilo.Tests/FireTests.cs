@@ -274,6 +274,64 @@ public sealed class FireTests
     }
 
     [Fact]
+    public void Militaerische_Wachen_aus_Flaeche_oder_Betreiber()
+    {
+        // Test EDDK 05.11.: die Wache der Bundeswehr im militärischen Teil heißt in OSM nur „Flughafenfeuerwehr“
+        const string json = """
+            {"elements":[
+              {"type":"node","id":1,"lat":50.8619,"lon":7.1216,"tags":{"amenity":"fire_station","name":"Flughafenfeuerwehr"}},
+              {"type":"node","id":2,"lat":50.8678,"lon":7.1361,"tags":{"amenity":"fire_station","name":"Flughafenfeuerwehr Köln"}},
+              {"type":"node","id":3,"lat":50.8700,"lon":7.1500,"tags":{"amenity":"fire_station","name":"Wache 3","operator":"Bundeswehr"}},
+              {"type":"way","id":4,"geometry":[{"lat":50.860,"lon":7.120},{"lat":50.860,"lon":7.124},{"lat":50.864,"lon":7.124},{"lat":50.864,"lon":7.120},{"lat":50.860,"lon":7.120}],"tags":{"landuse":"military"}}
+            ]}
+            """;
+        var stations = FireStationLookup.Parse(json);
+
+        Assert.Equal(3, stations.Count);
+        Assert.True(stations[0].Military);     // in der militärischen Fläche
+        Assert.False(stations[1].Military);
+        Assert.True(stations[2].Military);     // Betreiber Bundeswehr
+        Assert.Equal("Bundeswehr", stations[2].Operator);
+        Assert.Contains("landuse", FireStationLookup.Query("EDDK"));
+        Assert.True(FireStationLookup.IsMilitaryOperator("Royal Air Force"));
+        Assert.False(FireStationLookup.IsMilitaryOperator("Flughafen Köln/Bonn GmbH"));
+    }
+
+    [Fact]
+    public void Zivile_Einsaetze_ohne_militaerische_Wachen_ausser_auf_dem_Militaerflugplatz()
+    {
+        var graph = Graph();
+        var civil = Station(graph, "Hauptwache", 0, 260);
+        var army = Station(graph, "Bundeswehr", -700, 260) with { Military = true };
+
+        var kept = FireStationLookup.WithoutMilitary([civil, army], out var dropped);
+        Assert.Equal(["Hauptwache"], kept.Select(s => s.Name));
+        Assert.Equal(["Bundeswehr"], dropped.Select(s => s.Name));
+
+        // Nur militärische Wachen (Militärflugplatz): alle bleiben
+        Assert.Single(FireStationLookup.WithoutMilitary([army], out var none));
+        Assert.Empty(none);
+    }
+
+    [Fact]
+    public void Wache_in_der_Mitte_bevorzugt_Aussenwache_an_ihrem_Bahnende_bleibt()
+    {
+        // Test EDDK 05.11.: FLF 1 kam von der Gebäudebrandschutzwache am Rand statt von der Hauptwache. „Rand“ liegt näher an der
+        // Aufsetzzone (x = -400) als „Mitte“, aber weit weg von der Bahnmitte; „Ost“ ist eine Außenwache am Bahnende (Haltepunkt x = 800)
+        var graph = Graph();
+        var centre = FirePlanner.RunwayCentre(graph);
+        Assert.InRange(centre.East, -1, 1);
+        Assert.InRange(centre.North, -1, 1);
+        IReadOnlyList<FireStation> stations = [Station(graph, "Rand", -700, 260), Station(graph, "Mitte", 0, 260), Station(graph, "Ost", 900, 260)];
+
+        var full = FirePlanner.Plan(graph, Runway09, FireCategory.Lineup(FireAlertLevel.FullEmergency, 9), TrafficWake.Heavy, null, stations, allStations: true)!;
+        var byUnit = full.Vehicles.ToDictionary(v => v.Unit.Name, v => v.Station.Name);
+
+        Assert.Equal("Mitte", byUnit["FLF 1"]);   // ohne Aufschlag „Rand“ (gut 100 m kürzer)
+        Assert.Equal("Ost", byUnit["FLF 2"]);     // die Außenwache bleibt, ihr Weg ist viel kürzer
+    }
+
+    [Fact]
     public void Wachen_aus_OSM_im_Rollweg_Netz_nur_in_der_Naehe()
     {
         var graph = Graph();

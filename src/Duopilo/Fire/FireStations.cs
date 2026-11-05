@@ -22,6 +22,9 @@ public sealed record FireStation(string Name, double EastM, double NorthM, doubl
     /// <summary>Woher die Plätze kommen: door, vehicle_parking, outline, centre oder parking.</summary>
     public string ExitSource { get; init; } = "centre";
 
+    /// <summary>Militärische Wache (in einer militärischen Fläche oder mit militärischem Betreiber), siehe <see cref="OsmFireStation.Military"/>.</summary>
+    public bool Military { get; init; }
+
     /// <summary>Wache aus einer freien Parkposition: die Fahrzeuge nebeneinander quer zur Ausrichtung der Position.</summary>
     public static FireStation FromParking(TaxiNode node) =>
         new(node.Parking?.Label ?? "?", node.EastM, node.NorthM, node.Latitude, node.Longitude, "parking", node)
@@ -48,6 +51,16 @@ public sealed record OsmFireStation(string? Name, double Latitude, double Longit
 
     /// <summary>Tore und Türen bis 60 m um die Wache.</summary>
     public IReadOnlyList<OsmDoor> Doors { get; init; } = [];
+
+    /// <summary>Betreiber (operator=*), wenn eingetragen.</summary>
+    public string? Operator { get; init; }
+
+    /// <summary>
+    /// Militärische Wache: liegt in einer militärischen Fläche (landuse=military, military=airfield/barracks/base …), trägt selbst
+    /// military=* oder operator:type=military, oder der Betreiber ist das Militär (Bundeswehr, Air Force …). Test EDDK 05.11.: die Wache
+    /// der Bundeswehr im militärischen Teil heißt in OSM nur „Flughafenfeuerwehr“.
+    /// </summary>
+    public bool Military { get; init; }
 }
 
 /// <summary>Was Duopilo aus OSM zu einem Flughafen braucht: Wachen, Gebäude und Betriebsstraßen.</summary>
@@ -86,6 +99,16 @@ public sealed class FireStationLookup
     /// <summary>Fehlen im Zwischenspeicher neuere Teile (Gebäude, Straßen), so lange auf die neue Abfrage warten, sonst das Alte nehmen.</summary>
     private static readonly TimeSpan UpgradeWait = TimeSpan.FromSeconds(6);
 
+    /// <summary>Militärische Flächen (military=*), in denen eine Wache als militärisch gilt; Übungsplätze und Sperrgebiete nicht (zu groß).</summary>
+    private static readonly HashSet<string> MilitaryAreaValues = new(StringComparer.Ordinal) { "airfield", "barracks", "base", "naval_base", "office" };
+
+    /// <summary>Wörter im Betreiber, die eine militärische Wache kennzeichnen (Groß-/Kleinschreibung egal).</summary>
+    private static readonly string[] MilitaryOperators =
+    [
+        "bundeswehr", "luftwaffe", "air force", "airforce", "military", "militär", "militaer", "armee", "armée", "army", "navy",
+        " raf ", "usaf", "ministry of defence", "bundesheer", "luchtmacht", "fuerza aérea", "aeronautica militare",
+    ];
+
     /// <summary>Straßenarten (service=*), die keine Betriebsstraßen sind.</summary>
     private static readonly HashSet<string> SkippedServices = new(StringComparer.Ordinal) { "parking_aisle", "drive-through" };
 
@@ -119,7 +142,7 @@ public sealed class FireStationLookup
 
         if (cached is { } c && DateTimeOffset.UtcNow - c.FetchedUtc < (c.Ok ? Fresh : RetryAfterFailure))
         {
-            if (c.Ok && (c.Buildings is null || c.Roads is null))
+            if (c.Ok && (c.Buildings is null || c.Roads is null || c.MilitaryChecked != true))
             {
                 // Zwischenspeicher von vor den Gebäuden oder Straßen: kurz auf die neue Abfrage warten, sonst die Wachen gleich nehmen
                 // (die Abfrage läuft weiter und füllt den Zwischenspeicher fürs nächste Mal)
@@ -147,9 +170,9 @@ public sealed class FireStationLookup
             Boundary = cache.Boundary ?? [],
         };
 
-    private static CacheFile ToCache(bool ok, OsmAirportData data, bool complete) =>
+    private static CacheFile ToCache(bool ok, OsmAirportData data, bool complete, bool militaryChecked) =>
         complete
-            ? new(DateTimeOffset.UtcNow, ok, data.Stations, data.Buildings, data.Roads, data.Barriers, data.Fences, data.Boundary)
+            ? new(DateTimeOffset.UtcNow, ok, data.Stations, data.Buildings, data.Roads, data.Barriers, data.Fences, data.Boundary, militaryChecked ? true : null)
             : new(DateTimeOffset.UtcNow, ok, data.Stations);
 
     /// <summary>Die laufende Abfrage für den Flughafen oder eine neue (eine je Flughafen zugleich).</summary>
@@ -170,7 +193,7 @@ public sealed class FireStationLookup
                 using var response = await _http.PostAsync(url, content);
                 response.EnsureSuccessStatusCode();
                 var data = ParseAll(await response.Content.ReadAsStringAsync());
-                WriteCache(file, ToCache(true, data, complete: true));
+                WriteCache(file, ToCache(true, data, complete: true, militaryChecked: true));
                 _log.LogInformation(Loc.Log("log.fire.osmFetched"), icao, data.Stations.Count, data.Roads.Count, url);
                 return data;
             }
@@ -182,7 +205,7 @@ public sealed class FireStationLookup
 
         // Alte Daten weiter nutzen; den Fehlschlag merken, damit nicht jeder Einsatz neu fragt
         var old = cached is { Ok: true } ok ? FromCache(ok) : OsmAirportData.Empty;
-        WriteCache(file, ToCache(cached is { Ok: true }, old, complete: cached is { Ok: true, Buildings: not null, Roads: not null }));
+        WriteCache(file, ToCache(cached is { Ok: true }, old, complete: cached is { Ok: true, Buildings: not null, Roads: not null }, militaryChecked: cached?.MilitaryChecked == true));
         return old;
     }
 
@@ -201,6 +224,7 @@ public sealed class FireStationLookup
             "way[\"highway\"=\"service\"][\"area\"!=\"yes\"][\"tunnel\"!~\".\"][\"covered\"!=\"yes\"](area.platz)->.strassen;.strassen out geom;" +
             "node(w.strassen)[\"barrier\"~\"^(gate|lift_gate|swing_gate|sliding_gate|bollard|block|chain|border_control|toll_booth)$\"];out;" +
             "way[\"barrier\"~\"^(fence|wall)$\"](area.platz);out geom;" +
+            "(nwr[\"landuse\"=\"military\"](area.platz);nwr[\"military\"~\"^(airfield|barracks|base|naval_base|office)$\"](area.platz););out geom;" +
             "nwr[\"aeroway\"=\"aerodrome\"][\"icao\"=\"" + code + "\"];out geom;";
     }
 
@@ -223,6 +247,7 @@ public sealed class FireStationLookup
         var barriers = new List<OsmPoint>();
         var fences = new List<OsmShape>();
         var boundary = new List<OsmShape>();
+        var military = new List<OsmShape>();
         if (!doc.RootElement.TryGetProperty("elements", out var elements) || elements.ValueKind != JsonValueKind.Array)
         {
             return OsmAirportData.Empty;
@@ -243,7 +268,13 @@ public sealed class FireStationLookup
                     continue;
                 }
 
-                AddStation(stations, new OsmFireStation(Tag("name"), lat, lon) { Outline = outline });
+                var stationOperator = Tag("operator");
+                AddStation(stations, new OsmFireStation(Tag("name"), lat, lon)
+                {
+                    Outline = outline,
+                    Operator = stationOperator,
+                    Military = Tag("military") is { } militaryTag && militaryTag != "no" || Tag("operator:type") == "military" || IsMilitaryOperator(stationOperator),
+                });
                 buildings.AddRange(shapes.Where(s => s.Points.Count >= 2));
                 continue;
             }
@@ -272,6 +303,15 @@ public sealed class FireStationLookup
                 continue;
             }
 
+            if (Tag("landuse") == "military" || MilitaryAreaValues.Contains(Tag("military") ?? ""))
+            {
+                military.AddRange(shapes);
+                if (Tag("building") is null)
+                {
+                    continue;
+                }
+            }
+
             if (Tag("aeroway") == "aerodrome")
             {
                 boundary.AddRange(shapes);
@@ -288,6 +328,17 @@ public sealed class FireStationLookup
             }
 
             buildings.AddRange(shapes.Where(s => s.Points.Count >= 2));
+        }
+
+        // Wachen in einer militärischen Fläche
+        var militaryRings = Rings(military);
+        for (var i = 0; i < stations.Count; i++)
+        {
+            var station = stations[i];
+            if (!station.Military && militaryRings.Any(r => Contains(r.Points, station.Latitude, station.Longitude)))
+            {
+                stations[i] = station with { Military = true };
+            }
         }
 
         // Tore der nächsten Wache zuordnen
@@ -392,9 +443,37 @@ public sealed class FireStationLookup
                     return (de, dn, d.Garage);
                 }).ToList();
                 var (exits, source) = FireExits.ForOsm(east, north, outline, doors, graph);
-                return new FireStation(name, east, north, s.Latitude, s.Longitude, "osm") { Exits = exits, ExitSource = source };
+                return new FireStation(name, east, north, s.Latitude, s.Longitude, "osm") { Exits = exits, ExitSource = source, Military = s.Military };
             })
             .Where(s => Math.Abs(s.EastM) < 6000 && Math.Abs(s.NorthM) < 6000)];
+
+    /// <summary>Ob der Betreiber das Militär ist (Bundeswehr, Air Force …).</summary>
+    public static bool IsMilitaryOperator(string? operatorName)
+    {
+        if (string.IsNullOrWhiteSpace(operatorName))
+        {
+            return false;
+        }
+
+        var text = " " + operatorName.Trim().ToLowerInvariant() + " ";
+        return MilitaryOperators.Any(word => text.Contains(word, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Für zivile Einsätze ohne militärische Wachen, solange es eine andere gibt (auf einem reinen Militärflugplatz bleiben sie).
+    /// <paramref name="dropped"/>: die weggelassenen.
+    /// </summary>
+    public static IReadOnlyList<FireStation> WithoutMilitary(IReadOnlyList<FireStation> stations, out IReadOnlyList<FireStation> dropped)
+    {
+        if (stations.All(s => s.Military) || stations.All(s => !s.Military))
+        {
+            dropped = [];
+            return stations;
+        }
+
+        dropped = [.. stations.Where(s => s.Military)];
+        return [.. stations.Where(s => !s.Military)];
+    }
 
     /// <summary>Das kleinste geschlossene Gebäude, in dem der Punkt liegt.</summary>
     private static IReadOnlyList<OsmPoint>? ContainingBuilding(IReadOnlyList<OsmShape>? buildings, double lat, double lon) =>
@@ -524,6 +603,16 @@ public sealed class FireStationLookup
             merged = merged with { Name = station.Name };
         }
 
+        if (merged.Operator is null && station.Operator is not null)
+        {
+            merged = merged with { Operator = station.Operator };
+        }
+
+        if (station.Military && !merged.Military)
+        {
+            merged = merged with { Military = true };
+        }
+
         if (merged.Outline is null && station.Outline is not null)
         {
             // Der Umriss des Gebäudes ist die bessere Lage als der Punkt der Einrichtung
@@ -584,5 +673,6 @@ public sealed class FireStationLookup
         IReadOnlyList<OsmShape>? Roads = null,
         IReadOnlyList<OsmPoint>? Barriers = null,
         IReadOnlyList<OsmShape>? Fences = null,
-        IReadOnlyList<OsmShape>? Boundary = null);
+        IReadOnlyList<OsmShape>? Boundary = null,
+        bool? MilitaryChecked = null);
 }

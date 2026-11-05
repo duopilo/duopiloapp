@@ -409,6 +409,14 @@ public sealed class FireService : BackgroundService
                     UseBuildings(graph, airport, osm.Buildings);
                     UseRoads(graph, airport, osm);
                     stations = FireStationLookup.ToStations(osm.Stations, graph, osm.Buildings);
+
+                    // Militärische Wachen fahren keine zivilen Einsätze (EDDK: Bundeswehr im militärischen Teil), auf einem reinen
+                    // Militärflugplatz bleiben sie
+                    stations = FireStationLookup.WithoutMilitary(stations, out var military);
+                    if (military.Count > 0)
+                    {
+                        _log.LogInformation(Loc.Log("log.fire.militaryStations"), airport, string.Join(", ", military.Select(st => st.Name)));
+                    }
                     _log.LogInformation(
                         Loc.Log("log.fire.stations"),
                         airport,

@@ -18,6 +18,11 @@ Fahrzeuge: [Feuerwehr-Fahrzeuge](feuerwehr-fahrzeuge.md).
   Mayday: jedes Fahrzeug von der Wache mit dem kürzesten Weg. Jedes Fahrzeug fährt zu seiner Wache zurück. Rückfall ohne
   OSM-Wache (oder ohne Weg von ihr, über 400 m neben dem Rollweg-Netz): freie Parkposition nahe der Bahnmitte, Fahrzeug-Parkposition
   zuerst, Gates zuletzt, außer Sicht. Die Fahrzeuge spawnen nacheinander im Abstand von 4 s.
+  Militärische Wachen fahren keine zivilen Einsätze: in einer militärischen Fläche (`landuse=military`, `military=airfield/barracks/
+  base/naval_base/office`), selbst mit `military=*` oder `operator:type=military`, oder mit militärischem Betreiber (Bundeswehr, Air
+  Force …). Sind alle Wachen militärisch (Militärflugplatz), bleiben alle; ist nichts eingetragen, fällt nichts weg. Wachen abseits
+  der Mitte der Bahnen (Schwerpunkt der Bahnmitten) kosten bei der Wahl einen Aufschlag von 0,5 m je Meter Abstand: Wachen am Rand
+  kommen nur, wenn sie deutlich näher am Ziel sind; Außenwachen an entfernten Bahnen (EDDL Wache Nord, EDDF) bleiben im Spiel.
 - **Fahrzeuge:** nach Feuerwehr-Kategorie aus der Länge des Flugzeugtyps (A320 = 6, A321 = 7, B77W = 9). Bis 5: 1 FLF, 6–7: 2 FLF
   und ELW, ab 8: 3 FLF und ELW; bei Full Emergency dazu HLF, Rettungstreppe(n), RTW.
 - **Bereitstellung:** Haltepunkte der Landebahn: FLF 1 an der Aufsetzzone, FLF 2 hinter der erwarteten Stoppstelle, FLF 3 am
@@ -241,7 +246,14 @@ waren nicht nötig. Die 06/24 kreuzt die 14L.
   die Lage, der Name kommt vom zuerst gefundenen Treffer. Offen: ob Wachen nach Name oder einem weiteren Tag gefiltert werden sollen.
   Ein Tag dafür gibt es in OSM nicht: `fire_station:type` kennt nur `occupation` (Berufsfeuerwehr), `voluntary` und `concern`
   (Werkfeuerwehr), eine Flughafenfeuerwehr ist meist `concern` wie eine Gebäudebrandschutzwache. Zuverlässig wäre nur eine Liste je
-  Flughafen; ein Namensfilter (z. B. „Gebäudebrandschutz“) fängt nur Fälle, die man schon kennt.
+  Flughafen; ein Namensfilter (z. B. „Gebäudebrandschutz“) fängt nur Fälle, die man schon kennt. Welche Wache FLF hat, steht in OSM
+  nicht. **Gebaut in beta.44.feuerwehr.16:** kein Filter, sondern ein Aufschlag für Wachen abseits der Mitte (siehe „Wache“ oben). In
+  EDDK liegt die Hauptwache rund 0,5 km vom Bezugspunkt, die Gebäudebrandschutzwache 2,7 km: Für FLF 1 zur Aufsetzzone der 14L
+  stehen grob 1,6 + 1,35 km gegen 1,9 + 0,25 km, die Hauptwache gewinnt.
+- **Wache der Bundeswehr:** Die Wache im Südwesten von EDDK („Flughafenfeuerwehr“ in OSM) ist sehr wahrscheinlich die Feuerwache
+  Köln-Wahn der Bundeswehr im militärischen Teil; sie sichert die Flugbereitschaft und fährt keine zivilen Einsätze. **Gebaut in
+  beta.44.feuerwehr.16:** militärische Wachen fallen für zivile Einsätze weg, wenn OSM es hergibt (militärische Fläche, Betreiber).
+  Ob das in EDDK greift, zeigt das Log (`military fire stations left out`); der Zwischenspeicher wird dafür einmal neu abgefragt.
 - **Kreuzende Bahnen:** Die Feuerwehrfahrzeuge halten vor kreuzenden Bahnen nicht (keine Logik dafür, Bahnen kosten im Weg nur das
   Achtfache). Ob ein Fahrzeug auf der Anfahrt eine Bahn gekreuzt hat, ist nicht ausgewertet. FLF 1 hielt in Test 2 vor der 06/24 nur,
   weil es dem A320 folgte. **Gebaut in beta.44.feuerwehr.15:** Halt an der Haltelinie und Freigabe nach der Verkehrsabfrage (siehe
@@ -249,6 +261,6 @@ waren nicht nötig. Die 06/24 kreuzt die 14L.
 - **Heavy im Verkehrstest:** Mit der Wegpunkt-KI startete der A330 durch (an 0,5 NM 110 ft, an der Schwelle 157 ft zu hoch). Für
   Feuerwehr-Tests mit Heavies `kinematicNm` nehmen.
 
-Noch offen: Nachtest von beta.44.feuerwehr.15 (Haltepunkte, Spawnhöhe, Begleiter, RTF-Treppe und -Licht, DATA_ERROR beim Spawn,
-Halt vor kreuzenden Bahnen), Gebäudebrandschutzwache als Wache, Landung auf der anderen Bahn, Alarm per Funk (Mayday/Pan Pan im
-ATC-Modul), Ausrücken ab 20 NM bei eigenem Anflug, Abstand zum Abgasstrahl.
+Noch offen: Nachtest von beta.44.feuerwehr.16 (Haltepunkte, Spawnhöhe, Begleiter, RTF-Treppe und -Licht, DATA_ERROR beim Spawn,
+Halt vor kreuzenden Bahnen, Wachenwahl mit Mitte-Aufschlag und ohne Bundeswehr), Landung auf der anderen Bahn, Alarm per Funk
+(Mayday/Pan Pan im ATC-Modul), Ausrücken ab 20 NM bei eigenem Anflug, Abstand zum Abgasstrahl.

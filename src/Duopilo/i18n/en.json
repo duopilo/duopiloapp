@@ -1540,6 +1540,7 @@
   "log.fire.buildingsMismatch": "Fire service at {airport}: the OpenStreetMap buildings do not fit this scenery ({parkings} % of the parking spots and {taxi} % of the taxiways inside buildings) – no buildings as obstacles",
   "log.fire.post": "Fire service {unit}: post {x}/{y} m at the aircraft ({how}, {mode})",
   "log.fire.holdingShort": "Fire service {unit} holding short of runway {runway}",
+  "log.fire.militaryStations": "Fire service at {airport}: military fire stations left out for a civil emergency: {stations}",
   "log.fire.crossing": "Fire service {unit} crossing runway {runway} after {seconds} s",
   "log.fire.crossingBusy": "Fire service {unit} waiting for runway {runway}: {blocker}",
   "log.fire.crossingUnchecked": "Fire service {unit} crossing runway {runway} without a traffic check ({error})",

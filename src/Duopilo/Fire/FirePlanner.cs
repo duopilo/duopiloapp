@@ -50,6 +50,14 @@ public static class FirePlanner
     public const double MinHoldEdgeClearM = 15;
 
     /// <summary>
+    /// Aufschlag auf die Kosten einer Wache je Meter Abstand von der Mitte der Bahnen (<see cref="RunwayCentre"/>): Wachen am Rand kommen
+    /// nur, wenn sie deutlich näher am Ziel liegen. Test EDDK 05.11.: FLF 1 kam von der Gebäudebrandschutzwache an den Terminals (2,7 km
+    /// von der Mitte) statt von der Hauptwache (0,5 km). Außenwachen an entfernten Bahnen (EDDL Wache Nord, EDDF) bleiben im Spiel: Eine
+    /// Wache 1 km neben ihrer Bahn und 3 km von der Mitte kostet 1 + 1,5 km, die Hauptwache mit 4 km Weg mehr.
+    /// </summary>
+    public const double OffCentreCostPerM = 0.5;
+
+    /// <summary>
     /// Bereitstellung an Haltepunkten der Landebahn. <paramref name="stations"/>: Wachen aus OSM (leer = freie Parkposition);
     /// <paramref name="allStations"/>: jedes Fahrzeug von der Wache mit dem kürzesten Weg (Full Emergency), sonst alle von einer.
     /// </summary>
@@ -80,14 +88,15 @@ public static class FirePlanner
 
         var (midLat, midLon) = runway.Point(runway.LengthM / 2);
         var (midEast, midNorth) = graph.ToLocal(midLat, midLon);
+        var centre = RunwayCentre(graph);
         var osm = (stations ?? []).Where(s => NearestNode(graph, s.EastM, s.NorthM) is { } n && Distance(n.EastM, n.NorthM, s.EastM, s.NorthM) <= MaxStationOffNetworkM).ToList();
         if (osm.Count > 0)
         {
             // Alle von einer Wache: die mit dem kürzesten Weg, nicht die mit der kürzesten Luftlinie zur Bahnmitte – so kam am 04.11.
             // (EDDL 23R, Pan Pan) alles von der Wache Nord, bei Mayday mit Wahl nach dem Weg dagegen von der Hauptwache
             var plan = allStations
-                ? PlanUnits(graph, runway, units, wake, holds, osm)
-                : Shortest(osm.Select(s => PlanUnits(graph, runway, units, wake, holds, [s])), v => StandbyCost(v, runway, wake));
+                ? PlanUnits(graph, runway, units, wake, holds, osm, centre)
+                : Shortest(osm.Select(s => PlanUnits(graph, runway, units, wake, holds, [s], centre)), v => StandbyCost(v, runway, wake) + OffCentreCost(v.Station, centre));
             if (plan is not null)
             {
                 return plan;
@@ -97,7 +106,7 @@ public static class FirePlanner
         // Rückfall: freie Parkposition
         foreach (var spawn in SpawnCandidates(graph, midEast, midNorth, avoid).Take(MaxSpawnTries))
         {
-            if (PlanUnits(graph, runway, units, wake, holds, [FireStation.FromParking(spawn)]) is { } plan)
+            if (PlanUnits(graph, runway, units, wake, holds, [FireStation.FromParking(spawn)], centre) is { } plan)
             {
                 return plan;
             }
@@ -118,7 +127,8 @@ public static class FirePlanner
         var osm = (stations ?? [])
             .Where(s => NearestNode(graph, s.EastM, s.NorthM) is { } n && Distance(n.EastM, n.NorthM, s.EastM, s.NorthM) <= MaxStationOffNetworkM)
             .ToList();
-        if (Shortest(osm.Select(PlanFrom), v => v.Route.LengthM) is { } best)
+        var centre = RunwayCentre(graph);
+        if (Shortest(osm.Select(PlanFrom), v => v.Route.LengthM + OffCentreCost(v.Station, centre)) is { } best)
         {
             return best;
         }
@@ -176,6 +186,26 @@ public static class FirePlanner
             .ThenBy(p => p.Vehicles.Sum(cost))
             .FirstOrDefault();
 
+    /// <summary>
+    /// Mitte der Bahnen im Rollweg-Netz: Schwerpunkt der Bahnmitten, nach Länge gewichtet (der Bezugspunkt liegt nicht überall mittig).
+    /// Ohne Bahnen der Bezugspunkt.
+    /// </summary>
+    public static (double East, double North) RunwayCentre(TaxiGraph graph)
+    {
+        var total = graph.Runways.Sum(r => r.LengthM);
+        if (total <= 0)
+        {
+            return (0, 0);
+        }
+
+        var points = graph.Runways.Select(r => (Point: graph.ToLocal(r.Latitude, r.Longitude), r.LengthM)).ToList();
+        return (points.Sum(p => p.Point.EastM * p.LengthM) / total, points.Sum(p => p.Point.NorthM * p.LengthM) / total);
+    }
+
+    /// <summary>Aufschlag für eine Wache abseits der Mitte (<see cref="OffCentreCostPerM"/>); Parkpositionen als Rückfall ohne.</summary>
+    public static double OffCentreCost(FireStation station, (double East, double North) centre) =>
+        station.Source == "osm" ? OffCentreCostPerM * Distance(station.EastM, station.NorthM, centre.East, centre.North) : 0;
+
     /// <summary>Kosten eines Wegs zur Bereitstellung wie bei der Wahl je Fahrzeug: Länge plus dreifach die Abweichung vom Ziel an der Bahn.</summary>
     private static double StandbyCost(FireVehiclePlan vehicle, RunwayEnd runway, TrafficWake wake) =>
         vehicle.Route.LengthM + (3 * Math.Abs(vehicle.AlongM - TargetAlongM(vehicle.Unit.Role, runway.LengthM, wake)));
@@ -184,7 +214,7 @@ public static class FirePlanner
     /// Haltepunkt und Weg je Fahrzeug von den möglichen Wachen: je Wache der beste Haltepunkt (nah am Ziel, möglichst auf ihrer Seite der
     /// Bahn) mit Route; von mehreren Wachen die mit dem kürzesten Weg (plus dreifach die Abweichung vom Ziel). Null = kein Fahrzeug.
     /// </summary>
-    private static FireDispatchPlan? PlanUnits(TaxiGraph graph, RunwayEnd runway, IReadOnlyList<FireUnit> units, TrafficWake wake, List<HoldInfo> holds, IReadOnlyList<FireStation> stations)
+    private static FireDispatchPlan? PlanUnits(TaxiGraph graph, RunwayEnd runway, IReadOnlyList<FireUnit> units, TrafficWake wake, List<HoldInfo> holds, IReadOnlyList<FireStation> stations, (double East, double North) centre)
     {
         var vehicles = new List<FireVehiclePlan>();
         var missing = new List<FireUnit>();
@@ -205,7 +235,7 @@ public static class FirePlanner
                         continue;
                     }
 
-                    var cost = LengthM(points) + (3 * Math.Abs(hold.Along - target));
+                    var cost = LengthM(points) + (3 * Math.Abs(hold.Along - target)) + OffCentreCost(station, centre);
                     if (best is null || cost < best.Value.Cost)
                     {
                         best = (cost, station, hold, points);
