@@ -12,8 +12,11 @@ namespace Duopilo.Sim;
 /// </summary>
 public sealed partial class SimConnectClient
 {
-    // Nur auf dem SimConnect-Thread benutzt (Schlüssel: Variable|Einheit)
-    private readonly Dictionary<string, uint> _objectVarDefIds = new(StringComparer.Ordinal);
+    // Nur auf dem SimConnect-Thread benutzt. Je Objekt eigene Data Definitions (Schlüssel: Objekt, Variable|Einheit): Eine Definition, die
+    // erst an einem Fahrzeug und dann an einem anderen Modell benutzt wurde, traf bei der Feuerwehr die falsche Z-Variable (Test EDDK
+    // 05.11.: die Treppe des RTF lief mit DUOPILO_WEG). Vermutung: MSFS legt L:1:-Variablen je Modell in der Reihenfolge an, in der der
+    // Code sie zuerst benutzt, und bindet eine Definition beim ersten Setzen an diese Stelle.
+    private readonly Dictionary<(uint ObjectId, string Key), uint> _objectVarDefIds = [];
 
     /// <summary>
     /// Erzeugt ein SimObject (Bodenfahrzeug, Gegenstand) aus dem Titel seiner sim.cfg und liefert die Objekt-ID. Kommt keine ID
@@ -65,17 +68,34 @@ public sealed partial class SimConnectClient
     public Task SetObjectNumberAsync(uint objectId, string simVar, string unit, double value, CancellationToken ct) =>
         RunOnSimThreadAsync(sc =>
         {
-            var key = simVar + "|" + unit;
-            if (!_objectVarDefIds.TryGetValue(key, out var defId))
-            {
-                defId = ++_nextDefId;
-                sc.AddToDataDefinition((SimDefinitionId)defId, simVar, unit, SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
-                sc.RegisterDataDefineStruct<double>((SimDefinitionId)defId);
-                _objectVarDefIds[key] = defId;
-            }
-
+            var defId = ObjectVarDefId(sc, objectId, simVar, unit);
             sc.SetDataOnSimObject((SimDefinitionId)defId, objectId, SIMCONNECT_DATA_SET_FLAG.DEFAULT, value);
         }, ct);
+
+    /// <summary>Data Definition für eine Zahl an genau diesem Objekt (beim ersten Mal angelegt), nur auf dem SimConnect-Thread.</summary>
+    private uint ObjectVarDefId(SimConnect sc, uint objectId, string simVar, string unit)
+    {
+        var key = (objectId, simVar + "|" + unit);
+        if (!_objectVarDefIds.TryGetValue(key, out var defId))
+        {
+            defId = ++_nextDefId;
+            sc.AddToDataDefinition((SimDefinitionId)defId, simVar, unit, SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
+            sc.RegisterDataDefineStruct<double>((SimDefinitionId)defId);
+            _objectVarDefIds[key] = defId;
+        }
+
+        return defId;
+    }
+
+    /// <summary>Die Data Definitions eines Objekts freigeben (es ist weg), nur auf dem SimConnect-Thread.</summary>
+    private void ClearObjectVarDefs(SimConnect sc, uint objectId)
+    {
+        foreach (var (key, defId) in _objectVarDefIds.Where(e => e.Key.ObjectId == objectId).ToList())
+        {
+            sc.ClearDataDefinition((SimDefinitionId)defId);
+            _objectVarDefIds.Remove(key);
+        }
+    }
 
     /// <summary>AICreateSimulatedObject_EX1 (Titel, Livery, Position, Request), sonst AICreateSimulatedObject ohne Livery.</summary>
     private static void InvokeCreateSimulated(SimConnect sc, string title, string livery, SIMCONNECT_DATA_INITPOSITION position, uint requestId)

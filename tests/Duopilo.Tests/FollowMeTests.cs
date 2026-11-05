@@ -269,6 +269,21 @@ public sealed class FollowMeTests
         Assert.Equal(53 + 1.5, vehicle.Pose().AltitudeFt, 3);
     }
 
+    [Fact]
+    public void Boden_gleich_nach_dem_Spawn_sofort_spaeter_gleitend()
+    {
+        // In den ersten 3 s springt das Fahrzeug auf den gemessenen Boden (sonst kam es sichtbar aus dem Boden), danach 6 ft/s
+        var (graph, plan) = Planned();
+        var vehicle = new FollowMeVehicle(plan, graph.ToLatLon, 50) { GroundTargetFt = 80 };
+        vehicle.Advance(0.1);
+        Assert.Equal(80, vehicle.GroundFt, 3);
+
+        Run(vehicle, 3);
+        vehicle.GroundTargetFt = 70;
+        vehicle.Advance(0.5);
+        Assert.Equal(80 - (TrafficKinematics.GroundSlewFtPerSec * 0.5), vehicle.GroundFt, 3);
+    }
+
     /// <summary>Rechnet in Schritten von 0,1 s, höchstens <paramref name="maxSeconds"/> oder bis <paramref name="until"/>; Rückgabe: vergangene Sekunden.</summary>
     private static double Run(FollowMeVehicle vehicle, double maxSeconds, Func<bool>? until = null)
     {

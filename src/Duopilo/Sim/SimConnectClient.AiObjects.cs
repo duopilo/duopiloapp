@@ -227,8 +227,10 @@ public sealed partial class SimConnectClient
     /// <summary>
     /// Lichter eines eigenen KI-Flugzeugs (NonATC-Flugzeuge schaltet der Sim nicht selbst). Beide Wege zugleich, weil offen ist, was
     /// welches Modell annimmt: das Event …_SET mit 1/0 und die SimVar LIGHT …. Lichter mit null bleiben unverändert.
+    /// <paramref name="simVars"/> false: nur die Events – Bodenfahrzeuge lehnen die SimVar ab (Test der Feuerwehr EDDL, 04.11.: bei
+    /// jedem Lichtwechsel zwei SimConnect DATA_ERROR je Fahrzeug).
     /// </summary>
-    public Task SetAiLightsAsync(uint objectId, AiLights lights, CancellationToken ct) =>
+    public Task SetAiLightsAsync(uint objectId, AiLights lights, CancellationToken ct, bool simVars = true) =>
         RunOnSimThreadAsync(sc =>
         {
             foreach (var (light, on) in lights.Changes())
@@ -241,6 +243,11 @@ public sealed partial class SimConnectClient
                     // Passive-C172 ließen es in beta.18/19 an): zusätzlich ON/OFF und LANDING_LIGHTS_SET je Index 1–4
                     TransmitToObject(sc, objectId, on ? "LANDING_LIGHTS_ON" : "LANDING_LIGHTS_OFF", 0);
                     TransmitIndexed(sc, objectId, eventName, on ? 1u : 0u, MaxLandingLightIndex);
+                }
+
+                if (!simVars)
+                {
+                    continue;
                 }
 
                 if (!_aiLightDefIds.TryGetValue(simVar, out var defId))
@@ -353,6 +360,8 @@ public sealed partial class SimConnectClient
 
         Enqueue(sc =>
         {
+            ClearObjectVarDefs(sc, objectId);
+
             if (unfreeze)
             {
                 Freeze(sc, objectId, false);

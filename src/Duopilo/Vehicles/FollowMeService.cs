@@ -412,17 +412,21 @@ public sealed class FollowMeService : BackgroundService
         }
     }
 
-    /// <summary>Rundumlicht und Fahrlicht an – während das Objekt lädt, verwirft der Sim die Werte, deshalb mehrmals.</summary>
+    /// <summary>
+    /// Rundumlicht und Fahrlicht an, 2, 3 und 5 s nach dem Spawn: Solange das Objekt lädt, verwirft der Sim die Werte (DATA_ERROR),
+    /// deshalb mehrmals. Nur <c>L:1:</c> und die Events – die SimVars <c>LIGHT …</c> lehnt der Sim an Bodenfahrzeugen ab (wie bei der
+    /// Feuerwehr, Tests EDDL/EDDK 04./05.11.).
+    /// </summary>
     private async Task SwitchLightsAsync(uint objectId, CancellationToken ct)
     {
-        foreach (var delay in new[] { 1, 2, 5 })
+        foreach (var delay in new[] { 2, 1, 2 })
         {
             try
             {
                 await Task.Delay(TimeSpan.FromSeconds(delay), ct);
                 await _sim.SetObjectNumberAsync(objectId, "L:1:DUOPILO_RUNDUMLICHT", "Number", 1, ct);
                 await _sim.SetObjectNumberAsync(objectId, "L:1:DUOPILO_FAHRLICHT", "Number", 1, ct);
-                await _sim.SetAiLightsAsync(objectId, new AiLights(Beacon: true, Landing: true), ct);
+                await _sim.SetAiLightsAsync(objectId, new AiLights(Beacon: true, Landing: true), ct, simVars: false);
             }
             catch (OperationCanceledException)
             {

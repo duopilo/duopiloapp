@@ -57,6 +57,7 @@ public sealed class FollowMeVehicle
     private double _aircraftS = double.NaN;
     private double _aircraftMps;
     private double _phaseSeconds;
+    private double _ageS;
     private double _leftM;
     private bool _leavingOnLead;
 
@@ -91,6 +92,12 @@ public sealed class FollowMeVehicle
     /// <summary>Gemessener Boden unter dem Fahrzeug (aus einem anderen Thread), null = keine Messung.</summary>
     public double? GroundTargetFt { get; set; }
 
+    /// <summary>
+    /// So lange nach dem Spawn übernimmt das Fahrzeug den gemessenen Boden sofort, statt mit 6 ft/s hinzugleiten (Feuerwehr, Test EDDK
+    /// 05.11.: 30 ft zu tief gespawnt, die Fahrzeuge kamen sichtbar aus dem Boden).
+    /// </summary>
+    public const double GroundSnapS = 3;
+
     /// <summary>Bezugspunkt des Modells über dem Boden.</summary>
     public double HeightFt { get; }
 
@@ -121,11 +128,14 @@ public sealed class FollowMeVehicle
             return;
         }
 
+        _ageS += dt;
         if (GroundTargetFt is { } ground)
         {
-            GroundFt = GroundFt < ground
-                ? Math.Min(ground, GroundFt + (TrafficKinematics.GroundSlewFtPerSec * dt))
-                : Math.Max(ground, GroundFt - (TrafficKinematics.GroundSlewFtPerSec * dt));
+            GroundFt = _ageS <= GroundSnapS
+                ? ground
+                : GroundFt < ground
+                    ? Math.Min(ground, GroundFt + (TrafficKinematics.GroundSlewFtPerSec * dt))
+                    : Math.Max(ground, GroundFt - (TrafficKinematics.GroundSlewFtPerSec * dt));
         }
 
         UpdateAircraft(dt);
