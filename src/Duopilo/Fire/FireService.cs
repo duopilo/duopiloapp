@@ -223,6 +223,7 @@ public sealed class FireService : BackgroundService
             {
                 try
                 {
+                    SyncClosure();
                     if (!_sim.Connection.IsConnected)
                     {
                         Drop();
@@ -829,8 +830,15 @@ public sealed class FireService : BackgroundService
         await _sim.SetAiLightsAsync(objectId, new AiLights(Beacon: blue, Landing: true), ct, simVars: false);
     }
 
-    /// <summary>Mindesthalt vor einer Bahn mit Blaulicht (Anfahrt, auf die Spur, Aufstellen).</summary>
-    public const double CrossingHoldBlueS = 2;
+    /// <summary>
+    /// Mindesthalt vor einer Bahn mit Blaulicht (Anfahrt, auf die Spur, Aufstellen): keiner – die Feuerwehr hat Vorfahrt (Nachtest EDDK
+    /// 05.11.; bis .19 2 s). Bei Pan Pan fragt Duopilo den Verkehr schon ab <see cref="CrossingCheckAheadM"/> vor der Haltelinie ab und
+    /// lässt das Fahrzeug durchfahren, wenn die Bahn frei ist; bei Mayday hält es gar nicht (<see cref="FireOperation.NeedsClearance"/>).
+    /// </summary>
+    public const double CrossingHoldBlueS = 0;
+
+    /// <summary>Mit Blaulicht beginnt die Verkehrsabfrage für eine Bahn so weit vor der Haltelinie (Meter auf dem Weg).</summary>
+    public const double CrossingCheckAheadM = 200;
 
     /// <summary>Mindesthalt vor einer Bahn ohne Blaulicht (Rückfahrt), wie beim eigenen KI-Verkehr.</summary>
     public const double CrossingHoldS = 5;
@@ -849,8 +857,9 @@ public sealed class FireService : BackgroundService
 
     /// <summary>
     /// Halt vor Bahnen (Test EDDK 05.11.: die Fahrzeuge kreuzten ohne Halt). Bahnen ohne Freigabepflicht (<see cref="FireOperation.NeedsClearance"/>)
-    /// gibt der Einsatz selbst frei, dort hält niemand. Sonst hält das Fahrzeug an der Haltelinie, nach dem Mindesthalt fragt Duopilo
-    /// den Verkehr ab (eine Abfrage zugleich) und gibt die Bahn frei, wenn nichts auf ihr oder im Endanflug ist (<see cref="RunwayOccupancy"/>).
+    /// gibt der Einsatz selbst frei, dort hält niemand (bei Mayday mit Blaulicht vor keiner Bahn). Sonst fragt Duopilo den Verkehr ab
+    /// (eine Abfrage zugleich) – mit Blaulicht schon ab <see cref="CrossingCheckAheadM"/> vor der Haltelinie, ohne Blaulicht nach dem
+    /// Mindesthalt dort – und gibt die Bahn frei, wenn nichts auf ihr oder im Endanflug ist (<see cref="RunwayOccupancy"/>).
     /// Ohne Antwort aus der Abfrage nach <see cref="CrossingGiveUpS"/> trotzdem.
     /// </summary>
     private void CheckCrossingsLocked(Run run, FireOperation operation, TaxiGraph graph, DateTimeOffset now)
@@ -871,13 +880,15 @@ public sealed class FireService : BackgroundService
                 continue;
             }
 
-            if (!vehicle.HoldingShort)
+            // Mit Blaulicht schon im Anrollen abfragen: ist die Bahn frei, fährt es ohne Halt durch
+            var holding = vehicle.HoldingShort;
+            if (!holding && !(vehicle.BlueLight && vehicle.CrossingAheadM is <= CrossingCheckAheadM))
             {
                 continue;
             }
 
             var key = crossing.Designation + "@" + crossing.EntryS.ToString("0", System.Globalization.CultureInfo.InvariantCulture);
-            if (run.CrossingLogged.GetValueOrDefault(vehicle) != key)
+            if (holding && run.CrossingLogged.GetValueOrDefault(vehicle) != key)
             {
                 run.CrossingLogged[vehicle] = key;
                 run.CrossingBlocker.Remove(vehicle);
@@ -886,14 +897,14 @@ public sealed class FireService : BackgroundService
 
             needScan = true;
             var held = vehicle.CrossingHeldS;
-            if (held < (vehicle.BlueLight ? CrossingHoldBlueS : CrossingHoldS) || run.CrossingScan is not { } scan || now - run.CrossingScanUtc > CrossingScanMaxAge)
+            if ((holding && held < (vehicle.BlueLight ? CrossingHoldBlueS : CrossingHoldS)) || run.CrossingScan is not { } scan || now - run.CrossingScanUtc > CrossingScanMaxAge)
             {
                 continue;
             }
 
             if (scan.Error is not null)
             {
-                if (held >= CrossingGiveUpS)
+                if (holding && held >= CrossingGiveUpS)
                 {
                     vehicle.ClearCrossing();
                     _log.LogWarning(Loc.Log("log.fire.crossingUnchecked"), vehicle.Unit.Name, crossing.Designation, Loc.ToEnglish(scan.Error) ?? scan.Error);
@@ -913,7 +924,7 @@ public sealed class FireService : BackgroundService
                 vehicle.ClearCrossing();
                 _log.LogInformation(Loc.Log("log.fire.crossing"), vehicle.Unit.Name, crossing.Designation, Math.Round(held));
             }
-            else if (run.CrossingBlocker.GetValueOrDefault(vehicle) != RunwayOccupancy.Key(blocker))
+            else if (holding && run.CrossingBlocker.GetValueOrDefault(vehicle) != RunwayOccupancy.Key(blocker))
             {
                 run.CrossingBlocker[vehicle] = RunwayOccupancy.Key(blocker);
                 _log.LogInformation(Loc.Log("log.fire.crossingBusy"), vehicle.Unit.Name, crossing.Designation, blocker);
@@ -1148,6 +1159,44 @@ public sealed class FireService : BackgroundService
 
         _log.LogInformation(Loc.Log("log.fire.dispatched"), run.Airport ?? "-", run.Runway ?? "-");
         Dispatch(run);
+    }
+
+    /// <summary>
+    /// Sperre des Flughafens für den eigenen KI-Verkehr nachführen (<see cref="AirportClosures"/>): bei Mayday, sobald die Fahrzeuge
+    /// ausrücken, bis sie einrücken (Abbruch, Einsatz zu Ende). Ausgenommen ist das Flugzeug des Notfalls (Verkehrstest). Nachtest
+    /// EDDK 05.11.: Mit Blaulicht kreuzen die Fahrzeuge bei Mayday ohne Halt und ohne Verkehrsabfrage.
+    /// </summary>
+    private void SyncClosure()
+    {
+        if (_services.GetService<AirportClosures>() is not { } closures)
+        {
+            return;
+        }
+
+        string? airport = null;
+        string? except = null;
+        lock (_lock)
+        {
+            if (_run is { Level: FireAlertLevel.FullEmergency, Failed: false, Dispatched: true, Airport: { } icao } run
+                && !run.Cts.IsCancellationRequested && run.Operation is not { Returning: true })
+            {
+                airport = icao;
+                except = run.TargetTail;
+            }
+        }
+
+        foreach (var open in closures.Closed.Where(c => !string.Equals(c, airport, StringComparison.OrdinalIgnoreCase)))
+        {
+            if (closures.Open(open))
+            {
+                _log.LogInformation(Loc.Log("log.fire.reopened"), open);
+            }
+        }
+
+        if (airport is not null && closures.Close(airport, "Mayday", except))
+        {
+            _log.LogInformation(Loc.Log("log.fire.closed"), airport, "Mayday");
+        }
     }
 
     /// <summary>Einsatz beenden: vorgemerkt oder in Planung = gar nicht ausrücken, sonst alle zurück.</summary>

@@ -127,26 +127,28 @@ public static class FireCategory
     }
 
     /// <summary>
-    /// Fahrzeuge je Stufe und Kategorie, in der Reihenfolge der Alarmierung: bis 5 ein FLF, 6–7 zwei, ab 8 drei; bei Full Emergency
-    /// dazu HLF, Rettungstreppe(n) und RTW. Ein Notfall am Boden bekommt dieselben Fahrzeuge wie ein Local Standby.
+    /// Fahrzeuge je Stufe und Kategorie, in der Reihenfolge der Alarmierung: bis 5 ein FLF, 6–7 zwei, ab 8 drei (Mindestzahl nach ICAO
+    /// Annex 14), bei Full Emergency ab 8 vier; bei Full Emergency dazu HLF, eine Rettungstreppe und RTW. Ein Notfall am Boden bekommt
+    /// dieselben Fahrzeuge wie ein Local Standby. Nachtest EDDK 05.11.: zwei RTF und nur drei FLF passten nicht – die meisten Flughäfen
+    /// haben ein RTF (Düsseldorf, Stuttgart), Düsseldorf hält 6 FLF im ICAO-Löschzug.
     /// </summary>
     public static IReadOnlyList<FireUnit> Lineup(FireAlertLevel level, int category)
     {
-        var flf = category <= 5 ? 1 : category <= 7 ? 2 : 3;
+        var full = level == FireAlertLevel.FullEmergency;
+        var flf = category <= 5 ? 1 : category <= 7 ? 2 : full ? 4 : 3;
         var aircraft = level == FireAlertLevel.GroundIncident;
         var units = new List<FireUnit>();
         FireStandbyRole Role(FireStandbyRole role) => aircraft ? FireStandbyRole.Aircraft : role;
 
-        // Ein einzelnes FLF steht an der Stoppstelle, mehrere an Aufsetzzone, Stoppstelle und Bahnende
+        // Ein einzelnes FLF steht an der Stoppstelle, mehrere an Aufsetzzone, Stoppstelle und Bahnende, ein viertes an der Mitte
         var flfRoles = flf == 1
             ? new[] { FireStandbyRole.Rollout }
-            : new[] { FireStandbyRole.Touchdown, FireStandbyRole.Rollout, FireStandbyRole.End };
+            : new[] { FireStandbyRole.Touchdown, FireStandbyRole.Rollout, FireStandbyRole.End, FireStandbyRole.Mid };
         for (var i = 0; i < flf; i++)
         {
             units.Add(new FireUnit(FireVehicleKind.Flf, i + 1, Role(flfRoles[i])));
         }
 
-        var full = level == FireAlertLevel.FullEmergency;
         if (category > 5 || full)
         {
             units.Add(new FireUnit(FireVehicleKind.Elw, 1, Role(FireStandbyRole.Mid)));
@@ -160,11 +162,7 @@ public static class FireCategory
         if (category > 5)
         {
             units.Add(new FireUnit(FireVehicleKind.Hlf, 1, FireStandbyRole.Mid));
-            var stairs = category >= 8 ? 2 : 1;
-            for (var i = 0; i < stairs; i++)
-            {
-                units.Add(new FireUnit(FireVehicleKind.Rtf, i + 1, FireStandbyRole.Mid));
-            }
+            units.Add(new FireUnit(FireVehicleKind.Rtf, 1, FireStandbyRole.Mid));
         }
 
         units.Add(new FireUnit(FireVehicleKind.Rtw, 1, FireStandbyRole.Mid));
@@ -183,12 +181,15 @@ public static class FireCategory
         _ => 50,
     };
 
-    /// <summary>Abstand hinter dem Bezugspunkt des Flugzeugs beim Folgen auf der Bahn (Abgasstrahl): Startwerte bis zum Test im Sim.</summary>
+    /// <summary>
+    /// Abstand hinter dem Bezugspunkt des Flugzeugs beim Folgen auf der Bahn (Abgasstrahl). Heavy 90 m nach dem Nachtest EDDK 05.11.
+    /// (Florian: „so 90 Meter hinter dem Flugzeug“).
+    /// </summary>
     public static double RunwayGapM(TrafficWake wake) => wake switch
     {
         TrafficWake.Light => 35,
         TrafficWake.Medium => 80,
-        TrafficWake.Heavy => 100,
+        TrafficWake.Heavy => 90,
         _ => 110,
     };
 

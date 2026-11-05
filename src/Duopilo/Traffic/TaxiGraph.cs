@@ -62,6 +62,13 @@ public sealed class TaxiGraph
     /// </summary>
     public double RoadCostFactor { get; set; } = 1;
 
+    /// <summary>
+    /// Bahn, die beim Routen wie ein Rollweg zählt statt <see cref="RunwayCostFactor"/>-fach: die gesperrte Bahn eines Notfalls nach der
+    /// Landung, auf der die Feuerwehr arbeitet (Nachtest EDDK 05.11.: FLF 3 fuhr vom Bahnende 2,3 km über Rollwege und Straßen statt
+    /// über die 14L zum Flugzeug). Null = keine. Gesetzt nur für die Dauer einer Wegsuche.
+    /// </summary>
+    public AirportRunway? FreeRunway { get; set; }
+
     /// <summary>Haltepunkte gehören zur nächsten Bahn, wenn sie höchstens so weit von deren Mittellinie liegen.</summary>
     public const double MaxHoldCenterlineM = 400;
 
@@ -560,13 +567,27 @@ public sealed class TaxiGraph
             return 1;
         }
 
+        var runway = edge.Type == 2 || edge.RunwayShare > 0 ? RunwayFactor(edge) : RunwayCostFactor;
         var factor = edge.Type switch
         {
-            2 => RunwayCostFactor,
+            2 => runway,
             6 or 7 => RoadCostFactor,
             _ => 1,
         };
-        return edge.RunwayShare > 0 ? (factor * (1 - edge.RunwayShare)) + (RunwayCostFactor * edge.RunwayShare) : factor;
+        return edge.RunwayShare > 0 ? (factor * (1 - edge.RunwayShare)) + (runway * edge.RunwayShare) : factor;
+    }
+
+    /// <summary>Kostenfaktor des Bahn-Anteils: 1 auf der <see cref="FreeRunway"/> (Mitte des Abschnitts auf ihr), sonst <see cref="RunwayCostFactor"/>.</summary>
+    private double RunwayFactor(TaxiEdge edge)
+    {
+        if (FreeRunway is not { } free)
+        {
+            return RunwayCostFactor;
+        }
+
+        var (a, b) = (_nodes[edge.From], _nodes[edge.To]);
+        var (along, cross) = RunwayOffsets(free, (a.EastM + b.EastM) / 2, (a.NorthM + b.NorthM) / 2);
+        return Math.Abs(along) <= (free.LengthM / 2) + 20 && Math.Abs(cross) <= (Math.Max(free.WidthM, 20) / 2) + 3 ? 1 : RunwayCostFactor;
     }
 
     /// <summary>Kosten einer Route wie bei <see cref="Route"/>: Meter, Bahn-Abschnitte <see cref="RunwayCostFactor"/>-fach.</summary>
@@ -655,6 +676,14 @@ public sealed class TaxiGraph
 
     /// <summary>Lage eines Punkts zu einer Bahn: entlang ab der Bahnmitte (Richtung primäres Ende) und quer zur Mittellinie, in Metern.</summary>
     public (double AlongM, double CrossM) OffsetsTo(AirportRunway runway, double eastM, double northM) => RunwayOffsets(runway, eastM, northM);
+
+    /// <summary>Punkt auf der Mittellinie einer Bahn, <paramref name="alongM"/> ab der Bahnmitte (Richtung primäres Ende), Ost/Nord.</summary>
+    public (double East, double North) OnCenterline(AirportRunway runway, double alongM)
+    {
+        var (centerEast, centerNorth) = ToLocal(runway.Latitude, runway.Longitude);
+        var heading = runway.HeadingDeg * Math.PI / 180;
+        return (centerEast + (alongM * Math.Sin(heading)), centerNorth + (alongM * Math.Cos(heading)));
+    }
 
     /// <summary>Nächste Bahn zu einem Punkt mit Abstand zur Mittellinie (innerhalb der Länge plus 300 m), sonst null.</summary>
     public (AirportRunway Runway, double CrossM)? NearestRunway(double eastM, double northM)

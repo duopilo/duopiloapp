@@ -57,6 +57,7 @@ public sealed class FireVehicle
     private int _crossingsDone;
     private bool _crossingClear;
     private double _crossingHeldS;
+    private double? _holdAtS;
 
     public FireVehicle(FireUnit unit, string model, TaxiPath route, FireTrail trail, Func<double, double, (double Latitude, double Longitude)> toLatLon, double groundFt, double heightFt = 0)
     {
@@ -321,6 +322,72 @@ public sealed class FireVehicle
         }
     }
 
+    /// <summary>So weit ist es noch bis zur Haltelinie vor der nächsten Bahn ohne Freigabe (Meter auf dem Weg), sonst null.</summary>
+    public double? CrossingAheadM
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _path is not null && OnPath && _crossingsDone < _crossings.Count && !_crossingClear
+                    ? Math.Max(0, _crossings[_crossingsDone].StopS - DistanceM)
+                    : null;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Bis hierhin (Meter auf dem aktuellen Weg) darf es fahren, dann hält es (FLF vom Bahnende vor einem noch rollenden Flugzeug);
+    /// null = bis zum Ende. Ein neuer Weg hebt die Grenze auf.
+    /// </summary>
+    public double? HoldAtS
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _holdAtS;
+            }
+        }
+
+        set
+        {
+            lock (_lock)
+            {
+                _holdAtS = value;
+            }
+        }
+    }
+
+    /// <summary>Erste Stelle auf dem aktuellen Weg ab der eigenen, an der <paramref name="inside"/> gilt (Schritte von <paramref name="stepM"/>), sonst null.</summary>
+    public double? FirstOnPath(Func<double, double, bool> inside, double stepM = 5)
+    {
+        lock (_lock)
+        {
+            if (_path is not { } path || !OnPath)
+            {
+                return null;
+            }
+
+            for (var s = DistanceM; s < path.LengthM + stepM; s += stepM)
+            {
+                var at = Math.Min(s, path.LengthM);
+                var (east, north, _) = path.At(at);
+                if (inside(east, north))
+                {
+                    return at;
+                }
+
+                if (at >= path.LengthM)
+                {
+                    break;
+                }
+            }
+
+            return null;
+        }
+    }
+
     /// <summary>Freigabe für die nächste Bahn: es fährt weiter (bzw. hält gar nicht erst, wenn sie früh genug kommt).</summary>
     public void ClearCrossing()
     {
@@ -561,6 +628,7 @@ public sealed class FireVehicle
         _pathMaxMps = maxMps;
         _arrive = arrive;
         _arriveHeading = finalHeadingDeg;
+        _holdAtS = null;
         DistanceM = 0;
         ResetCrossings();
     }
@@ -591,9 +659,12 @@ public sealed class FireVehicle
 
         // Vor einer Bahn ohne Freigabe: an der Haltelinie anhalten
         double? stopAt = _crossingsDone < _crossings.Count && !_crossingClear ? _crossings[_crossingsDone].StopS : null;
-        var end = Math.Min(path.LengthM, stopAt is { } stop ? Math.Max(DistanceM, stop) : path.LengthM);
+        var crossingEnd = Math.Min(path.LengthM, stopAt is { } stop ? Math.Max(DistanceM, stop) : path.LengthM);
+
+        // Grenze von außen (vor einem noch rollenden Flugzeug): dort halten, ohne dass es als Halt vor einer Bahn zählt
+        var end = _holdAtS is { } hold ? Math.Min(crossingEnd, Math.Max(DistanceM, hold)) : crossingEnd;
         var allowed = Math.Min(_pathMaxMps, path.AllowedMps(DistanceM, FireProfile.DecelMps2));
-        if (stopAt is not null)
+        if (stopAt is not null || _holdAtS is not null)
         {
             allowed = Math.Min(allowed, Math.Sqrt(2 * FireProfile.DecelMps2 * Math.Max(0, end - DistanceM)));
         }
@@ -610,10 +681,14 @@ public sealed class FireVehicle
         }
 
         DistanceM = Math.Min(end, DistanceM + (SpeedMps * dt));
-        if (stopAt is not null && DistanceM >= end - 0.05 && end < path.LengthM)
+        if (stopAt is not null && DistanceM >= crossingEnd - 0.05 && crossingEnd < path.LengthM)
         {
             SpeedMps = 0;
             _crossingHeldS += dt;
+        }
+        else if (_holdAtS is not null && DistanceM >= end - 0.05 && end < path.LengthM)
+        {
+            SpeedMps = 0;
         }
 
         var (east, north, heading) = path.At(DistanceM);

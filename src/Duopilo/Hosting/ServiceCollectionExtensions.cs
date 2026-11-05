@@ -31,6 +31,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<TrafficConnection>();
         services.AddSingleton<TrafficService>();
         services.AddHostedService(sp => sp.GetRequiredService<TrafficService>());
+        // Sperre für den eigenen KI-Verkehr (Feuerwehr bei Mayday)
+        services.AddSingleton<AirportClosures>();
         services.AddSingleton<TrafficTestService>();
         services.AddHostedService(sp => sp.GetRequiredService<TrafficTestService>());
 

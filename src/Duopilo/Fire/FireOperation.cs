@@ -10,8 +10,10 @@ public sealed record FireAircraftState(double EastM, double NorthM, double Headi
 /// <summary>
 /// Ein Einsatz ohne Sim: Spur des Flugzeugs ab dem Aufsetzen, und was jedes Fahrzeug als Nächstes tut.
 /// <list type="bullet">
-/// <item>Am Haltepunkt: Ist das Flugzeug vorbei und langsamer als 40 kt, fährt das Fahrzeug auf die Spur dahinter und folgt.</item>
-/// <item>Bleibt das Flugzeug stehen, bevor es ein Fahrzeug passiert hat, fährt das Fahrzeug ihm entgegen.</item>
+/// <item>Am Haltepunkt: Ist das Flugzeug vorbei, fährt das Fahrzeug gleich auf die Spur dahinter und folgt (bis beta.44.feuerwehr.19
+/// erst unter 40 kt – Nachtest EDDK 05.11.: FLF 1 stand an der Aufsetzzone, bis der A330 fast stand).</item>
+/// <item>Das FLF am Bahnende fährt ab dem Aufsetzen über die Bahn entgegen und hält vor dem Flugzeug, solange es rollt.</item>
+/// <item>Bleibt das Flugzeug stehen, bevor es ein Fahrzeug passiert hat, fährt das Fahrzeug ihm entgegen – auch von unterwegs.</item>
 /// <item>Steht das Flugzeug, stellen sich die Fahrzeuge auf ihre Plätze rundherum (nie seitlich in Achsrichtung der Räder).</item>
 /// <item>Rollt es weiter, folgt nur FLF 1 bis zum Stand, die anderen fahren zurück. Steht es dort eine Minute, rücken alle ein.</item>
 /// </list>
@@ -19,8 +21,17 @@ public sealed record FireAircraftState(double EastM, double NorthM, double Headi
 /// </summary>
 public sealed class FireOperation
 {
-    /// <summary>Langsamer als das (40 kt) fahren die Fahrzeuge auf die Bahn hinter das Flugzeug.</summary>
-    public const double JoinBelowMps = 20.6;
+    /// <summary>
+    /// Entgegen vom Bahnende, solange das Flugzeug rollt: Es bleibt vor der Stelle, an der das Flugzeug mit dieser Verzögerung (m/s²,
+    /// vorsichtig gerechnet; ein Airliner bremst meist mit 1,5–2,5) zum Stehen käme, plus <see cref="ApproachClearM"/>.
+    /// </summary>
+    public const double ApproachDecelMps2 = 1.2;
+
+    /// <summary>So viel Luft bleibt vor der vorausgerechneten Stoppstelle des Flugzeugs.</summary>
+    public const double ApproachClearM = 150;
+
+    /// <summary>Breite der Zone vor dem Flugzeug, in die das entgegenkommende FLF nicht fährt: halbe Bahnbreite plus so viel.</summary>
+    public const double ApproachSideM = 25;
 
     /// <summary>So lange muss das Flugzeug auf der Bahn stehen, bis die Fahrzeuge es umstellen.</summary>
     public const double StopOnRunwaySeconds = 6;
@@ -34,7 +45,11 @@ public sealed class FireOperation
     /// <summary>Notfall am Boden: so lange bleiben die Fahrzeuge am stehenden Flugzeug.</summary>
     public const double GroundIncidentSeconds = 180;
 
-    /// <summary>So weit vom Flugzeug weg fährt ein Fahrzeug, das noch zur Bahn unterwegs ist, ihm direkt entgegen.</summary>
+    /// <summary>
+    /// Beim Notfall am Boden: so weit vom Flugzeug weg fährt ein Fahrzeug, das noch unterwegs ist, ihm direkt entgegen (sonst auf seinem
+    /// geplanten Weg weiter). Nach einer Landung gilt keine Grenze: Steht das Flugzeug, fahren alle hin (Nachtest EDDK 05.11.: FLF 3 fuhr
+    /// erst noch bis zum Bahnende und kam 68 s nach dem Stopp dort an).
+    /// </summary>
     public const double DirectRangeM = 300;
 
     /// <summary>Weiter als das von der Spur weg (z. B. andere Bahn): über die Rollwege statt geradeaus auf die Spur.</summary>
@@ -54,6 +69,10 @@ public sealed class FireOperation
     private bool _inspected;
     private bool _released;
     private FireVehicle? _escort;
+
+    // Fahrzeuge vom Bahnende, die dem noch rollenden Flugzeug über die Bahn entgegenfahren (und wer es schon versucht hat)
+    private readonly HashSet<FireVehicle> _approaching = [];
+    private readonly HashSet<FireVehicle> _approachTried = [];
 
     /// <summary>
     /// So viel näher am Flugzeug muss ein anderes FLF sein, damit statt FLF 1 es bis zum Stand folgt (sonst bleibt es bei FLF 1).
@@ -181,12 +200,17 @@ public sealed class FireOperation
     }
 
     /// <summary>
-    /// Braucht das Fahrzeug eine Freigabe für diese Bahn (Halt, frei von Verkehr auf der Bahn und im Endanflug)? Nicht für die Bahn des
-    /// Notfalls, sobald das Flugzeug gelandet ist und solange der Einsatz läuft – dort arbeitet die Feuerwehr. Vor der Landung (das
-    /// Flugzeug kommt im Endanflug) und auf der Rückfahrt vor jeder Bahn.
+    /// Braucht das Fahrzeug eine Freigabe für diese Bahn (frei von Verkehr auf der Bahn und im Endanflug)? Auf der Rückfahrt vor jeder
+    /// Bahn. Bei Mayday mit Blaulicht vor keiner: Die Feuerwehr hat Vorfahrt, und der Flughafen ist für den eigenen KI-Verkehr gesperrt
+    /// (<see cref="Duopilo.Traffic.AirportClosures"/>; Nachtest EDDK 05.11.). Sonst nicht für die Bahn des Notfalls, sobald das Flugzeug
+    /// gelandet ist – dort arbeitet die Feuerwehr –, vor der Landung (das Flugzeug kommt im Endanflug) vor jeder.
     /// </summary>
     public bool NeedsClearance(FireVehicle vehicle, FireCrossing crossing) =>
-        vehicle.Phase == FireVehiclePhase.Returning || Returning || !_landed || !IsEmergencyRunway(crossing.Runway);
+        vehicle.Phase == FireVehiclePhase.Returning || Returning
+        || (Level != FireAlertLevel.FullEmergency && (!_landed || !IsEmergencyRunway(crossing.Runway)));
+
+    /// <summary>Die Landebahn des Notfalls als Bahn im Netz (beide Richtungen), sonst null.</summary>
+    public AirportRunway? EmergencyRunway => Graph.Runways.FirstOrDefault(IsEmergencyRunway);
 
     /// <summary>Die Landebahn des Notfalls (beide Richtungen).</summary>
     public bool IsEmergencyRunway(AirportRunway runway) =>
@@ -226,11 +250,13 @@ public sealed class FireOperation
             return;
         }
 
-        var onRunway = Graph.RunwayAt(aircraft.EastM, aircraft.NorthM) is not null;
+        var runwayNow = Graph.RunwayAt(aircraft.EastM, aircraft.NorthM);
+        var onRunway = runwayNow is not null;
         UpdateGaps(vehicles, onRunway);
         var escort = Escort(vehicles, aircraft);
         var stopped = _stoppedSeconds >= (onRunway ? StopOnRunwaySeconds : StopOffRunwaySeconds);
         var moving = aircraft.GroundSpeedMps > 2;
+        var rollingOut = runwayNow is { } landingRunway && IsEmergencyRunway(landingRunway) && !stopped && !_released && !_inspected;
 
         foreach (var vehicle in vehicles)
         {
@@ -238,6 +264,18 @@ public sealed class FireOperation
             {
                 case FireVehiclePhase.Responding:
                 case FireVehiclePhase.Standby:
+                    // Vom Bahnende entgegen, solange das Flugzeug ausrollt; steht es, geht es weiter wie bei allen anderen
+                    if (rollingOut && (_approaching.Contains(vehicle) || StartApproach(vehicle, aircraft)))
+                    {
+                        HoldBeforeAircraft(vehicle, aircraft);
+                        break;
+                    }
+
+                    if (_approaching.Remove(vehicle))
+                    {
+                        vehicle.HoldAtS = null;
+                    }
+
                     UpdateWaiting(vehicle, aircraft, aircraftS, stopped, escort);
                     break;
 
@@ -322,7 +360,8 @@ public sealed class FireOperation
 
     /// <summary>
     /// Platz eines Fahrzeugs am Flugzeug im Flugzeug-System (x nach vorn, y nach rechts, Meter), aus dem Grundmaß <paramref name="u"/>:
-    /// FLF vor links und hinter rechts bzw. links am Hauptfahrwerk, ELW schräg vor der Nase, die anderen weiter weg.
+    /// FLF vor links und hinter rechts bzw. links am Hauptfahrwerk, ein viertes vorn rechts, ELW schräg vor der Nase, die anderen weiter
+    /// weg.
     /// </summary>
     public static (double X, double Y) Post(FireUnit unit, double u) => unit.Kind switch
     {
@@ -330,6 +369,7 @@ public sealed class FireOperation
         {
             1 => (u, -u),
             2 => (-u, u),
+            4 => (u, u),
             _ => (-u, -u),
         },
         FireVehicleKind.Elw => (1.3 * u, 0.6 * u),
@@ -348,6 +388,7 @@ public sealed class FireOperation
         {
             1 => (0, 1.4 * u),
             2 => (-1.4 * u, 0.6 * u),
+            4 => (-0.9 * u, 1.4 * u),
             _ => (-1.4 * u, -0.6 * u),
         },
         FireVehicleKind.Elw => (-2.1 * u, 0),
@@ -425,6 +466,15 @@ public sealed class FireOperation
                 Trail.Clear();
                 _stoppedSeconds = 0;
                 _offRunwaySeconds = 0;
+
+                // Wer vom Bahnende entgegenkam, fährt von der Bahn zurück an seinen Haltepunkt
+                foreach (var vehicle in _approaching)
+                {
+                    Retreat(vehicle);
+                }
+
+                _approaching.Clear();
+                _approachTried.Clear();
             }
         }
 
@@ -449,9 +499,10 @@ public sealed class FireOperation
         var passed = ToAircraft(aircraft, vehicle.EastM, vehicle.NorthM).X < -20;
 
         // Noch unterwegs, aber das Flugzeug ist an Fahrzeug und Haltepunkt schon vorbei (später Alarm, Test EDDK 05.11.: FLF 1 fuhr erst
-        // weiter zur Aufsetzzone und lag dann 2 km zurück): gleich auf die Spur bzw. an das stehende Flugzeug, nicht erst zum Haltepunkt
+        // weiter zur Aufsetzzone und lag dann 2 km zurück): gleich auf die Spur bzw. an das stehende Flugzeug, nicht erst zum Haltepunkt.
+        // Ohne Grenze für das Tempo des Flugzeugs (bis .19 erst unter 40 kt; Nachtest EDDK 05.11.: im Pan Pan lag FLF 1 so 1,8 km zurück)
         if (vehicle.Phase == FireVehiclePhase.Responding && Level != FireAlertLevel.GroundIncident && passed && HoldPassed(vehicle, aircraft)
-            && aircraft.GroundSpeedMps < JoinBelowMps && (!_released || ReferenceEquals(vehicle, escort)))
+            && (!_released || ReferenceEquals(vehicle, escort)))
         {
             if (stopped && !_inspected)
             {
@@ -463,13 +514,17 @@ public sealed class FireOperation
             return;
         }
 
-        if (stopped && !_inspected && !passed && (vehicle.Phase == FireVehiclePhase.Standby || distanceToAircraft < DirectRangeM))
+        // Steht das Flugzeug, fahren alle hin – nach einer Landung auch von unterwegs, egal wie weit (Position wählt den Weg)
+        if (stopped && !_inspected && !passed
+            && (vehicle.Phase == FireVehiclePhase.Standby || Level != FireAlertLevel.GroundIncident || distanceToAircraft < DirectRangeM))
         {
             Position(vehicle, aircraft);
             return;
         }
 
-        if (vehicle.Phase == FireVehiclePhase.Standby && passed && aircraft.GroundSpeedMps < JoinBelowMps)
+        // Am Haltepunkt und das Flugzeug ist vorbei: gleich auf die Spur, egal wie schnell es noch ist (Nachtest EDDK 05.11.: FLF 1 an der
+        // Aufsetzzone fuhr erst unter 40 kt los, kurz vor dem Stopp des A330)
+        if (vehicle.Phase == FireVehiclePhase.Standby && passed)
         {
             if (_released && !ReferenceEquals(vehicle, escort))
             {
@@ -512,7 +567,7 @@ public sealed class FireOperation
         }
         else if (FirePlanner.Distance(vehicle.EastM, vehicle.NorthM, je, jn) > RouteJoinM)
         {
-            points = FirePlanner.RouteBetween(Graph, vehicle.EastM, vehicle.NorthM, je, jn);
+            points = WithFreeRunway(() => FirePlanner.RouteBetween(Graph, vehicle.EastM, vehicle.NorthM, je, jn));
         }
 
         points ??= [(vehicle.EastM, vehicle.NorthM), (je, jn)];
@@ -540,9 +595,10 @@ public sealed class FireOperation
         {
             var local = DetourPoints(from, candidate, u, atStand).Select(p => ToLocal(aircraft, p.X, p.Y)).ToList();
             var offNetwork = 0;
-            if (far && FirePlanner.RouteBetween(Graph, vehicle.EastM, vehicle.NorthM, local[^1].East, local[^1].North) is { } route)
+            if (far && WithFreeRunway(() => FirePlanner.RouteBetween(Graph, vehicle.EastM, vehicle.NorthM, local[^1].East, local[^1].North)) is { } route)
             {
-                // Von weit weg (z. B. vom Haltepunkt am Bahnende) über die Rollwege, die letzten Meter wie geplant
+                // Von weit weg (z. B. vom Haltepunkt am Bahnende) über das Netz – die Bahn des Notfalls wie ein Rollweg (Nachtest EDDK
+                // 05.11.: FLF 3 fuhr 2,3 km über Rollwege und Straßen statt über die 14L) –, die letzten Meter wie geplant
                 route.RemoveAt(route.Count - 1);
                 local = [.. route, .. local.Skip(Math.Max(1, local.Count - 2))];
                 offNetwork = route.Count - 1;
@@ -754,6 +810,76 @@ public sealed class FireOperation
 
         var firstWithAircraft = first.Phase is FireVehiclePhase.Following or FireVehiclePhase.Positioning or FireVehiclePhase.AtAircraft;
         return firstWithAircraft && DistanceOf(first) <= DistanceOf(nearest) + EscortPreferFirstM ? first : nearest;
+    }
+
+    /// <summary>
+    /// FLF am Bahnende (Rolle <see cref="FireStandbyRole.End"/>): ab dem Aufsetzen über die Bahn dem Flugzeug entgegen, statt am
+    /// Haltepunkt auf den Stopp zu warten (Nachtest EDDK 05.11., Florian: früher losfahren, wenn das Flugzeug landet, und über die Bahn
+    /// statt über die Straße). Der Weg führt über das Netz – die Bahn des Notfalls wie ein Rollweg – auf die Mittellinie beim Flugzeug;
+    /// wie weit es fahren darf, regelt <see cref="HoldBeforeAircraft"/>. Auch von unterwegs (war noch nicht am Bahnende).
+    /// </summary>
+    private bool StartApproach(FireVehicle vehicle, FireAircraftState aircraft)
+    {
+        if (Level == FireAlertLevel.GroundIncident || vehicle.Unit.Role != FireStandbyRole.End || Trail.Count < 2
+            || ToAircraft(aircraft, vehicle.EastM, vehicle.NorthM).X <= 0 || EmergencyRunway is not { } runway || !_approachTried.Add(vehicle))
+        {
+            return false;
+        }
+
+        var (te, tn) = Graph.OnCenterline(runway, Graph.OffsetsTo(runway, aircraft.EastM, aircraft.NorthM).AlongM);
+        if (WithFreeRunway(() => FirePlanner.RouteBetween(Graph, vehicle.EastM, vehicle.NorthM, te, tn)) is not { Count: >= 2 } points)
+        {
+            return false;
+        }
+
+        _approaching.Add(vehicle);
+        vehicle.Drive(FirePlanner.BuildPath(points, FireProfile.MaxMps), FireVehiclePhase.Responding, FireVehiclePhase.Standby, FireProfile.MaxMps);
+        var name = runway.Secondary.Length > 0 ? runway.Primary + "/" + runway.Secondary : runway.Primary;
+        _log?.LogInformation(Loc.Log("log.fire.approach"), vehicle.Unit.Name, name);
+        return true;
+    }
+
+    /// <summary>
+    /// Grenze für das entgegenkommende FLF, solange das Flugzeug rollt: nicht in die Zone vor ihm – bis zu seiner vorausgerechneten
+    /// Stoppstelle (<see cref="ApproachDecelMps2"/>) plus <see cref="ApproachClearM"/>, quer halbe Bahnbreite plus
+    /// <see cref="ApproachSideM"/>. Mit dem Bremsen des Flugzeugs rückt die Grenze nach, steht es, fährt das FLF an seinen Platz.
+    /// </summary>
+    private void HoldBeforeAircraft(FireVehicle vehicle, FireAircraftState aircraft)
+    {
+        var speed = Math.Max(0, aircraft.GroundSpeedMps);
+        var ahead = (speed * speed / (2 * ApproachDecelMps2)) + ApproachClearM;
+        var side = (Math.Max(EmergencyRunway?.WidthM ?? 45, 20) / 2) + ApproachSideM;
+        var limit = vehicle.FirstOnPath((east, north) =>
+        {
+            var (x, y) = ToAircraft(aircraft, east, north);
+            return x > -20 && x < ahead && Math.Abs(y) < side;
+        });
+        vehicle.HoldAtS = limit is { } s ? Math.Max(0, s - 5) : null;
+    }
+
+    /// <summary>Durchgestartet: zurück an den Haltepunkt (von der Bahn herunter), dort wieder bereit.</summary>
+    private void Retreat(FireVehicle vehicle)
+    {
+        if (Plan.Vehicles.FirstOrDefault(v => v.Unit == vehicle.Unit)?.Hold is { } hold
+            && FirePlanner.RouteBetween(Graph, vehicle.EastM, vehicle.NorthM, hold.EastM, hold.NorthM) is { Count: >= 2 } points)
+        {
+            vehicle.Drive(FirePlanner.BuildPath(points, FireProfile.MaxMps), FireVehiclePhase.Responding, FireVehiclePhase.Standby, FireProfile.MaxMps);
+        }
+    }
+
+    /// <summary>Wegsuche, bei der nach der Landung die Bahn des Notfalls wie ein Rollweg zählt (<see cref="TaxiGraph.FreeRunway"/>).</summary>
+    private T WithFreeRunway<T>(Func<T> route)
+    {
+        var before = Graph.FreeRunway;
+        Graph.FreeRunway = _landed && !Returning ? EmergencyRunway : null;
+        try
+        {
+            return route();
+        }
+        finally
+        {
+            Graph.FreeRunway = before;
+        }
     }
 
     /// <summary>Das Flugzeug ist am Haltepunkt des Fahrzeugs schon vorbei (ohne Haltepunkt: nein).</summary>

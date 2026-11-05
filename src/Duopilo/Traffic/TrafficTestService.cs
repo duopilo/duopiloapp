@@ -484,18 +484,20 @@ public sealed partial class TrafficTestService : IHostedService, IDisposable
     private readonly ILogger<TrafficTestService> _log;
     private readonly FollowMeSpawner _followMe;
     private readonly FollowMeFleet _fleet;
+    private readonly AirportClosures _closures;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly object _lock = new();
     private readonly List<TrafficTestRun> _runs = [];
     private TrafficAirportDirectory? _airportDirectory;
 
-    public TrafficTestService(SimConnectClient sim, TrafficConnection traffic, IOptions<DuopiloOptions> options, FollowMeSpawner followMe, FollowMeFleet fleet, ILogger<TrafficTestService> log)
+    public TrafficTestService(SimConnectClient sim, TrafficConnection traffic, IOptions<DuopiloOptions> options, FollowMeSpawner followMe, FollowMeFleet fleet, AirportClosures closures, ILogger<TrafficTestService> log)
     {
         _sim = sim;
         _traffic = traffic;
         _options = options.Value;
         _followMe = followMe;
         _fleet = fleet;
+        _closures = closures;
         _log = log;
     }
 
@@ -2708,6 +2710,19 @@ public sealed partial class TrafficTestService : IHostedService, IDisposable
             return;
         }
 
+        // Mayday am Platz (Feuerwehr im Einsatz): keine Bahn kreuzen, nicht zum Start aufreihen (Nachtest EDDK 05.11.)
+        if (_closures.ClosedFor(graph.Icao, run.Tail) is { } closed)
+        {
+            var key = "closed " + closed;
+            if (key != run.LastRunwayBlocker)
+            {
+                run.LastRunwayBlocker = key;
+                run.AddEvent(seconds, "runway_busy " + label + ": airport closed (fire service, " + closed + ")");
+            }
+
+            return;
+        }
+
         // Kreuzen: Endanflug bis 4 NM; Aufreihen zum Start: so weit, wie die nächste Landung beim Losrollen weg sein muss
         var finalNm = held.Phase == TaxiPhase.Holding ? run.ReleaseNm ?? RunwayOccupancy.FinalNm : RunwayOccupancy.FinalNm;
         run.RunwayScanBusy = true;
@@ -2958,6 +2973,23 @@ public sealed partial class TrafficTestService : IHostedService, IDisposable
         }
 
         var label = plan.Runway.Designation;
+
+        // Mayday am Platz (Feuerwehr im Einsatz): wie eine belegte Bahn – an der Entscheidungshöhe durchstarten; nicht das Flugzeug des
+        // Notfalls selbst (Nachtest EDDK 05.11.)
+        var closed = _closures.ClosedFor(plan.Runway.Airport, run.Tail);
+        if (closed is not null)
+        {
+            var blocker = "airport closed (fire service, " + closed + ")";
+            run.LandingBlocker = blocker;
+            run.LandingCheckedUtc = DateTimeOffset.UtcNow;
+            var text = "landing_runway_busy " + label + ": " + blocker;
+            if (text != run.LastLandingEvent)
+            {
+                run.LastLandingEvent = text;
+                run.AddEvent(seconds, text);
+            }
+        }
+
         if (kin.AlongM >= -ArrivalSequence.GoAroundDecisionNm * RunwayEnd.MetersPerNm)
         {
             var fresh = run.LandingCheckedUtc is { } at && (DateTimeOffset.UtcNow - at).TotalSeconds <= LandingCheckValidSeconds;
@@ -2977,7 +3009,7 @@ public sealed partial class TrafficTestService : IHostedService, IDisposable
             return;
         }
 
-        if (run.LandingScanBusy || run.Runways is not { } runways || RunwayOf(runways, label) is not { } runway)
+        if (closed is not null || run.LandingScanBusy || run.Runways is not { } runways || RunwayOf(runways, label) is not { } runway)
         {
             return;
         }

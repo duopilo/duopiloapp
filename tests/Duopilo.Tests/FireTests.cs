@@ -135,9 +135,13 @@ public sealed class FireTests
         Assert.Equal(["FLF 1", "ELW 1", "RTW 1"], FireCategory.Lineup(FireAlertLevel.FullEmergency, 3).Select(u => u.Name));
         Assert.Equal(["FLF 1", "FLF 2", "ELW 1"], FireCategory.Lineup(FireAlertLevel.LocalStandby, 7).Select(u => u.Name));
         Assert.Equal(["FLF 1", "FLF 2", "ELW 1", "HLF 1", "RTF 1", "RTW 1"], FireCategory.Lineup(FireAlertLevel.FullEmergency, 6).Select(u => u.Name));
+        // Nachtest EDDK 05.11.: bei Mayday ab Kategorie 8 vier FLF und nur eine Rettungstreppe; Local Standby bleibt bei der ICAO-Zahl
+        var full = FireCategory.Lineup(FireAlertLevel.FullEmergency, 9);
+        Assert.Equal(["FLF 1", "FLF 2", "FLF 3", "FLF 4", "ELW 1", "HLF 1", "RTF 1", "RTW 1"], full.Select(u => u.Name));
         Assert.Equal(
-            ["FLF 1", "FLF 2", "FLF 3", "ELW 1", "HLF 1", "RTF 1", "RTF 2", "RTW 1"],
-            FireCategory.Lineup(FireAlertLevel.FullEmergency, 9).Select(u => u.Name));
+            [FireStandbyRole.Touchdown, FireStandbyRole.Rollout, FireStandbyRole.End, FireStandbyRole.Mid],
+            full.Where(u => u.Kind == FireVehicleKind.Flf).Select(u => u.Role));
+        Assert.Equal(["FLF 1", "FLF 2", "FLF 3", "ELW 1"], FireCategory.Lineup(FireAlertLevel.LocalStandby, 9).Select(u => u.Name));
 
         var local = FireCategory.Lineup(FireAlertLevel.LocalStandby, 7);
         Assert.Equal([FireStandbyRole.Touchdown, FireStandbyRole.Rollout, FireStandbyRole.Mid], local.Select(u => u.Role));
@@ -220,7 +224,7 @@ public sealed class FireTests
         var plan = FirePlanner.Plan(graph, Runway09, FireCategory.Lineup(FireAlertLevel.FullEmergency, 9), TrafficWake.Heavy, null)!;
         var mid = plan.Vehicles.Where(v => Math.Abs(v.AlongM - 1000) < 5).Select(v => v.Route).ToList();
 
-        // ELW, HLF, zwei Rettungstreppen und RTW an der Mitte: 22 m Abstand hintereinander
+        // FLF 4, ELW, HLF, Rettungstreppe und RTW an der Mitte: 22 m Abstand hintereinander
         Assert.Equal(5, mid.Count);
         var ends = mid.Select(r => r.At(r.LengthM)).Select(p => Distance(p.East, p.North, 0, 90)).ToList();
         for (var i = 0; i < ends.Count; i++)
@@ -1000,6 +1004,133 @@ public sealed class FireTests
     }
 
     [Fact]
+    public void Mayday_mit_Blaulicht_vor_keiner_Bahn_Freigabe_auf_der_Rueckfahrt_schon()
+    {
+        // Nachtest EDDK 05.11.: Die Feuerwehr hat Vorfahrt, bei Mayday ist der Flughafen für den eigenen KI-Verkehr gesperrt
+        var graph = Graph();
+        var plan = FirePlanner.Plan(graph, Runway09, FireCategory.Lineup(FireAlertLevel.FullEmergency, 9), TrafficWake.Heavy, null)!;
+        var operation = new FireOperation(graph, FireAlertLevel.FullEmergency, plan, TrafficWake.Heavy, 9);
+        var vehicle = new FireVehicle(plan.Vehicles[0].Unit, "test", plan.Vehicles[0].Route, operation.Trail, graph.ToLatLon, 164);
+        operation.Add(vehicle);
+        var other = new FireCrossing(new AirportRunway(51.0, 7.0, 50, 0, 1500, 30, "18", "36"), 0, 10);
+
+        operation.Update(new FireAircraftState(-3000, 0, 90, 75, false), 0.25);
+        Assert.False(operation.NeedsClearance(vehicle, new FireCrossing(Runway, 0, 10)));
+        Assert.False(operation.NeedsClearance(vehicle, other));
+
+        operation.ReturnAll();
+        Assert.True(operation.NeedsClearance(vehicle, other));
+    }
+
+    [Fact]
+    public void Mayday_FLF_1_folgt_sofort_FLF_3_kommt_ueber_die_Bahn_entgegen()
+    {
+        // Nachtest EDDK 05.11. (A330, Mayday): FLF 1 fuhr erst unter 40 kt auf die Spur, kurz vor dem Stopp; FLF 3 wartete am Bahnende
+        // auf den Stopp und fuhr dann 2,3 km über Rollwege und Straßen zum Flugzeug
+        var graph = Graph();
+        var plan = FirePlanner.Plan(graph, Runway09, FireCategory.Lineup(FireAlertLevel.FullEmergency, 9), TrafficWake.Heavy, null)!;
+        var operation = new FireOperation(graph, FireAlertLevel.FullEmergency, plan, TrafficWake.Heavy, 9);
+        foreach (var vp in plan.Vehicles)
+        {
+            operation.Add(new FireVehicle(vp.Unit, "test", vp.Route, operation.Trail, graph.ToLatLon, 164));
+        }
+
+        var vehicles = operation.Vehicles;
+        FireVehicle V(string name) => vehicles.Single(v => v.Unit.Name == name);
+        const double dt = 0.25;
+        void Step(FireAircraftState state)
+        {
+            operation.Update(state, dt);
+            foreach (var vehicle in vehicles)
+            {
+                vehicle.Advance(dt);
+            }
+        }
+
+        var airborne = new FireAircraftState(-3000, 0, 90, 75, false);
+        for (var t = 0; t < 2400 && vehicles.Any(v => v.Phase != FireVehiclePhase.Standby); t++)
+        {
+            Step(airborne);
+        }
+
+        Assert.All(vehicles, v => Assert.Equal(FireVehiclePhase.Standby, v.Phase));
+        var flf3Hold = (V("FLF 3").EastM, V("FLF 3").NorthM);
+        Assert.True(flf3Hold.EastM > 600, "FLF 3 steht nicht am Bahnende");
+
+        // Aufsetzen bei x = -700 mit 70 m/s, Bremsen mit 2,2 m/s² bis zum Stand bei gut x = 400
+        var (x, speed) = (-700.0, 70.0);
+        double? flf1JoinedAt = null;
+        var flf3MinAhead = double.MaxValue;
+        while (speed > 0)
+        {
+            speed = Math.Max(0, speed - (2.2 * dt));
+            x += speed * dt;
+            Step(new FireAircraftState(x, 0, 90, speed, true));
+            if (flf1JoinedAt is null && V("FLF 1").Phase is FireVehiclePhase.Joining or FireVehiclePhase.Following)
+            {
+                flf1JoinedAt = speed;
+            }
+
+            if (Math.Abs(V("FLF 3").NorthM) < 50)
+            {
+                flf3MinAhead = Math.Min(flf3MinAhead, V("FLF 3").EastM - x);
+            }
+        }
+
+        // FLF 1 geht auf die Spur, sobald das Flugzeug vorbei ist (bis .19 erst unter 20,6 m/s)
+        Assert.True(flf1JoinedAt > 40, $"FLF 1 erst bei {flf1JoinedAt:0} m/s auf der Spur");
+
+        // FLF 3 ist schon vor dem Stopp auf der Bahn unterwegs, bleibt aber vor dem rollenden Flugzeug
+        Assert.True(Math.Abs(V("FLF 3").NorthM) < 30, $"FLF 3 ist beim Stopp nicht auf der Bahn ({V("FLF 3").EastM:0}/{V("FLF 3").NorthM:0})");
+        Assert.True(V("FLF 3").EastM < flf3Hold.EastM, "FLF 3 ist beim Stopp nicht entgegengefahren");
+        Assert.InRange(flf3MinAhead, FireOperation.ApproachClearM - 10, 5000);
+
+        // Stillstand: FLF 3 fährt über die Bahn an seinen Platz hinten links, nie über Rollweg A (y = 200)
+        var stopped = new FireAircraftState(x, 0, 90, 0, true);
+        var maxNorth = double.MinValue;
+        for (var t = 0; t < 4 * 180 && V("FLF 3").Phase != FireVehiclePhase.AtAircraft; t++)
+        {
+            Step(stopped);
+            maxNorth = Math.Max(maxNorth, V("FLF 3").NorthM);
+        }
+
+        Assert.Equal(FireVehiclePhase.AtAircraft, V("FLF 3").Phase);
+        Assert.True(maxNorth < 150, "FLF 3 ist über den Rollweg gefahren");
+    }
+
+    [Fact]
+    public void Freie_Bahn_zaehlt_beim_Routen_wie_ein_Rollweg()
+    {
+        // Vom Haltepunkt am Ostende (800/90) zum Zubringer bei x = -400: sonst über Rollweg A (y = 200), mit freier Bahn über die Bahn
+        var graph = Graph();
+        var start = graph.Nodes.Single(n => Math.Abs(n.EastM - 800) < 1 && Math.Abs(n.NorthM - 90) < 1);
+        var end = graph.Nodes.Single(n => Math.Abs(n.EastM + 400) < 1 && Math.Abs(n.NorthM - 90) < 1);
+        var taxiway = graph.Route(start.Id, end.Id)!;
+        Assert.Contains(taxiway, n => graph.Nodes[n].NorthM > 150);
+
+        graph.FreeRunway = Runway;
+        var runway = graph.Route(start.Id, end.Id)!;
+        Assert.All(runway, n => Assert.True(graph.Nodes[n].NorthM < 100));
+        graph.FreeRunway = null;
+    }
+
+    [Fact]
+    public void Flughafen_gesperrt_fuer_den_eigenen_Verkehr_ausser_dem_Notfall()
+    {
+        var closures = new AirportClosures();
+        Assert.Null(closures.ClosedFor("EDDK", "DUO02"));
+        Assert.True(closures.Close("EDDK", "Mayday", "DUO01"));
+        Assert.False(closures.Close("eddk", "Mayday", "DUO01"));
+        Assert.Equal("Mayday", closures.ClosedFor("EDDK", "DUO02"));
+        Assert.Equal("Mayday", closures.ClosedFor(" eddk ", null));
+        Assert.Null(closures.ClosedFor("EDDK", "duo01"));                 // das Flugzeug des Notfalls selbst
+        Assert.Null(closures.ClosedFor("EDDL", "DUO02"));
+        Assert.True(closures.Open("EDDK"));
+        Assert.Null(closures.ClosedFor("EDDK", "DUO02"));
+        Assert.False(closures.Open("EDDK"));
+    }
+
+    [Fact]
     public void Z_Variablen_erst_nach_dem_Laden_des_Objekts()
     {
         // Test EDDK 05.11.: sieben DATA_ERROR je Fahrzeug im ersten Frame, solange das Objekt noch lädt
@@ -1333,6 +1464,37 @@ public sealed class FireTests
             Assert.InRange(e.EastM, 499, 541);
             Assert.True(e.HeadingDeg is < 10 or > 350);          // Front nach Norden, zum Hof
         });
+    }
+
+    [Fact]
+    public void Plaetze_vor_einer_Halle_mit_Fluegeln_nie_im_Gebaeude()
+    {
+        // Nachtest EDDK 05.11.: Hauptwache Köln, Halle mit zwei Flügeln (Umriss aus OSM, Meter um die Wache), Hof im Nordosten. Platz 8
+        // lag 24 m von der Mitte der 45-m-Wand im Winkel, 1,5 m hinter ihrem Ende im vorspringenden Südostflügel.
+        var graph = Graph();
+        (double East, double North)[] hall =
+        [
+            (-21, 19), (-37, 38), (-20, 54), (-3, 36), (-6, 33), (25, 0), (39, 13), (40, 12), (43, 12), (45, 9), (45, 6), (49, 1), (38, -9),
+            (35, -5), (17, -22), (-19, 17), (-23, 13), (-9, -2), (-15, -8), (-43, 23), (-37, 28), (-25, 15), (-21, 19),
+        ];
+        var outline = hall.Select(p => (p.East + 500, p.North + 300)).ToList();
+        var (exits, source) = FireExits.ForOsm(504, 313, outline, [], graph, (517.6, 326.2));
+
+        Assert.Equal("outline", source);
+        Assert.Equal(FireExits.Slots, exits.Count);
+        Assert.All(exits, e =>
+        {
+            var rad = e.HeadingDeg * Math.PI / 180;
+            Assert.False(
+                FireExits.InsideOrAcross(outline, e.EastM, e.NorthM, e.EastM + (Math.Sin(rad) * FireExits.RollOutM), e.NorthM + (Math.Cos(rad) * FireExits.RollOutM)),
+                $"Platz {e.EastM - 500:0}/{e.NorthM - 300:0} im Gebäude oder Herausrollen durch die Halle");
+            Assert.InRange(e.HeadingDeg, 40, 55);                // Front zum Hof (Nordosten)
+        });
+
+        // Alle Plätze auf der Länge der Wand im Winkel (-6/33 … 25/0, 45 m): höchstens halbe Länge minus Rand von ihrer Mitte
+        var length = Math.Sqrt((31 * 31) + (33 * 33));
+        var (dx, dy) = (31 / length, -33 / length);
+        Assert.All(exits, e => Assert.InRange(Math.Abs(((e.EastM - 509.5) * dx) + ((e.NorthM - 316.5) * dy)), 0, (length / 2) - FireExits.WallEndMarginM + 0.01));
     }
 
     [Fact]

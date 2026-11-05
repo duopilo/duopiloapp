@@ -32,6 +32,15 @@ public static class FireExits
     /// <summary>So weit rollen sie geradeaus aus der Halle, bevor sie abbiegen.</summary>
     public const double RollOutM = 12;
 
+    /// <summary>An einer Hallenwand: so weit vor dem Ende der Wand liegt der äußerste Platz einer Reihe mindestens.</summary>
+    public const double WallEndMarginM = 1.5;
+
+    /// <summary>Abstand der Reihen vor einer Hallenwand.</summary>
+    public const double RowSpacingM = 9;
+
+    /// <summary>Höchstens so viele Reihen vor einer Hallenwand.</summary>
+    public const int MaxRows = 4;
+
     /// <summary>Fahrzeugstellplätze der Szenerie so weit um die Wache gehören zu ihr.</summary>
     public const double VehicleParkingRadiusM = 80;
 
@@ -105,17 +114,34 @@ public static class FireExits
         {
             var (dx, dy) = ((side.Bx - side.Ax) / side.Length, (side.By - side.Ay) / side.Length);
             var (mx, my) = ((side.Ax + side.Bx) / 2, (side.Ay + side.By) / 2);
-            var perRow = Math.Max(1, (int)((side.Length - 2) / SpacingM) + 1);
+
+            // Reihe von der Mitte nach außen, nie über die Wand hinaus (Nachtest EDDK 05.11.: an der 45-m-Wand lag Platz 8 24 m von der
+            // Mitte, 1,5 m hinter dem Wandende im vorspringenden Flügel der Halle)
+            var perRow = (2 * Math.Max(0, (int)(((side.Length / 2) - WallEndMarginM) / SpacingM))) + 1;
             var heading = TaxiPath.Heading(side.Normal.X, side.Normal.Y);
             var exits = new List<FireExit>();
-            for (var i = 0; i < Slots; i++)
+            for (var row = 0; row < MaxRows && exits.Count < Slots; row++)
             {
-                var along = Lateral(i % perRow) * SpacingM;
-                var away = DoorOffsetM + ((i / perRow) * 9);
-                exits.Add(new FireExit(mx + (dx * along) + (side.Normal.X * away), my + (dy * along) + (side.Normal.Y * away), heading, true));
+                for (var i = 0; i < perRow && exits.Count < Slots; i++)
+                {
+                    var along = Lateral(i) * SpacingM;
+                    var away = DoorOffsetM + (row * RowSpacingM);
+                    var (ex, ey) = (mx + (dx * along) + (side.Normal.X * away), my + (dy * along) + (side.Normal.Y * away));
+
+                    // Platz und Herausrollen frei vom Gebäude (sonst ein Platz weiter bzw. die nächste Reihe)
+                    if (InsideOrAcross(outline!, ex, ey, ex + (side.Normal.X * RollOutM), ey + (side.Normal.Y * RollOutM)))
+                    {
+                        continue;
+                    }
+
+                    exits.Add(new FireExit(ex, ey, heading, true));
+                }
             }
 
-            return (exits, "outline");
+            if (exits.Count > 0)
+            {
+                return (exits, "outline");
+            }
         }
 
         // 4. Nur der Mittelpunkt: nebeneinander quer zur Richtung zum nächsten Rollpunkt
@@ -140,6 +166,38 @@ public static class FireExits
             var offset = Lateral(i) * SpacingM;
             return new FireExit(eastM + (rx * offset), northM + (ry * offset), heading, false);
         })];
+    }
+
+    /// <summary>Liegt der Punkt (ax/ay) im Umriss, oder schneidet die Strecke zu (bx/by) eine seiner Wände?</summary>
+    public static bool InsideOrAcross(IReadOnlyList<(double East, double North)> outline, double ax, double ay, double bx, double by)
+    {
+        var inside = false;
+        for (int i = 0, j = outline.Count - 1; i < outline.Count; j = i++)
+        {
+            var (xi, yi) = outline[i];
+            var (xj, yj) = outline[j];
+            if ((yi > ay) != (yj > ay) && ax < ((xj - xi) * (ay - yi) / (yj - yi)) + xi)
+            {
+                inside = !inside;
+            }
+
+            if (Crosses(ax, ay, bx, by, xi, yi, xj, yj))
+            {
+                return true;
+            }
+        }
+
+        return inside;
+    }
+
+    private static bool Crosses(double ax, double ay, double bx, double by, double cx, double cy, double dx, double dy)
+    {
+        static double Cross(double ox, double oy, double px, double py, double qx, double qy) => ((px - ox) * (qy - oy)) - ((py - oy) * (qx - ox));
+        var d1 = Cross(cx, cy, dx, dy, ax, ay);
+        var d2 = Cross(cx, cy, dx, dy, bx, by);
+        var d3 = Cross(ax, ay, bx, by, cx, cy);
+        var d4 = Cross(ax, ay, bx, by, dx, dy);
+        return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
     }
 
     /// <summary>0, 1, −1, 2, −2 …: Plätze von der Mitte nach außen.</summary>
