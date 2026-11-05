@@ -17,7 +17,7 @@ public sealed class FireTests
 
     private static readonly int[] ConnectorX = [-800, -400, 0, 400, 800];
 
-    private static TaxiGraph Graph(bool stub = false, bool roads = false)
+    private static TaxiGraph Graph(bool stub = false, bool roads = false, bool runwayHold = false)
     {
         var points = new List<TaxiPointData>();
         for (var i = 0; i <= 10; i++)
@@ -52,6 +52,18 @@ public sealed class FireTests
         for (var i = 0; i < runwayNodes.Count - 1; i++)
         {
             paths.Add(new TaxiPathData(2, 45, 9, 0, runwayNodes[i].Index, runwayNodes[i + 1].Index, 0));
+        }
+
+        // Hold-Short-Punkt auf der Bahn selbst (wie an einer Kreuzung, EDDK 14L Haltepunkt 744): bei x = 650, also 1650 m hinter der
+        // Schwelle 09 – genau an der Stoppstelle eines Medium
+        if (runwayHold)
+        {
+            points.Add(new TaxiPointData(5, 0, 650, 0));
+            var onRunwayHold = points.Count - 1;
+            var west = runwayNodes.First(r => r.X == 400).Index;
+            var east = runwayNodes.First(r => r.X == 800).Index;
+            paths.Add(new TaxiPathData(2, 45, 9, 0, west, onRunwayHold, 0));
+            paths.Add(new TaxiPathData(2, 45, 9, 0, onRunwayHold, east, 0));
         }
 
         paths.Add(new TaxiPathData(3, 10, 0, 0, 5, 0, 0));                    // P1 an A bei x = 0
@@ -181,6 +193,24 @@ public sealed class FireTests
             Assert.InRange(Distance(e, n, vehicle.Hold!.EastM, vehicle.Hold.NorthM), 0, 1);
             Assert.Null(graph.RunwayAt(e, n));
         }
+    }
+
+    [Fact]
+    public void Haltepunkt_auf_der_Bahn_taugt_nicht_fuer_die_Bereitstellung()
+    {
+        // Test EDDK 05.11.: FLF 2 stand am Haltepunkt 744, 2 m neben der Mittellinie der 14L – auf der Landebahn
+        var graph = Graph(runwayHold: true);
+        Assert.Contains(graph.Holds(), h => Math.Abs(h.Node.EastM - 650) < 1 && Math.Abs(h.Node.NorthM) < 1);
+
+        var plan = FirePlanner.Plan(graph, Runway09, FireCategory.Lineup(FireAlertLevel.FullEmergency, 9), TrafficWake.Heavy, null)!;
+        foreach (var vehicle in plan.Vehicles)
+        {
+            Assert.Null(graph.RunwayAt(vehicle.Hold!.EastM, vehicle.Hold.NorthM));
+            Assert.InRange(Math.Abs(vehicle.Hold.NorthM), (45 / 2.0) + FirePlanner.MinHoldEdgeClearM, 1000);
+        }
+
+        var medium = FirePlanner.Plan(graph, Runway09, FireCategory.Lineup(FireAlertLevel.LocalStandby, 7), TrafficWake.Medium, null)!;
+        Assert.InRange(medium.Vehicles.Single(v => v.Unit.Name == "FLF 2").AlongM, 1795, 1805);
     }
 
     [Fact]
@@ -613,6 +643,65 @@ public sealed class FireTests
     }
 
     [Fact]
+    public void Spaeter_Alarm_FLF_1_faehrt_gleich_auf_die_Spur_und_reiht_sich_hinten_ein()
+    {
+        // Test EDDK 05.11. (Pan Pan 60 s vor dem Aufsetzen): FLF 1 fuhr erst weiter zur Aufsetzzone, obwohl das Flugzeug längst vorbei
+        // war, und lag dann 2 km zurück. Jetzt fährt es gleich auf die Spur – hinter das ELW, das schon folgt, ohne es zu überholen.
+        var graph = Graph();
+        var plan = FirePlanner.Plan(graph, Runway09, FireCategory.Lineup(FireAlertLevel.LocalStandby, 7), TrafficWake.Medium, null)!;
+        var operation = new FireOperation(graph, FireAlertLevel.LocalStandby, plan, TrafficWake.Medium, 7);
+        foreach (var vp in plan.Vehicles)
+        {
+            operation.Add(new FireVehicle(vp.Unit, "test", vp.Route, operation.Trail, graph.ToLatLon, 164));
+        }
+
+        var vehicles = operation.Vehicles;
+        FireVehicle V(string name) => vehicles.Single(v => v.Unit.Name == name);
+        const double dt = 0.25;
+        void Step(FireAircraftState state)
+        {
+            operation.Update(state, dt);
+            foreach (var vehicle in vehicles)
+            {
+                vehicle.Advance(dt);
+            }
+        }
+
+        // Alarm kurz vor dem Aufsetzen: einmal in der Luft, dann gleich die Landung bei x = -700
+        Step(new FireAircraftState(-3000, 0, 90, 75, false));
+        var (x, speed) = (-700.0, 70.0);
+        var flf1Standby = false;
+        var flf1Joined = false;
+        while (x < 400)
+        {
+            speed = Math.Max(10, speed - (2.2 * dt));
+            x += speed * dt;
+            Step(new FireAircraftState(x, 0, 90, speed, true));
+            flf1Standby |= V("FLF 1").Phase == FireVehiclePhase.Standby;
+            flf1Joined |= V("FLF 1").Phase is FireVehiclePhase.Joining or FireVehiclePhase.Following;
+            if (V("FLF 1").Phase == FireVehiclePhase.Following && V("ELW 1").Phase == FireVehiclePhase.Following)
+            {
+                Assert.True(V("FLF 1").GapM >= V("ELW 1").GapM - 1, "FLF 1 überholt das ELW");
+            }
+        }
+
+        Assert.False(flf1Standby, "FLF 1 ist erst zum Haltepunkt an der Aufsetzzone gefahren");
+        Assert.True(flf1Joined, "FLF 1 ist nicht auf die Spur gefahren");
+
+        // Abrollen über den Zubringer bei x = 400 ohne Halt: FLF 1 begleitet, ELW und FLF 2 rücken ein
+        var north = 0.0;
+        while (north < 200)
+        {
+            north += 5 * dt;
+            Step(new FireAircraftState(400, north, 0, 5, true));
+        }
+
+        Assert.Contains(V("FLF 1").Phase, new[] { FireVehiclePhase.Joining, FireVehiclePhase.Following });
+        Assert.Contains(V("ELW 1").Phase, new[] { FireVehiclePhase.Returning, FireVehiclePhase.Gone });
+        Assert.Contains(V("FLF 2").Phase, new[] { FireVehiclePhase.Returning, FireVehiclePhase.Gone });
+    }
+
+    [Fact]
     public void Alarm_am_Boden_die_Fahrzeuge_warten_an_der_Bahn()
     {
         // Test EDDL 02.11.: Alarm, während das Flugzeug am Vorfeld steht – die Fahrzeuge rückten nach einer Minute wieder ein
@@ -769,6 +858,59 @@ public sealed class FireTests
         Assert.Equal(0, vars["L:1:DUOPILO_TEMPO"]);
         Assert.Equal(0, vars["L:1:DUOPILO_SIRENE"]);
     }
+
+    [Fact]
+    public void Z_Variablen_erst_nach_dem_Laden_des_Objekts()
+    {
+        // Test EDDK 05.11.: sieben DATA_ERROR je Fahrzeug im ersten Frame, solange das Objekt noch lädt
+        var route = FirePlanner.BuildPath([(0, 0), (0, 400)], FireProfile.MaxMps);
+        var vehicle = new FireVehicle(new FireUnit(FireVehicleKind.Flf, 1, FireStandbyRole.Rollout), "test", route, new FireTrail(), (e, n) => (51 + (n / 111_000), 7 + (e / 70_000)), 164);
+        Assert.Empty(vehicle.Vars());
+        Assert.Empty(vehicle.Pose().Vars!);
+
+        for (var i = 0; i < 30; i++)
+        {
+            vehicle.Advance(0.05);
+        }
+
+        Assert.Empty(vehicle.Vars());
+        for (var i = 0; i < 12; i++)
+        {
+            vehicle.Advance(0.05);
+        }
+
+        Assert.Equal(7, vehicle.Vars().Length);
+        Assert.InRange(vehicle.Vars().Single(v => v.Name == "L:1:DUOPILO_WEG").Value, 0.1, 400);
+    }
+
+    [Fact]
+    public void Boden_gleich_nach_dem_Spawn_uebernehmen_danach_gleiten()
+    {
+        // Test EDDK 05.11.: 30 ft zu tief gespawnt, mit 6 ft/s kamen die Fahrzeuge sichtbar aus dem Boden
+        var route = FirePlanner.BuildPath([(0, 0), (0, 400)], FireProfile.MaxMps);
+        var vehicle = new FireVehicle(new FireUnit(FireVehicleKind.Flf, 1, FireStandbyRole.Rollout), "test", route, new FireTrail(), (e, n) => (51 + (n / 111_000), 7 + (e / 70_000)), 223);
+        vehicle.Advance(0.5);
+        vehicle.MeasureGround(253);
+        Assert.Equal(253, vehicle.GroundFt);
+
+        for (var i = 0; i < 60; i++)
+        {
+            vehicle.Advance(0.05);
+        }
+
+        // Nach dem Spawn wieder wie bisher: auf den gemessenen Boden gleiten
+        vehicle.MeasureGround(259);
+        vehicle.Advance(0.5);
+        Assert.InRange(vehicle.GroundFt, 255.9, 256.1);
+    }
+
+    [Theory]
+    [InlineData(223.0, 100.0, 223.0)]   // eigenes Flugzeug an der Wache: seine Bodenhöhe
+    [InlineData(223.0, 1300.0, 253.0)]  // 1,3 km weg (EDDK 05.11.): Platzhöhe
+    [InlineData(150.0, 50.0, 253.0)]    // passt nicht zur Platzhöhe: Platzhöhe
+    [InlineData(null, null, 253.0)]     // in der Luft: Platzhöhe
+    public void Spawnhoehe_nur_vom_eigenen_Flugzeug_in_der_Naehe(double? own, double? distance, double expected) =>
+        Assert.Equal(expected, FireService.SpawnGroundFt(253, own, distance));
 
     [Fact]
     public void Martinshorn_nur_auf_der_Anfahrt_Bremslicht_beim_Langsamerwerden()

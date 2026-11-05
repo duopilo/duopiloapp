@@ -368,6 +368,8 @@ public sealed partial class SimConnectClient
                 _aiVarSent.Remove(key);
             }
 
+            ClearObjectVarDefs(sc, objectId);
+
             if (unfreeze)
             {
                 Freeze(sc, objectId, false);
@@ -465,15 +467,7 @@ public sealed partial class SimConnectClient
                 continue;
             }
 
-            var defKey = v.Name + "|Number";
-            if (!_objectVarDefIds.TryGetValue(defKey, out var defId))
-            {
-                defId = ++_nextDefId;
-                sc.AddToDataDefinition((SimDefinitionId)defId, v.Name, "Number", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
-                sc.RegisterDataDefineStruct<double>((SimDefinitionId)defId);
-                _objectVarDefIds[defKey] = defId;
-            }
-
+            var defId = ObjectVarDefId(sc, objectId, v.Name, "Number");
             sc.SetDataOnSimObject((SimDefinitionId)defId, objectId, SIMCONNECT_DATA_SET_FLAG.DEFAULT, v.Value);
             _aiVarSent[key] = v.Value;
         }

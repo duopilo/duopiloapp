@@ -491,10 +491,9 @@ public sealed class FireService : BackgroundService
                 string.Join(", ", plan.Vehicles.Select(v => v.Unit.Name + "@" + (v.Hold is null ? "aircraft" : v.AlongM.ToString("0", System.Globalization.CultureInfo.InvariantCulture)))),
                 plan.Missing.Count);
 
-            // Boden: unter dem eigenen Flugzeug gemessen (am Boden), sonst die Höhe des Flughafens; die Abfrage je Fahrzeug korrigiert
-            var groundFt = onGround && _sim.Num("altTrue") is { } alt && _sim.Num("altAgl") is { } agl && Math.Abs(alt - agl - graph.ElevationFt) < MaxGroundCorrectionFt
-                ? alt - agl
-                : graph.ElevationFt;
+            // Boden: unter dem eigenen Flugzeug gemessen (am Boden, nur in der Nähe der Wache), sonst die Höhe des Flughafens; die Abfrage
+            // je Fahrzeug korrigiert
+            double? ownGroundFt = onGround && _sim.Num("altTrue") is { } alt && _sim.Num("altAgl") is { } agl ? alt - agl : null;
             var height = _options.Fire.HeightFt;
             var errors = new List<string>();
             for (var i = 0; i < plan.Vehicles.Count; i++)
@@ -509,6 +508,10 @@ public sealed class FireService : BackgroundService
                 uint objectId = 0;
                 var (startEast, startNorth, heading) = vp.Route.At(0);
                 var (spawnLat, spawnLon) = graph.ToLatLon(startEast, startNorth);
+                var groundFt = SpawnGroundFt(
+                    graph.ElevationFt,
+                    ownGroundFt,
+                    own is { } ownPos ? FirePlanner.Distance(ownPos.East, ownPos.North, startEast, startNorth) : null);
                 Exception? failure = null;
 
                 // Neue, neutrale Titel zuerst; fehlt das umbenannte Paket noch, der alte Titel (und für den Rest der Sitzung nur noch er)
@@ -782,10 +785,13 @@ public sealed class FireService : BackgroundService
         }
     }
 
-    /// <summary>Blaulicht und Fahrlicht an – während das Objekt lädt, verwirft der Sim die Werte, deshalb mehrmals.</summary>
+    /// <summary>
+    /// Blaulicht und Fahrlicht an – während das Objekt lädt, verwirft der Sim die Werte (mit DATA_ERROR), deshalb erst nach
+    /// <see cref="FireVehicle.VarsDelayS"/> und mehrmals.
+    /// </summary>
     private async Task SwitchLightsAsync(uint objectId, CancellationToken ct)
     {
-        foreach (var delay in new[] { 1, 2, 5 })
+        foreach (var delay in new[] { 2, 1, 2 })
         {
             try
             {
@@ -811,6 +817,19 @@ public sealed class FireService : BackgroundService
         await _sim.SetAiLightsAsync(objectId, new AiLights(Beacon: blue, Landing: true), ct, simVars: false);
     }
 
+    /// <summary>So nah muss das eigene Flugzeug am Spawnpunkt stehen, damit die Höhe des Bodens unter ihm auch für das Fahrzeug gilt.</summary>
+    public const double OwnGroundRangeM = 300;
+
+    /// <summary>
+    /// Boden für den Spawn: unter dem eigenen Flugzeug gemessen, wenn es am Boden höchstens <see cref="OwnGroundRangeM"/> vom Spawnpunkt
+    /// steht und die Messung zur Platzhöhe passt, sonst die Platzhöhe. Test EDDK 05.11.: Der Jetson stand 1,3 km entfernt 30 ft tiefer
+    /// als die Wache, alle Fahrzeuge kamen aus dem Boden.
+    /// </summary>
+    public static double SpawnGroundFt(double elevationFt, double? ownGroundFt, double? ownDistanceM) =>
+        ownGroundFt is { } own && ownDistanceM is { } distance && distance <= OwnGroundRangeM && Math.Abs(own - elevationFt) < MaxGroundCorrectionFt
+            ? own
+            : elevationFt;
+
     /// <summary>Boden unter dem Fahrzeug aus der Abfrage (eingefroren: Höhe minus Höhe über Grund), nur in der Nähe des Erwarteten.</summary>
     private static void OnProbe(double expectedGroundFt, FireVehicle vehicle, AiProbeSample sample)
     {
@@ -818,7 +837,7 @@ public sealed class FireService : BackgroundService
         var measured = sample.AltitudeFt - sample.AltitudeAglFt;
         if (Math.Abs(measured - expectedGroundFt) < MaxGroundCorrectionFt)
         {
-            vehicle.GroundTargetFt = measured;
+            vehicle.MeasureGround(measured);
         }
     }
 

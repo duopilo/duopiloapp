@@ -52,6 +52,12 @@ public sealed class FireOperation
     private bool _stoppedOnRunway;
     private bool _inspected;
     private bool _released;
+    private FireVehicle? _escort;
+
+    /// <summary>
+    /// So viel näher am Flugzeug muss ein anderes FLF sein, damit statt FLF 1 es bis zum Stand folgt (sonst bleibt es bei FLF 1).
+    /// </summary>
+    public const double EscortPreferFirstM = 200;
 
     /// <summary>So weit vor einem Gebäude hält ein Fahrzeug, wenn sein gerader Weg zum Platz hineinführen würde.</summary>
     public const double BuildingClearM = 5;
@@ -206,7 +212,7 @@ public sealed class FireOperation
 
         var onRunway = Graph.RunwayAt(aircraft.EastM, aircraft.NorthM) is not null;
         UpdateGaps(vehicles, onRunway);
-        var escort = Escort(vehicles);
+        var escort = Escort(vehicles, aircraft);
         var stopped = _stoppedSeconds >= (onRunway ? StopOnRunwaySeconds : StopOffRunwaySeconds);
         var moving = aircraft.GroundSpeedMps > 2;
 
@@ -216,7 +222,16 @@ public sealed class FireOperation
             {
                 case FireVehiclePhase.Responding:
                 case FireVehiclePhase.Standby:
-                    UpdateWaiting(vehicle, aircraft, aircraftS, stopped);
+                    UpdateWaiting(vehicle, aircraft, aircraftS, stopped, escort);
+                    break;
+
+                case FireVehiclePhase.Joining:
+                    // Nach dem Abrollen folgt nur noch der Begleiter; wer noch auf dem Weg auf die Spur ist, rückt ein
+                    if (_released && !ReferenceEquals(vehicle, escort))
+                    {
+                        SendBack(vehicle);
+                    }
+
                     break;
 
                 case FireVehiclePhase.Following:
@@ -263,7 +278,9 @@ public sealed class FireOperation
 
         if (_released)
         {
-            foreach (var vehicle in vehicles.Where(v => v.Phase == FireVehiclePhase.Standby && !ReferenceEquals(v, escort)))
+            // Der Begleiter bleibt ab jetzt derselbe, auch wenn ein anderes Fahrzeug später näher kommt
+            _escort ??= escort;
+            foreach (var vehicle in vehicles.Where(v => v.Phase is FireVehiclePhase.Standby or FireVehiclePhase.Responding && !ReferenceEquals(v, escort)))
             {
                 SendBack(vehicle);
             }
@@ -395,7 +412,7 @@ public sealed class FireOperation
     }
 
     /// <summary>Am Haltepunkt oder auf dem Weg dorthin: auf die Spur, wenn das Flugzeug vorbei ist; entgegen, wenn es davor steht.</summary>
-    private void UpdateWaiting(FireVehicle vehicle, FireAircraftState aircraft, double aircraftS, bool stopped)
+    private void UpdateWaiting(FireVehicle vehicle, FireAircraftState aircraft, double aircraftS, bool stopped, FireVehicle? escort)
     {
         if (Trail.Count < 2 && Level != FireAlertLevel.GroundIncident)
         {
@@ -406,6 +423,21 @@ public sealed class FireOperation
         var distanceToAircraft = FirePlanner.Distance(vehicle.EastM, vehicle.NorthM, aircraft.EastM, aircraft.NorthM);
         var passed = ToAircraft(aircraft, vehicle.EastM, vehicle.NorthM).X < -20;
 
+        // Noch unterwegs, aber das Flugzeug ist an Fahrzeug und Haltepunkt schon vorbei (später Alarm, Test EDDK 05.11.: FLF 1 fuhr erst
+        // weiter zur Aufsetzzone und lag dann 2 km zurück): gleich auf die Spur bzw. an das stehende Flugzeug, nicht erst zum Haltepunkt
+        if (vehicle.Phase == FireVehiclePhase.Responding && Level != FireAlertLevel.GroundIncident && passed && HoldPassed(vehicle, aircraft)
+            && aircraft.GroundSpeedMps < JoinBelowMps && (!_released || ReferenceEquals(vehicle, escort)))
+        {
+            if (stopped && !_inspected)
+            {
+                Position(vehicle, aircraft);
+                return;
+            }
+
+            Join(vehicle, aircraft, aircraftS, Graph.RunwayAt(aircraft.EastM, aircraft.NorthM) is not null);
+            return;
+        }
+
         if (stopped && !_inspected && !passed && (vehicle.Phase == FireVehiclePhase.Standby || distanceToAircraft < DirectRangeM))
         {
             Position(vehicle, aircraft);
@@ -414,7 +446,7 @@ public sealed class FireOperation
 
         if (vehicle.Phase == FireVehiclePhase.Standby && passed && aircraft.GroundSpeedMps < JoinBelowMps)
         {
-            if (_released && !ReferenceEquals(vehicle, Escort(Vehicles)))
+            if (_released && !ReferenceEquals(vehicle, escort))
             {
                 SendBack(vehicle);
                 return;
@@ -659,16 +691,49 @@ public sealed class FireOperation
         }
     }
 
-    /// <summary>Platz in der Kolonne: Reihenfolge der Alarmierung unter den folgenden Fahrzeugen.</summary>
+    /// <summary>
+    /// Platz in der Kolonne: die Folgenden nach ihrem Abstand zum Flugzeug, wer noch auf die Spur fährt, dahinter. Kommt FLF 1 später
+    /// (Alarm kurz vor dem Aufsetzen), reiht es sich hinter den anderen ein, statt sie mit dem kleinsten Soll-Abstand zu überholen.
+    /// </summary>
     private int ColumnIndex(FireVehicle vehicle)
     {
-        var column = Vehicles.Where(v => ReferenceEquals(v, vehicle) || v.Phase is FireVehiclePhase.Following or FireVehiclePhase.Joining).ToList();
+        var column = Vehicles
+            .Where(v => ReferenceEquals(v, vehicle) || v.Phase is FireVehiclePhase.Following or FireVehiclePhase.Joining)
+            .OrderBy(v => double.IsNaN(v.GapM) ? double.MaxValue : v.GapM)
+            .ToList();
         return Math.Max(0, column.IndexOf(vehicle));
     }
 
-    /// <summary>Das Fahrzeug, das bis zum Stand folgt: FLF 1, sonst das erste.</summary>
-    private static FireVehicle? Escort(IReadOnlyList<FireVehicle> vehicles) =>
-        vehicles.FirstOrDefault(v => v.Unit is { Kind: FireVehicleKind.Flf, Number: 1 }) ?? vehicles.FirstOrDefault();
+    /// <summary>
+    /// Das Fahrzeug, das bis zum Stand folgt: FLF 1 (sonst das erste), außer ein anderes FLF ist schon beim Flugzeug (folgt, stellt sich auf
+    /// oder steht dort) und mehr als <see cref="EscortPreferFirstM"/> näher dran. Test EDDK 05.11.: Alarm 60 s vor dem Aufsetzen, FLF 2 und
+    /// ELW folgten schon 500 m hinter dem A320 und rückten ein, FLF 1 musste von der Aufsetzzone 2 km aufholen. Nach dem Abrollen bleibt es
+    /// beim einmal gewählten.
+    /// </summary>
+    private FireVehicle? Escort(IReadOnlyList<FireVehicle> vehicles, FireAircraftState aircraft)
+    {
+        if (_escort is { } chosen && vehicles.Contains(chosen) && chosen.Phase is not (FireVehiclePhase.Returning or FireVehiclePhase.Gone))
+        {
+            return chosen;
+        }
+
+        var first = vehicles.FirstOrDefault(v => v.Unit is { Kind: FireVehicleKind.Flf, Number: 1 }) ?? vehicles.FirstOrDefault();
+        double DistanceOf(FireVehicle v) => FirePlanner.Distance(v.EastM, v.NorthM, aircraft.EastM, aircraft.NorthM);
+        var nearest = vehicles
+            .Where(v => v.Unit.Kind == FireVehicleKind.Flf && v.Phase is FireVehiclePhase.Following or FireVehiclePhase.Positioning or FireVehiclePhase.AtAircraft)
+            .MinBy(DistanceOf);
+        if (first is null || nearest is null || ReferenceEquals(first, nearest))
+        {
+            return first;
+        }
+
+        var firstWithAircraft = first.Phase is FireVehiclePhase.Following or FireVehiclePhase.Positioning or FireVehiclePhase.AtAircraft;
+        return firstWithAircraft && DistanceOf(first) <= DistanceOf(nearest) + EscortPreferFirstM ? first : nearest;
+    }
+
+    /// <summary>Das Flugzeug ist am Haltepunkt des Fahrzeugs schon vorbei (ohne Haltepunkt: nein).</summary>
+    private bool HoldPassed(FireVehicle vehicle, FireAircraftState aircraft) =>
+        Plan.Vehicles.FirstOrDefault(v => v.Unit == vehicle.Unit)?.Hold is { } hold && ToAircraft(aircraft, hold.EastM, hold.NorthM).X < -20;
 
     private static double SegmentDistance(double px, double py, double ax, double ay, double bx, double by) =>
         TaxiGraph.SegmentDistance(px, py, ax, ay, bx, by);

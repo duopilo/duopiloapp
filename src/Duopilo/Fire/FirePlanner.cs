@@ -43,6 +43,13 @@ public static class FirePlanner
     public const double MaxStationOffNetworkM = 400;
 
     /// <summary>
+    /// So weit muss ein Haltepunkt mindestens neben dem Bahnrand liegen (halbe Breite plus das). Hold-Short-Punkte auf der Bahn selbst
+    /// (an Kreuzungen, Test EDDK 05.11.: Haltepunkt 744 der 14L lag 2 m neben der Mittellinie, ein FLF stand dort auf der Landebahn)
+    /// taugen nicht für die Bereitstellung.
+    /// </summary>
+    public const double MinHoldEdgeClearM = 15;
+
+    /// <summary>
     /// Bereitstellung an Haltepunkten der Landebahn. <paramref name="stations"/>: Wachen aus OSM (leer = freie Parkposition);
     /// <paramref name="allStations"/>: jedes Fahrzeug von der Wache mit dem kürzesten Weg (Full Emergency), sonst alle von einer.
     /// </summary>
@@ -64,6 +71,7 @@ public static class FirePlanner
                 return new HoldInfo(h.Node, along, cross);
             })
             .Where(h => h.Along > -100 && h.Along < runway.LengthM + 100)
+            .Where(h => IsClearOfRunways(graph, runway, h))
             .ToList();
         if (holds.Count == 0)
         {
@@ -345,6 +353,11 @@ public static class FirePlanner
     }
 
     private sealed record HoldInfo(TaxiNode Node, double Along, double Cross);
+
+    /// <summary>Haltepunkt neben der Landebahn und auf keiner Bahn (auch keiner kreuzenden).</summary>
+    private static bool IsClearOfRunways(TaxiGraph graph, RunwayEnd runway, HoldInfo hold) =>
+        Math.Abs(hold.Cross) >= (Math.Max(runway.WidthM, 20) / 2) + MinHoldEdgeClearM
+        && graph.RunwayAt(hold.Node.EastM, hold.Node.NorthM) is null;
 
     /// <summary>
     /// Freie Parkpositionen als Wache, die beste zuerst: nah an <paramref name="refEast"/>/<paramref name="refNorth"/>, Fahrzeug-Parkposition

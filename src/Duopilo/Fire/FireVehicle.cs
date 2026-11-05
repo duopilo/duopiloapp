@@ -51,6 +51,7 @@ public sealed class FireVehicle
     private double _gapM;
     private double _aircraftS = double.NaN;
     private double _aircraftMps;
+    private double _ageS;
 
     public FireVehicle(FireUnit unit, string model, TaxiPath route, FireTrail trail, Func<double, double, (double Latitude, double Longitude)> toLatLon, double groundFt, double heightFt = 0)
     {
@@ -191,6 +192,47 @@ public sealed class FireVehicle
 
     /// <summary>Gemessener Boden unter dem Fahrzeug (aus einem anderen Thread), null = keine Messung.</summary>
     public double? GroundTargetFt { get; set; }
+
+    /// <summary>
+    /// So lange nach dem Spawn springt das Fahrzeug gleich auf den gemessenen Boden, statt langsam hinzugleiten (Test EDDK 05.11.: 30 ft
+    /// zu tief gespawnt, mit 6 ft/s sah man die Fahrzeuge an der Wache aus dem Boden kommen). Danach gleitet es wie bisher.
+    /// </summary>
+    public const double GroundSnapS = 3;
+
+    /// <summary>
+    /// So lange nach dem Spawn gehen keine Z-Variablen hinaus: Solange das Objekt lädt, verwirft der Sim sie mit DATA_ERROR (sieben je
+    /// Fahrzeug, Test EDDK 05.11.), und unveränderte Werte würden danach nie mehr gesendet.
+    /// </summary>
+    public const double VarsDelayS = 2;
+
+    /// <summary>Sekunden seit dem Spawn (aus <see cref="Advance"/>).</summary>
+    public double AgeS
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _ageS;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Boden unter dem Fahrzeug gemessen (aus der Abfrage): in den ersten <see cref="GroundSnapS"/> Sekunden sofort übernommen, danach
+    /// als Ziel, auf das die Höhe gleitet.
+    /// </summary>
+    public void MeasureGround(double groundFt)
+    {
+        lock (_lock)
+        {
+            if (_ageS < GroundSnapS)
+            {
+                GroundFt = groundFt;
+            }
+
+            GroundTargetFt = groundFt;
+        }
+    }
 
     /// <summary>Bezugspunkt des Modells über dem Boden.</summary>
     public double HeightFt { get; }
@@ -342,6 +384,7 @@ public sealed class FireVehicle
                 return;
             }
 
+            _ageS += dt;
             if (GroundTargetFt is { } ground)
             {
                 GroundFt = GroundFt < ground
@@ -413,6 +456,11 @@ public sealed class FireVehicle
     {
         lock (_lock)
         {
+            if (_ageS < VarsDelayS)
+            {
+                return [];
+            }
+
             return
             [
                 new("L:1:DUOPILO_WEG", OdometerM, 0.001),
