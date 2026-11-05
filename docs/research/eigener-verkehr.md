@@ -622,6 +622,26 @@ auch diese Abschnitte selbst (`EnrouteKinematics`), statt sie an die Wegpunkt-KI
   Punkt, dann mit dem Boden unter dem Heli gemessen. Heliports (Krankenhäuser, Plattformen) sind in MSFS eigene Flughäfen.
 - **Rotor:** `ROTOR RPM` und `ROTOR RPM PCT` sind laut SDK nicht schreibbar. H1 versucht `ENGINE_AUTO_START` und die SimVars
   `GENERAL ENG COMBUSTION`, `TURB ENG N1`, `GENERAL ENG RPM` und `ROTOR GOV TARGET PCT` (`rotor`); ob ein Modell davon dreht, zeigt der Test.
+- **beta.40 in EDH0U (2.11.2026):** Der `Eurocopter EC-135T1 Ambulance` (Livery `ADAC` – im Titel ohne Klammer, sonst
+  `CREATE_OBJECT_FAILED`) und der `Asobo PassiveAircraft B212` landeten genau in der Mitte des Pads (0,0 m) mit 100 ft/min, knapp
+  3 Minuten aus 3 NM; gemessener Boden 119,5 ft gegen 120 ft in der Datenbank. Beide Rotoren drehten, beide standen sauber auf den
+  Kufen. Beim B212 war kein Landelicht zu sehen, obwohl `LIGHT STATES` es als an meldete. Ab beta.41: EC-135 als Standard, das
+  Recognition-Licht dazu, Rotor 15 s nach der Landung abstellen, Helikopter in der Modellliste.
+- **beta.41 an der Station von Christoph 9 (BG Klinikum Duisburg, 51.380228 / 6.787324):** EC-135 (ORANGE-RED) aus Süden,
+  Boden gemessen 111 ft (rth.info: 110), aufgesetzt 0,0 m neben dem Punkt, Landelicht im Anflug an und nach dem Aufsetzen aus, Rotor
+  15 s danach abgestellt und ausgelaufen.
+- **Abflug (beta.42, Variante H2):** 30 s Rotor anlassen, senkrecht auf 10 ft, 5 s schweben und auf den Kurs drehen, mit 1 m/s²
+  auf 90 kt und dabei steigen (erst 300 ft/min, ab 40 kt 1000 ft/min) auf 1000 ft über dem Pad; aus 3 NM rund 3 Minuten.
+- **beta.42 an der Station:** Christoph 9 (EC-135, ORANGE-RED) hob nach 30 s Anlassen sauber ab, flog auf 180 und fing bei 1,6 NM auf
+  1000 ft ab; bei 3 NM genau auf der Linie (`departed`). Der gemessene Boden folgt dem Gelände unter dem Heli.
+- **Einsatzflug (beta.43, Variante H3):** Stopps als Route (Koordinaten oder Helipads), je Abschnitt Abflug wie H2 und Anflug wie H1 –
+  der Wechsel im selben Frame mit gleicher Lage, Höhe, Fahrt und Nase (`HeliMission`); an Stopps dazwischen warten und ab einer Minute
+  den Rotor abstellen.
+- **beta.43, Einsatz ED34D H1 → Einsatzort → ED34D H2 (Dach) → H1:** Am Einsatzort und auf dem Dach genau gelandet, aber im Anflug
+  aufs Dach flog der Heli durchs Gebäude: 60 m vor dem Pad maß er unter sich die Straße (80 ft unter dem Dach), und mit 100 ft
+  Spielraum zog die Bodennachführung den Heli mit nach unten. Ab beta.44 nimmt ein Pad der Datenbank die Messung nur direkt über dem
+  Pad und höchstens 30 ft daneben. Dach-Pads (über 30 ft höher als der Heliport) startet er senkrecht auf 100 ft; der Anflug auf ein
+  Pad daneben wird dann steiler (bis 30°) statt die Dachkante mit 6° zu streifen.
 
 **Fahrplan des eigenen Verkehrs (Stand 1.11.2026):**
 
@@ -634,7 +654,7 @@ auch diese Abschnitte selbst (`EnrouteKinematics`), statt sie an die Wegpunkt-KI
    Luftfahrt FL85, doppelte Vapp, 15 NM. Flughafenregeln für alle Plätze – beta.19. Abseits der Flughäfen (C2) – beta.36.
 5. Rollen – beta.22 (Variante D1): Pushback und Rollen vom Gate zum Haltepunkt über die Rollwege, beta.23 mit Hindernissen; Abflug vom Gate mit Aufreihen und Start – beta.24 (B2), Halt an der richtigen Linie ab beta.28; Rollen nach der Landung – beta.29 (A3); Halt vor gekreuzten Bahnen – beta.30; Abflug-Reihenfolge mit Abstand beim Rollen – beta.31, ohne Deadlock am Haltepunkt ab beta.32, jeder Test endet für sich ab beta.33; Takt der Landungen und Mischbetrieb auf einer Bahn – beta.34; Gegenverkehr beim Rollen und Lücke nach Plan – beta.35; Anflug aus dem Reiseflug und Abflug bis in den Reiseflug – beta.37.
 6. Helikopter – nach dem Rollen: kinematisch (Anflug, Schweben, senkrecht landen und abheben), auf Heliports und Flughäfen;
-   Heliports bekommen dann nur Helis. Landung auf ein Helipad oder einen beliebigen Punkt – beta.40 (H1); Abheben fehlt noch.
+   Heliports bekommen dann nur Helis. Landung auf ein Helipad oder einen beliebigen Punkt – beta.40 (H1), Rotor abstellen – beta.41; Abheben – beta.42 (H2); Einsatzflug über mehrere Stopps – beta.43 (H3).
 
 **Entscheidung danach:**
 
