@@ -274,6 +274,20 @@ public sealed class FireTests
     }
 
     [Fact]
+    public void Notfallflugzeug_ohne_Kennung_ueber_die_Objekt_ID()
+    {
+        // Nachtest EDDK 05.11.: Die Abfrage für die Bahnen läuft ohne Texte, der A330 des Tests kam ohne Kennung und hielt alle auf
+        static AircraftSample Sample(uint id, string? atcId, bool user = false) =>
+            new(id, "aircraft", atcId, null, null, null, 50.87, 7.14, 260, 137, 135, 0, 0, true, user);
+
+        Assert.True(FireService.IsEmergencyAircraft("DUO01", 217448451, place: false, Sample(217448451, null)));
+        Assert.True(FireService.IsEmergencyAircraft("DUO01", null, place: false, Sample(5, " duo01 ")));
+        Assert.False(FireService.IsEmergencyAircraft("DUO01", 217448451, place: false, Sample(5, null)));
+        Assert.True(FireService.IsEmergencyAircraft(null, null, place: false, Sample(1, null, user: true)));
+        Assert.False(FireService.IsEmergencyAircraft(null, null, place: true, Sample(1, null, user: true)));
+    }
+
+    [Fact]
     public void Militaerische_Wachen_aus_Flaeche_oder_Betreiber()
     {
         // Test EDDK 05.11.: die Wache der Bundeswehr im militärischen Teil heißt in OSM nur „Flughafenfeuerwehr“

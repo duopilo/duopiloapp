@@ -901,7 +901,9 @@ public sealed class FireService : BackgroundService
 
             // Das Flugzeug des Notfalls zählt nach der Landung nicht: um das stehende oder rollende Flugzeug fährt die Feuerwehr ohnehin
             // (sonst wartete etwa ein FLF auf der Rückfahrt vor der Landebahn, solange das Flugzeug darauf steht)
-            var samples = operation.Landed ? scan.Samples.Where(sample => !IsEmergencyAircraft(run, sample)) : scan.Samples;
+            var samples = operation.Landed
+                ? scan.Samples.Where(sample => !IsEmergencyAircraft(run.TargetTail, run.TestObjectId, run.TargetPlace is not null, sample))
+                : scan.Samples;
             var blocker = RunwayOccupancy.Blocker(graph.Icao, crossing.Runway, samples, uint.MaxValue, vehicle.BlueLight ? CrossingFinalBlueNm : RunwayOccupancy.FinalNm);
             if (blocker is null)
             {
@@ -949,11 +951,15 @@ public sealed class FireService : BackgroundService
         });
     }
 
-    /// <summary>Das Flugzeug des Einsatzes in der Verkehrsabfrage: das KI-Flugzeug des Verkehrstests (Kennung) bzw. das eigene.</summary>
-    private static bool IsEmergencyAircraft(Run run, AircraftSample sample) =>
-        run.TargetTail is { } tail
-            ? string.Equals(sample.AtcId?.Trim(), tail, StringComparison.OrdinalIgnoreCase)
-            : run.TargetPlace is null && sample.IsUser;
+    /// <summary>
+    /// Das Flugzeug des Einsatzes in der Verkehrsabfrage: das KI-Flugzeug des Verkehrstests bzw. das eigene; bei einem Einsatz an der
+    /// Parkposition keins. Nachtest EDDK 05.11.: Die Abfrage läuft ohne Texte, die Kennung fehlt – daher zuerst die Objekt-ID des Tests
+    /// (sonst warteten alle auf der Rückfahrt vor 14L, solange der A330 darauf stand).
+    /// </summary>
+    public static bool IsEmergencyAircraft(string? targetTail, uint? testObjectId, bool place, AircraftSample sample) =>
+        targetTail is { } tail
+            ? (testObjectId is { } id && sample.ObjectId == id) || string.Equals(sample.AtcId?.Trim(), tail, StringComparison.OrdinalIgnoreCase)
+            : !place && sample.IsUser;
 
     /// <summary>So nah muss das eigene Flugzeug am Spawnpunkt stehen, damit die Höhe des Bodens unter ihm auch für das Fahrzeug gilt.</summary>
     public const double OwnGroundRangeM = 300;
@@ -1225,6 +1231,7 @@ public sealed class FireService : BackgroundService
             if (test is { State: "running", Last: { Latitude: { } lat, Longitude: { } lon } last })
             {
                 run.TestMissingSince = null;
+                run.TestObjectId = test.ObjectId;
                 if (run.TestFix is not { } fix || fix.Seconds != last.Seconds)
                 {
                     run.TestFix = (last.Seconds, lat, lon, last.HeadingTrueDeg ?? 0, last.GroundSpeedKt, last.OnGround, now);
@@ -1484,6 +1491,9 @@ public sealed class FireService : BackgroundService
         public FireAircraftState? TargetPlace { get; set; }
 
         public DateTimeOffset TestReadUtc { get; set; }
+
+        /// <summary>Objekt des Verkehrstests im Sim, sobald gelesen (die Verkehrsabfrage für die Bahnen kennt keine Kennung).</summary>
+        public uint? TestObjectId { get; set; }
 
         public DateTimeOffset? TestMissingSince { get; set; }
 
