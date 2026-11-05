@@ -899,11 +899,11 @@ public sealed class FireService : BackgroundService
                 continue;
             }
 
-            // Das Flugzeug des Notfalls zählt nach der Landung nicht: um das stehende oder rollende Flugzeug fährt die Feuerwehr ohnehin
-            // (sonst wartete etwa ein FLF auf der Rückfahrt vor der Landebahn, solange das Flugzeug darauf steht)
-            var samples = operation.Landed
-                ? scan.Samples.Where(sample => !IsEmergencyAircraft(run.TargetTail, run.TestObjectId, run.TargetPlace is not null, sample))
-                : scan.Samples;
+            // Das Flugzeug des Notfalls zählt nach der Landung nicht, solange es steht: um das stehende Flugzeug fährt die Feuerwehr
+            // ohnehin (sonst wartete ein FLF auf der Rückfahrt vor der Landebahn, solange das Flugzeug darauf steht). Rollt es (Pan Pan
+            // über 06/24), wartet das Fahrzeug wie vor jedem anderen Flugzeug, bis es von der Bahn ist.
+            var samples = scan.Samples.Where(sample =>
+                !IgnoreForCrossing(run.TargetTail, run.TestObjectId, run.TargetPlace is not null, operation.Landed, sample));
             var blocker = RunwayOccupancy.Blocker(graph.Icao, crossing.Runway, samples, uint.MaxValue, vehicle.BlueLight ? CrossingFinalBlueNm : RunwayOccupancy.FinalNm);
             if (blocker is null)
             {
@@ -950,6 +950,13 @@ public sealed class FireService : BackgroundService
             }
         });
     }
+
+    /// <summary>Unter dieser Geschwindigkeit steht das Flugzeug des Einsatzes (Bahnfreigabe).</summary>
+    public const double EmergencyStandingKt = 3;
+
+    /// <summary>Das Flugzeug des Einsatzes zählt bei der Bahnfreigabe nicht, wenn es gelandet ist und steht.</summary>
+    public static bool IgnoreForCrossing(string? targetTail, uint? testObjectId, bool place, bool landed, AircraftSample sample) =>
+        landed && sample.GroundSpeedKt < EmergencyStandingKt && IsEmergencyAircraft(targetTail, testObjectId, place, sample);
 
     /// <summary>
     /// Das Flugzeug des Einsatzes in der Verkehrsabfrage: das KI-Flugzeug des Verkehrstests bzw. das eigene; bei einem Einsatz an der

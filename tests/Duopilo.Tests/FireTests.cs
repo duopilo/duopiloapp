@@ -277,14 +277,19 @@ public sealed class FireTests
     public void Notfallflugzeug_ohne_Kennung_ueber_die_Objekt_ID()
     {
         // Nachtest EDDK 05.11.: Die Abfrage für die Bahnen läuft ohne Texte, der A330 des Tests kam ohne Kennung und hielt alle auf
-        static AircraftSample Sample(uint id, string? atcId, bool user = false) =>
-            new(id, "aircraft", atcId, null, null, null, 50.87, 7.14, 260, 137, 135, 0, 0, true, user);
+        static AircraftSample Sample(uint id, string? atcId, bool user = false, double kt = 0) =>
+            new(id, "aircraft", atcId, null, null, null, 50.87, 7.14, 260, 137, 135, kt, 0, true, user);
 
         Assert.True(FireService.IsEmergencyAircraft("DUO01", 217448451, place: false, Sample(217448451, null)));
         Assert.True(FireService.IsEmergencyAircraft("DUO01", null, place: false, Sample(5, " duo01 ")));
         Assert.False(FireService.IsEmergencyAircraft("DUO01", 217448451, place: false, Sample(5, null)));
         Assert.True(FireService.IsEmergencyAircraft(null, null, place: false, Sample(1, null, user: true)));
         Assert.False(FireService.IsEmergencyAircraft(null, null, place: true, Sample(1, null, user: true)));
+
+        // Nur gelandet und stehend; rollt es (Pan Pan über 06/24), wartet das Fahrzeug wie vor jedem Flugzeug
+        Assert.True(FireService.IgnoreForCrossing("DUO01", 217448451, place: false, landed: true, Sample(217448451, null)));
+        Assert.False(FireService.IgnoreForCrossing("DUO01", 217448451, place: false, landed: true, Sample(217448451, null, kt: 10)));
+        Assert.False(FireService.IgnoreForCrossing("DUO01", 217448451, place: false, landed: false, Sample(217448451, null)));
     }
 
     [Fact]

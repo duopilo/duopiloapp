@@ -1,6 +1,6 @@
 # Feuerwehr: Stand und Test im Sim
 
-Stand: 05.11.2026. Status: erster Stand gebaut (Alarm, Bereitstellung, Folgen, Umstellen, Einrücken), Tests ohne Sim grün. Im Sim
+Stand: 05.11.2026 (Nachtest beta.44.feuerwehr.16). Status: erster Stand gebaut (Alarm, Bereitstellung, Folgen, Umstellen, Einrücken), Tests ohne Sim grün. Im Sim
 getestet in EDDL (04.11.) und EDDK (05.11.), Ergebnisse unten. Planung: [Feuerwehr-Einsätze](feuerwehr-einsaetze.md) (PR #130),
 Fahrzeuge: [Feuerwehr-Fahrzeuge](feuerwehr-fahrzeuge.md).
 
@@ -42,7 +42,9 @@ Fahrzeuge: [Feuerwehr-Fahrzeuge](feuerwehr-fahrzeuge.md).
   ab und kreuzt, wenn nichts auf der Bahn ist und nichts im Endanflug (mit Blaulicht bis 2 NM, sonst bis 4 NM, wie beim eigenen
   KI-Verkehr). Ohne Antwort aus der Abfrage nach 20 s trotzdem. Die Bahn des Notfalls ist nach der Landung frei, solange der Einsatz
   läuft; davor (das Flugzeug im Endanflug) und auf der Rückfahrt gilt sie wie jede andere. Das Flugzeug des Notfalls zählt nach der
-  Landung nicht als Verkehr. Wer der Spur folgt, kreuzt hinter dem Flugzeug ohne eigenen Halt. Im Status steht `holdingShort`, das
+  Landung nicht als Verkehr, solange es steht (unter 3 kt; erkannt an der Objekt-ID des Verkehrstests bzw. als eigenes Flugzeug).
+  Rollt es über eine Bahn, wartet das Fahrzeug, bis es von ihr herunter ist. Wer der Spur folgt, kreuzt hinter dem Flugzeug ohne
+  eigenen Halt. Im Status steht `holdingShort`, das
   Log schreibt `holding short of runway …`, `waiting for runway …` und `crossing runway … after … s`.
 - **Fahrwege:** Für die Feuerwehr lädt Duopilo auch die Betriebsstraßen der Bodenfahrzeuge (TAXI_PATH VEHICLE und ROAD), damit
   die Fahrzeuge von der Wache aus aufs Rollweg-Netz finden. Flugzeuge rollen weiter nur über Rollwege. Ist der nächste Rollpunkt
@@ -261,6 +263,65 @@ waren nicht nötig. Die 06/24 kreuzt die 14L.
 - **Heavy im Verkehrstest:** Mit der Wegpunkt-KI startete der A330 durch (an 0,5 NM 110 ft, an der Schwelle 157 ft zu hoch). Für
   Feuerwehr-Tests mit Heavies `kinematicNm` nehmen.
 
-Noch offen: Nachtest von beta.44.feuerwehr.16 (Haltepunkte, Spawnhöhe, Begleiter, RTF-Treppe und -Licht, DATA_ERROR beim Spawn,
-Halt vor kreuzenden Bahnen, Wachenwahl mit Mitte-Aufschlag und ohne Bundeswehr), Landung auf der anderen Bahn, Alarm per Funk
+Nachgetestet mit beta.44.feuerwehr.16, siehe nächster Abschnitt.
+
+## Nachtest im Sim (05.11.2026, beta.44.feuerwehr.16, EDDK)
+
+Dieselben zwei Tests wie oben, Bahn 14L, gefahren von Claude; vorher ein kurzer Notfall am Boden an A14 (4 Fahrzeuge, nach dem
+Ausrücken mit `reset` abgebrochen). Der erste Alarm nach dem Update nahm noch den alten Zwischenspeicher (ohne Prüfung auf
+militärische Flächen) und fragte OSM dabei neu ab; ab dem zweiten Alarm galt der neue Stand.
+
+**Test 1 – Mayday, A330-300 (Kategorie 9) bleibt auf der 14L stehen (A1, kinematisch ab 5 NM):**
+- **Wachen:** `military fire stations left out for a civil emergency: Flughafenfeuerwehr` – die Wache der Bundeswehr im Südwesten
+  fiel weg (in OSM mit Betreiber Bundeswehr). Alle 8 Fahrzeuge kamen von der Hauptwache (Flughafenfeuerwehr Köln), auch FLF 1, das
+  in .13 von der Gebäudebrandschutzwache kam. Die Spawns liefen im Abstand von 4 s, alle mit Weg.
+- **Bereitstellung:** FLF 1 bei 240 m, FLF 2 jetzt am Haltepunkt bei 1673 m (in .13 auf der Bahn bei 2105 m), FLF 3 am Bahnende bei
+  3569 m, der Rest bei 1673 m. FLF 3 hielt auf der Anfahrt vor der 06/24 und kreuzte nach 2 s (Blaulicht, frei). Alle standen
+  2:33 min nach dem Alarm, FLF 3 nach 3:30 min.
+- **Landung und Umstellen:** Aufsetzen bei 458 m, Stopp bei 1560 m. FLF 1 ging 8 s vor dem Stopp auf die Spur. 6 s nach dem Stopp
+  wurden die Plätze vergeben (dieselben wie in .13). ELW stand nach 23 s, FLF 1 nach 1:13 min, FLF 3 nach 3:00 min (vom Bahnende über
+  den Rollweg, wieder mit 2 s Halt vor der 06/24).
+- **Einrücken:** Nach `cancel` hielten FLF 1–3, HLF und beide RTF an ihrem Platz vor der 14L (die Rückfahrt führt über die Bahn) und
+  warteten auf `object 217448451 on the runway` – das war der A330 selbst. ELW und RTW fuhren ohne Bahn. Den Fehler siehe Befunde;
+  nach Entfernen des A330 kreuzten alle sechs nach 97 s. Alle 8 waren 1:37 bis 3:47 min nach dem `cancel` an der Wache verschwunden.
+- **DATA_ERROR:** keiner, weder beim Spawn (8 Fahrzeuge, in .13 noch 43 bis 54) noch beim Umstellen und Einrücken, auch nicht beim
+  Notfall am Boden und in Test 2. Der verzögerte Start der Z-Variablen (.14) greift.
+
+**Test 2 – Pan Pan, A320neo (Kategorie 6) mit Rollen zu D24 (A3), Alarm 69 s vor dem Aufsetzen:**
+- **Wache und Bereitstellung:** FLF 1@240, FLF 2 und ELW @1673, alle von der Hauptwache. FLF 2 und ELW erreichten den Haltepunkt 7 und
+  13 s nach dem Aufsetzen, FLF 1 war noch unterwegs.
+- **Folgen bei spätem Alarm:** Alle drei gingen 36 s nach dem Aufsetzen auf die Spur (`joining`), FLF 1 direkt von unterwegs, ohne
+  erst zur Aufsetzzone zu fahren (neu in .14). FLF 2 und ELW folgten mit 538 und 562 m, FLF 1 mit 1971 m.
+- **Begleiter:** Nach dem Abrollen über A2 (2243 m) begleitete FLF 2 (deutlich näher als FLF 1), FLF 1 und ELW rückten ein, FLF 1
+  von unterwegs. FLF 2 hielt danach 47 bis 59 m (Soll 50) bis zum Gate.
+- **06/24:** Der A320 hielt 4 s vor der 06/24 auf A. FLF 2 kreuzte als Begleiter hinter ihm ohne eigenen Halt. Der ELW auf der
+  Rückfahrt hielt an der Haltelinie und wartete 9 s, bis der A320 von der 06/24 herunter war – richtig, ein rollendes Flugzeug soll
+  zählen.
+- **Am Gate:** Der A320 stand auf D24, FLF 2 48 m dahinter, bis zum `cancel`. Die Rückfahrt von D24 zur Hauptwache führte über
+  keine Bahn, FLF 2 war nach 4:11 min an der Wache.
+
+**Prüfpunkte aus beta.44.feuerwehr.16:**
+- **Haltepunkte:** in Ordnung, kein Fahrzeug auf einer Bahn.
+- **Begleiter, später Alarm, Kolonne:** in Ordnung (Test 2).
+- **Halt vor Bahnen:** in Ordnung auf der Anfahrt und beim Aufstellen (06/24, je 2 s), Fehler auf der Rückfahrt über die Bahn des
+  Notfalls (siehe Befunde).
+- **Wachenwahl:** Bundeswehr raus, Hauptwache für alle. Auch der Notfall am Boden an A14 (bei den Terminals) kam von der Hauptwache,
+  nicht von der näheren Gebäudebrandschutzwache – so gewollt, solange unklar ist, ob dort Fahrzeuge stehen.
+- **DATA_ERROR:** keiner.
+- **RTF-Treppe und -Licht, Spawnhöhe:** auf Florians Screenshot von der Hauptwache (07:24) wirkt die Treppe eingefahren; die
+  Bestätigung im Sim steht noch aus, ebenso ob die Fahrzeuge an der Hauptwache noch aus dem Boden kommen.
+
+**Befunde:**
+- **Rückfahrt über die Bahn des Notfalls:** Die Verkehrsabfrage für die Freigabe läuft ohne Texte (`withText: false`), die Kennung
+  DUO01 fehlte also, und `IsEmergencyAircraft` verglich nur sie. Der stehende A330 zählte damit als Verkehr auf der 14L, und alle
+  sechs Fahrzeuge mit der Bahn auf dem Rückweg warteten, bis der Test beendet war. **Behoben in beta.44.feuerwehr.17:** Duopilo merkt
+  sich die Objekt-ID des Verkehrstests und erkennt das Flugzeug daran. **Dazu in beta.44.feuerwehr.18:** Das Flugzeug zählt nur
+  nicht, solange es steht (unter 3 kt); rollt es noch (Rollout, Pan Pan über eine Bahn), wartet das Fahrzeug wie vor jedem anderen.
+  Sonst hätte .17 den ELW in Test 2 direkt hinter dem rollenden A320 über die 06/24 geschickt.
+- **Halteposition direkt am Platz:** Die Plätze am Flugzeug liegen 42 m neben der Mittellinie, also innerhalb von halber Breite plus
+  40 m. `FireCrossings` findet davor keine Stelle mit genug Abstand und lässt die Fahrzeuge an ihrem Platz halten. Das ist in Ordnung
+  (sie stehen ohnehin an der Bahn), im Status steht dann aber schon am Platz `holdingShort: 14L/32R`.
+
+Noch offen: Nachtest von beta.44.feuerwehr.18 (Rückfahrt über die 14L, solange das Flugzeug darauf steht: Halt am Platz, Freigabe
+nach 5 s), RTF-Treppe und -Licht sowie Spawnhöhe an der Hauptwache im Bild, Landung auf der anderen Bahn, Alarm per Funk
 (Mayday/Pan Pan im ATC-Modul), Ausrücken ab 20 NM bei eigenem Anflug, Abstand zum Abgasstrahl.
