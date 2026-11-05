@@ -401,16 +401,18 @@ Dieselben zwei Tests wie oben, Bahn 14L, gefahren von Claude, Florian sah im Sim
   von weiter als 800 m (`PositionRouteM`) den Weg über das Rollweg-Netz, und darin kostet jede Bahn das Achtfache, auch die Bahn des
   Notfalls. Geradeaus fährt nur, wer schon auf derselben Bahn steht; der Haltepunkt am Bahnende liegt 151 m neben der Mittellinie.
 - **Kein Halt an Kreuzungen mit Blaulicht:** FLF 3 hielt auf der Anfahrt und auf dem Weg zum Flugzeug je 2 s vor der 06/24 (Mindesthalt
-  mit Blaulicht, dann Verkehrsabfrage). Laut Florian hat die Feuerwehr im Einsatz Vorfahrt und soll nicht warten. Offen: ob mit
-  Blaulicht nur der Halt wegfällt oder auch die Verkehrsabfrage (Flugzeug im Endanflug).
+  mit Blaulicht, dann Verkehrsabfrage). Laut Florian hat die Feuerwehr im Einsatz Vorfahrt und soll nicht warten; bei Mayday sei der
+  Flughafen ohnehin zu. Vorschlag: Mayday ohne Halt und ohne Verkehrsabfrage, dafür die Bahnsperre für den eigenen KI-Verkehr bauen
+  (steht unter „Noch nicht gebaut“; Live-Verkehr des Sims steuert Duopilo nicht); Pan Pan ohne Mindesthalt, aber mit Verkehrsabfrage,
+  weil dort nichts gesperrt ist.
 - **Fahrzeuge je Kategorie:** Zwei RTF und nur drei FLF passen laut Florian nicht, die meisten Flughäfen haben nur ein RTF. Nachgesehen:
   Düsseldorf hat 8 FLF (6 im ICAO-Löschzug, 3 je Wache, 2 in Reserve) und 1 RTF
   ([Wikipedia](https://de.wikipedia.org/wiki/Flughafenfeuerwehr_D%C3%BCsseldorf)), Stuttgart 4 FLF und 1 RTF
   ([Feuerwehrmagazin](https://www.feuerwehrmagazin.de/wissen/werkfeuerwehr-flughafen-stuttgart-95061)), BER 12 FLF, davon 8 im Dienst,
   an 3 Wachen ([Faktenblatt FBB](https://corporate.berlin-airport.de/content/dam/corporate/de/unternehmen-presse/newsroom/2022-03-31%20Faktenbaltt_Werkfeuerwehr%20FBB.pdf)).
   Die 3 FLF ab Kategorie 8 in `FireCategory.Lineup` sind die Mindestzahl nach ICAO Annex 14, die ein Flughafen vorhalten muss, nicht
-  die Zahl, die zu einem Mayday ausrückt; RTF gibt es dort ab Kategorie 8 zwei. Zu ändern: ein RTF. Wie viele FLF bei Full Emergency
-  kommen, ist noch zu entscheiden.
+  die Zahl, die zu einem Mayday ausrückt; RTF gibt es dort ab Kategorie 8 zwei. Zu ändern: ein RTF. Entschieden (Florian, 05.11.): bei
+  Mayday ab Kategorie 8 vier FLF.
 - **Platz 8 in der Halle:** `FireExits.ForOsm` legt an die 45-m-Wand 8 Plätze in eine Reihe (`(Länge − 2) / 6 + 1`), von der Mitte
   aus 6, 12, 18 und 24 m nach den Seiten. Platz 8 liegt damit 24 m von der Mitte, 1,5 m über das Ende der Wand hinaus. Dort springt
   ein Flügel der Halle 19 m nach vorn: Der Platz liegt 1,1 m in diesem Flügel, und sein Herausrollen (12 m) führt durch ihn. Der RTW
