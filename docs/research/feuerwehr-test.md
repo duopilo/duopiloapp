@@ -336,10 +336,9 @@ Nachgetestet mit beta.44.feuerwehr.19, siehe nächster Abschnitt.
 
 ## Nachtest im Sim (05.11.2026, beta.44.feuerwehr.19, EDDK)
 
-Nur Test 1 (Mayday), Bahn 14L, gefahren von Claude, Florian sah im Sim zu. A330-300 (GE), Kategorie 9, A1, kinematisch ab 5 NM.
-Alarm 2 s nach dem Start des Verkehrstests.
+Dieselben zwei Tests wie oben, Bahn 14L, gefahren von Claude, Florian sah im Sim zu.
 
-**Test 1 – Mayday, A330-300 bleibt auf der 14L stehen:**
+**Test 1 – Mayday, A330-300 (GE, Kategorie 9) bleibt auf der 14L stehen (A1, kinematisch ab 5 NM, Alarm 2 s nach dem Start):**
 - **Wachen:** `military fire stations left out for a civil emergency: Flughafenfeuerwehr`, danach `Fire stations at EDDK from
   OpenStreetMap: Flughafenfeuerwehr Köln (hall), Gebäudebrandschutzwache (outline)`. Die Hauptwache gilt jetzt als Halle auf ihrem
   Gelände. Alle 8 Fahrzeuge (3 FLF, ELW, HLF, 2 RTF, RTW) kamen von dort, alle mit Weg, Spawns im Abstand von 4 s.
@@ -363,6 +362,24 @@ Alarm 2 s nach dem Start des Verkehrstests.
 - **DATA_ERROR:** keiner im Log während des Tests, weder beim Spawn noch beim Umstellen und Einrücken;
   `traffic-messages.csv` ohne Fehler.
 
+**Test 2 – Pan Pan, A320neo (Kategorie 6) mit Rollen zu D20 (A3, kinematisch ab 5 NM), Alarm 83 s vor dem Aufsetzen:**
+- **Wache und Bereitstellung:** FLF 1@240, FLF 2 und ELW @1673, alle von der Hauptwache. FLF 2 und ELW erreichten den Haltepunkt 8
+  und 14 s nach dem Aufsetzen, FLF 1 war noch unterwegs.
+- **Folgen:** Alle drei gingen 35 s nach dem Aufsetzen auf die Spur, als der A320 langsamer als 40 kt war, FLF 1 von unterwegs. FLF 2
+  und ELW folgten mit 541 und 562 m, FLF 1 als Letztes der Kolonne mit 1769 m (Soll 130 m). Laut Florian wie in Test 1: FLF 1 fährt
+  zu spät los und hängt weit zurück.
+- **Begleiter:** Nach dem Abrollen über A2 (2243 m) begleitete FLF 2 mit 52 m (Soll 50). FLF 1 und ELW rückten ein, FLF 1 war nach
+  2:13 min an der Wache.
+- **06/24:** Der A320 hielt 5 s vor der 06/24 auf A, rollte dann auf der Bahn gut 30 m an ihrer Mittellinie entlang und verließ sie
+  auf der anderen Seite. FLF 2 kreuzte als Begleiter hinter ihm ohne eigenen Halt. Der ELW fuhr auf der Rückfahrt denselben Weg hinter
+  FLF 2 her, hielt an der Haltelinie und kreuzte nach 5 s, ohne zu warten. Nach der Spur des Verkehrstests (Schwellen der 06/24 von
+  [SkyVector](https://skyvector.com/airport/EDDK/Koeln-Bonn-Airport), gut ±15 m) war der A320 beim Halt des ELW noch rund 9 m neben
+  der Mittellinie, beim Kreuzen 5 s später 23 bis 27 m, also gerade an der Kante (halbe Breite 22,5 m). Ob ein rollendes Flugzeug des
+  Notfalls auf der Bahn als Verkehr zählt (.18), zeigt dieser Fall nicht eindeutig.
+- **Am Gate:** Der A320 stand um 17:51:27 auf D20. FLF 2 rückte 61 s später ein, zugleich mit dem Ende des Verkehrstests (`parked`,
+  A320 nach 60 s am Stand entfernt), und war nach 3:49 min an der Wache.
+- **DATA_ERROR:** keiner.
+
 **Prüfpunkte aus beta.44.feuerwehr.19:**
 - **Rückfahrt über die Bahn des Notfalls bei stehendem Flugzeug:** in Ordnung (Halt am Platz, Freigabe nach 5 s).
 - **Hauptwache als Halle:** in Ordnung, Log `Flughafenfeuerwehr Köln (hall)`, Plätze vor der Hallenwand zum Hof, die Fahrzeuge
@@ -374,7 +391,8 @@ Alarm 2 s nach dem Start des Verkehrstests.
 **Befunde** (Florian im Sim, dazu Log und Quelle):
 - **FLF 1 fährt zu spät los:** Es blieb an der Aufsetzzone stehen, bis der A330 fast stand. Heute fährt ein Fahrzeug erst auf die Spur,
   wenn das Flugzeug vorbei und langsamer als 40 kt ist (`FireOperation.JoinBelowMps`). Gewünscht: losfahren, sobald das Flugzeug
-  vorbei ist, und rund 90 m dahinter folgen (heute Soll auf der Bahn bei Heavy 100 m, `FireCategory.RunwayGapM`).
+  vorbei ist, und rund 90 m dahinter folgen (heute Soll auf der Bahn bei Heavy 100 m, `FireCategory.RunwayGapM`). In Test 2 dasselbe:
+  FLF 1 war beim Aufsetzen noch unterwegs und ging erst mit 1769 m Abstand auf die Spur, als Drittes der Kolonne mit Soll 130 m.
 - **FLF 3 fährt zu spät los:** Es soll schon beim Aufsetzen losfahren, nicht erst, wenn das Flugzeug steht. Heute fährt es auf jeden
   Fall zu seinem Haltepunkt am Bahnende: Ein Fahrzeug, das noch unterwegs und mehr als 300 m (`DirectRangeM`) vom stehenden Flugzeug
   weg ist, fährt seinen Weg zu Ende und bekommt seinen Platz erst am Haltepunkt (`UpdateWaiting`). Mit 3:44 min Anfahrt kam es hier
@@ -396,10 +414,16 @@ Alarm 2 s nach dem Start des Verkehrstests.
 - **Platz 8 in der Halle:** `FireExits.ForOsm` legt an die 45-m-Wand 8 Plätze in eine Reihe (`(Länge − 2) / 6 + 1`), von der Mitte
   aus 6, 12, 18 und 24 m nach den Seiten. Platz 8 liegt damit 24 m von der Mitte, 1,5 m über das Ende der Wand hinaus. Dort springt
   ein Flügel der Halle 19 m nach vorn: Der Platz liegt 1,1 m in diesem Flügel, und sein Herausrollen (12 m) führt durch ihn. Der RTW
-  auf diesem Platz kam als einziges Fahrzeug aus der falschen Richtung. Es fehlt
-  die Prüfung, ob Platz und Herausrollen frei vom Gebäude sind (sonst die nächste Reihe, 9 m weiter vorn), und die Reihe darf nicht
-  über die Wand hinausgehen.
+  auf diesem Platz kam als einziges Fahrzeug aus der falschen Richtung. Es fehlt die Prüfung, ob Platz und Herausrollen frei vom
+  Gebäude sind (sonst die nächste Reihe, 9 m weiter vorn), und die Reihe darf nicht über die Wand hinausgehen.
+- **Abstellen nach einem Notfall:** Laut Florian parkt ein Flugzeug mit Feuerwehreinsatz aus Sicherheitsgründen frei auf dem Vorfeld,
+  nicht am Gebäude; nur bei Feuerwehreinsätzen, sonst bleibt die Wahl der Parkposition wie bisher. In Test 2 rollte der A320 an das
+  Gate D20. Vorschlag: Ist die Feuerwehr für ein KI-Flugzeug alarmiert, plant der Verkehrstest das Rollziel neu (nach dem Abrollen ab
+  der aktuellen Stelle): eine Position ohne Fluggastbrücke, lieber Vorfeld als Gate, mit Abstand zu den Gebäuden aus OSM und passend
+  zur Größe. Ob eine Position eine Brücke hat, weiß Duopilo heute nicht: Es fragt nur `TAXI_PARKING` ab, und `gate_small` sagt dazu
+  nichts. SimConnect hat am Flughafen `JETWAY`-Einträge (im Stub vorhanden, nicht abgefragt); Rückfall wären die Fluggastbrücken aus
+  OSM (`aeroway=jet_bridge`), die die Feuerwehr schon als Hindernisse lädt.
 
-Noch offen: die Befunde oben; Test 2 (Pan Pan) mit .19, u. a. ob der ELW
-vor dem rollenden A320 an der 06/24 weiter wartet (.18); Landung auf der anderen Bahn, Alarm per Funk (Mayday/Pan Pan im ATC-Modul),
-Ausrücken ab 20 NM bei eigenem Anflug, Abstand zum Abgasstrahl.
+Noch offen: die Befunde oben; ob ein rollendes Flugzeug des Notfalls auf der Bahn als Verkehr zählt (.18, Test 2 nicht eindeutig);
+Landung auf der anderen Bahn, Alarm per Funk (Mayday/Pan Pan im ATC-Modul), Ausrücken ab 20 NM bei eigenem Anflug, Abstand zum
+Abgasstrahl.
