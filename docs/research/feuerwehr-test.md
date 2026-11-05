@@ -346,7 +346,8 @@ Alarm 2 s nach dem Start des Verkehrstests.
 - **Plätze an der Halle:** Nachgerechnet aus dem Zwischenspeicher (`cache\fire-stations\EDDK.json`): Gelände 10 400 m², Halle
   2 383 m². Gewählt ist die 45 m lange Wand im Winkel zwischen den beiden Flügeln, die zum Hof zeigt (Blick 47°, nach Nordosten),
   die Plätze 4 m davor im Abstand von 6 m. FLF 1 stand 3 s nach dem Spawn 2–3 m vor Platz 1 und rollte in Blickrichtung heraus.
-  Platz 8 (hier RTW 1) liegt im Gebäude (siehe Befunde). Ob die Tore der Szenerie an dieser Wand liegen, steht im Bild noch aus.
+  Laut Florian kamen alle Fahrzeuge außer dem RTW aus der richtigen Richtung. Der RTW stand auf Platz 8, und der liegt im Gebäude
+  (siehe Befunde).
 - **Bereitstellung:** wie in .16: FLF 1 bei 240 m (2:09 min nach dem Alarm), FLF 2 und der Rest bei 1673 m (FLF 2 nach 1:31 min,
   RTF 2 als letztes nach 2:05 min), FLF 3 am Bahnende bei 3569 m. FLF 3 hielt auf der Anfahrt 2 s vor der 06/24.
 - **Landung:** Aufsetzen bei 458 m mit 135 kt, Stopp bei 1559 m 30 s später. FLF 1 ging erst 21 s nach dem Aufsetzen auf die Spur,
@@ -364,8 +365,11 @@ Alarm 2 s nach dem Start des Verkehrstests.
 
 **Prüfpunkte aus beta.44.feuerwehr.19:**
 - **Rückfahrt über die Bahn des Notfalls bei stehendem Flugzeug:** in Ordnung (Halt am Platz, Freigabe nach 5 s).
-- **Hauptwache als Halle:** in Ordnung, Log `Flughafenfeuerwehr Köln (hall)`, Plätze vor der Hallenwand zum Hof; Ausnahme Platz 8.
+- **Hauptwache als Halle:** in Ordnung, Log `Flughafenfeuerwehr Köln (hall)`, Plätze vor der Hallenwand zum Hof, die Fahrzeuge
+  kamen laut Florian aus der richtigen Richtung; Ausnahme Platz 8 (RTW).
 - **DATA_ERROR:** keiner.
+- **RTF-Treppe und -Licht:** in Ordnung laut Florian. Die gemeinsamen Data Definitions je Variablenname waren also die Ursache
+  (geändert in .14, siehe Ergebnis 05.11.).
 
 **Befunde** (Florian im Sim, dazu Log und Quelle):
 - **FLF 1 fährt zu spät los:** Es blieb an der Aufsetzzone stehen, bis der A330 fast stand. Heute fährt ein Fahrzeug erst auf die Spur,
@@ -391,10 +395,11 @@ Alarm 2 s nach dem Start des Verkehrstests.
   kommen, ist noch zu entscheiden.
 - **Platz 8 in der Halle:** `FireExits.ForOsm` legt an die 45-m-Wand 8 Plätze in eine Reihe (`(Länge − 2) / 6 + 1`), von der Mitte
   aus 6, 12, 18 und 24 m nach den Seiten. Platz 8 liegt damit 24 m von der Mitte, 1,5 m über das Ende der Wand hinaus. Dort springt
-  ein Flügel der Halle 19 m nach vorn: Der Platz liegt 1,1 m in diesem Flügel, und sein Herausrollen (12 m) führt durch ihn. Es fehlt
+  ein Flügel der Halle 19 m nach vorn: Der Platz liegt 1,1 m in diesem Flügel, und sein Herausrollen (12 m) führt durch ihn. Der RTW
+  auf diesem Platz kam als einziges Fahrzeug aus der falschen Richtung. Es fehlt
   die Prüfung, ob Platz und Herausrollen frei vom Gebäude sind (sonst die nächste Reihe, 9 m weiter vorn), und die Reihe darf nicht
   über die Wand hinausgehen.
 
-Noch offen: die Befunde oben; RTF-Treppe und -Licht und die Plätze vor der Halle im Bild; Test 2 (Pan Pan) mit .19, u. a. ob der ELW
+Noch offen: die Befunde oben; Test 2 (Pan Pan) mit .19, u. a. ob der ELW
 vor dem rollenden A320 an der 06/24 weiter wartet (.18); Landung auf der anderen Bahn, Alarm per Funk (Mayday/Pan Pan im ATC-Modul),
 Ausrücken ab 20 NM bei eigenem Anflug, Abstand zum Abgasstrahl.
