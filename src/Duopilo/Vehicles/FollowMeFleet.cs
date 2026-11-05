@@ -169,10 +169,13 @@ public sealed class FollowMeSpawner(SimConnectClient sim, IOptions<DuopiloOption
         }
     }
 
-    /// <summary>Rundumlicht und Fahrlicht an – während das Objekt lädt, verwirft der Sim die Werte, deshalb mehrmals.</summary>
+    /// <summary>
+    /// Rundumlicht und Fahrlicht an, 2, 3 und 5 s nach dem Spawn: Solange das Objekt lädt, verwirft der Sim die Werte (DATA_ERROR),
+    /// deshalb mehrmals (wie bei der Feuerwehr).
+    /// </summary>
     private async Task SwitchLightsAsync(uint objectId, CancellationToken ct)
     {
-        foreach (var delay in new[] { 1, 2, 5 })
+        foreach (var delay in new[] { 2, 1, 2 })
         {
             try
             {

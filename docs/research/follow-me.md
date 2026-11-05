@@ -1,6 +1,7 @@
 # Follow-me: Ablauf und Test im Sim
 
-Stand: 02.11.2026. Status: Duopilo-Seite gebaut (ATC, Route, Fahrlogik, Tests ohne Sim). Der Test mit dem eigenen Modell im Sim ist offen.
+Stand: 05.11.2026. Status: Duopilo-Seite gebaut (ATC, Route, Fahrlogik, Tests ohne Sim), dazu die SimConnect-Fixes aus den
+Feuerwehr-Tests (siehe [Feuerwehr: Stand und Test](feuerwehr-test.md)). Der Test mit dem eigenen Modell im Sim ist offen.
 
 ## Grundsatz
 
@@ -19,9 +20,9 @@ Kein Fahrzeug (Paket fehlt, keine Route, Gate gleich voraus, stdio-Instanz, nach
 
 ## Fahrzeug
 
-- Modell: `Duopilo:FollowMe:Model`, Standard `Duopilo_FollowMe_Licht` (Variante mit schaltbarem Licht). Nach dem Spawn setzt Duopilo `L:1:DUOPILO_RUNDUMLICHT` und `L:1:DUOPILO_FAHRLICHT` auf 1, zur Sicherheit auch `A:LIGHT BEACON` und `A:LIGHT LANDING` (nach 1, 3 und 8 s, weil der Sim Werte beim Laden verwirft).
+- Modell: `Duopilo:FollowMe:Model`, Standard `Duopilo_FollowMe_Licht` (Variante mit schaltbarem Licht). Nach dem Spawn setzt Duopilo `L:1:DUOPILO_RUNDUMLICHT` und `L:1:DUOPILO_FAHRLICHT` auf 1, dazu die Events `BEACON_LIGHTS_SET`/`LANDING_LIGHTS_SET` (nach 2, 3 und 5 s, weil der Sim Werte beim Laden verwirft). Die SimVars `A:LIGHT …` nicht: Bodenfahrzeuge lehnen sie ab (DATA_ERROR, Feuerwehr-Test EDDL 04.11.). Jedes Fahrzeug hat eigene Data Definitions für seine Z-Variablen, beim Entfernen freigegeben.
 - Erzeugt mit `AICreateSimulatedObject_EX1` (Rückfall ohne Livery), bewegt wie die KI-Flugzeuge der Verkehrstests: eingefroren, Lage jeden Frame gesetzt, aber ohne `AIReleaseControl`.
-- Boden: unter dem eigenen Flugzeug gemessen, danach aus der Abfrage des Fahrzeugs (Höhe minus Höhe über Grund), höchstens 60 ft vom Erwarteten. `Duopilo:FollowMe:HeightFt` hebt den Bezugspunkt des Modells an, falls es einsinkt.
+- Boden: unter dem eigenen Flugzeug gemessen, danach aus der Abfrage des Fahrzeugs (Höhe minus Höhe über Grund), höchstens 60 ft vom Erwarteten. In den ersten 3 s nach dem Spawn springt es sofort auf den gemessenen Boden, danach gleitet es mit 6 ft/s. `Duopilo:FollowMe:HeightFt` hebt den Bezugspunkt des Modells an, falls es einsinkt.
 
 ## Route und Fahrt
 
@@ -34,12 +35,12 @@ Kein Fahrzeug (Paket fehlt, keine Route, Gate gleich voraus, stdio-Instanz, nach
 ## Test im Sim
 
 1. `follow_me` mit `action: request` am Boden auf einem Rollweg (ohne Funk, beliebiger Flughafen): Spawnt das Modell? Folgt es der Route, wendet es sauber, steht es auf dem Boden (nicht schwebend, nicht eingesunken)?
-2. Leuchten Rundumlicht und Fahrlicht? Wenn nicht: greift `L:1:` über SimConnect nicht (siehe [Feuerwehr-Fahrzeuge](feuerwehr-fahrzeuge.md)), dann sollte `A:LIGHT BEACON` helfen.
+2. Leuchten Rundumlicht und Fahrlicht? `L:1:` über SimConnect greift (Feuerwehr, EDDK 05.11.). Im Log keine `DATA_ERROR`.
 3. Losrollen: Fährt es vorweg, hält es den Abstand, wartet es beim Anhalten? Abstand und Phase in `follow_me` (status).
 4. Am Gate: fährt es vorbei und verschwindet?
 5. Danach der ganze Ablauf im Funk nach einer Landung (EDDL).
 
-Offen: ob `AIReleaseControl` für Bodenfahrzeuge nötig ist (bewusst weggelassen) und ob die Abfrage `PLANE ALT ABOVE GROUND` für Bodenfahrzeuge Werte liefert.
+Offen: ob `AIReleaseControl` für Bodenfahrzeuge nötig ist (bewusst weggelassen). Die Abfrage `PLANE ALT ABOVE GROUND` liefert für Bodenfahrzeuge Werte (Feuerwehr, EDDK 05.11.).
 
 ## Follow-me für den eigenen KI-Verkehr (in Arbeit)
 
