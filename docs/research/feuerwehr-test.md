@@ -1,6 +1,6 @@
 # Feuerwehr: Stand und Test im Sim
 
-Stand: 05.11.2026 (Nachtest beta.44.feuerwehr.19). Status: erster Stand gebaut (Alarm, Bereitstellung, Folgen, Umstellen, Einrücken), Tests ohne Sim grün. Im Sim
+Stand: 05.11.2026 (beta.44.feuerwehr.20 gebaut, Nachtest steht aus). Status: erster Stand gebaut (Alarm, Bereitstellung, Folgen, Umstellen, Einrücken), Tests ohne Sim grün. Im Sim
 getestet in EDDL (04.11.) und EDDK (05.11.), Ergebnisse unten. Planung: [Feuerwehr-Einsätze](feuerwehr-einsaetze.md) (PR #130),
 Fahrzeuge: [Feuerwehr-Fahrzeuge](feuerwehr-fahrzeuge.md).
 
@@ -24,28 +24,42 @@ Fahrzeuge: [Feuerwehr-Fahrzeuge](feuerwehr-fahrzeuge.md).
   der Mitte der Bahnen (Schwerpunkt der Bahnmitten) kosten bei der Wahl einen Aufschlag von 0,5 m je Meter Abstand: Wachen am Rand
   kommen nur, wenn sie deutlich näher am Ziel sind; Außenwachen an entfernten Bahnen (EDDL Wache Nord, EDDF) bleiben im Spiel.
 - **Fahrzeuge:** nach Feuerwehr-Kategorie aus der Länge des Flugzeugtyps (A320 = 6, A321 = 7, B77W = 9). Bis 5: 1 FLF, 6–7: 2 FLF
-  und ELW, ab 8: 3 FLF und ELW; bei Full Emergency dazu HLF, Rettungstreppe(n), RTW.
+  und ELW, ab 8: 3 FLF und ELW (Mindestzahl nach ICAO Annex 14), bei Full Emergency ab 8 vier FLF; bei Full Emergency dazu HLF,
+  eine Rettungstreppe und RTW (bis .19 ab 8 zwei Rettungstreppen und drei FLF).
 - **Bereitstellung:** Haltepunkte der Landebahn: FLF 1 an der Aufsetzzone, FLF 2 hinter der erwarteten Stoppstelle, FLF 3 am
-  Bahnende, ELW und der Rest an der Mitte (hintereinander, je 22 m). Haltepunkte auf einer Bahn (Hold-Short-Punkte an Kreuzungen)
+  Bahnende, FLF 4, ELW und der Rest an der Mitte (hintereinander, je 22 m). Haltepunkte auf einer Bahn (Hold-Short-Punkte an Kreuzungen)
   und solche näher als halbe Bahnbreite plus 15 m an der Mittellinie fallen weg.
-- **Folgen:** Ab dem Aufsetzen zeichnet Duopilo die Spur des Flugzeugs auf. Ist das Flugzeug an einem Fahrzeug vorbei und langsamer
-  als 40 kt, fährt das Fahrzeug auf die Spur und folgt mit Abstand (Bahn 80 m, Rollweg 50 m bei Medium, Kolonne je 25 m mehr). Ist
-  es noch unterwegs und das Flugzeug schon an ihm und seinem Haltepunkt vorbei (später Alarm), fährt es gleich auf die Spur. Die
-  Kolonne ordnet sich nach dem Abstand zum Flugzeug: Wer später kommt, reiht sich hinten ein.
-- **Umstellen:** Steht das Flugzeug 6 s auf der Bahn (20 s daneben), fahren alle auf ihre Plätze: FLF vorn links, hinten rechts,
-  hinten links, ELW schräg vor der Nase, die anderen weiter weg. Fahrzeuge vor dem Flugzeug kommen ihm entgegen.
+- **Folgen:** Ab dem Aufsetzen zeichnet Duopilo die Spur des Flugzeugs auf. Ist das Flugzeug an einem Fahrzeug vorbei, fährt das
+  Fahrzeug gleich auf die Spur, egal wie schnell das Flugzeug noch ist (bis .19 erst unter 40 kt), und folgt mit Abstand (Bahn 80 m
+  bei Medium, 90 m bei Heavy, Rollweg 50 bzw. 65 m, Kolonne je 25 m mehr). Ist es noch unterwegs und das Flugzeug schon an ihm und
+  seinem Haltepunkt vorbei (später Alarm), fährt es gleich auf die Spur. Die Kolonne ordnet sich nach dem Abstand zum Flugzeug: Wer
+  später kommt, reiht sich hinten ein.
+- **Entgegen vom Bahnende:** Das FLF am Bahnende (FLF 3) fährt ab dem Aufsetzen über die Bahn dem Flugzeug entgegen, auch wenn es
+  selbst noch unterwegs war (Log: `approaching over runway …`). Solange das Flugzeug rollt, bleibt es vor der Stelle, an der es mit
+  1,2 m/s² zum Stehen käme, plus 150 m (quer: halbe Bahnbreite plus 25 m). Startet das Flugzeug durch, fährt es zurück an seinen
+  Haltepunkt.
+- **Umstellen:** Steht das Flugzeug 6 s auf der Bahn (20 s daneben), fahren alle auf ihre Plätze, auch wer noch unterwegs ist (bis
+  .19 erst ab dem Haltepunkt, wenn es weiter als 300 m weg war): FLF vorn links, hinten rechts, hinten links, vorn rechts, ELW schräg
+  vor der Nase, die anderen weiter weg. Fahrzeuge vor dem Flugzeug kommen ihm entgegen. Von weiter als 800 m geht es über das Netz,
+  und darin zählt die Bahn des Notfalls nach der Landung wie ein Rollweg (sonst achtfach); das gilt auch für den Weg auf die Spur.
 - **Weiter:** Rollt das Flugzeug wieder, folgt nur FLF 1, die anderen fahren ohne Blaulicht zurück zur Wache und verschwinden dort.
   Ist ein anderes FLF schon beim Flugzeug und mehr als 200 m näher dran als FLF 1, folgt dieses. Steht das Flugzeug danach eine
   Minute abseits der Bahn, rückt auch der Begleiter ein. „cancel Mayday“ / „cancel Pan Pan“: alle zurück.
-- **Bahnen kreuzen:** Führt ein Weg (Anfahrt, auf die Spur, Aufstellen, Rückfahrt) auf eine Bahn, hält das Fahrzeug an der Stelle,
-  die halbe Bahnbreite plus 40 m neben der Mittellinie liegt, mindestens 2 s mit Blaulicht, 5 s ohne. Dann fragt Duopilo den Verkehr
-  ab und kreuzt, wenn nichts auf der Bahn ist und nichts im Endanflug (mit Blaulicht bis 2 NM, sonst bis 4 NM, wie beim eigenen
-  KI-Verkehr). Ohne Antwort aus der Abfrage nach 20 s trotzdem. Die Bahn des Notfalls ist nach der Landung frei, solange der Einsatz
+- **Bahnen kreuzen:** Bei Mayday kreuzen die Fahrzeuge mit Blaulicht jede Bahn ohne Halt und ohne Verkehrsabfrage (Vorfahrt; der
+  Flughafen ist dann für den eigenen KI-Verkehr gesperrt, siehe unten). Sonst: Führt ein Weg (Anfahrt, auf die Spur, Aufstellen,
+  Rückfahrt) auf eine Bahn, hält das Fahrzeug an der Stelle, die halbe Bahnbreite plus 40 m neben der Mittellinie liegt. Mit Blaulicht
+  (Pan Pan, Notfall am Boden) fragt Duopilo den Verkehr schon ab 200 m davor ab und lässt es durchfahren, wenn die Bahn frei ist;
+  ohne Blaulicht (Rückfahrt) hält es mindestens 5 s und fragt dann. Frei heißt: nichts auf der Bahn und nichts im Endanflug (mit
+  Blaulicht bis 2 NM, sonst bis 4 NM, wie beim eigenen KI-Verkehr). Ohne Antwort aus der Abfrage nach 20 s Halt trotzdem. Die Bahn des Notfalls ist nach der Landung frei, solange der Einsatz
   läuft; davor (das Flugzeug im Endanflug) und auf der Rückfahrt gilt sie wie jede andere. Das Flugzeug des Notfalls zählt nach der
   Landung nicht als Verkehr, solange es steht (unter 3 kt; erkannt an der Objekt-ID des Verkehrstests bzw. als eigenes Flugzeug).
   Rollt es über eine Bahn, wartet das Fahrzeug, bis es von ihr herunter ist. Wer der Spur folgt, kreuzt hinter dem Flugzeug ohne
-  eigenen Halt. Im Status steht `holdingShort`, das
-  Log schreibt `holding short of runway …`, `waiting for runway …` und `crossing runway … after … s`.
+  eigenen Halt. Im Status steht `holdingShort`, das Log schreibt `holding short of runway …`, `waiting for runway …` und
+  `crossing runway … after … s` (ohne Halt: `after 0 s`).
+- **Sperre für den eigenen KI-Verkehr:** Bei Mayday ist der Flughafen gesperrt, sobald die Fahrzeuge ausrücken, bis sie einrücken
+  (Log `Airport … closed for own AI traffic` bzw. `open again`). Der Verkehrstest landet dort nicht (Durchstarten an der
+  Entscheidungshöhe, `landing_runway_busy …: airport closed (fire service, Mayday)`), kreuzt keine Bahn und reiht sich nicht zum Start
+  auf (`runway_busy …`). Ausgenommen ist das Flugzeug des Notfalls selbst. Den Live-Verkehr des Sims steuert Duopilo nicht.
 - **Fahrwege:** Für die Feuerwehr lädt Duopilo auch die Betriebsstraßen der Bodenfahrzeuge (TAXI_PATH VEHICLE und ROAD), damit
   die Fahrzeuge von der Wache aus aufs Rollweg-Netz finden. Flugzeuge rollen weiter nur über Rollwege. Ist der nächste Rollpunkt
   einer Wache abgeschnitten (in EDDL ein Stück am Helipad), probiert Duopilo die nächsten bis 400 m.
@@ -57,8 +71,10 @@ Fahrzeuge: [Feuerwehr-Fahrzeuge](feuerwehr-fahrzeuge.md).
   Vor Toren und Hallenwand stehen sie 4 m davor, Front nach außen, und rollen 12 m geradeaus heraus. Ist die Fläche der Wache in
   OSM das ganze Gelände (ein Gebäude darauf hat höchstens 80 % ihrer Fläche und mindestens 150 m²), gilt das größte Gebäude darauf
   als Halle, die Plätze liegen auf ihrer Seite zum Hof (zur Mitte des Geländes), und das Gelände ist kein Hindernis (Log: `(hall)`).
+  Vor einer Hallenwand liegen in einer Reihe nur so viele Plätze, wie auf die Wand passen (1,5 m Rand an den Enden), und keiner im
+  Gebäude oder so, dass das Herausrollen durch die Halle führt; sonst die nächste Reihe, 9 m weiter vorn.
 - **Betriebsstraßen bevorzugt:** Auf der Anfahrt kostet ein Meter Straße 0,7 Meter Rollweg (Umweg über die Straße bis zum 1,4-Fachen),
-  auf der Rückfahrt ohne Blaulicht 0,5. Bahnen kosten weiter das Achtfache.
+  auf der Rückfahrt ohne Blaulicht 0,5. Bahnen kosten weiter das Achtfache, außer der Bahn des Notfalls nach der Landung.
 - **Betriebsstraßen aus OSM:** Bringt die Szenerie weniger als 20 Fahrweg-Abschnitte mit (Aerosoft EDDL: keine, hu277: 514), nimmt
   Duopilo die Straßen aus OpenStreetMap (`highway=service` im Flughafen, ohne Parkplatzgassen, Drive-in, Flächen, Tunnel und
   überdachte Stücke). Nur die Luftseite: Abschnitte, deren Mitte außerhalb des Flughafen-Umrisses liegt, die einen Zaun oder eine
@@ -97,8 +113,9 @@ Fahrzeuge: [Feuerwehr-Fahrzeuge](feuerwehr-fahrzeuge.md).
   `L:1:DUOPILO_KURVE` (Krümmung der Fahrspur, rechts positiv, über 0,4 s geglättet, höchstens 1/6 m). Im Stand bleibt die Lenkung
   stehen. Die Modelle rechnen daraus Drehwinkel und Lenkeinschlag ([Feuerwehr-Fahrzeuge](feuerwehr-fahrzeuge.md#räder-und-lenkung)).
 
-Noch nicht gebaut: Bahnsperre und Schließung für den eigenen Verkehr, ATC-Meldungen der Feuerwehr, Hochstufen von Pan Pan auf
-Mayday (mehr Fahrzeuge), heiße Bremsen und Startabbruch als Auslöser, Notfälle der eigenen KI, Effekte.
+Noch nicht gebaut: Freies Abstellen nach einem Notfall (Position ohne Fluggastbrücke abseits der Gebäude, geplant für .21),
+ATC-Meldungen der Feuerwehr, Hochstufen von Pan Pan auf Mayday (mehr Fahrzeuge), heiße Bremsen und Startabbruch als Auslöser,
+Notfälle der eigenen KI, Effekte.
 
 ## Test ohne MCP-Client
 
@@ -393,18 +410,25 @@ Dieselben zwei Tests wie oben, Bahn 14L, gefahren von Claude, Florian sah im Sim
   wenn das Flugzeug vorbei und langsamer als 40 kt ist (`FireOperation.JoinBelowMps`). Gewünscht: losfahren, sobald das Flugzeug
   vorbei ist, und rund 90 m dahinter folgen (heute Soll auf der Bahn bei Heavy 100 m, `FireCategory.RunwayGapM`). In Test 2 dasselbe:
   FLF 1 war beim Aufsetzen noch unterwegs und ging erst mit 1769 m Abstand auf die Spur, als Drittes der Kolonne mit Soll 130 m.
+  **Geändert in beta.44.feuerwehr.20:** auf die Spur, sobald das Flugzeug vorbei ist, ohne Grenze für sein Tempo; auf der Bahn bei
+  Heavy 90 m.
 - **FLF 3 fährt zu spät los:** Es soll schon beim Aufsetzen losfahren, nicht erst, wenn das Flugzeug steht. Heute fährt es auf jeden
   Fall zu seinem Haltepunkt am Bahnende: Ein Fahrzeug, das noch unterwegs und mehr als 300 m (`DirectRangeM`) vom stehenden Flugzeug
   weg ist, fährt seinen Weg zu Ende und bekommt seinen Platz erst am Haltepunkt (`UpdateWaiting`). Mit 3:44 min Anfahrt kam es hier
-  erst 68 s nach dem Stopp dort an.
+  erst 68 s nach dem Stopp dort an. **Geändert in beta.44.feuerwehr.20:** Das FLF am Bahnende fährt ab dem Aufsetzen über die Bahn
+  entgegen (auch von unterwegs) und hält vor der vorausgerechneten Stoppstelle; steht das Flugzeug, fahren alle hin, egal wie weit
+  (siehe „Entgegen vom Bahnende“ und „Umstellen“ oben).
 - **FLF 3 über die Bahn statt über Rollwege und Straßen:** Vom Bahnende soll es über die 14L zum Flugzeug fahren. Heute nimmt `Position()`
   von weiter als 800 m (`PositionRouteM`) den Weg über das Rollweg-Netz, und darin kostet jede Bahn das Achtfache, auch die Bahn des
   Notfalls. Geradeaus fährt nur, wer schon auf derselben Bahn steht; der Haltepunkt am Bahnende liegt 151 m neben der Mittellinie.
+  **Geändert in beta.44.feuerwehr.20:** Nach der Landung zählt die Bahn des Notfalls beim Routen wie ein Rollweg
+  (`TaxiGraph.FreeRunway`), beim Aufstellen und auf dem Weg auf die Spur.
 - **Kein Halt an Kreuzungen mit Blaulicht:** FLF 3 hielt auf der Anfahrt und auf dem Weg zum Flugzeug je 2 s vor der 06/24 (Mindesthalt
   mit Blaulicht, dann Verkehrsabfrage). Laut Florian hat die Feuerwehr im Einsatz Vorfahrt und soll nicht warten; bei Mayday sei der
   Flughafen ohnehin zu. Vorschlag: Mayday ohne Halt und ohne Verkehrsabfrage, dafür die Bahnsperre für den eigenen KI-Verkehr bauen
   (steht unter „Noch nicht gebaut“; Live-Verkehr des Sims steuert Duopilo nicht); Pan Pan ohne Mindesthalt, aber mit Verkehrsabfrage,
-  weil dort nichts gesperrt ist.
+  weil dort nichts gesperrt ist. Von Florian so bestätigt. **Gebaut in beta.44.feuerwehr.20** (siehe „Bahnen kreuzen“ und „Sperre für
+  den eigenen KI-Verkehr“ oben).
 - **Fahrzeuge je Kategorie:** Zwei RTF und nur drei FLF passen laut Florian nicht, die meisten Flughäfen haben nur ein RTF. Nachgesehen:
   Düsseldorf hat 8 FLF (6 im ICAO-Löschzug, 3 je Wache, 2 in Reserve) und 1 RTF
   ([Wikipedia](https://de.wikipedia.org/wiki/Flughafenfeuerwehr_D%C3%BCsseldorf)), Stuttgart 4 FLF und 1 RTF
@@ -412,12 +436,15 @@ Dieselben zwei Tests wie oben, Bahn 14L, gefahren von Claude, Florian sah im Sim
   an 3 Wachen ([Faktenblatt FBB](https://corporate.berlin-airport.de/content/dam/corporate/de/unternehmen-presse/newsroom/2022-03-31%20Faktenbaltt_Werkfeuerwehr%20FBB.pdf)).
   Die 3 FLF ab Kategorie 8 in `FireCategory.Lineup` sind die Mindestzahl nach ICAO Annex 14, die ein Flughafen vorhalten muss, nicht
   die Zahl, die zu einem Mayday ausrückt; RTF gibt es dort ab Kategorie 8 zwei. Zu ändern: ein RTF. Entschieden (Florian, 05.11.): bei
-  Mayday ab Kategorie 8 vier FLF.
+  Mayday ab Kategorie 8 vier FLF. **Geändert in beta.44.feuerwehr.20:** ein RTF, bei Mayday ab Kategorie 8 vier FLF (FLF 4 an der
+  Mitte, am Flugzeug vorn rechts).
 - **Platz 8 in der Halle:** `FireExits.ForOsm` legt an die 45-m-Wand 8 Plätze in eine Reihe (`(Länge − 2) / 6 + 1`), von der Mitte
   aus 6, 12, 18 und 24 m nach den Seiten. Platz 8 liegt damit 24 m von der Mitte, 1,5 m über das Ende der Wand hinaus. Dort springt
   ein Flügel der Halle 19 m nach vorn: Der Platz liegt 1,1 m in diesem Flügel, und sein Herausrollen (12 m) führt durch ihn. Der RTW
   auf diesem Platz kam als einziges Fahrzeug aus der falschen Richtung. Es fehlt die Prüfung, ob Platz und Herausrollen frei vom
-  Gebäude sind (sonst die nächste Reihe, 9 m weiter vorn), und die Reihe darf nicht über die Wand hinausgehen.
+  Gebäude sind (sonst die nächste Reihe, 9 m weiter vorn), und die Reihe darf nicht über die Wand hinausgehen. **Behoben in
+  beta.44.feuerwehr.20:** beides; an der Hauptwache liegen jetzt 7 Plätze in der ersten Reihe (höchstens 18 m von der Mitte), der achte
+  in der zweiten.
 - **Abstellen nach einem Notfall:** Laut Florian parkt ein Flugzeug mit Feuerwehreinsatz aus Sicherheitsgründen frei auf dem Vorfeld,
   nicht am Gebäude; nur bei Feuerwehreinsätzen, sonst bleibt die Wahl der Parkposition wie bisher. In Test 2 rollte der A320 an das
   Gate D20. Vorschlag: Ist die Feuerwehr für ein KI-Flugzeug alarmiert, plant der Verkehrstest das Rollziel neu (nach dem Abrollen ab
@@ -426,6 +453,7 @@ Dieselben zwei Tests wie oben, Bahn 14L, gefahren von Claude, Florian sah im Sim
   nichts. SimConnect hat am Flughafen `JETWAY`-Einträge (im Stub vorhanden, nicht abgefragt); Rückfall wären die Fluggastbrücken aus
   OSM (`aeroway=jet_bridge`), die die Feuerwehr schon als Hindernisse lädt.
 
-Noch offen: die Befunde oben; ob ein rollendes Flugzeug des Notfalls auf der Bahn als Verkehr zählt (.18, Test 2 nicht eindeutig);
-Landung auf der anderen Bahn, Alarm per Funk (Mayday/Pan Pan im ATC-Modul), Ausrücken ab 20 NM bei eigenem Anflug, Abstand zum
-Abgasstrahl.
+Noch offen: Nachtest von beta.44.feuerwehr.20 (FLF 1 früher auf der Spur mit 90 m, FLF 3 entgegen über die Bahn, Kreuzen ohne Halt
+bei Mayday und Sperre für den Verkehrstest, vier FLF und ein RTF, Plätze an der Hauptwache); freies Abstellen nach dem Notfall
+(.21); ob ein rollendes Flugzeug des Notfalls auf der Bahn als Verkehr zählt (.18, Test 2 nicht eindeutig); Landung auf der anderen
+Bahn, Alarm per Funk (Mayday/Pan Pan im ATC-Modul), Ausrücken ab 20 NM bei eigenem Anflug, Abstand zum Abgasstrahl.
