@@ -38,13 +38,17 @@ public static class FireExits
     /// <summary>MSFS-Parkposition für Bodenfahrzeuge (TAXI_PARKING TYPE).</summary>
     private const int VehicleParkingType = 13;
 
-    /// <summary>Plätze an einer OSM-Wache (siehe Klasse) und woher sie kommen: door, vehicle_parking, outline oder centre.</summary>
+    /// <summary>
+    /// Plätze an einer OSM-Wache (siehe Klasse) und woher sie kommen: door, vehicle_parking, outline oder centre. <paramref name="facing"/>:
+    /// dorthin zeigt die Hallenseite (Hof des Geländes), sonst zum nächsten Rollpunkt.
+    /// </summary>
     public static (IReadOnlyList<FireExit> Exits, string Source) ForOsm(
         double eastM,
         double northM,
         IReadOnlyList<(double East, double North)>? outline,
         IReadOnlyList<(double East, double North, bool Garage)> doors,
-        TaxiGraph graph)
+        TaxiGraph graph,
+        (double East, double North)? facing = null)
     {
         if (FirePlanner.NearestNode(graph, eastM, northM) is not { } nearest)
         {
@@ -83,12 +87,13 @@ public static class FireExits
             return (ForParking(parking), "vehicle_parking");
         }
 
-        // 3. Hallenseite zur Straße: die Wand, deren Außenseite am ehesten zum nächsten Rollpunkt zeigt (lange Wände bevorzugt)
+        // 3. Hallenseite zur Straße: die Wand, deren Außenseite am ehesten zum nächsten Rollpunkt (bzw. zum Hof) zeigt (lange Wände bevorzugt)
+        var (targetEast, targetNorth) = facing ?? (nearest.EastM, nearest.NorthM);
         var side = edges
             .Where(e => e.Length >= 4)
             .Select(e =>
             {
-                var (tx, ty) = (nearest.EastM - ((e.Ax + e.Bx) / 2), nearest.NorthM - ((e.Ay + e.By) / 2));
+                var (tx, ty) = (targetEast - ((e.Ax + e.Bx) / 2), targetNorth - ((e.Ay + e.By) / 2));
                 var distance = Math.Max(0.1, Math.Sqrt((tx * tx) + (ty * ty)));
                 return (Edge: e, Score: (((e.Normal.X * tx) + (e.Normal.Y * ty)) / distance) * Math.Min(e.Length, 25));
             })

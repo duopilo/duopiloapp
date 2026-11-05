@@ -1299,6 +1299,43 @@ public sealed class FireTests
     }
 
     [Fact]
+    public void Wache_als_Gelaende_nimmt_die_Halle_darauf_mit_Seite_zum_Hof()
+    {
+        // Test EDDK 05.11.: amenity=fire_station auf dem ganzen Grundstück (480/240 … 560/380), Halle 500/270 … 540/290 im Süden,
+        // der Hof liegt nördlich davon. Vorher standen die Fahrzeuge 4 m vor dem Grundstücksrand.
+        var graph = Graph();
+        OsmPoint P(double e, double n)
+        {
+            var (lat, lon) = graph.ToLatLon(e, n);
+            return new OsmPoint(lat, lon);
+        }
+
+        OsmShape Shape(params (double E, double N)[] corners) => new([.. corners.Select(c => P(c.E, c.N))], true);
+        var site = Shape((480, 240), (560, 240), (560, 380), (480, 380), (480, 240));
+        var hall = Shape((500, 270), (540, 270), (540, 290), (500, 290), (500, 270));
+        var shed = Shape((550, 360), (555, 360), (555, 365), (550, 365), (550, 360));
+        var centre = P(520, 310);
+        var osm = new OsmFireStation("Wache", centre.Lat, centre.Lon) { Outline = site.Points };
+        IReadOnlyList<OsmShape> buildings = [site, hall, shed];
+
+        Assert.Same(hall.Points, FireStationLookup.HallInSite(site.Points, buildings));
+        Assert.Null(FireStationLookup.HallInSite(hall.Points, buildings));          // die Halle selbst ist kein Gelände
+
+        var obstacles = FireStationLookup.WithoutSites(buildings, [osm]);
+        Assert.Equal(2, obstacles.Count);
+        Assert.DoesNotContain(site, obstacles);
+
+        var station = Assert.Single(FireStationLookup.ToStations([osm], graph, obstacles));
+        Assert.Equal("hall", station.ExitSource);
+        Assert.All(station.Exits.Take(7), e =>
+        {
+            Assert.InRange(e.NorthM, 293, 295);                  // 4 m vor der Nordwand der Halle, im Hof
+            Assert.InRange(e.EastM, 499, 541);
+            Assert.True(e.HeadingDeg is < 10 or > 350);          // Front nach Norden, zum Hof
+        });
+    }
+
+    [Fact]
     public void Gebaeude_die_ueber_den_Rollwegen_liegen_passen_nicht_zur_Szenerie()
     {
         // Eine Halle neben dem Netz passt; ein „Gebäude“ über Rollweg A (andere Szenerie) liegt auf den Rollwegen

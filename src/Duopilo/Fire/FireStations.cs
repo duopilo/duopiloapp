@@ -428,7 +428,8 @@ public sealed class FireStationLookup
     /// <summary>
     /// Wachen aus OSM als <see cref="FireStation"/> im Rollweg-Netz, mit Plätzen; nur bis 6 km vom Bezugspunkt, Name sonst "Wache n".
     /// Ist die Wache nur ein Punkt (amenity=fire_station ohne building=fire_station, z. B. die Flughafenfeuerwehr Düsseldorf), gilt das
-    /// Gebäude aus <paramref name="buildings"/> als ihr Umriss, in dem der Punkt liegt.
+    /// Gebäude aus <paramref name="buildings"/> als ihr Umriss, in dem der Punkt liegt. Ist ihre Fläche das Gelände (<see cref="HallInSite"/>),
+    /// gilt das größte Gebäude darin als Halle, und die Plätze liegen auf der Seite zum Hof (Quelle „hall“).
     /// </summary>
     public static IReadOnlyList<FireStation> ToStations(IReadOnlyList<OsmFireStation> osm, TaxiGraph graph, IReadOnlyList<OsmShape>? buildings = null) =>
         [.. osm
@@ -436,16 +437,98 @@ public sealed class FireStationLookup
             {
                 var (east, north) = graph.ToLocal(s.Latitude, s.Longitude);
                 var name = string.IsNullOrWhiteSpace(s.Name) ? "Wache " + (i + 1).ToString(CultureInfo.InvariantCulture) : s.Name.Trim();
-                var outline = (s.Outline ?? ContainingBuilding(buildings, s.Latitude, s.Longitude))?.Select(p => graph.ToLocal(p.Lat, p.Lon)).ToList();
+                var hall = s.Outline is { } site ? HallInSite(site, buildings) : null;
+                var outline = (hall ?? s.Outline ?? ContainingBuilding(buildings, s.Latitude, s.Longitude))?.Select(p => graph.ToLocal(p.Lat, p.Lon)).ToList();
                 var doors = s.Doors.Select(d =>
                 {
                     var (de, dn) = graph.ToLocal(d.Lat, d.Lon);
                     return (de, dn, d.Garage);
                 }).ToList();
-                var (exits, source) = FireExits.ForOsm(east, north, outline, doors, graph);
+
+                // Auf einem Gelände zeigen die Tore zum Hof: zur Mitte des Geländes statt zum nächsten Rollpunkt
+                (double East, double North)? facing = hall is not null && s.Outline is { } yard
+                    ? Centroid([.. yard.Select(p => graph.ToLocal(p.Lat, p.Lon))])
+                    : null;
+                var (exits, source) = FireExits.ForOsm(east, north, outline, doors, graph, facing);
+                if (hall is not null && source == "outline")
+                {
+                    source = "hall";
+                }
+
                 return new FireStation(name, east, north, s.Latitude, s.Longitude, "osm") { Exits = exits, ExitSource = source, Military = s.Military };
             })
             .Where(s => Math.Abs(s.EastM) < 6000 && Math.Abs(s.NorthM) < 6000)];
+
+    /// <summary>Hat ein Gebäude in der Fläche einer Wache höchstens diesen Anteil an ihr, ist die Fläche das Gelände der Wache.</summary>
+    public const double SiteBuildingShareMax = 0.8;
+
+    /// <summary>Kleinere Gebäude auf dem Gelände zählen nicht als Halle (Schuppen, Trafostation).</summary>
+    public const double MinHallM2 = 150;
+
+    /// <summary>
+    /// Ist die Fläche der Wache ihr Gelände statt ihr Gebäude, das größte Gebäude darauf als Halle, sonst null. Test EDDK 05.11.:
+    /// amenity=fire_station liegt auf dem ganzen Grundstück (Hof und Zufahrten), Duopilo stellte die Fahrzeuge 4 m vor den
+    /// Grundstücksrand aufs Vorfeld statt vor die Halle. Ein Gebäude zählt, wenn seine Mitte auf dem Gelände liegt.
+    /// </summary>
+    public static IReadOnlyList<OsmPoint>? HallInSite(IReadOnlyList<OsmPoint> outline, IReadOnlyList<OsmShape>? buildings)
+    {
+        if (buildings is null || outline.Count < 4)
+        {
+            return null;
+        }
+
+        var site = AreaM2(outline);
+        return buildings
+            .Where(b => b.Closed && b.Points.Count >= 4 && !SameShape(b.Points, outline))
+            .Select(b => (b.Points, Area: AreaM2(b.Points)))
+            .Where(b => b.Area >= MinHallM2 && b.Area <= site * SiteBuildingShareMax && Contains(outline, b.Points.Average(p => p.Lat), b.Points.Average(p => p.Lon)))
+            .OrderByDescending(b => b.Area)
+            .Select(b => b.Points)
+            .FirstOrDefault();
+    }
+
+    /// <summary>Gebäude ohne die Gelände der Wachen: über den Hof fahren die Fahrzeuge, er ist kein Hindernis.</summary>
+    public static IReadOnlyList<OsmShape> WithoutSites(IReadOnlyList<OsmShape> buildings, IReadOnlyList<OsmFireStation> stations)
+    {
+        var sites = stations.Where(s => s.Outline is { } o && HallInSite(o, buildings) is not null).Select(s => s.Outline!).ToList();
+        return sites.Count == 0 ? buildings : [.. buildings.Where(b => !sites.Any(site => SameShape(b.Points, site)))];
+    }
+
+    private static bool SameShape(IReadOnlyList<OsmPoint> a, IReadOnlyList<OsmPoint> b) =>
+        a.Count == b.Count && a.Zip(b).All(x => Math.Abs(x.First.Lat - x.Second.Lat) < 1e-8 && Math.Abs(x.First.Lon - x.Second.Lon) < 1e-8);
+
+    /// <summary>Fläche eines Umrisses in Quadratmetern (eben genähert um den ersten Punkt).</summary>
+    private static double AreaM2(IReadOnlyList<OsmPoint> points)
+    {
+        var lat0 = points[0].Lat;
+        var cos = Math.Cos(lat0 * Math.PI / 180);
+        var sum = 0.0;
+        for (var i = 0; i < points.Count; i++)
+        {
+            var (a, b) = (points[i], points[(i + 1) % points.Count]);
+            sum += (((a.Lon - points[0].Lon) * cos) * (b.Lat - lat0)) - (((b.Lon - points[0].Lon) * cos) * (a.Lat - lat0));
+        }
+
+        return Math.Abs(sum) / 2 * 111_320 * 111_320;
+    }
+
+    /// <summary>Flächenschwerpunkt eines Umrisses in Metern (bei entarteter Fläche der Mittelwert der Punkte).</summary>
+    private static (double East, double North) Centroid(IReadOnlyList<(double East, double North)> points)
+    {
+        var (area, cx, cy) = (0.0, 0.0, 0.0);
+        for (var i = 0; i < points.Count; i++)
+        {
+            var (a, b) = (points[i], points[(i + 1) % points.Count]);
+            var cross = (a.East * b.North) - (b.East * a.North);
+            area += cross;
+            cx += (a.East + b.East) * cross;
+            cy += (a.North + b.North) * cross;
+        }
+
+        return Math.Abs(area) < 1e-6
+            ? (points.Average(p => p.East), points.Average(p => p.North))
+            : (cx / (3 * area), cy / (3 * area));
+    }
 
     /// <summary>Ob der Betreiber das Militär ist (Bundeswehr, Air Force …).</summary>
     public static bool IsMilitaryOperator(string? operatorName)

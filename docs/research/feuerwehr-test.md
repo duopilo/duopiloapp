@@ -54,7 +54,9 @@ Fahrzeuge: [Feuerwehr-Fahrzeuge](feuerwehr-fahrzeuge.md).
 - **Ausrücken nebeneinander:** Jedes Fahrzeug hat an seiner Wache einen eigenen Platz, 6 m nebeneinander statt ineinander. Der
   Reihe nach: Tore aus OSM (`door=overhead`, `entrance=garage` … zuerst), dann ein Fahrzeugstellplatz der Szenerie bis 80 m um
   die Wache, dann die Hallenseite, die zum nächsten Rollpunkt zeigt (aus dem Gebäudeumriss in OSM), sonst quer um den Mittelpunkt.
-  Vor Toren und Hallenwand stehen sie 4 m davor, Front nach außen, und rollen 12 m geradeaus heraus.
+  Vor Toren und Hallenwand stehen sie 4 m davor, Front nach außen, und rollen 12 m geradeaus heraus. Ist die Fläche der Wache in
+  OSM das ganze Gelände (ein Gebäude darauf hat höchstens 80 % ihrer Fläche und mindestens 150 m²), gilt das größte Gebäude darauf
+  als Halle, die Plätze liegen auf ihrer Seite zum Hof (zur Mitte des Geländes), und das Gelände ist kein Hindernis (Log: `(hall)`).
 - **Betriebsstraßen bevorzugt:** Auf der Anfahrt kostet ein Meter Straße 0,7 Meter Rollweg (Umweg über die Straße bis zum 1,4-Fachen),
   auf der Rückfahrt ohne Blaulicht 0,5. Bahnen kosten weiter das Achtfache.
 - **Betriebsstraßen aus OSM:** Bringt die Szenerie weniger als 20 Fahrweg-Abschnitte mit (Aerosoft EDDL: keine, hu277: 514), nimmt
@@ -308,8 +310,9 @@ militärische Flächen) und fragte OSM dabei neu ab; ab dem zweiten Alarm galt d
 - **Wachenwahl:** Bundeswehr raus, Hauptwache für alle. Auch der Notfall am Boden an A14 (bei den Terminals) kam von der Hauptwache,
   nicht von der näheren Gebäudebrandschutzwache – so gewollt, solange unklar ist, ob dort Fahrzeuge stehen.
 - **DATA_ERROR:** keiner.
-- **RTF-Treppe und -Licht, Spawnhöhe:** auf Florians Screenshot von der Hauptwache (07:24) wirkt die Treppe eingefahren; die
-  Bestätigung im Sim steht noch aus, ebenso ob die Fahrzeuge an der Hauptwache noch aus dem Boden kommen.
+- **Spawnhöhe:** in Ordnung, laut Florian kommen die Fahrzeuge nicht mehr aus dem Boden.
+- **RTF-Treppe und -Licht:** Auf Florians Screenshot von der Hauptwache (07:24) wirkt die Treppe eingefahren; die Bestätigung im Sim
+  steht noch aus.
 
 **Befunde:**
 - **Rückfahrt über die Bahn des Notfalls:** Die Verkehrsabfrage für die Freigabe läuft ohne Texte (`withText: false`), die Kennung
@@ -318,10 +321,17 @@ militärische Flächen) und fragte OSM dabei neu ab; ab dem zweiten Alarm galt d
   sich die Objekt-ID des Verkehrstests und erkennt das Flugzeug daran. **Dazu in beta.44.feuerwehr.18:** Das Flugzeug zählt nur
   nicht, solange es steht (unter 3 kt); rollt es noch (Rollout, Pan Pan über eine Bahn), wartet das Fahrzeug wie vor jedem anderen.
   Sonst hätte .17 den ELW in Test 2 direkt hinter dem rollenden A320 über die 06/24 geschickt.
+- **Plätze an der Hauptwache:** Die Fahrzeuge kommen nicht mehr aus dem Boden, erscheinen aber wie auf Florians Screenshot vom
+  Morgen auf der Fläche vor der Wache statt vor den Hallentoren. In OSM liegt `amenity=fire_station` auf dem ganzen Grundstück (rund
+  10 400 m² mit Hof und Zufahrten), die Halle (L-förmig, rund 2 400 m²) ist ein eigenes Gebäude darauf, Tore sind nicht eingetragen.
+  Duopilo nahm das Grundstück als Hallenumriss und stellte die Fahrzeuge 4 m vor dessen Rand; dazu zählte das Grundstück als
+  Gebäude-Hindernis. **Behoben in beta.44.feuerwehr.19:** Das größte Gebäude auf dem Gelände ist die Halle, die Plätze liegen 4 m vor
+  ihrer Seite zum Hof, das Gelände selbst ist kein Hindernis mehr. Liegen die Tore in der Szenerie woanders, helfen nur Tore in OSM
+  (`door=overhead` an der Hallenwand), die gewinnen immer.
 - **Halteposition direkt am Platz:** Die Plätze am Flugzeug liegen 42 m neben der Mittellinie, also innerhalb von halber Breite plus
   40 m. `FireCrossings` findet davor keine Stelle mit genug Abstand und lässt die Fahrzeuge an ihrem Platz halten. Das ist in Ordnung
   (sie stehen ohnehin an der Bahn), im Status steht dann aber schon am Platz `holdingShort: 14L/32R`.
 
-Noch offen: Nachtest von beta.44.feuerwehr.18 (Rückfahrt über die 14L, solange das Flugzeug darauf steht: Halt am Platz, Freigabe
-nach 5 s), RTF-Treppe und -Licht sowie Spawnhöhe an der Hauptwache im Bild, Landung auf der anderen Bahn, Alarm per Funk
+Noch offen: Nachtest von beta.44.feuerwehr.19 (Rückfahrt über die 14L, solange das Flugzeug darauf steht: Halt am Platz, Freigabe
+nach 5 s; Plätze vor der Halle der Hauptwache, Log `Flughafenfeuerwehr Köln (hall)`), RTF-Treppe und -Licht im Bild, Landung auf der anderen Bahn, Alarm per Funk
 (Mayday/Pan Pan im ATC-Modul), Ausrücken ab 20 NM bei eigenem Anflug, Abstand zum Abgasstrahl.

@@ -406,9 +406,12 @@ public sealed class FireService : BackgroundService
                 if (await Task.WhenAny(fetch, Task.Delay(OsmWait, ct)) == fetch)
                 {
                     var osm = await fetch;
-                    UseBuildings(graph, airport, osm.Buildings);
+
+                    // Das Gelände einer Wache (amenity=fire_station auf dem Grundstück, EDDK) ist kein Hindernis, die Halle darauf schon
+                    var buildings = FireStationLookup.WithoutSites(osm.Buildings, osm.Stations);
+                    UseBuildings(graph, airport, buildings);
                     UseRoads(graph, airport, osm);
-                    stations = FireStationLookup.ToStations(osm.Stations, graph, osm.Buildings);
+                    stations = FireStationLookup.ToStations(osm.Stations, graph, buildings);
 
                     // Militärische Wachen fahren keine zivilen Einsätze (EDDK: Bundeswehr im militärischen Teil), auf einem reinen
                     // Militärflugplatz bleiben sie
