@@ -227,8 +227,10 @@ public sealed partial class SimConnectClient
     /// <summary>
     /// Lichter eines eigenen KI-Flugzeugs (NonATC-Flugzeuge schaltet der Sim nicht selbst). Beide Wege zugleich, weil offen ist, was
     /// welches Modell annimmt: das Event …_SET mit 1/0 und die SimVar LIGHT …. Lichter mit null bleiben unverändert.
+    /// <paramref name="simVars"/> false: nur die Events – Bodenfahrzeuge lehnen die SimVar ab (Test der Feuerwehr EDDL, 04.11.: bei
+    /// jedem Lichtwechsel zwei SimConnect DATA_ERROR je Fahrzeug).
     /// </summary>
-    public Task SetAiLightsAsync(uint objectId, AiLights lights, CancellationToken ct) =>
+    public Task SetAiLightsAsync(uint objectId, AiLights lights, CancellationToken ct, bool simVars = true) =>
         RunOnSimThreadAsync(sc =>
         {
             foreach (var (light, on) in lights.Changes())
@@ -241,6 +243,11 @@ public sealed partial class SimConnectClient
                     // Passive-C172 ließen es in beta.18/19 an): zusätzlich ON/OFF und LANDING_LIGHTS_SET je Index 1–4
                     TransmitToObject(sc, objectId, on ? "LANDING_LIGHTS_ON" : "LANDING_LIGHTS_OFF", 0);
                     TransmitIndexed(sc, objectId, eventName, on ? 1u : 0u, MaxLandingLightIndex);
+                }
+
+                if (!simVars)
+                {
+                    continue;
                 }
 
                 if (!_aiLightDefIds.TryGetValue(simVar, out var defId))
@@ -316,8 +323,9 @@ public sealed partial class SimConnectClient
     /// Kinematik: Duopilo übernimmt ein eigenes KI-Flugzeug ganz – die KI gibt es ab (AIReleaseControl), Position, Höhe und Lage
     /// werden eingefroren und jeden Frame aus <paramref name="pose"/> gesetzt (so wie vPilot Flugzeuge bewegt). <paramref name="pose"/>
     /// bekommt die vergangene Sim-Zeit in Sekunden (0 in der Pause) und läuft auf dem SimConnect-Thread; null = diesen Frame nichts setzen.
+    /// <paramref name="releaseAi"/> = false für Objekte ohne KI-Piloten (eigene Bodenfahrzeuge).
     /// </summary>
-    public void StartAiPose(uint objectId, Func<double, AiPose?> pose)
+    public void StartAiPose(uint objectId, Func<double, AiPose?> pose, bool releaseAi = true)
     {
         _aiPoseSources[objectId] = pose;
         Enqueue(sc =>
@@ -327,7 +335,11 @@ public sealed partial class SimConnectClient
                 return;
             }
 
-            sc.AIReleaseControl(objectId, (SimRequestId)(AiReleaseRequestBase + (++_nextAiReleaseRequest % 90_000)));
+            if (releaseAi)
+            {
+                sc.AIReleaseControl(objectId, (SimRequestId)(AiReleaseRequestBase + (++_nextAiReleaseRequest % 90_000)));
+            }
+
             Freeze(sc, objectId, true);
             if (!_frameSubscribed)
             {
@@ -348,6 +360,8 @@ public sealed partial class SimConnectClient
 
         Enqueue(sc =>
         {
+            ClearObjectVarDefs(sc, objectId);
+
             if (unfreeze)
             {
                 Freeze(sc, objectId, false);
@@ -798,6 +812,7 @@ public sealed partial class SimConnectClient
         _frameSubscribed = false;
         _aiPoseSources.Clear();
         _aiLightDefIds.Clear();
+        ResetVehicles();
         _aiModelsAvailable = false;
         _aiProbes.Clear();
         foreach (var (_, tcs) in _aiCreateRequests)

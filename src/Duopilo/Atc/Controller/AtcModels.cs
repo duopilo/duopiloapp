@@ -63,8 +63,55 @@ public enum AtcStep
     GateReadback,
     TaxiIn,
 
+    /// <summary>Follow-me angefordert ("hold position, follow-me is on the way"): warten, bis das Fahrzeug vor einem steht.</summary>
+    FollowMeWait,
+
+    /// <summary>"follow the follow-me to gate …": Readback des Gates offen.</summary>
+    FollowMeReadback,
+
     Done,
 }
+
+/// <summary>Follow-me aus Sicht von ATC: nur auf Anfrage des Piloten, nie von selbst.</summary>
+public enum AtcFollowMe
+{
+    None,
+
+    /// <summary>Angefordert – das Fahrzeug ist unterwegs (FollowMeService).</summary>
+    Requested,
+
+    /// <summary>"follow the follow-me" ist raus – das Fahrzeug führt.</summary>
+    Following,
+
+    /// <summary>Abbestellt oder nicht verfügbar – ein Fahrzeug fährt weg.</summary>
+    Cancelled,
+}
+
+/// <summary>Stand des Follow-me-Fahrzeugs, wie ihn der FollowMeService meldet.</summary>
+public enum AtcFollowMeVehicle
+{
+    None,
+
+    /// <summary>Unterwegs zum Treffpunkt vor dem Flugzeug.</summary>
+    OnTheWay,
+
+    /// <summary>Steht gewendet vor dem Flugzeug und wartet, dass es losrollt.</summary>
+    InPosition,
+
+    /// <summary>Fährt vor dem Flugzeug her.</summary>
+    Leading,
+
+    /// <summary>Kein Follow-me möglich (Fahrzeugmodell fehlt, keine Route, Gate zu nah …).</summary>
+    Unavailable,
+
+    /// <summary>Am Gate angekommen oder weggefahren.</summary>
+    Finished,
+}
+
+/// <summary>Follow-me-Fahrzeug für die Sitzung.</summary>
+/// <param name="RequestId">Anfrage, zu der dieser Stand gehört (<see cref="AtcSession.FollowMeRequestId"/>) – ältere gelten nicht.</param>
+/// <param name="Gate">Gate, zu dem das Fahrzeug führt (wenn ATC selbst keins hat).</param>
+public sealed record AtcFollowMeStatus(long RequestId, AtcFollowMeVehicle State, string? Gate = null);
 
 /// <summary>Stand der Oceanic-Freigabe.</summary>
 public enum OceanicClearanceState
@@ -138,6 +185,11 @@ public sealed record AtcInput
     /// Lage (Verkehr im Sim aus, am Boden, Abfrage fehlgeschlagen oder zu alt).
     /// </summary>
     public AtcTrafficPicture? Traffic { get; init; }
+
+    /// <summary>
+    /// Follow-me-Fahrzeug, null = es gibt keins (Modul aus oder nicht in dieser Instanz) – eine Anfrage bekommt dann "not available".
+    /// </summary>
+    public AtcFollowMeStatus? FollowMe { get; init; }
 }
 
 /// <summary>Was Duopilo überwacht: Transpondercode oder COM1-Frequenz.</summary>

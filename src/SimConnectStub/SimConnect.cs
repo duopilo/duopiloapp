@@ -402,6 +402,10 @@ namespace Microsoft.FlightSimulator.SimConnect
         {
         }
 
+        public void ClearDataDefinition(Enum DefineID)
+        {
+        }
+
         public void RequestDataOnSimObject(Enum RequestID, Enum DefineID, uint ObjectID, SIMCONNECT_PERIOD Period, SIMCONNECT_DATA_REQUEST_FLAG Flags, uint origin, uint interval, uint limit)
         {
         }

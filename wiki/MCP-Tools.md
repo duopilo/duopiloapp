@@ -83,6 +83,7 @@ See [Input Module](Input-Module).
 | `get_atc_controller` | current station with frequency and voice, expected next pilot call, pending readback, squawk, deviations, history, template errors |
 | `atc_control` | start / stop / restart the session, `reload` templates and data, repeat the last transmission |
 | `atc_set_value` | set gate, holding point, taxi route, pushback direction, approach type or runway by hand |
+| `follow_me` | follow-me after landing (only on request): vehicle state; `request` without the radio for testing, `cancel` |
 
 See [ATC](ATC).
 

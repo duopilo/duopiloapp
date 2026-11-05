@@ -22,7 +22,7 @@ Die Übergänge kommen aus deinen Funksprüchen und aus dem Flugzustand.
 | **Oceanic** | Freigabe ca. 30 min vor dem Eintrittspunkt, Positionsmeldungen an jedem Oceanic-Fix | am Austrittspunkt an die Domestic-Stelle |
 | **Approach** | Sinkflug, STAR, erwarteter Anflug und Bahn, QNH; Anflugfreigabe ab 20 nm | ab 12 nm: „contact Tower“ |
 | **Tower** | Landefreigabe mit Wind (spätestens 4 nm vorher); mit Verkehr vor einem im Endanflug erst die Reihenfolge („number two, follow …“) | nach der Landung unter 40 kt: „vacate via next exit, contact Ground“ |
-| **Ground** | Rollen zum Gate | Ende, wenn das Flugzeug mit gesetzter Parkbremse steht |
+| **Ground** | Rollen zum Gate – oder auf Anfrage mit [Follow-me](#follow-me) | Ende, wenn das Flugzeug mit gesetzter Parkbremse steht |
 
 - Kurzstrecken ohne Oceanic-Fixe überspringen Oceanic.
 - Ohne Freigaben gestartet → ATC springt beim Startlauf zum Tower nach.
@@ -57,6 +57,21 @@ Departure, Center und Oceanic beantworten Höhenanfragen:
 ## Sinkflug
 
 Am Top of Descent gibt Center „descend via ANJLL4 arrival“ frei, wenn das OFP eine STAR hat (freigegeben bis zur niedrigsten geplanten Höhe der STAR), sonst „descend FL110“. Endet die Freigabe unter der Übergangshöhe des Ziels, kommt das QNH dazu und gehört zum Readback.
+
+## Follow-me
+
+Nur auf Anfrage, wie an den meisten echten Flughäfen – ATC schickt nie von sich aus eins. Nach dem Abrollen beim Ground anfragen (auch noch beim Rollen):
+
+> „Düsseldorf Ground, Lufthansa four alpha bravo, runway two three right vacated, request follow-me“
+> → „Lufthansa four alpha bravo, hold position, follow-me is on the way“
+
+Der eigene Transporter von Duopilo kommt dir über die Rollwege entgegen und wendet vor dir; dann sagt Ground „follow the follow-me to gate C2“ (Readback: das Gate). Er fährt mit Rundumlicht vorweg und hält Abstand – schneller, wenn du aufschließt, er wartet, wenn du stehst. Am Gate fährt er an der Einfahrt vorbei, wartet, bis du dort bist, und verschwindet.
+
+- „cancel follow-me“ / „follow-me not required“ schickt ihn weg (wer noch hält, bekommt die normale Rollfreigabe).
+- Gate: das, das ATC kennt (mit `atc_set_value gate` gesetzt), sonst ein freies, das zum Typ passt.
+- Kein Fahrzeug (Paket fehlt, keine Route, Gate gleich voraus, nach 4 Minuten nicht vor dir, `followMeTimeoutSeconds`): „follow-me not available, taxi to …“.
+- Vor dem Abflug gibt es keins („negative, follow-me not available“).
+- Braucht das Fahrzeugpaket von Duopilo im Community-Ordner und läuft nur in der Tray-Instanz; Einstellungen `Duopilo:FollowMe` ([Einstellungen](#einstellungen)). `follow_me` zeigt den Stand und fordert zum Testen ohne Funk eins an.
 
 ## Verkehr
 
@@ -137,3 +152,5 @@ Vorlagen, Airline-Rufzeichen, Stationsnamen, Frequenzen, Regeln und Stimmen: [AT
 ## Einstellungen
 
 `Duopilo:Atc` in `appsettings.Local.json`: `Enabled`, `TemplatesFile`, `Speak`, `SquawkFromSim`, `SessionFile`, `SessionMaxAgeHours`. Zustand im Browser: `http://127.0.0.1:5155/atc/controller`.
+
+`Duopilo:FollowMe`: `Enabled` (Standard an), `Model` (Titel des Fahrzeugs aus seiner `sim.cfg`, Standard `Duopilo_FollowMe_Licht`), `HeightFt` (Bezugspunkt des Modells über dem Boden, Standard 0).

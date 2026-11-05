@@ -925,6 +925,7 @@ public sealed class AtcService : BackgroundService
         TransponderCode = Duopilo.Tools.Fmt.Squawk(_sim.Num("xpdrCode")),
         Com1ActiveMhz = _sim.Num("com1Active"),
         Traffic = CurrentTraffic(),
+        FollowMe = _services.GetService<Duopilo.Vehicles.FollowMeService>()?.AtcStatus,
     };
 
     private string? SimCallsign()

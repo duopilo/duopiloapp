@@ -89,6 +89,9 @@ public sealed class DuopiloOptions
     /// <summary>Testwerkzeug für eigenen KI-Verkehr (Entwicklung, standardmäßig aus) – docs/research/eigener-verkehr.md.</summary>
     public TrafficTestOptions TrafficTest { get; set; } = new();
 
+    /// <summary>Follow-me nach der Landung – nur auf Anfrage beim Ground ("request follow-me").</summary>
+    public FollowMeOptions FollowMe { get; set; } = new();
+
     /// <summary>
     /// Datenordner (Logs, Modelle, Caches, Dashboard-Einstellungen). Leer = %LOCALAPPDATA%\Duopilo – beim ersten Start
     /// übernommen aus %LOCALAPPDATA%\Kopilot (<see cref="DataDirectoryMigration"/>).
@@ -390,6 +393,23 @@ public sealed class TrafficTestOptions
 
     /// <summary>Nach dieser Zeit wird das Testflugzeug entfernt, auch ohne Stopp.</summary>
     public int MaxMinutes { get; set; } = 15;
+}
+
+/// <summary>
+/// Follow-me: Nach der Landung fordert der Pilot es beim Ground an ("request follow-me"), nie kommt es von selbst. Ein eigenes
+/// Fahrzeug (SimObject aus dem Fahrzeugpaket von Duopilo im Community-Ordner) kommt entgegen, wendet vor dem Flugzeug und führt es
+/// zum Gate. Fehlt das Paket, sagt Ground "follow-me not available" und gibt die normale Rollfreigabe.
+/// </summary>
+public sealed class FollowMeOptions
+{
+    /// <summary>Follow-me auf Anfrage anbieten. Nur die Tray-Instanz erzeugt das Fahrzeug, die stdio-Instanz nie.</summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>Titel des Fahrzeugs aus seiner sim.cfg – die Variante mit schaltbarem Licht (Rundumlicht und Fahrlicht je Fahrzeug).</summary>
+    public string Model { get; set; } = "Duopilo_FollowMe_Licht";
+
+    /// <summary>Bezugspunkt des Modells über dem Boden (ft); 0 = Ursprung des Modells am Boden.</summary>
+    public double HeightFt { get; set; }
 }
 
 public sealed class InputOptions
