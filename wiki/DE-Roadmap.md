@@ -47,9 +47,9 @@ Eigener KI-Verkehr von Duopilo statt des Verkehrs aus dem Simulator, Schritt fü
 - [x] **Takt der Landungen und Mischbetrieb** (beta.34, in der Beta) – Landungen nacheinander mit Abstand nach Wirbelschleppen, Lücken für Abflüge, Starts und Landungen auf einer Bahn (wie in Düsseldorf), Durchstarten, wenn die Bahn noch belegt ist
 - [x] **Übergänge zwischen den Phasen** (beta.37, in der Beta) – Anflüge aus dem Reiseflug (Sinkflug und Kurve auf den Final aus jeder Richtung, dann Landung und Rollen) und Abflüge bis in den Reiseflug (Kurve auf einen Kurs, Steigflug auf die Flugfläche), geflogen von Duopilo selbst
 - [ ] **Follow-me** – eigenes Fahrzeugmodell (Bus mit Vollkaro), führt dein Flugzeug vom Abrollweg zum Gate
-- [ ] **Flughafenfeuerwehr** – europäische Löschfahrzeuge bei Notfällen aus dem ATC-Modul (Bereitstellung an der Bahn, hinterherfahren nach dem Aufsetzen, Flugzeug umstellen), später auch bei heißen Bremsen, Startabbruch und Brand am Boden; Fahrzeugmodelle mit schaltbarem Licht sind fertig ([Fahrzeuge](https://github.com/duopilo/duopiloapp/blob/main/docs/research/feuerwehr-fahrzeuge.md), [Planung](https://github.com/duopilo/duopiloapp/blob/main/docs/research/feuerwehr-einsaetze.md))
+- [ ] **Flughafenfeuerwehr** – europäische Löschfahrzeuge bei Notfällen aus dem ATC-Modul (Bereitstellung an der Bahn, hinterherfahren nach dem Aufsetzen, Flugzeug umstellen), später auch bei heißen Bremsen, Startabbruch und Brand am Boden; Fahrzeugmodelle mit schaltbarem Licht und hebbarer Rettungstreppe sind fertig ([Fahrzeuge](https://github.com/duopilo/duopiloapp/blob/main/docs/research/feuerwehr-fahrzeuge.md), [Planung](https://github.com/duopilo/duopiloapp/blob/main/docs/research/feuerwehr-einsaetze.md))
 - [ ] **Eigene Passive-Flugzeugmodelle**
-- [ ] **Helikopter** – kinematisch: Anflug, Schweben, senkrechtes Landen und Abheben auf Heliports und Flughäfen
+- [ ] **Helikopter** – kinematisch: Anflug, Schweben, senkrechtes Landen und Abheben auf Heliports und Flughäfen; die Landung auf einem Helipad oder beliebigen Punkt ist ab beta.40 im Test (H1), das Abheben ab beta.42 (H2)
 - [ ] **Fahrplan-Verkehr** – Flüge, über den ICAO-Typ den installierten Modellen zugeordnet
 - [x] Auch in Frankfurt testen (drei Parallelbahnen und die Startbahn West)
 

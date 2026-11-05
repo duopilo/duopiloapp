@@ -47,9 +47,9 @@ Duopilo's own AI traffic instead of the simulator's, built step by step with the
 - [x] **Landing sequence and mixed mode** (beta.34, in beta) – landings one after another with wake spacing, gaps for departures, departures and landings on one runway (like Düsseldorf), go-around when the runway is still occupied
 - [x] **Phase transitions** (beta.37, in beta) – arrivals from cruise (descent and turn onto the final from any direction, then landing and taxi-in) and departures to cruise (turn onto a track, climb to the flight level), flown by Duopilo itself
 - [ ] **Follow-me** – own vehicle model (van with full checker livery), leads your aircraft from the exit to the gate
-- [ ] **Airport fire service** – European crash tenders on emergencies from the ATC module (stand by at the runway, follow you after touchdown, surround the aircraft), later also hot brakes, rejected takeoffs and fires on the ground; vehicle models with switchable lights are ready ([vehicles](https://github.com/duopilo/duopiloapp/blob/main/docs/research/feuerwehr-fahrzeuge.md), [plan](https://github.com/duopilo/duopiloapp/blob/main/docs/research/feuerwehr-einsaetze.md))
+- [ ] **Airport fire service** – European crash tenders on emergencies from the ATC module (stand by at the runway, follow you after touchdown, surround the aircraft), later also hot brakes, rejected takeoffs and fires on the ground; vehicle models with switchable lights and a liftable rescue stair are ready ([vehicles](https://github.com/duopilo/duopiloapp/blob/main/docs/research/feuerwehr-fahrzeuge.md), [plan](https://github.com/duopilo/duopiloapp/blob/main/docs/research/feuerwehr-einsaetze.md))
 - [ ] **Own passive aircraft models**
-- [ ] **Helicopters** – kinematic: approach, hover, vertical landing and takeoff on heliports and airports
+- [ ] **Helicopters** – kinematic: approach, hover, vertical landing and takeoff on heliports and airports; the landing on a helipad or any spot is in the test since beta.40 (H1), the takeoff since beta.42 (H2)
 - [ ] **Schedule traffic** – flights mapped to the installed models by ICAO type
 - [x] Test at Frankfurt as well (three parallel runways and the Startbahn West)
 
