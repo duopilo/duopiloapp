@@ -1,7 +1,8 @@
 # Feuerwehr: Stand und Test im Sim
 
-Stand: 02.11.2026. Status: erster Stand gebaut (Alarm, Bereitstellung, Folgen, Umstellen, Einrücken), Tests ohne Sim grün. Der Test
-im Sim ist offen. Planung: [Feuerwehr-Einsätze](feuerwehr-einsaetze.md) (PR #130), Fahrzeuge: [Feuerwehr-Fahrzeuge](feuerwehr-fahrzeuge.md).
+Stand: 05.11.2026. Status: erster Stand gebaut (Alarm, Bereitstellung, Folgen, Umstellen, Einrücken), Tests ohne Sim grün. Im Sim
+getestet in EDDL (04.11.) und EDDK (05.11.), Ergebnisse unten. Planung: [Feuerwehr-Einsätze](feuerwehr-einsaetze.md) (PR #130),
+Fahrzeuge: [Feuerwehr-Fahrzeuge](feuerwehr-fahrzeuge.md).
 
 ## Was gebaut ist
 
@@ -137,3 +138,85 @@ Flughafenfeuerwehr Düsseldorf (OSM) über die Betriebsstraßen aus OSM, ohne Fa
 
 Noch offen: Landung auf der anderen Bahn, anderer Abrollweg als erwartet, Alarm per Funk (Mayday/Pan Pan im ATC-Modul), Ausrücken
 ab 20 NM bei eigenem Anflug, Abstand zum Abgasstrahl.
+
+## Ergebnis Test im Sim (05.11.2026, beta.44.feuerwehr.13, EDDK)
+
+Beide Tests mit KI-Flugzeugen (`traffic_test_start`) und `fire_service alert` mit `tail: DUO01`, Bahn 14L, gefahren von Claude. Das
+eigene Flugzeug (Jetson One) stand am Boden im Westen des Platzes. Die Szenerie bringt 214 Fahrweg-Abschnitte mit, Straßen aus OSM
+waren nicht nötig. Die 06/24 kreuzt die 14L.
+
+**Test 1 – Mayday, A330-300 (Kategorie 9) bleibt auf der 14L stehen (A1):**
+- **Erster Alarm ohne Cache:** Die Overpass-Abfrage für EDDK brauchte rund 50 s. Nach 8 s plante Duopilo wie vorgesehen mit der
+  Parkposition F32 als Wache. Danach waren 3 Wachen und 373 Betriebsstraßen im Cache. Mit `reset` abgebrochen und neu alarmiert.
+- **Wachen aus OSM:** Flughafenfeuerwehr Köln (Hauptwache, Platzmitte), Flughafenfeuerwehr (Südwesten) und Gebäudebrandschutzwache
+  (Norden, an den Terminals). Mit dem kürzesten Weg je Fahrzeug kam FLF 1 von der Gebäudebrandschutzwache, alle anderen von der
+  Hauptwache. Es rückten 8 Fahrzeuge aus (3 FLF, ELW, HLF, 2 RTF, RTW), alle mit Weg.
+- **Anflug:** Mit der Wegpunkt-KI lag der A330 157 ft zu hoch an der Schwelle und startete durch. Die Feuerwehr blieb dabei in
+  Bereitstellung. Der dritte Anflug ging kinematisch ab 4 NM. DUO01 war ein neues Objekt, und die Feuerwehr folgte ihm ohne neuen
+  Alarm. Aufsetzen bei 457 m, Stopp bei 1558 m.
+- **Bereitstellung** (Abstand zur Mittellinie aus dem Überflug des A330): FLF 1 bei 240 m (92 m), ELW, HLF, beide RTF und RTW
+  hintereinander am Haltepunkt bei 1673 m (98–152 m), FLF 3 am Bahnende bei 3569 m (151 m). **FLF 2 stand bei 2105 m auf der Bahn**,
+  2 m neben der Mittellinie (siehe Befunde).
+- **Umstellen:** FLF 1 kam von hinten (Spur ab 40 kt), alle anderen kamen entgegen. Nach 6 s Stand wurden die Plätze vergeben. Nach
+  1:20 min standen alle außer FLF 3. FLF 3 kam vom Bahnende über den Rollweg und war nach knapp 3 min auf seinem Platz. Plätze in
+  Metern (vorn/rechts vom Flugzeug): FLF 1 42/−42, FLF 2 −42/42, FLF 3 −42/−42, ELW 54/25, HLF −59/50, RTF 1 19/−57, RTF 2 −37/−59,
+  RTW 71/−21. Keins stand im Bereich von Rumpf und Flügeln (Spannweite 60 m).
+- **Einrücken:** Nach `cancel` fuhren alle ohne Blaulicht zurück. Die 7 von der Hauptwache verschwanden nach 1:40 bis 2:15 min, FLF 1
+  an der Gebäudebrandschutzwache nach 5:40 min (3,4 km).
+
+**Test 2 – Pan Pan, A320neo (Kategorie 6) mit Rollen zu D12 (A3):**
+- **Wache nach Fahrweg:** Alle drei Fahrzeuge (2 FLF, ELW) kamen von der Hauptwache. Der Alarm kam erst 60 s vor dem Aufsetzen.
+- **Bereitstellung:** FLF 2 und ELW erreichten den Haltepunkt bei 1673 m 17 s nach dem Aufsetzen. FLF 1 war noch auf dem Weg zur
+  Aufsetzzone (240 m).
+- **Folgen:** Der A320 rollte ohne Halt über A2 (2243 m) ab. FLF 2 und ELW, an denen er vorbeigekommen war, gingen auf die Spur und
+  folgten mit gut 500 m Abstand (Soll 80 bzw. 105 m). Rund eine Minute nach dem Abrollen rückten beide ein. FLF 1 fuhr erst weiter
+  Richtung Aufsetzzone und ging dann mit 2088 m Abstand auf die Spur. Es holte mit bis zu 48 kt auf und lag nach gut 2 min bei 50 bis
+  52 m (Soll 50). Beim Halt des A320 vor der 06/24 auf A (4 s) blieb es dahinter.
+- **Am Gate:** Der A320 stand um 06:03:02 auf D12. FLF 1 rückte 61 s später ein und war nach knapp 4 min an der Wache.
+- Die Ereignisse des Verkehrstests nennen hier den Rollweg (`taxi_crossings 06/24 hold on A …`, `holding_short 06/24 on A`). Die
+  leeren Namen aus EDDL hängen also an der Szenerie.
+
+**Prüfpunkte aus beta.44.feuerwehr.13:**
+- **RTF:** Die Treppe ist weiter ausgefahren. Laut Florian nimmt sie den Wert von `L:1:DUOPILO_WEG` an (Fahrstrecke). Duopilo setzt
+  `L:1:DUOPILO_TREPPE` gar nicht, und am RTF gab es keine eigenen Fehler. Vermutung: Duopilo legt je Variablenname eine einzige
+  DataDefinition an und schreibt sie an alle Modelle. Löst MSFS `L:1:` über die Reihenfolge der ersten Verwendung im Modell auf, dann
+  landet WEG beim RTF auf TREPPE, sobald TREPPE dort vor WEG registriert wird, und alle Variablen dahinter rutschen mit. Das würde
+  auch das fehlende Blau- und Fahrlicht am 04.11. erklären. Zu prüfen im Behaviors-Fenster des Sims. Abhilfe im Modell: TREPPE ans
+  Ende hinter FAHRLICHT, oder in allen Modellen dieselbe vollständige Liste in derselben Reihenfolge, TREPPE eingeschlossen.
+- **DATA_ERROR:** Beim Einrücken (Blaulicht aus) gab es keinen DATA_ERROR mehr, auch nicht beim Folgen und Umstellen. Der Fix aus .13
+  greift. Beim Spawn kommen weiter 3 bis 9 je Fahrzeug, fast alle in der Sekunde des Spawns, mit fortlaufenden SendIDs und `index 1`
+  (43 und 54 bei 8 Fahrzeugen, 12 bei 3). Das zuerst gespawnte Fahrzeug eines Einsatzes hatte in allen drei Läufen keinen. Das passt
+  zu den 7 Z-Variablen aus `FireVehicle.Vars()`: Im ersten Frame lädt das Objekt noch. Beim ersten Fahrzeug läuft der Pose-Takt erst
+  danach an. Folge:
+  `_aiVarSent` merkt sich die verworfenen Werte trotzdem, unveränderte Variablen (HORN, LICHTFARBE) gehen nie mehr hinaus. Heute
+  sind beide 0, das fällt also noch nicht auf. Vorschlag: Z-Variablen erst etwa 2 s nach dem Spawn senden, oder bei den
+  Lichtschaltungen (1, 2, 5 s) den Cache des Objekts leeren.
+
+**Befunde:**
+- **FLF 2 auf der Landebahn:** Der Haltepunkt 744 (2105 m) liegt 2 m neben der Mittellinie der 14L, also auf der Bahn. Welcher Knoten
+  der Szenerie das genau ist (Hold-Short-Punkt einer Kreuzung auf der Bahn?), ist noch offen. `TaxiGraph.Holds()` ordnet jeden
+  Hold-Knoten der nächsten Bahn zu (bis 400 m), auch wenn er auf ihr liegt, und `FirePlanner` filtert nur nach der Lage entlang der
+  Bahn. Der A330 hielt 540 m davor. Bei längerem Ausrollen wäre er durch FLF 2 gerollt. Vorschlag: im Planer Haltepunkte verwerfen,
+  die auf einer Bahn liegen (`Graph.RunwayAt`) oder näher als die halbe Bahnbreite plus Sicherheitsabstand an der Mittellinie.
+- **Spawnhöhe:** Florian sah die Fahrzeuge an der Hauptwache aus dem Boden kommen. Duopilo nimmt als Boden für alle Fahrzeuge die
+  Höhe unter dem eigenen Flugzeug, wenn es am Boden steht. Der Jetson One stand 1,3 km entfernt auf 223 ft MSL, Bahn und Wache liegen
+  bei etwa 253 ft. Die Fahrzeuge erschienen also rund 30 ft zu tief. Die Bodenabfrage je Fahrzeug liegt unter der Grenze von 60 ft
+  und wird übernommen, dann steigen sie mit 6 ft/s (`GroundSlewFtPerSec`), also etwa 5 s sichtbar. In EDDL war der Platz flach.
+  Vorschlag: die Höhe unter dem eigenen Flugzeug nur nahe der Wache nehmen, sonst die Platzhöhe, und die erste Bodenabfrage direkt
+  übernehmen (oder das Fahrzeug erst danach zeigen).
+- **Begleiter bei spätem Alarm:** `FireOperation.Escort()` ist immer FLF 1, auch wenn es noch unterwegs ist. In Test 2 folgten FLF 2
+  und ELW schon direkt hinter dem A320 und wurden eingerückt, während FLF 1 2 km aufholen musste. Besser: das FLF, das auf der Spur
+  am nächsten am Flugzeug ist. Ein Fahrzeug, an dessen Haltepunkt das Flugzeug schon vorbei ist, könnte auch gleich auf die Spur
+  gehen, statt erst zum Haltepunkt zu fahren.
+- **Gebäudebrandschutzwache:** In OSM ist sie als Feuerwache mit Umriss getaggt und zählt deshalb als volle Wache. FLF 1 kam bei
+  Mayday von dort. `amenity` und `building` werden gleich behandelt: Treffer unter 80 m werden zusammengelegt, ein Umriss gewinnt für
+  die Lage, der Name kommt vom zuerst gefundenen Treffer. Offen: ob Wachen nach Name oder einem weiteren Tag gefiltert werden sollen.
+- **Kreuzende Bahnen:** Die Feuerwehrfahrzeuge halten vor kreuzenden Bahnen nicht (keine Logik dafür, Bahnen kosten im Weg nur das
+  Achtfache). Ob ein Fahrzeug auf der Anfahrt eine Bahn gekreuzt hat, ist nicht ausgewertet. FLF 1 hielt in Test 2 vor der 06/24 nur,
+  weil es dem A320 folgte.
+- **Heavy im Verkehrstest:** Mit der Wegpunkt-KI startete der A330 durch (an 0,5 NM 110 ft, an der Schwelle 157 ft zu hoch). Für
+  Feuerwehr-Tests mit Heavies `kinematicNm` nehmen.
+
+Noch offen: FLF auf Haltepunkten auf der Bahn, Spawnhöhe, Begleiter bei spätem Alarm, RTF-Variablen im Modell, DATA_ERROR beim
+Spawn, Landung auf der anderen Bahn, Alarm per Funk (Mayday/Pan Pan im ATC-Modul), Ausrücken ab 20 NM bei eigenem Anflug, Abstand
+zum Abgasstrahl.
