@@ -1,6 +1,6 @@
 # Feuerwehr: Stand und Test im Sim
 
-Stand: 05.11.2026 (Nachtest beta.44.feuerwehr.16). Status: erster Stand gebaut (Alarm, Bereitstellung, Folgen, Umstellen, Einrücken), Tests ohne Sim grün. Im Sim
+Stand: 05.11.2026 (Nachtest beta.44.feuerwehr.19). Status: erster Stand gebaut (Alarm, Bereitstellung, Folgen, Umstellen, Einrücken), Tests ohne Sim grün. Im Sim
 getestet in EDDL (04.11.) und EDDK (05.11.), Ergebnisse unten. Planung: [Feuerwehr-Einsätze](feuerwehr-einsaetze.md) (PR #130),
 Fahrzeuge: [Feuerwehr-Fahrzeuge](feuerwehr-fahrzeuge.md).
 
@@ -332,6 +332,69 @@ militärische Flächen) und fragte OSM dabei neu ab; ab dem zweiten Alarm galt d
   40 m. `FireCrossings` findet davor keine Stelle mit genug Abstand und lässt die Fahrzeuge an ihrem Platz halten. Das ist in Ordnung
   (sie stehen ohnehin an der Bahn), im Status steht dann aber schon am Platz `holdingShort: 14L/32R`.
 
-Noch offen: Nachtest von beta.44.feuerwehr.19 (Rückfahrt über die 14L, solange das Flugzeug darauf steht: Halt am Platz, Freigabe
-nach 5 s; Plätze vor der Halle der Hauptwache, Log `Flughafenfeuerwehr Köln (hall)`), RTF-Treppe und -Licht im Bild, Landung auf der anderen Bahn, Alarm per Funk
-(Mayday/Pan Pan im ATC-Modul), Ausrücken ab 20 NM bei eigenem Anflug, Abstand zum Abgasstrahl.
+Nachgetestet mit beta.44.feuerwehr.19, siehe nächster Abschnitt.
+
+## Nachtest im Sim (05.11.2026, beta.44.feuerwehr.19, EDDK)
+
+Nur Test 1 (Mayday), Bahn 14L, gefahren von Claude, Florian sah im Sim zu. A330-300 (GE), Kategorie 9, A1, kinematisch ab 5 NM.
+Alarm 2 s nach dem Start des Verkehrstests.
+
+**Test 1 – Mayday, A330-300 bleibt auf der 14L stehen:**
+- **Wachen:** `military fire stations left out for a civil emergency: Flughafenfeuerwehr`, danach `Fire stations at EDDK from
+  OpenStreetMap: Flughafenfeuerwehr Köln (hall), Gebäudebrandschutzwache (outline)`. Die Hauptwache gilt jetzt als Halle auf ihrem
+  Gelände. Alle 8 Fahrzeuge (3 FLF, ELW, HLF, 2 RTF, RTW) kamen von dort, alle mit Weg, Spawns im Abstand von 4 s.
+- **Plätze an der Halle:** Nachgerechnet aus dem Zwischenspeicher (`cache\fire-stations\EDDK.json`): Gelände 10 400 m², Halle
+  2 383 m². Gewählt ist die 45 m lange Wand im Winkel zwischen den beiden Flügeln, die zum Hof zeigt (Blick 47°, nach Nordosten),
+  die Plätze 4 m davor im Abstand von 6 m. FLF 1 stand 3 s nach dem Spawn 2–3 m vor Platz 1 und rollte in Blickrichtung heraus.
+  Platz 8 (hier RTW 1) liegt im Gebäude (siehe Befunde). Ob die Tore der Szenerie an dieser Wand liegen, steht im Bild noch aus.
+- **Bereitstellung:** wie in .16: FLF 1 bei 240 m (2:09 min nach dem Alarm), FLF 2 und der Rest bei 1673 m (FLF 2 nach 1:31 min,
+  RTF 2 als letztes nach 2:05 min), FLF 3 am Bahnende bei 3569 m. FLF 3 hielt auf der Anfahrt 2 s vor der 06/24.
+- **Landung:** Aufsetzen bei 458 m mit 135 kt, Stopp bei 1559 m 30 s später. FLF 1 ging erst 21 s nach dem Aufsetzen auf die Spur,
+  rund 9 s vor dem Stopp, als der A330 langsamer als 40 kt war (siehe Befunde).
+- **Umstellen:** 6 s nach dem Stopp wurden die Plätze vergeben (dieselben wie in .13 und .16). ELW stand nach 30 s, HLF, FLF 2, RTW
+  und RTF 1 nach 38 bis 47 s, RTF 2 nach 69 s, FLF 1 nach 1:19 min. **FLF 3 war beim Stopp noch nicht am Bahnende:** Es erreichte
+  seinen Haltepunkt erst 68 s nach dem Stopp (3:44 min nach dem Alarm), drehte dort um und fuhr über das Rollweg-Netz (2,3 km, wieder
+  2 s Halt vor der 06/24) zum Flugzeug. Es stand 4:07 min nach dem Stopp.
+- **Rückfahrt über die 14L:** Nach `cancel` meldeten FLF 1–3, HLF und beide RTF eine Sekunde später an ihrem Platz `holding short
+  of runway 14L/32R` und kreuzten alle 5 s danach (`crossing runway 14L/32R after 5 s`). Der stehende A330 zählte nicht mehr als
+  Verkehr. ELW und RTW fuhren ohne Bahn. Alle 8 waren 1:48 bis 2:33 min nach dem `cancel` an der Wache verschwunden (in .16: 1:37 bis
+  3:47 min, davon 97 s Warten).
+- **DATA_ERROR:** keiner im Log während des Tests, weder beim Spawn noch beim Umstellen und Einrücken;
+  `traffic-messages.csv` ohne Fehler.
+
+**Prüfpunkte aus beta.44.feuerwehr.19:**
+- **Rückfahrt über die Bahn des Notfalls bei stehendem Flugzeug:** in Ordnung (Halt am Platz, Freigabe nach 5 s).
+- **Hauptwache als Halle:** in Ordnung, Log `Flughafenfeuerwehr Köln (hall)`, Plätze vor der Hallenwand zum Hof; Ausnahme Platz 8.
+- **DATA_ERROR:** keiner.
+
+**Befunde** (Florian im Sim, dazu Log und Quelle):
+- **FLF 1 fährt zu spät los:** Es blieb an der Aufsetzzone stehen, bis der A330 fast stand. Heute fährt ein Fahrzeug erst auf die Spur,
+  wenn das Flugzeug vorbei und langsamer als 40 kt ist (`FireOperation.JoinBelowMps`). Gewünscht: losfahren, sobald das Flugzeug
+  vorbei ist, und rund 90 m dahinter folgen (heute Soll auf der Bahn bei Heavy 100 m, `FireCategory.RunwayGapM`).
+- **FLF 3 fährt zu spät los:** Es soll schon beim Aufsetzen losfahren, nicht erst, wenn das Flugzeug steht. Heute fährt es auf jeden
+  Fall zu seinem Haltepunkt am Bahnende: Ein Fahrzeug, das noch unterwegs und mehr als 300 m (`DirectRangeM`) vom stehenden Flugzeug
+  weg ist, fährt seinen Weg zu Ende und bekommt seinen Platz erst am Haltepunkt (`UpdateWaiting`). Mit 3:44 min Anfahrt kam es hier
+  erst 68 s nach dem Stopp dort an.
+- **FLF 3 über die Bahn statt über Rollwege und Straßen:** Vom Bahnende soll es über die 14L zum Flugzeug fahren. Heute nimmt `Position()`
+  von weiter als 800 m (`PositionRouteM`) den Weg über das Rollweg-Netz, und darin kostet jede Bahn das Achtfache, auch die Bahn des
+  Notfalls. Geradeaus fährt nur, wer schon auf derselben Bahn steht; der Haltepunkt am Bahnende liegt 151 m neben der Mittellinie.
+- **Kein Halt an Kreuzungen mit Blaulicht:** FLF 3 hielt auf der Anfahrt und auf dem Weg zum Flugzeug je 2 s vor der 06/24 (Mindesthalt
+  mit Blaulicht, dann Verkehrsabfrage). Laut Florian hat die Feuerwehr im Einsatz Vorfahrt und soll nicht warten. Offen: ob mit
+  Blaulicht nur der Halt wegfällt oder auch die Verkehrsabfrage (Flugzeug im Endanflug).
+- **Fahrzeuge je Kategorie:** Zwei RTF und nur drei FLF passen laut Florian nicht, die meisten Flughäfen haben nur ein RTF. Nachgesehen:
+  Düsseldorf hat 8 FLF (6 im ICAO-Löschzug, 3 je Wache, 2 in Reserve) und 1 RTF
+  ([Wikipedia](https://de.wikipedia.org/wiki/Flughafenfeuerwehr_D%C3%BCsseldorf)), Stuttgart 4 FLF und 1 RTF
+  ([Feuerwehrmagazin](https://www.feuerwehrmagazin.de/wissen/werkfeuerwehr-flughafen-stuttgart-95061)), BER 12 FLF, davon 8 im Dienst,
+  an 3 Wachen ([Faktenblatt FBB](https://corporate.berlin-airport.de/content/dam/corporate/de/unternehmen-presse/newsroom/2022-03-31%20Faktenbaltt_Werkfeuerwehr%20FBB.pdf)).
+  Die 3 FLF ab Kategorie 8 in `FireCategory.Lineup` sind die Mindestzahl nach ICAO Annex 14, die ein Flughafen vorhalten muss, nicht
+  die Zahl, die zu einem Mayday ausrückt; RTF gibt es dort ab Kategorie 8 zwei. Zu ändern: ein RTF. Wie viele FLF bei Full Emergency
+  kommen, ist noch zu entscheiden.
+- **Platz 8 in der Halle:** `FireExits.ForOsm` legt an die 45-m-Wand 8 Plätze in eine Reihe (`(Länge − 2) / 6 + 1`), von der Mitte
+  aus 6, 12, 18 und 24 m nach den Seiten. Platz 8 liegt damit 24 m von der Mitte, 1,5 m über das Ende der Wand hinaus. Dort springt
+  ein Flügel der Halle 19 m nach vorn: Der Platz liegt 1,1 m in diesem Flügel, und sein Herausrollen (12 m) führt durch ihn. Es fehlt
+  die Prüfung, ob Platz und Herausrollen frei vom Gebäude sind (sonst die nächste Reihe, 9 m weiter vorn), und die Reihe darf nicht
+  über die Wand hinausgehen.
+
+Noch offen: die Befunde oben; RTF-Treppe und -Licht und die Plätze vor der Halle im Bild; Test 2 (Pan Pan) mit .19, u. a. ob der ELW
+vor dem rollenden A320 an der 06/24 weiter wartet (.18); Landung auf der anderen Bahn, Alarm per Funk (Mayday/Pan Pan im ATC-Modul),
+Ausrücken ab 20 NM bei eigenem Anflug, Abstand zum Abgasstrahl.
