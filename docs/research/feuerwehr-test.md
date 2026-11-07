@@ -1,6 +1,6 @@
 # Feuerwehr: Stand und Test im Sim
 
-Stand: 07.11.2026 (Nachtest beta.44.feuerwehr.23). Status: erster Stand gebaut (Alarm, Bereitstellung, Folgen, Umstellen, Einrücken), Tests ohne Sim grün. Im Sim
+Stand: 07.11.2026 (Nachtest beta.44.feuerwehr.23, gebaut .24). Status: erster Stand gebaut (Alarm, Bereitstellung, Folgen, Umstellen, Einrücken), Tests ohne Sim grün. Im Sim
 getestet in EDDL (04.11.) und EDDK (05.11.), Ergebnisse unten. Planung: [Feuerwehr-Einsätze](feuerwehr-einsaetze.md) (PR #130),
 Fahrzeuge: [Feuerwehr-Fahrzeuge](feuerwehr-fahrzeuge.md).
 
@@ -602,6 +602,23 @@ PassiveAircraft-Modellen (außer Militär und EC135, wie mit Florian ausgemacht)
 - **Am Platz:** Der Verkehrstest endet beim Parken und nimmt das Flugzeug sofort weg, darum rückt FLF 2 gleich ein. Die Minute am
   Platz lässt sich so nicht sehen.
 
-Noch offen: ob ein rollendes Flugzeug des Notfalls auf der Bahn als Verkehr zählt (.18); Abfrage im Anrollen mit Blaulicht (Pan
-Pan); Landung auf der anderen Bahn; Alarm per Funk; Abstand zum Abgasstrahl; die Minute am Platz (Test, der nach dem Parken nicht
-sofort endet).
+Test 3 (Landung auf einer anderen Bahn): Pan Pan für 14L, der Passive-A330-300 landete aber auf 06 (A1, Spawn 10 NM, kinematisch
+ab 5 NM). Aufsetzen bei 520 m mit 135 kt, Stopp bei 1559 m nach 29 s.
+
+- **Bereitstellung:** wie geplant an der 14L (FLF 2 nach 1:31 min, ELW 1:38, FLF 1 2:08, FLF 3 am Ende 3:31). FLF 3 kreuzte die
+  06/24 auf dem Weg nach 0 s, der A330 war da noch rund 6 NM draußen.
+- **Nach dem Stopp:** FLF 2 und ELW standen nahe an der Mitte der 14L, nicht weit vom Stopp, und waren nach 34 und 47 s am Platz
+  (06/24 nach 0 s gekreuzt, das stehende Flugzeug zählt nicht als Verkehr). FLF 3 blieb am Ende der 14L, bis das Flugzeug stand, und
+  kam erst nach 2:17 min. FLF 1 ging 15 s nach dem Aufsetzen auf die Spur: Es fuhr erst zu ihrem Anfang auf der 06 und ihr dann nach,
+  auch als das Flugzeug längst stand, und war erst nach 2:54 min am Platz.
+- **Ursache:** Die Bahn des Notfalls war immer die aus dem Alarm. Auf der 06 kam FLF 3 nicht entgegen, und wer auf dem Weg auf die
+  Spur war, fuhr diesen Weg zu Ende, auch wenn das Flugzeug schon stand.
+- **Fix in .24:** Ab dem Aufsetzen gilt die Bahn, auf der das Flugzeug wirklich gelandet ist (an einer Kreuzung die in seiner
+  Richtung), als Bahn des Notfalls. Dann kommt FLF 3 auch dort entgegen, die Bahn zählt beim Routen wie ein Rollweg und braucht keine
+  Freigabe, die geplante dagegen schon. Log: `the aircraft landed on runway 06/24 instead of 14L`. Steht das Flugzeug, fährt jedes
+  Fahrzeug, das noch auf dem Weg auf die Spur ist, gleich an seinen Platz. Test im Code mit einer zweiten Bahn 400 m südlich.
+- **Rückfahrt:** FLF 2 und ELW hielten 5 s vor der 06/24, dann zurück. Ohne Auffälligkeiten.
+
+Noch offen: Nachtest .24 (Landung auf der anderen Bahn); ob ein rollendes Flugzeug des Notfalls auf der Bahn als Verkehr zählt (.18);
+Abfrage im Anrollen mit Blaulicht (Pan Pan); Alarm per Funk; Abstand zum Abgasstrahl; die Minute am Platz (Test, der nach dem
+Parken nicht sofort endet).
