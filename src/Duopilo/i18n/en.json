@@ -1546,6 +1546,7 @@
   "log.fire.crossingBusy": "Fire service {unit} waiting for runway {runway}: {blocker}",
   "log.fire.crossingUnchecked": "Fire service {unit} crossing runway {runway} without a traffic check ({error})",
   "log.fire.approach": "Fire service {unit} approaching over runway {runway} while the aircraft rolls out",
+  "log.fire.otherRunway": "Fire service: the aircraft landed on runway {runway} instead of {planned}",
   "log.fire.remoteStands": "Fire service at {airport}: remote stands for {tail} after the landing: {stands} (jetways known: {known})",
   "log.fire.remoteStandsNone": "Fire service at {airport}: no remote stand for {tail} ({reason})",
   "log.fire.jetwaysFailed": "Fire service at {airport}: jetways from SimConnect unavailable ({error}), gates only as a fallback",

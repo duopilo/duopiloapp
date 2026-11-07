@@ -685,18 +685,19 @@ public sealed class TaxiGraph
     public IReadOnlyList<AirportRunway> Runways => _runways;
 
     /// <summary>Bahn, auf der ein Punkt liegt (höchstens halbe Breite plus 3 m neben der Mittellinie, innerhalb der Länge plus 20 m), sonst null.</summary>
-    public AirportRunway? RunwayAt(double eastM, double northM)
+    public AirportRunway? RunwayAt(double eastM, double northM) => RunwaysAt(eastM, northM).FirstOrDefault();
+
+    /// <summary>Alle Bahnen an einem Punkt – an einer Kreuzung zwei (oder mehr).</summary>
+    public IEnumerable<AirportRunway> RunwaysAt(double eastM, double northM)
     {
         foreach (var runway in _runways)
         {
             var (along, cross) = RunwayOffsets(runway, eastM, northM);
             if (Math.Abs(along) <= (runway.LengthM / 2) + 20 && Math.Abs(cross) <= (Math.Max(runway.WidthM, 20) / 2) + 3)
             {
-                return runway;
+                yield return runway;
             }
         }
-
-        return null;
     }
 
     /// <summary>Lage eines Punkts zu einer Bahn: entlang ab der Bahnmitte (Richtung primäres Ende) und quer zur Mittellinie, in Metern.</summary>

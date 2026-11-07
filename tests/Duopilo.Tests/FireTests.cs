@@ -17,7 +17,11 @@ public sealed class FireTests
 
     private static readonly int[] ConnectorX = [-800, -400, 0, 400, 800];
 
-    private static TaxiGraph Graph(bool stub = false, bool roads = false, bool runwayHold = false)
+    // Zweite Bahn 10/28 parallel 400 m südlich (x -800 … 800), Verbindungen von der 09/27 bei x = -800, 0, 800 mit Haltepunkt 90 m
+    // vor ihrer Mittellinie (WGS84-Grad Breite bei 51°: 111 248 m)
+    private static readonly AirportRunway Runway10 = new(51.0 - (400 / 111_248.2), 7.0, 50, 90, 1600, 45, "10", "28");
+
+    private static TaxiGraph Graph(bool stub = false, bool roads = false, bool runwayHold = false, bool secondRunway = false)
     {
         var points = new List<TaxiPointData>();
         for (var i = 0; i <= 10; i++)
@@ -66,6 +70,25 @@ public sealed class FireTests
             paths.Add(new TaxiPathData(2, 45, 9, 0, onRunwayHold, east, 0));
         }
 
+        if (secondRunway)
+        {
+            var second = new List<int>();
+            foreach (var x in new[] { -800, 0, 800 })
+            {
+                points.Add(new TaxiPointData(2, 0, x, -310));                    // Haltepunkt vor der 10/28
+                var hold = points.Count - 1;
+                points.Add(new TaxiPointData(1, 0, x, -400));                    // Bahn 10/28
+                second.Add(points.Count - 1);
+                paths.Add(new TaxiPathData(1, 23, 0, 0, runwayNodes.First(r => r.X == x).Index, hold, 1));
+                paths.Add(new TaxiPathData(1, 23, 0, 0, hold, points.Count - 1, 1));
+            }
+
+            for (var i = 0; i < second.Count - 1; i++)
+            {
+                paths.Add(new TaxiPathData(2, 45, 10, 0, second[i], second[i + 1], 0));
+            }
+        }
+
         paths.Add(new TaxiPathData(3, 10, 0, 0, 5, 0, 0));                    // P1 an A bei x = 0
         paths.Add(new TaxiPathData(3, 10, 0, 0, 10, 1, 0));                   // P2 an A bei x = 1000
         paths.Add(new TaxiPathData(3, 20, 0, 0, 4, 2, 0));                    // Gate A5 an A bei x = -200
@@ -95,7 +118,7 @@ public sealed class FireTests
             ],
             paths,
             ["A", "A1"]);
-        return TaxiGraph.Build(data, [Runway], vehicleRoads: roads);
+        return TaxiGraph.Build(data, secondRunway ? [Runway, Runway10] : [Runway], vehicleRoads: roads);
     }
 
     private static RunwayEnd Runway09 => RunwayEnd.Find("EDXF", [Runway], "09")!;
@@ -1124,6 +1147,75 @@ public sealed class FireTests
 
         Assert.Equal(FireVehiclePhase.AtAircraft, V("FLF 3").Phase);
         Assert.True(maxNorth < 150, "FLF 3 ist über den Rollweg gefahren");
+    }
+
+    [Fact]
+    public void Landung_auf_der_anderen_Bahn_FLF_3_kommt_entgegen_und_alle_fahren_gleich_an_den_Platz()
+    {
+        // Nachtest .23 EDDK 07.11. (Alarm für 14L, Landung auf 06): FLF 3 blieb am Ende der 14L stehen, bis das Flugzeug stand, und
+        // FLF 1 fuhr erst zum Anfang der Spur auf der 06 – beide kamen über 2 min nach dem Stopp an
+        var graph = Graph(secondRunway: true);
+        var plan = FirePlanner.Plan(graph, Runway09, FireCategory.Lineup(FireAlertLevel.FullEmergency, 9), TrafficWake.Heavy, null)!;
+        var operation = new FireOperation(graph, FireAlertLevel.FullEmergency, plan, TrafficWake.Heavy, 9);
+        foreach (var vp in plan.Vehicles)
+        {
+            operation.Add(new FireVehicle(vp.Unit, "test", vp.Route, operation.Trail, graph.ToLatLon, 164));
+        }
+
+        var vehicles = operation.Vehicles;
+        FireVehicle V(string name) => vehicles.Single(v => v.Unit.Name == name);
+        const double dt = 0.25;
+        void Step(FireAircraftState state)
+        {
+            operation.Update(state, dt);
+            foreach (var vehicle in vehicles)
+            {
+                vehicle.Advance(dt);
+            }
+        }
+
+        var airborne = new FireAircraftState(-3000, -400, 90, 75, false);
+        for (var t = 0; t < 2400 && vehicles.Any(v => v.Phase != FireVehiclePhase.Standby); t++)
+        {
+            Step(airborne);
+        }
+
+        Assert.All(vehicles, v => Assert.Equal(FireVehiclePhase.Standby, v.Phase));
+        Assert.True(operation.IsEmergencyRunway(Runway));
+        var flf3Hold = (V("FLF 3").EastM, V("FLF 3").NorthM);
+
+        // Aufsetzen auf der 10 (y = -400) bei x = -700 mit 70 m/s, Bremsen mit 2,2 m/s² bis zum Stand bei gut x = 400
+        const double y = -400;
+        var (x, speed) = (-700.0, 70.0);
+        while (speed > 0)
+        {
+            speed = Math.Max(0, speed - (2.2 * dt));
+            x += speed * dt;
+            Step(new FireAircraftState(x, y, 90, speed, true));
+        }
+
+        // Ab dem Aufsetzen gilt die 10/28 als Bahn des Notfalls
+        Assert.True(operation.IsEmergencyRunway(Runway10));
+        Assert.False(operation.IsEmergencyRunway(Runway));
+        Assert.Equal("10", operation.EmergencyRunway?.Primary);
+
+        // FLF 3 ist schon im Ausrollen entgegengefahren, Richtung 10/28
+        Assert.True(V("FLF 3").NorthM < -100, $"FLF 3 ist nicht entgegengefahren ({V("FLF 3").EastM:0}/{V("FLF 3").NorthM:0}, Haltepunkt {flf3Hold.EastM:0}/{flf3Hold.NorthM:0})");
+
+        // Steht das Flugzeug, fährt keiner mehr erst auf die Spur, alle direkt an ihren Platz
+        var stopped = new FireAircraftState(x, y, 90, 0, true);
+        for (var t = 0; t < 4 * (FireOperation.StopOnRunwaySeconds + 1); t++)
+        {
+            Step(stopped);
+        }
+
+        Assert.DoesNotContain(vehicles, v => v.Phase == FireVehiclePhase.Joining);
+        for (var t = 0; t < 4 * 240 && vehicles.Any(v => v.Phase != FireVehiclePhase.AtAircraft); t++)
+        {
+            Step(stopped);
+        }
+
+        Assert.All(vehicles, v => Assert.Equal(FireVehiclePhase.AtAircraft, v.Phase));
     }
 
     [Fact]

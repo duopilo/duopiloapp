@@ -76,6 +76,9 @@ public sealed class FireOperation
     private bool _released;
     private FireVehicle? _escort;
 
+    // Bahn, auf der das Flugzeug aufgesetzt hat (null = noch nicht gelandet bzw. nicht auf einer Bahn)
+    private AirportRunway? _landingRunway;
+
     // Fahrzeuge vom Bahnende, die dem noch rollenden Flugzeug über die Bahn entgegenfahren (und wer es schon versucht hat)
     private readonly HashSet<FireVehicle> _approaching = [];
     private readonly HashSet<FireVehicle> _approachTried = [];
@@ -218,11 +221,33 @@ public sealed class FireOperation
     /// <summary>Die Landebahn des Notfalls als Bahn im Netz (beide Richtungen), sonst null.</summary>
     public AirportRunway? EmergencyRunway => Graph.Runways.FirstOrDefault(IsEmergencyRunway);
 
-    /// <summary>Die Landebahn des Notfalls (beide Richtungen).</summary>
+    /// <summary>
+    /// Die Landebahn des Notfalls (beide Richtungen): bis zum Aufsetzen die geplante, danach die, auf der das Flugzeug wirklich gelandet
+    /// ist (Nachtest .23 EDDK 07.11.: Alarm für 14L, Landung auf 06 – FLF 3 blieb am Ende der 14L stehen, bis das Flugzeug stand).
+    /// </summary>
     public bool IsEmergencyRunway(AirportRunway runway) =>
+        _landingRunway is { } landed ? SameRunway(runway, landed) : IsPlannedRunway(runway);
+
+    /// <summary>Die Bahn aus dem Alarm (beide Richtungen).</summary>
+    public bool IsPlannedRunway(AirportRunway runway) =>
         Plan.Runway is { } end
         && (AirportRunway.Normalize(runway.Primary) == AirportRunway.Normalize(end.Designation)
             || (runway.Secondary.Length > 0 && AirportRunway.Normalize(runway.Secondary) == AirportRunway.Normalize(end.Designation)));
+
+    private static bool SameRunway(AirportRunway a, AirportRunway b) =>
+        ReferenceEquals(a, b)
+        || (AirportRunway.Normalize(a.Primary) == AirportRunway.Normalize(b.Primary)
+            && AirportRunway.Normalize(a.Secondary) == AirportRunway.Normalize(b.Secondary));
+
+    /// <summary>Die Bahn unter dem Flugzeug; an einer Kreuzung die, die in seine Richtung läuft.</summary>
+    private AirportRunway? RunwayUnder(FireAircraftState aircraft) =>
+        Graph.RunwaysAt(aircraft.EastM, aircraft.NorthM)
+            .OrderBy(r =>
+            {
+                var diff = Math.Abs(r.HeadingDeg - aircraft.HeadingDeg) % 180;
+                return Math.Min(diff, 180 - diff);
+            })
+            .FirstOrDefault();
 
     /// <summary>Alle zurück zur Wache (Abbruch, Einsatz zu Ende).</summary>
     public void ReturnAll()
@@ -259,13 +284,12 @@ public sealed class FireOperation
             return;
         }
 
-        var runwayNow = Graph.RunwayAt(aircraft.EastM, aircraft.NorthM);
-        var onRunway = runwayNow is not null;
+        var onRunway = Graph.RunwayAt(aircraft.EastM, aircraft.NorthM) is not null;
         UpdateGaps(vehicles, onRunway);
         var escort = Escort(vehicles, aircraft);
         var stopped = _stoppedSeconds >= (onRunway ? StopOnRunwaySeconds : StopOffRunwaySeconds);
         var moving = aircraft.GroundSpeedMps > 2;
-        var rollingOut = runwayNow is { } landingRunway && IsEmergencyRunway(landingRunway) && !stopped && !_released && !_inspected;
+        var rollingOut = onRunway && Graph.RunwaysAt(aircraft.EastM, aircraft.NorthM).Any(IsEmergencyRunway) && !stopped && !_released && !_inspected;
 
         foreach (var vehicle in vehicles)
         {
@@ -293,6 +317,12 @@ public sealed class FireOperation
                     if (_released && !ReferenceEquals(vehicle, escort))
                     {
                         SendBack(vehicle);
+                    }
+                    else if (stopped && !_inspected && !_released)
+                    {
+                        // Steht das Flugzeug schon, gleich an den Platz statt erst auf die Spur und ihr nach (Nachtest .23 EDDK 07.11.:
+                        // Landung auf 06 statt 14L, FLF 1 fuhr zum Anfang der Spur und kam 2:23 min nach dem Stopp an)
+                        Position(vehicle, aircraft);
                     }
 
                     break;
@@ -473,6 +503,17 @@ public sealed class FireOperation
             _landed = true;
             _airborneSeconds = 0;
             Trail.Add(aircraft.EastM, aircraft.NorthM);
+
+            // Die Bahn des Aufsetzens merken (mit Landegeschwindigkeit, nicht beim Notfall am Boden)
+            if (_landingRunway is null && Level != FireAlertLevel.GroundIncident && aircraft.GroundSpeedMps > 15
+                && RunwayUnder(aircraft) is { } touchdown)
+            {
+                _landingRunway = touchdown;
+                if (Plan.Runway is { } planned && !IsPlannedRunway(touchdown))
+                {
+                    _log?.LogInformation(Loc.Log("log.fire.otherRunway"), RunwayName(touchdown), planned.Designation);
+                }
+            }
         }
         else if (_landed)
         {
@@ -481,6 +522,7 @@ public sealed class FireOperation
             if (_airborneSeconds > 3)
             {
                 _landed = false;
+                _landingRunway = null;
                 Trail.Clear();
                 _stoppedSeconds = 0;
                 _offRunwaySeconds = 0;
@@ -863,8 +905,7 @@ public sealed class FireOperation
 
         _approaching.Add(vehicle);
         vehicle.Drive(FirePlanner.BuildPath(points, FireProfile.MaxMps), FireVehiclePhase.Responding, FireVehiclePhase.Standby, FireProfile.MaxMps);
-        var name = runway.Secondary.Length > 0 ? runway.Primary + "/" + runway.Secondary : runway.Primary;
-        _log?.LogInformation(Loc.Log("log.fire.approach"), vehicle.Unit.Name, name);
+        _log?.LogInformation(Loc.Log("log.fire.approach"), vehicle.Unit.Name, RunwayName(runway));
         return true;
     }
 
@@ -885,6 +926,8 @@ public sealed class FireOperation
         });
         vehicle.HoldAtS = limit is { } s ? Math.Max(0, s - 5) : null;
     }
+
+    private static string RunwayName(AirportRunway runway) => runway.Secondary.Length > 0 ? runway.Primary + "/" + runway.Secondary : runway.Primary;
 
     /// <summary>Durchgestartet: zurück an den Haltepunkt (von der Bahn herunter), dort wieder bereit.</summary>
     private void Retreat(FireVehicle vehicle)
