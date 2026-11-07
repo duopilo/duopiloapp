@@ -1,6 +1,6 @@
 # Feuerwehr: Stand und Test im Sim
 
-Stand: 05.11.2026 (beta.44.feuerwehr.20 gebaut, Nachtest steht aus). Status: erster Stand gebaut (Alarm, Bereitstellung, Folgen, Umstellen, Einrücken), Tests ohne Sim grün. Im Sim
+Stand: 07.11.2026 (Nachtest beta.44.feuerwehr.20; beta.44.feuerwehr.21 gebaut, Nachtest steht aus). Status: erster Stand gebaut (Alarm, Bereitstellung, Folgen, Umstellen, Einrücken), Tests ohne Sim grün. Im Sim
 getestet in EDDL (04.11.) und EDDK (05.11.), Ergebnisse unten. Planung: [Feuerwehr-Einsätze](feuerwehr-einsaetze.md) (PR #130),
 Fahrzeuge: [Feuerwehr-Fahrzeuge](feuerwehr-fahrzeuge.md).
 
@@ -35,11 +35,13 @@ Fahrzeuge: [Feuerwehr-Fahrzeuge](feuerwehr-fahrzeuge.md).
   seinem Haltepunkt vorbei (später Alarm), fährt es gleich auf die Spur. Die Kolonne ordnet sich nach dem Abstand zum Flugzeug: Wer
   später kommt, reiht sich hinten ein.
 - **Entgegen vom Bahnende:** Das FLF am Bahnende (FLF 3) fährt ab dem Aufsetzen über die Bahn dem Flugzeug entgegen, auch wenn es
-  selbst noch unterwegs war (Log: `approaching over runway …`). Solange das Flugzeug rollt, bleibt es vor der Stelle, an der es mit
+  selbst noch unterwegs war (Log: `approaching over runway …`), zur Mittellinie an der erwarteten Stoppstelle (mit 2,0 m/s²
+  gerechnet; bis .20 dorthin, wo das Flugzeug gerade war). Solange das Flugzeug rollt, bleibt es vor der Stelle, an der es mit
   1,2 m/s² zum Stehen käme, plus 150 m (quer: halbe Bahnbreite plus 25 m). Startet das Flugzeug durch, fährt es zurück an seinen
   Haltepunkt.
 - **Umstellen:** Steht das Flugzeug 6 s auf der Bahn (20 s daneben), fahren alle auf ihre Plätze, auch wer noch unterwegs ist (bis
-  .19 erst ab dem Haltepunkt, wenn es weiter als 300 m weg war): FLF vorn links, hinten rechts, hinten links, vorn rechts, ELW schräg
+  .19 erst ab dem Haltepunkt, wenn es weiter als 300 m weg war), seit .21 auch, wer hinter dem Flugzeug zu einem Haltepunkt vor ihm
+  unterwegs ist: FLF vorn links, hinten rechts, hinten links, vorn rechts, ELW schräg
   vor der Nase, die anderen weiter weg. Fahrzeuge vor dem Flugzeug kommen ihm entgegen. Von weiter als 800 m geht es über das Netz,
   und darin zählt die Bahn des Notfalls nach der Landung wie ein Rollweg (sonst achtfach); das gilt auch für den Weg auf die Spur.
 - **Weiter:** Rollt das Flugzeug wieder, folgt nur FLF 1, die anderen fahren ohne Blaulicht zurück zur Wache und verschwinden dort.
@@ -113,7 +115,7 @@ Fahrzeuge: [Feuerwehr-Fahrzeuge](feuerwehr-fahrzeuge.md).
   `L:1:DUOPILO_KURVE` (Krümmung der Fahrspur, rechts positiv, über 0,4 s geglättet, höchstens 1/6 m). Im Stand bleibt die Lenkung
   stehen. Die Modelle rechnen daraus Drehwinkel und Lenkeinschlag ([Feuerwehr-Fahrzeuge](feuerwehr-fahrzeuge.md#räder-und-lenkung)).
 
-Noch nicht gebaut: Freies Abstellen nach einem Notfall (Position ohne Fluggastbrücke abseits der Gebäude, geplant für .21),
+Noch nicht gebaut: Freies Abstellen nach einem Notfall (Position ohne Fluggastbrücke abseits der Gebäude, geplant für .22),
 ATC-Meldungen der Feuerwehr, Hochstufen von Pan Pan auf Mayday (mehr Fahrzeuge), heiße Bremsen und Startabbruch als Auslöser,
 Notfälle der eigenen KI, Effekte.
 
@@ -453,7 +455,63 @@ Dieselben zwei Tests wie oben, Bahn 14L, gefahren von Claude, Florian sah im Sim
   nichts. SimConnect hat am Flughafen `JETWAY`-Einträge (im Stub vorhanden, nicht abgefragt); Rückfall wären die Fluggastbrücken aus
   OSM (`aeroway=jet_bridge`), die die Feuerwehr schon als Hindernisse lädt.
 
-Noch offen: Nachtest von beta.44.feuerwehr.20 (FLF 1 früher auf der Spur mit 90 m, FLF 3 entgegen über die Bahn, Kreuzen ohne Halt
-bei Mayday und Sperre für den Verkehrstest, vier FLF und ein RTF, Plätze an der Hauptwache); freies Abstellen nach dem Notfall
-(.21); ob ein rollendes Flugzeug des Notfalls auf der Bahn als Verkehr zählt (.18, Test 2 nicht eindeutig); Landung auf der anderen
-Bahn, Alarm per Funk (Mayday/Pan Pan im ATC-Modul), Ausrücken ab 20 NM bei eigenem Anflug, Abstand zum Abgasstrahl.
+Nachgetestet mit beta.44.feuerwehr.20, siehe nächster Abschnitt.
+
+## Nachtest im Sim (07.11.2026, beta.44.feuerwehr.20, EDDK)
+
+Dieselben zwei Tests, Bahn 14L, gefahren von Claude, Florian sah im Sim zu.
+
+**Test 1 – Mayday, A330-300 (GE, Kategorie 9) bleibt auf der 14L stehen (A1, kinematisch ab 5 NM, Alarm 2 s nach dem Start):**
+- **Sperre:** Mit dem Alarm `Airport EDDK closed for own AI traffic: fire service (Mayday)`, nach `cancel` `Airport EDDK open again
+  for own AI traffic`. Der A330 selbst ist ausgenommen und landete (`landing_clear 14L`).
+- **Fahrzeuge:** `FLF 1@240, FLF 2@1673, FLF 3@3569, FLF 4@1673, ELW 1@1673, HLF 1@1673, RTF 1@1673, RTW 1@1673` – vier FLF, ein
+  RTF, alle von der Hauptwache (`(hall)`), alle mit Weg, Spawns im Abstand von 4 s.
+- **Bereitstellung:** an der Mitte FLF 2 nach 1:31 min, FLF 4 1:38, ELW 1:53, HLF 1:59, RTF 2:05, RTW 2:12. FLF 1 war beim Aufsetzen
+  noch unterwegs zur Aufsetzzone. Bis zur Rückfahrt hielt kein Fahrzeug vor einer Bahn (in .19 FLF 3 zweimal 2 s vor der 06/24).
+- **Landung:** Aufsetzen bei 458 m mit 135 kt, Stopp bei 1559 m 29 s später. FLF 1 ging im selben Moment auf die Spur (in .19 erst
+  9 s vor dem Stopp), von unterwegs, und folgte 24 s später mit 1012 m.
+- **Umstellen:** Plätze 6 s nach dem Stopp, FLF 4 vorn rechts (42/42). FLF 4 stand nach 30 s, ELW 36, HLF 37, FLF 2 40, RTW 44,
+  RTF 50 s, FLF 1 nach 54 s (in .19 1:19 min).
+- **FLF 3:** Beim Aufsetzen `approaching over runway 14L/32R while the aircraft rolls out`. Es war noch unterwegs zum Bahnende, westlich
+  der Bahnmitte, und bekam als Ziel die Mittellinie dort, wo der A330 gerade war – an der Aufsetzzone. Damit fuhr es nach Nordwesten,
+  vom Flugzeug weg. Nach dem Stopp lag es hinter dem Flugzeug, sein Haltepunkt aber vor ihm, und dafür gab es keine Regel: Es bekam
+  seinen Platz erst am Ende des Wegs, 2:00 min nach dem Stopp, und stand 2:57 min nach dem Stopp (in .19 4:07 min). Siehe Befunde.
+- **Rückfahrt:** Nach `cancel` hielten FLF 1–4, HLF und RTF an ihrem Platz vor der 14L und kreuzten nach 5 s, ELW und RTW fuhren ohne
+  Bahn. Alle 8 waren 1:58 bis 2:27 min nach dem `cancel` an der Wache verschwunden.
+- **DATA_ERROR:** keiner.
+
+**Test 2 – Pan Pan, A320neo (Kategorie 6) mit Rollen zu D18 (A3, kinematisch ab 5 NM), Alarm 81 s vor dem Aufsetzen:**
+- **Wache und Bereitstellung:** FLF 1@240, FLF 2 und ELW @1673, alle von der Hauptwache. FLF 2 und ELW erreichten den Haltepunkt 10
+  und 16 s nach dem Aufsetzen, FLF 1 war noch unterwegs.
+- **Folgen:** FLF 1 ging 1 s nach dem Aufsetzen auf die Spur (in .19 35 s danach), brauchte aber 65 s bis auf die Spur (im Mayday
+  24 s; 40 s nach dem Aufsetzen standen im Status noch 5 m Rest bei 10 kt, Ursache offen) und folgte dann mit 1769 m. FLF 2 und ELW
+  gingen 23 s nach dem Aufsetzen auf die Spur, als der A320 an ihnen vorbei war (in .19 35 s, unter 40 kt), und folgten mit 553 und
+  563 m.
+- **Begleiter:** Nach dem Abrollen über A2 begleitete FLF 2 mit 54 m (Soll 50), FLF 1 und ELW rückten ein.
+- **06/24:** wie in .19. Der A320 hielt 4 s vor der 06/24 auf A und rollte gut 30 m auf ihr entlang. Der ELW fuhr hinter FLF 2 her,
+  hielt an der Haltelinie, als der A320 noch 8 m neben der Mittellinie war, und kreuzte 5 s später bei 24 m (Kante). .18 bleibt damit
+  offen. Mit Blaulicht kreuzte in diesem Ablauf niemand eine Bahn, die Abfrage im Anrollen (Pan Pan) kam nicht vor.
+- **Am Gate:** Der A320 stand um 07:57:06 auf D18, FLF 2 rückte 61 s später ein (zugleich mit dem Ende des Verkehrstests).
+- **DATA_ERROR:** keiner.
+
+**Prüfpunkte aus beta.44.feuerwehr.20:**
+- **FLF 1 früher auf der Spur:** in Ordnung (beide Tests beim Aufsetzen); im Pan Pan wegen des späten Alarms weiter weit zurück.
+- **FLF 3 entgegen über die Bahn:** Fehler, siehe Befunde.
+- **Kreuzen ohne Halt bei Mayday, Sperre für den Verkehrstest:** in Ordnung.
+- **Vier FLF und ein RTF:** in Ordnung.
+- **DATA_ERROR:** keiner.
+
+**Befunde:**
+- **FLF 3 fährt vom Flugzeug weg:** `StartApproach` nahm als Ziel die Mittellinie an der Stelle des Flugzeugs beim Aufsetzen. Das passt
+  nur für ein FLF, das schon am Bahnende steht; von unterwegs (westlich der Bahnmitte) führte der Weg zur Aufsetzzone. Und
+  `UpdateWaiting` gab einem Fahrzeug hinter dem stehenden Flugzeug nur dann einen Platz, wenn das Flugzeug auch an seinem Haltepunkt
+  vorbei war. **Behoben in beta.44.feuerwehr.21:** Ziel ist die Mittellinie an der erwarteten Stoppstelle (2,0 m/s²), und steht das
+  Flugzeug, fährt auch hin, wer hinter ihm zu einem Haltepunkt vor ihm unterwegs ist (Test
+  `Spaeter_Mayday_FLF_3_faehrt_von_unterwegs_zur_Stoppstelle_nicht_zur_Aufsetzstelle`).
+- **FLF 1 im Pan Pan 65 s bis auf die Spur:** offen; im Status 40 s nach dem Aufsetzen noch 5 m Rest. Beim nächsten Test die Lage von
+  FLF 1 beim Aufsetzen festhalten.
+
+Noch offen: Nachtest von beta.44.feuerwehr.21 (FLF 3 entgegen von unterwegs), Plätze an der Hauptwache im Bild (achter Platz in der
+zweiten Reihe), FLF 1 im Pan Pan 65 s bis auf die Spur; freies Abstellen nach dem Notfall (.22); ob ein rollendes Flugzeug des
+Notfalls auf der Bahn als Verkehr zählt (.18); Abfrage im Anrollen mit Blaulicht (Pan Pan, eine Anfahrt über eine Bahn); Landung auf
+der anderen Bahn, Alarm per Funk (Mayday/Pan Pan im ATC-Modul), Ausrücken ab 20 NM bei eigenem Anflug, Abstand zum Abgasstrahl.
