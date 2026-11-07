@@ -52,6 +52,9 @@ public sealed partial class SimConnectClient
     private uint _aiSpeedDefId;
     private uint _aiVelocityDefId;
     private uint _aiPoseDefId;
+
+    // Zuletzt gesendete Werte der Objekt-Variablen (nur SimConnect-Thread): unverändert wird nichts geschickt
+    private readonly Dictionary<(uint ObjectId, string Name), double> _aiVarSent = [];
     private uint _nextAiReleaseRequest;
     private bool _frameSubscribed;
     private long _lastFrameTicks;
@@ -227,8 +230,10 @@ public sealed partial class SimConnectClient
     /// <summary>
     /// Lichter eines eigenen KI-Flugzeugs (NonATC-Flugzeuge schaltet der Sim nicht selbst). Beide Wege zugleich, weil offen ist, was
     /// welches Modell annimmt: das Event …_SET mit 1/0 und die SimVar LIGHT …. Lichter mit null bleiben unverändert.
+    /// <paramref name="simVars"/> false: nur die Events – Bodenfahrzeuge lehnen die SimVar ab (Test EDDL, 04.11.: bei jedem
+    /// Lichtwechsel der Feuerwehr zwei SimConnect DATA_ERROR je Fahrzeug).
     /// </summary>
-    public Task SetAiLightsAsync(uint objectId, AiLights lights, CancellationToken ct) =>
+    public Task SetAiLightsAsync(uint objectId, AiLights lights, CancellationToken ct, bool simVars = true) =>
         RunOnSimThreadAsync(sc =>
         {
             foreach (var (light, on) in lights.Changes())
@@ -241,6 +246,11 @@ public sealed partial class SimConnectClient
                     // Passive-C172 ließen es in beta.18/19 an): zusätzlich ON/OFF und LANDING_LIGHTS_SET je Index 1–4
                     TransmitToObject(sc, objectId, on ? "LANDING_LIGHTS_ON" : "LANDING_LIGHTS_OFF", 0);
                     TransmitIndexed(sc, objectId, eventName, on ? 1u : 0u, MaxLandingLightIndex);
+                }
+
+                if (!simVars)
+                {
+                    continue;
                 }
 
                 if (!_aiLightDefIds.TryGetValue(simVar, out var defId))
@@ -316,8 +326,9 @@ public sealed partial class SimConnectClient
     /// Kinematik: Duopilo übernimmt ein eigenes KI-Flugzeug ganz – die KI gibt es ab (AIReleaseControl), Position, Höhe und Lage
     /// werden eingefroren und jeden Frame aus <paramref name="pose"/> gesetzt (so wie vPilot Flugzeuge bewegt). <paramref name="pose"/>
     /// bekommt die vergangene Sim-Zeit in Sekunden (0 in der Pause) und läuft auf dem SimConnect-Thread; null = diesen Frame nichts setzen.
+    /// <paramref name="releaseAi"/> = false für Objekte ohne KI-Piloten (eigene Bodenfahrzeuge).
     /// </summary>
-    public void StartAiPose(uint objectId, Func<double, AiPose?> pose)
+    public void StartAiPose(uint objectId, Func<double, AiPose?> pose, bool releaseAi = true)
     {
         _aiPoseSources[objectId] = pose;
         Enqueue(sc =>
@@ -327,7 +338,11 @@ public sealed partial class SimConnectClient
                 return;
             }
 
-            sc.AIReleaseControl(objectId, (SimRequestId)(AiReleaseRequestBase + (++_nextAiReleaseRequest % 90_000)));
+            if (releaseAi)
+            {
+                sc.AIReleaseControl(objectId, (SimRequestId)(AiReleaseRequestBase + (++_nextAiReleaseRequest % 90_000)));
+            }
+
             Freeze(sc, objectId, true);
             if (!_frameSubscribed)
             {
@@ -348,6 +363,13 @@ public sealed partial class SimConnectClient
 
         Enqueue(sc =>
         {
+            foreach (var key in _aiVarSent.Keys.Where(k => k.ObjectId == objectId).ToList())
+            {
+                _aiVarSent.Remove(key);
+            }
+
+            ClearObjectVarDefs(sc, objectId);
+
             if (unfreeze)
             {
                 Freeze(sc, objectId, false);
@@ -421,7 +443,33 @@ public sealed partial class SimConnectClient
                     BankDeg = p.BankDeg,
                     HeadingTrueDeg = p.HeadingTrueDeg,
                 });
+
+                if (p.Vars is { Count: > 0 } vars)
+                {
+                    SetObjectVars(sender, objectId, vars);
+                }
             }
+        }
+    }
+
+    /// <summary>
+    /// Z-Variablen eines eigenen Bodenfahrzeugs im Frame-Takt, z. B. <c>L:1:DUOPILO_WEG</c> und <c>L:1:DUOPILO_KURVE</c> (gelten nur für
+    /// dieses Objekt; je eine Data Definition wie bei den Lichtern). Der Sim setzt GROUND VELOCITY eingefrorener Objekte nicht – Räder,
+    /// Motorgeräusch und Bremslicht brauchen deshalb Duopilos eigene Werte (docs/research/feuerwehr-fahrzeuge.md).
+    /// </summary>
+    private void SetObjectVars(SimConnect sc, uint objectId, IReadOnlyList<AiObjectVar> vars)
+    {
+        foreach (var v in vars)
+        {
+            var key = (objectId, v.Name);
+            if (_aiVarSent.TryGetValue(key, out var last) && Math.Abs(v.Value - last) <= v.Tolerance)
+            {
+                continue;
+            }
+
+            var defId = ObjectVarDefId(sc, objectId, v.Name, "Number");
+            sc.SetDataOnSimObject((SimDefinitionId)defId, objectId, SIMCONNECT_DATA_SET_FLAG.DEFAULT, v.Value);
+            _aiVarSent[key] = v.Value;
         }
     }
 
@@ -795,9 +843,11 @@ public sealed partial class SimConnectClient
         _aiSpeedDefId = 0;
         _aiVelocityDefId = 0;
         _aiPoseDefId = 0;
+        _aiVarSent.Clear();
         _frameSubscribed = false;
         _aiPoseSources.Clear();
         _aiLightDefIds.Clear();
+        ResetVehicles();
         _aiModelsAvailable = false;
         _aiProbes.Clear();
         foreach (var (_, tcs) in _aiCreateRequests)
@@ -915,7 +965,19 @@ public sealed record AiProbeSample(
 /// <summary>Lage eines von Duopilo bewegten KI-Flugzeugs (<see cref="SimConnectClient.StartAiPose"/>).</summary>
 /// <param name="AltitudeFt">Höhe des Bezugspunkts über MSL.</param>
 /// <param name="PitchUpDeg">Längsneigung, Nase hoch positiv.</param>
-public readonly record struct AiPose(double Latitude, double Longitude, double AltitudeFt, double PitchUpDeg, double BankDeg, double HeadingTrueDeg);
+/// <param name="Vars">Nur Duopilos Bodenfahrzeuge: Z-Variablen am Objekt, die im selben Takt gesetzt werden (Räder, Lenkung, Tempo,
+/// Bremslicht, Martinshorn), jeweils nur, wenn sich der Wert um mehr als die Toleranz ändert.</param>
+public readonly record struct AiPose(
+    double Latitude,
+    double Longitude,
+    double AltitudeFt,
+    double PitchUpDeg,
+    double BankDeg,
+    double HeadingTrueDeg,
+    IReadOnlyList<AiObjectVar>? Vars = null);
+
+/// <summary>Eine Z-Variable an einem eigenen Objekt, z. B. <c>L:1:DUOPILO_WEG</c>, mit der Änderung, ab der sie neu gesendet wird.</summary>
+public readonly record struct AiObjectVar(string Name, double Value, double Tolerance);
 
 /// <summary>SimVars, die die Kinematik jeden Frame setzt, in dieser Reihenfolge (siehe <see cref="AiPoseData"/>).</summary>
 public static class AiPoseVariables

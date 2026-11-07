@@ -172,6 +172,13 @@ public static class TrafficTestTools
             "e.g. '51.380228,6.787324; 51.43,6.76; 51.380228,6.787324' for station → scene → station.")] string? route = null,
         [Description("H3: wait at each stop between the first and the last, in minutes (0–30). Empty = 2.")] double? waitMinutes = null,
         [Description("H1, H2: how to try to spin the rotor – 'all' (default: event ENGINE_AUTO_START at spawn and after 5 s, plus GENERAL ENG COMBUSTION, TURB ENG N1, GENERAL ENG RPM and ROTOR GOV TARGET PCT every 3 s), 'event', 'simvars' or 'off'.")] string rotor = "all",
+        [Description(
+            "A3, A4: a follow-me leads the aircraft from the runway to its parking spot (Duopilo vehicle package in the Community folder): " +
+            "after the parking check 2 NM out it drives towards the exit over the aircraft's own taxi route and turns around " +
+            "a gap ahead (35 m light, 60 m medium, 80 m heavy) of where the aircraft is clear of the runway; the aircraft taxis up to " +
+            "there and then follows it, never closer than 60 % of the gap; the vehicle holds short of crossed runways until they are free, " +
+            "drives past the stand entry and disappears. At most 2 vehicles per airport (the pilot's included). Status taxi.followMe, events " +
+            "follow_me_*. Default false.")] bool followMe = false,
         CancellationToken cancellationToken = default)
     {
         if (!Enum.TryParse<TrafficTestVariant>(variant?.Trim(), ignoreCase: true, out var parsed) || !Enum.IsDefined(parsed))
@@ -218,7 +225,7 @@ public static class TrafficTestTools
 
         try
         {
-            var status = await tests.StartTestAsync(new TrafficTestRequest(airport ?? "", runway ?? "", parsed, title, livery, spawnNm, gearMethod, finalLowFt, touchdownM, approachKt, speed, goAround, rollM, throttlePercent, kinematicNm, trackDeg, flightLevel, cruiseKt, ignoreRunwayRules, kinematicTakeoff, parking, latitude, longitude, offsetNm, fromDeg, endNm, helipad, heightFt, rotorMethod, route, waitMinutes), cancellationToken);
+            var status = await tests.StartTestAsync(new TrafficTestRequest(airport ?? "", runway ?? "", parsed, title, livery, spawnNm, gearMethod, finalLowFt, touchdownM, approachKt, speed, goAround, rollM, throttlePercent, kinematicNm, trackDeg, flightLevel, cruiseKt, ignoreRunwayRules, kinematicTakeoff, parking, latitude, longitude, offsetNm, fromDeg, endNm, helipad, heightFt, rotorMethod, route, waitMinutes, followMe), cancellationToken);
             return Json.Serialize(new { ok = true, status = Brief(status) });
         }
         catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or TimeoutException or ArgumentException)

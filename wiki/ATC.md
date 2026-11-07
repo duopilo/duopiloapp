@@ -22,7 +22,7 @@ Transitions come from your transmissions and from the flight state.
 | **Oceanic** | clearance ~30 min before the entry point, position reports at every oceanic fix | at the exit point to the domestic unit |
 | **Approach** | descent, STAR, expected approach and runway, QNH; approach clearance from 20 nm | from 12 nm: "contact Tower" |
 | **Tower** | landing clearance with wind (at the latest 4 nm out); with traffic ahead on final first the sequence ("number two, follow …") | below 40 kt after landing: "vacate via next exit, contact Ground" |
-| **Ground** | taxi to the gate | ends when stopped with the parking brake set |
+| **Ground** | taxi to the gate – or, on request, a [follow-me](#follow-me) | ends when stopped with the parking brake set |
 
 - Short routes without oceanic fixes skip Oceanic.
 - Take off without clearances → ATC catches up to Tower during the takeoff roll.
@@ -57,6 +57,21 @@ Departure, Center and Oceanic handle level requests:
 ## Descent
 
 At top of descent Center clears "descend via ANJLL4 arrival" if the OFP has a STAR (cleared down to the lowest planned STAR altitude), otherwise "descend FL110". If the clearance ends below the destination's transition altitude, the QNH comes with it and is part of the readback.
+
+## Follow-me
+
+Only on request, as at most real airports – ATC never sends one on its own. After vacating, ask ground (also later while taxiing in):
+
+> "Düsseldorf Ground, Lufthansa four alpha bravo, runway two three right vacated, request follow-me"
+> → "Lufthansa four alpha bravo, hold position, follow-me is on the way"
+
+Duopilo's own van comes towards you over the taxiways and turns around in front of you; then ground says "follow the follow-me to gate C2" (readback: the gate). It drives ahead with its beacon on and keeps its distance – faster when you close in, it waits when you stop. At the gate it drives past the stand entry, waits until you are there and disappears.
+
+- "cancel follow-me" / "follow-me not required" sends it away (still holding: the normal taxi clearance).
+- Gate: the one ATC knows (set with `atc_set_value gate`), otherwise a free one that fits your type.
+- No vehicle (package missing, no route, gate right ahead, not in front of you after 4 minutes, `followMeTimeoutSeconds`): "follow-me not available, taxi to …".
+- Before departure there is none ("negative, follow-me not available").
+- Needs Duopilo's vehicle package in the Community folder and runs in the tray instance only; settings `Duopilo:FollowMe` ([Configuration](Configuration-Reference)). `follow_me` shows the state and requests one without the radio for testing.
 
 ## Traffic
 
@@ -137,3 +152,5 @@ Templates, airline callsigns, station names, frequencies, rules and voices: [ATC
 ## Settings
 
 `Duopilo:Atc` in `appsettings.Local.json`: `Enabled`, `TemplatesFile`, `Speak`, `SquawkFromSim`, `SessionFile`, `SessionMaxAgeHours`. State in the browser: `http://127.0.0.1:5155/atc/controller`.
+
+`Duopilo:FollowMe`: `Enabled` (default on), `Model` (vehicle title from its `sim.cfg`, default `Duopilo_FollowMe_Licht`), `HeightFt` (model reference point above the ground, default 0).

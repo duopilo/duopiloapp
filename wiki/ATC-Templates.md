@@ -74,6 +74,7 @@ On load Duopilo checks for missing transmissions, unknown variables, readback it
 | `sectorMinNm` | sectors touched for less than this (20 nm) get no own handoff |
 | `trafficInfo`, `trafficInfoRangeNm`, `trafficInfoAltitudeFt`, `trafficInfoMissNm` | traffic information from Departure, Center and Approach on their own (default: within 15 nm and 1500 ft, passing within 5 nm in the next three minutes) |
 | `trafficSequencing` | tower gives the sequence on final ("number two, follow …") and clears to land once the aircraft ahead has landed |
+| `followMeTimeoutSeconds` | a requested [follow-me](ATC#follow-me) that isn't in front of the aircraft after this time (240 s) → "follow-me not available" with the taxi clearance |
 
 ## Airspace and airline data
 

@@ -25,6 +25,9 @@ internal static class NativeSimConnect
     /// <summary>SIMCONNECT_SIMOBJECT_TYPE_HELICOPTER</summary>
     public const int ObjectTypeHelicopter = 3;
 
+    /// <summary>SIMCONNECT_SIMOBJECT_TYPE_GROUND: Bodenfahrzeuge (Bodendienste, als SimObject platzierte Fahrzeuge, eigene Fahrzeuge).</summary>
+    public const int ObjectTypeGround = 5;
+
     [DllImport(Dll, ExactSpelling = true, CharSet = CharSet.Ansi, BestFitMapping = false, ThrowOnUnmappableChar = true)]
     public static extern int SimConnect_Open(out IntPtr phSimConnect, string szName, IntPtr hWnd, uint userEventWin32, IntPtr hEventHandle, uint configIndex);
 

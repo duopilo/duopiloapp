@@ -4,6 +4,7 @@ using Duopilo.Atc.Airspace;
 using Duopilo.FlightPlan;
 using Duopilo.Localization;
 using Duopilo.Sim;
+using Duopilo.Vehicles;
 using Microsoft.Extensions.Options;
 
 namespace Duopilo.Traffic;
@@ -66,7 +67,8 @@ public sealed record TrafficTestRequest(
     double? HeightFt = null,
     HeliRotorMethod Rotor = HeliRotorMethod.All,
     string? Route = null,
-    double? WaitMinutes = null);
+    double? WaitMinutes = null,
+    bool FollowMe = false);
 
 /// <summary>Zeitpunkt und Text eines Ereignisses der Testlinie.</summary>
 public sealed record TrafficTestEvent(double Seconds, string Text);
@@ -90,7 +92,10 @@ public sealed record TrafficTestLast(
     double CrossM,
     string? AiState,
     string Lights,
-    double DesiredKt);
+    double DesiredKt,
+    double? Latitude = null,
+    double? Longitude = null,
+    double? HeadingTrueDeg = null);
 
 /// <summary>Zustand eines Testanflugs für Tool und Browser.</summary>
 /// <param name="State">running oder ended.</param>
@@ -251,7 +256,8 @@ public sealed record TrafficTaxiInfo(
     int Obstacles = 0,
     int BlockedPaths = 0,
     int OccupiedParkings = 0,
-    string? ObstacleError = null);
+    string? ObstacleError = null,
+    IReadOnlyDictionary<string, int>? PathTypes = null);
 
 /// <param name="Occupied">Ein anderes Flugzeug steht darauf (innerhalb des Radius, mindestens 10 m).</param>
 public sealed record TrafficTaxiInfoParking(string Label, string Type, double RadiusM, double HeadingDeg, bool Occupied = false);
@@ -306,7 +312,24 @@ public sealed record TrafficTestTaxi(
     double? ExitKt = null,
     IReadOnlyList<string>? Crossings = null,
     int CrossingsDone = 0,
-    string? WaitingFor = null);
+    string? WaitingFor = null,
+    TrafficTestFollowMe? FollowMe = null);
+
+/// <summary>Follow-me vor einer Landung mit Rollen (A3, A4 mit followMe).</summary>
+/// <param name="Phase">planned, approach, in_position, leading, holding_short, at_stand, driving_off, leaving, finished.</param>
+/// <param name="MeetM">Treffpunkt auf dem Rollweg (Meter ab der Übergabe auf der Bahn).</param>
+/// <param name="ClearM">Bis hierhin rollt das Flugzeug, solange das Fahrzeug noch nicht gewendet hat (die Bahn ist dort verlassen).</param>
+/// <param name="GapM">Abstand Fahrzeug – Flugzeug entlang des Rollwegs, sobald es gewendet hat.</param>
+public sealed record TrafficTestFollowMe(
+    string Phase,
+    uint? ObjectId,
+    double MeetM,
+    double ClearM,
+    double TargetGapM,
+    double? GapM,
+    double SpeedKt,
+    int CrossingsDone,
+    int Crossings);
 
 /// <summary>Stand der Kinematik eines Tests (<see cref="TrafficKinematics"/>).</summary>
 /// <param name="Phase">approach, flare, rollout, stopped; Start: lineup, takeoff_roll, rotation, climb.</param>
@@ -348,7 +371,7 @@ public sealed record TrafficTestKinematics(
 /// JSON daneben. Die Flugzeuge werden beim Stoppen, nach <see cref="TrafficTestOptions.MaxMinutes"/> und beim Beenden von Duopilo
 /// entfernt. Standardmäßig aus (Duopilo:TrafficTest:Enabled), weil es Objekte im Sim erzeugt.
 /// </summary>
-public sealed class TrafficTestService : IHostedService, IDisposable
+public sealed partial class TrafficTestService : IHostedService, IDisposable
 {
     /// <summary>Kennzeichen (ATC ID) des ersten Testflugzeugs, die weiteren DUO02 bis DUO04 – so tauchen sie auch in get_traffic auf.</summary>
     public const string TailNumber = "DUO01";
@@ -459,16 +482,22 @@ public sealed class TrafficTestService : IHostedService, IDisposable
     private readonly TrafficConnection _traffic;
     private readonly DuopiloOptions _options;
     private readonly ILogger<TrafficTestService> _log;
+    private readonly FollowMeSpawner _followMe;
+    private readonly FollowMeFleet _fleet;
+    private readonly AirportClosures _closures;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly object _lock = new();
     private readonly List<TrafficTestRun> _runs = [];
     private TrafficAirportDirectory? _airportDirectory;
 
-    public TrafficTestService(SimConnectClient sim, TrafficConnection traffic, IOptions<DuopiloOptions> options, ILogger<TrafficTestService> log)
+    public TrafficTestService(SimConnectClient sim, TrafficConnection traffic, IOptions<DuopiloOptions> options, FollowMeSpawner followMe, FollowMeFleet fleet, AirportClosures closures, ILogger<TrafficTestService> log)
     {
         _sim = sim;
         _traffic = traffic;
         _options = options.Value;
+        _followMe = followMe;
+        _fleet = fleet;
+        _closures = closures;
         _log = log;
     }
 
@@ -808,6 +837,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 Wake = wake,
                 Runways = runways,
                 ReleaseNm = releaseNm,
+                FollowMeWanted = request.FollowMe && plan.TaxiAfterLanding && _followMe.Enabled,
             };
             run.AddEvent(0, plan.IsTaxi && plan.Taxi is { } taxi && taxiGraph is not null
                 ? string.Create(CultureInfo.InvariantCulture, $"spawn at parking {taxi.Parking.Parking?.Label} ({taxi.Parking.Parking?.TypeName}, {taxi.Parking.Parking?.RadiusM:0} m), route {string.Join(' ', taxi.Taxiways)} {taxi.LengthM:0} m to the hold on {taxi.Hold.Taxiway} ({taxi.Hold.Runway}), pushback {(taxi.Pushback ? "yes" : "no")}, net {taxiGraph.Nodes.Count} nodes, {taxiGraph.Edges.Count} paths, mapping {taxiGraph.Mapping} ({taxiGraph.MappingErrorM:0.0} m), object {objectId}, {run.Tail}")
@@ -832,6 +862,11 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             foreach (var taxiEvent in taxiEvents.Concat(overflightEvents))
             {
                 run.AddEvent(0, taxiEvent);
+            }
+
+            if (request.FollowMe && !run.FollowMeWanted)
+            {
+                run.AddEvent(0, !plan.TaxiAfterLanding ? "warning:follow_me only with a landing with taxi-in (A3, A4)" : "warning:follow_me off in this instance (Duopilo:FollowMe:Enabled)");
             }
 
             foreach (var violation in violations)
@@ -1006,6 +1041,23 @@ public sealed class TrafficTestService : IHostedService, IDisposable
 
     // ------------------------------------------------------------------ intern
 
+    /// <summary>
+    /// Feuerwehr im Einsatz für dieses KI-Flugzeug (A3, A4): nach der Landung auf eine dieser Positionen rollen statt ans geplante Gate
+    /// (<see cref="Duopilo.Fire.FireStands"/>, die beste zuerst). Gewechselt wird einmal, solange es noch nicht rollt.
+    /// </summary>
+    /// <returns>Ob ein laufender Test mit diesem Kennzeichen und Rollen nach der Landung da ist.</returns>
+    public bool RequestRemoteStands(string tail, IReadOnlyList<string> labels)
+    {
+        var run = Running().FirstOrDefault(r => string.Equals(r.Tail, tail, StringComparison.OrdinalIgnoreCase) && r.InitialPlan.TaxiAfterLanding);
+        if (run is null || labels.Count == 0)
+        {
+            return false;
+        }
+
+        run.RemoteStands = labels;
+        return true;
+    }
+
     private List<TrafficTestRun> Running()
     {
         lock (_lock)
@@ -1098,7 +1150,8 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                     route.HandoverAlongM is not null ? route.HandoverKt : null,
                     [.. route.Crossings.Select(c => string.Create(CultureInfo.InvariantCulture, $"{c.Runway} on {c.Taxiway} at {c.StopS:0} m"))],
                     run.TaxiKinematics?.CrossingsDone ?? 0,
-                    run.BlockedBy is { } by ? _runs.FirstOrDefault(r => r.ObjectId == by)?.Tail : null)
+                    run.BlockedBy is { } by ? _runs.FirstOrDefault(r => r.ObjectId == by)?.Tail : null,
+                    FollowMeStatus(run))
                 : null,
             run.Enroute is { } en ? EnrouteStatus(run, en) : null,
             run.Heli is { } heli ? HeliStatus(run, heli) : null);
@@ -1302,7 +1355,10 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 Math.Round(point.CrossM, 1),
                 sample.AiState,
                 AiLights.Describe(sample.LightStates),
-                Math.Round(sample.DesiredKt));
+                Math.Round(sample.DesiredKt),
+                Math.Round(sample.Latitude, 7),
+                Math.Round(sample.Longitude, 7),
+                Math.Round(sample.HeadingTrueDeg, 1));
             foreach (var e in point.Events)
             {
                 run.AddEvent(point.Seconds, e);
@@ -1345,11 +1401,32 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             CheckRunwayBeforeLanding(run, approach, point.Seconds);
         }
 
+        // A3, A4 mit Feuerwehreinsatz: Rollziel auf eine freie Position abseits der Gebäude (einmal, vor dem Abrollpunkt)
+        if (run.RemoteStands is not null && run.InitialPlan.TaxiAfterLanding && run.Kinematics is { ExitAlongM: not null } standKin
+            && run.Once("remote_stand"))
+        {
+            if (run.TaxiActive)
+            {
+                run.AddEvent(point.Seconds, "warning:remote_stand_too_late (already taxiing)");
+            }
+            else
+            {
+                _ = Task.Run(() => RecheckParkingAsync(run, standKin, point.Seconds));
+            }
+        }
+
         // A3, A4: kurz vor der Landung noch einmal prüfen, ob die Parkposition frei ist
         if (run.InitialPlan.TaxiAfterLanding && !run.TaxiActive && run.Kinematics is { ExitAlongM: not null } landingKin
             && landingKin.AlongM >= -ParkingRecheckNm * RunwayEnd.MetersPerNm && run.Once("parking_recheck"))
         {
-            _ = Task.Run(() => RecheckParkingAsync(run, landingKin, point.Seconds));
+            _ = Task.Run(async () =>
+            {
+                await RecheckParkingAsync(run, landingKin, point.Seconds);
+                if (run.FollowMeWanted)
+                {
+                    await StartFollowMeAsync(run, point.Seconds);
+                }
+            });
         }
 
         run.PreviousAlongM = point.AlongM;
@@ -1398,6 +1475,12 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         {
             UpdateTaxiSpacing(run, held, point.Seconds);
             CheckRunwayWhileHolding(run, held, point.Seconds);
+        }
+
+        // Follow-me (A3, A4): Phasen als Ereignisse, Bahnkreuzungen des Fahrzeugs, am Ende entfernen
+        if (run.FollowMe is not null)
+        {
+            UpdateFollowMe(run, point.Seconds);
         }
 
         // Überflug (C1): Ende hinter dem Ausflugpunkt
@@ -1717,6 +1800,8 @@ public sealed class TrafficTestService : IHostedService, IDisposable
     /// <summary>
     /// A3, A4 kurz vor der Landung: Bodenverkehr neu abfragen und prüfen, ob die Parkposition noch frei ist. Ist sie belegt, eine andere
     /// freie wählen, die vom selben Abrollpunkt aus erreichbar ist, und deren Weg für den Abrollpunkt bereitlegen (<see cref="LandingPose"/>).
+    /// Mit Feuerwehreinsatz (<see cref="RequestRemoteStands"/>) einmal auf eine der freien Positionen der Feuerwehr wechseln, auch wenn die
+    /// geplante frei ist; danach gelten nur noch diese.
     /// </summary>
     private async Task RecheckParkingAsync(TrafficTestRun run, TrafficKinematics kin, double seconds)
     {
@@ -1737,7 +1822,16 @@ public sealed class TrafficTestService : IHostedService, IDisposable
                 run.AddEvent(seconds, "warning:parking_recheck_scan " + error);
             }
 
-            if (!graph.IsOccupied(route.Parking))
+            var remote = run.RemoteStands;
+            var wantRemote = remote is not null && !run.RemoteStandChosen;
+            if (wantRemote && remote!.Contains(label, StringComparer.OrdinalIgnoreCase) && !graph.IsOccupied(route.Parking))
+            {
+                run.RemoteStandChosen = true;
+                run.AddEvent(seconds, "parking_checked " + label + " is a remote stand for the fire service");
+                return;
+            }
+
+            if (!wantRemote && !graph.IsOccupied(route.Parking))
             {
                 run.AddEvent(seconds, string.Create(CultureInfo.InvariantCulture, $"parking_checked {label} free ({count} aircraft on the ground)"));
                 return;
@@ -1746,7 +1840,10 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             var plan = run.InitialPlan;
             var profile = TaxiProfile.For(run.Category);
             TaxiRoute? replanned = null;
-            foreach (var node in TaxiRoute.CandidateParkings(graph, run.Category, run.Wake, Random.Shared).Take(MaxParkingTries))
+            var candidates = remote is not null
+                ? remote.Select(graph.FindParking).OfType<TaxiNode>().Where(n => !graph.IsOccupied(n))
+                : TaxiRoute.CandidateParkings(graph, run.Category, run.Wake, Random.Shared);
+            foreach (var node in candidates.Take(MaxParkingTries))
             {
                 if (node.Id != route.Parking.Id
                     && TaxiRoute.PlanArrival(graph, plan.Runway, node, profile, (route.EntryAlongM ?? exitAlong) - 1) is { HandoverAlongM: { } handover } candidate
@@ -1759,6 +1856,13 @@ public sealed class TrafficTestService : IHostedService, IDisposable
 
             if (replanned is null)
             {
+                if (wantRemote)
+                {
+                    run.RemoteStandChosen = true;
+                    run.AddEvent(seconds, "warning:remote_stand none free and reachable from this exit, stays at " + label);
+                    return;
+                }
+
                 run.AddEvent(seconds, "warning:parking_occupied " + label + ", no other free parking from this exit");
                 return;
             }
@@ -1778,6 +1882,14 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             run.ReplannedTaxi = replanned;
             run.PendingTaxi = taxi;
             var parking = replanned.Parking.Parking;
+            if (wantRemote)
+            {
+                run.RemoteStandChosen = true;
+                run.AddEvent(seconds, string.Create(CultureInfo.InvariantCulture,
+                    $"parking_changed {label} to remote stand {parking?.Label} ({parking?.TypeName}) for the fire service, route {string.Join(' ', replanned.Taxiways)} {replanned.LengthM:0} m"));
+                return;
+            }
+
             run.AddEvent(seconds, string.Create(CultureInfo.InvariantCulture,
                 $"parking_changed {label} occupied, now {parking?.Label} ({parking?.TypeName}), route {string.Join(' ', replanned.Taxiways)} {replanned.LengthM:0} m"));
         }
@@ -2568,7 +2680,8 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             headOn = true;
         }
 
-        taxi.TrafficStopS = stopS ?? double.NaN;
+        run.SpacingStopS = stopS ?? double.NaN;
+        taxi.TrafficStopS = CombineStops(run.SpacingStopS, run.FollowMeStopS);
         if (blocker?.ObjectId != run.BlockedBy || headOn != run.BlockedHeadOn)
         {
             run.BlockedBy = blocker?.ObjectId;
@@ -2654,6 +2767,19 @@ public sealed class TrafficTestService : IHostedService, IDisposable
 
         if (runway is null || label is null)
         {
+            return;
+        }
+
+        // Mayday am Platz (Feuerwehr im Einsatz): keine Bahn kreuzen, nicht zum Start aufreihen (Nachtest EDDK 05.11.)
+        if (_closures.ClosedFor(graph.Icao, run.Tail) is { } closed)
+        {
+            var key = "closed " + closed;
+            if (key != run.LastRunwayBlocker)
+            {
+                run.LastRunwayBlocker = key;
+                run.AddEvent(seconds, "runway_busy " + label + ": airport closed (fire service, " + closed + ")");
+            }
+
             return;
         }
 
@@ -2907,6 +3033,23 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         }
 
         var label = plan.Runway.Designation;
+
+        // Mayday am Platz (Feuerwehr im Einsatz): wie eine belegte Bahn – an der Entscheidungshöhe durchstarten; nicht das Flugzeug des
+        // Notfalls selbst (Nachtest EDDK 05.11.)
+        var closed = _closures.ClosedFor(plan.Runway.Airport, run.Tail);
+        if (closed is not null)
+        {
+            var blocker = "airport closed (fire service, " + closed + ")";
+            run.LandingBlocker = blocker;
+            run.LandingCheckedUtc = DateTimeOffset.UtcNow;
+            var text = "landing_runway_busy " + label + ": " + blocker;
+            if (text != run.LastLandingEvent)
+            {
+                run.LastLandingEvent = text;
+                run.AddEvent(seconds, text);
+            }
+        }
+
         if (kin.AlongM >= -ArrivalSequence.GoAroundDecisionNm * RunwayEnd.MetersPerNm)
         {
             var fresh = run.LandingCheckedUtc is { } at && (DateTimeOffset.UtcNow - at).TotalSeconds <= LandingCheckValidSeconds;
@@ -2926,7 +3069,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             return;
         }
 
-        if (run.LandingScanBusy || run.Runways is not { } runways || RunwayOf(runways, label) is not { } runway)
+        if (closed is not null || run.LandingScanBusy || run.Runways is not { } runways || RunwayOf(runways, label) is not { } runway)
         {
             return;
         }
@@ -3087,7 +3230,8 @@ public sealed class TrafficTestService : IHostedService, IDisposable
             obstacles,
             graph.BlockedEdges,
             graph.Nodes.Count(n => n.Parking is not null && graph.IsOccupied(n)),
-            obstacleError);
+            obstacleError,
+            graph.PathTypes.ToDictionary(t => TaxiGraph.PathTypeName(t.Key), t => t.Value));
     }
 
     /// <summary>
@@ -3176,6 +3320,7 @@ public sealed class TrafficTestService : IHostedService, IDisposable
 
         _sim.StopAiProbe(run.ObjectId);
         _sim.StopAiPose(run.ObjectId, unfreeze: false);
+        await RemoveFollowMeAsync(run);
         run.VelocityTimer?.Dispose();
         run.VelocityTimer = null;
         if (_sim.Connection.IsConnected)
@@ -3408,6 +3553,56 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         }
 
         private volatile bool _runwayScanBusy;
+        private double _spacingStopS = double.NaN;
+        private double _followMeStopS = double.NaN;
+        private volatile FollowMeUnit? _followMe;
+        private volatile bool _followMeScanBusy;
+
+        /// <summary>A3, A4: Follow-me gewünscht (followMe) – kommt nach der Prüfung der Parkposition 2 NM vor der Schwelle.</summary>
+        public bool FollowMeWanted { get; init; }
+
+        /// <summary>Das Follow-me-Fahrzeug, sobald es erzeugt ist.</summary>
+        public FollowMeUnit? FollowMe
+        {
+            get => _followMe;
+            set => _followMe = value;
+        }
+
+        /// <summary>Plan des Follow-me (auch wenn das Fahrzeug schon weg ist).</summary>
+        public FollowMePlan? FollowMePlan { get; set; }
+
+        /// <summary>Die gekreuzten Bahnen auf dem Weg des Fahrzeugs (dieselben wie in <see cref="FollowMePlan.CrossingStops"/>).</summary>
+        public IReadOnlyList<TaxiCrossing> FollowMeCrossings { get; set; } = [];
+
+        /// <summary>Belegtes Fahrzeug des Flughafens (<see cref="FollowMeFleet"/>).</summary>
+        public IDisposable? FollowMeLease { get; set; }
+
+        /// <summary>Zuletzt als Ereignis gemeldete Phase des Fahrzeugs.</summary>
+        public string? FollowMePhaseLogged { get; set; }
+
+        /// <summary>Seit wann das Fahrzeug vor der aktuellen gekreuzten Bahn auf die Freigabe wartet.</summary>
+        public DateTimeOffset? FollowMeHoldSinceUtc { get; set; }
+
+        /// <summary>Eine Abfrage, ob die Bahn vor dem Fahrzeug frei ist, läuft gerade.</summary>
+        public bool FollowMeScanBusy
+        {
+            get => _followMeScanBusy;
+            set => _followMeScanBusy = value;
+        }
+
+        /// <summary>Halt hinter anderem Testverkehr (Abstand beim Rollen), NaN = keiner.</summary>
+        public double SpacingStopS
+        {
+            get => Interlocked.CompareExchange(ref _spacingStopS, 0, 0);
+            set => Interlocked.Exchange(ref _spacingStopS, value);
+        }
+
+        /// <summary>Halt hinter dem Follow-me (im Frame des Fahrzeugs gesetzt), NaN = keiner.</summary>
+        public double FollowMeStopS
+        {
+            get => Interlocked.CompareExchange(ref _followMeStopS, 0, 0);
+            set => Interlocked.Exchange(ref _followMeStopS, value);
+        }
 
         /// <summary>Rollen: Eine Abfrage, ob die Bahn frei ist, läuft gerade.</summary>
         public bool RunwayScanBusy
@@ -3493,6 +3688,18 @@ public sealed class TrafficTestService : IHostedService, IDisposable
         }
 
         private TaxiKinematics? _pendingTaxi;
+
+        /// <summary>A3, A4 mit Feuerwehreinsatz: freie Abstellpositionen der Feuerwehr (die beste zuerst), sonst null.</summary>
+        public IReadOnlyList<string>? RemoteStands
+        {
+            get => Volatile.Read(ref _remoteStands);
+            set => Volatile.Write(ref _remoteStands, value);
+        }
+
+        private IReadOnlyList<string>? _remoteStands;
+
+        /// <summary>Auf eine der <see cref="RemoteStands"/> gewechselt (oder es ging nicht) – nicht noch einmal.</summary>
+        public bool RemoteStandChosen { get; set; }
 
         /// <summary>Die Rollroute, die gerade gilt: die neue nach einer belegten Parkposition, sonst die des Plans.</summary>
         public TaxiRoute? Taxi => ReplannedTaxi ?? InitialPlan.Taxi;

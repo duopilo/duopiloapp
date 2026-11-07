@@ -38,6 +38,7 @@ Duopilo downloads these only when the related feature is used, into `%LOCALAPPDA
 |---|---|---|
 | Kokoro-82M model (`kokoro.onnx`) | Kokoro speech output | Apache-2.0 |
 | Whisper models (ggml) | speech recognition | MIT |
+| Fire station locations from [OpenStreetMap](https://www.openstreetmap.org/copyright) via the [Overpass API](https://overpass-api.de), cached per airport in `cache\fire-stations` | airport fire service (`Duopilo:Fire:OsmStations`) | © OpenStreetMap contributors, [Open Database License 1.0](https://opendatacommons.org/licenses/odbl/) |
 | Silero VAD | voice activity detection | MIT |
 | Supertonic 3 model and voices (Supertone) | first officer voice in English and German | BigScience OpenRAIL-M – use restrictions apply (e.g. no impersonation of real people; disclose machine-generated speech you publish). A copy is saved next to the model |
 | Piper and Piper voices (optional fallback) | speech output | MIT; voices per voice |

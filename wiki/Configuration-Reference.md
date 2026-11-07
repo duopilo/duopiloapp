@@ -45,6 +45,18 @@ Only put in what you change. Example:
 | `Input:Enabled` | `false` | [Input Module](Input-Module) – the dashboard switch takes precedence |
 | `Input:ConfirmWindowSeconds` | `60` | lifetime of a prepared action |
 | `Atc:Enabled`, `Speak`, `SquawkFromSim`, `SessionFile`, `SessionMaxAgeHours`, `TemplatesFile` | | [ATC](ATC#settings) |
+| `FollowMe:Enabled` | `true` | [follow-me](ATC#follow-me) on request (tray instance only) |
+| `FollowMe:Model` | `Duopilo_FollowMe_Licht` | vehicle title from its `sim.cfg` |
+| `FollowMe:HeightFt` | `0` | model reference point above the ground |
+| `Fire:Enabled` | `true` | airport fire service on Mayday/Pan Pan (tray instance only, in development) |
+| `Fire:OnAtcEmergency` | `true` | Mayday and Pan Pan in the ATC module alert the fire service |
+| `Fire:DispatchRangeNm` | `20` | the vehicles turn out once the aircraft is this close to the landing airport |
+| `Fire:OsmStations` | `true` | real fire stations from OpenStreetMap (© OpenStreetMap contributors, ODbL), cached 30 days per airport; otherwise a free parking position |
+| `Fire:OverpassUrl` | `https://overpass-api.de/api/interpreter,https://overpass.private.coffee/api/interpreter` | Overpass API servers for the fire stations, comma-separated, asked in turn (the request runs on in the background; a failure is retried after 15 minutes) |
+| `Fire:FlfModels` | `Duopilo_FLF_Rund_Licht,Duopilo_FLF_Eckig_Licht` | crash tender titles, used in turn (with an older duopilo-fire package Duopilo falls back to the former titles) |
+| `Fire:ElwModel`, `HlfModel`, `RtwModel`, `RtfModel` | `Duopilo_ELW_Licht` … | command car, fire engine, ambulance, rescue stairs |
+| `Fire:HeightFt` | `0` | model reference point above the ground |
+| `Fire:Siren` | `true` | siren on the way to the scene or standby (`L:1:DUOPILO_SIRENE`); `false` = blue lights only |
 | `Speech:Engine` | `auto` | `auto`, `windows`, `kokoro` |
 | `Speech:KokoroVoice` | `bm_george` | default Kokoro voice for callouts |
 | `Speech:KokoroThreads` | `2` | CPU threads for Kokoro |

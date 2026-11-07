@@ -223,7 +223,9 @@ public sealed partial class AtcSession
         _alongNm = s.AlongTrackNm;
 
         Phase = s.Phase;
-        Step = StepAfterReadback(s.Step);
+
+        // Ein Follow-me überlebt den Neustart nicht (das Fahrzeug ist weg): wer noch darauf wartete, ruft Ground wieder
+        Step = s.Step == AtcStep.FollowMeWait ? AtcStep.ArrivalContact : StepAfterReadback(s.Step);
         _stepSince = s.StepSinceUtc == default ? input.TimeUtc : s.StepSinceUtc;
         _movedInStep = false;
         _stoppedSince = null;
@@ -295,7 +297,7 @@ public sealed partial class AtcSession
         AtcStep.ApproachReadback => AtcStep.ApproachVectoring,
         AtcStep.ApproachClearanceReadback => AtcStep.ApproachEstablished,
         AtcStep.LandingReadback => AtcStep.Landing,
-        AtcStep.GateReadback => AtcStep.TaxiIn,
+        AtcStep.GateReadback or AtcStep.FollowMeReadback => AtcStep.TaxiIn,
         _ => step,
     };
 
