@@ -30,6 +30,12 @@ public sealed class FireOperation
     /// <summary>So viel Luft bleibt vor der vorausgerechneten Stoppstelle des Flugzeugs.</summary>
     public const double ApproachClearM = 150;
 
+    /// <summary>
+    /// Mit dieser Verzögerung (m/s²) rechnet das entgegenkommende FLF die Stelle, zu der es fährt (die Mittellinie dort, wo das Flugzeug
+    /// wohl steht); die Grenze davor rechnet vorsichtiger mit <see cref="ApproachDecelMps2"/>.
+    /// </summary>
+    public const double ExpectedDecelMps2 = 2.0;
+
     /// <summary>Breite der Zone vor dem Flugzeug, in die das entgegenkommende FLF nicht fährt: halbe Bahnbreite plus so viel.</summary>
     public const double ApproachSideM = 25;
 
@@ -514,8 +520,12 @@ public sealed class FireOperation
             return;
         }
 
-        // Steht das Flugzeug, fahren alle hin – nach einer Landung auch von unterwegs, egal wie weit (Position wählt den Weg)
-        if (stopped && !_inspected && !passed
+        // Steht das Flugzeug, fahren alle hin – nach einer Landung auch von unterwegs, egal wie weit (Position wählt den Weg), und auch
+        // wer hinter ihm unterwegs ist zu einem Haltepunkt vor ihm (Nachtest .20 EDDK 07.11.: FLF 3 bekam erst am Ende seines Wegs, 2 min
+        // nach dem Stopp, seinen Platz)
+        var behindOnTheWay = passed && vehicle.Phase == FireVehiclePhase.Responding && Level != FireAlertLevel.GroundIncident
+            && !HoldPassed(vehicle, aircraft);
+        if (stopped && !_inspected && (!passed || behindOnTheWay)
             && (vehicle.Phase == FireVehiclePhase.Standby || Level != FireAlertLevel.GroundIncident || distanceToAircraft < DirectRangeM))
         {
             Position(vehicle, aircraft);
@@ -826,7 +836,14 @@ public sealed class FireOperation
             return false;
         }
 
-        var (te, tn) = Graph.OnCenterline(runway, Graph.OffsetsTo(runway, aircraft.EastM, aircraft.NorthM).AlongM);
+        // Ziel: die Mittellinie an der erwarteten Stoppstelle, nicht dort, wo das Flugzeug gerade ist (Nachtest .20 EDDK 07.11.: FLF 3 war
+        // beim Aufsetzen noch unterwegs, bekam die Aufsetzstelle als Ziel und fuhr 2 km vom Flugzeug weg nach Nordwesten)
+        var speed = Math.Max(0, aircraft.GroundSpeedMps);
+        var rollout = speed * speed / (2 * ExpectedDecelMps2);
+        var heading = aircraft.HeadingDeg * Math.PI / 180;
+        var stopAlong = Graph.OffsetsTo(runway, aircraft.EastM + (rollout * Math.Sin(heading)), aircraft.NorthM + (rollout * Math.Cos(heading))).AlongM;
+        var half = Math.Max(0, (runway.LengthM / 2) - 50);
+        var (te, tn) = Graph.OnCenterline(runway, Math.Clamp(stopAlong, -half, half));
         if (WithFreeRunway(() => FirePlanner.RouteBetween(Graph, vehicle.EastM, vehicle.NorthM, te, tn)) is not { Count: >= 2 } points)
         {
             return false;

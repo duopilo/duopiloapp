@@ -1099,6 +1099,63 @@ public sealed class FireTests
     }
 
     [Fact]
+    public void Spaeter_Mayday_FLF_3_faehrt_von_unterwegs_zur_Stoppstelle_nicht_zur_Aufsetzstelle()
+    {
+        // Nachtest .20 EDDK 07.11.: FLF 3 war beim Aufsetzen noch unterwegs zum Bahnende, bekam die Aufsetzstelle als Ziel, fuhr 2 km vom
+        // Flugzeug weg und bekam nach dem Stopp erst am Ende dieses Wegs seinen Platz (2 min)
+        var graph = Graph();
+        var plan = FirePlanner.Plan(graph, Runway09, FireCategory.Lineup(FireAlertLevel.FullEmergency, 9), TrafficWake.Heavy, null)!;
+        var operation = new FireOperation(graph, FireAlertLevel.FullEmergency, plan, TrafficWake.Heavy, 9);
+        foreach (var vp in plan.Vehicles)
+        {
+            operation.Add(new FireVehicle(vp.Unit, "test", vp.Route, operation.Trail, graph.ToLatLon, 164));
+        }
+
+        var vehicles = operation.Vehicles;
+        var flf3 = vehicles.Single(v => v.Unit.Name == "FLF 3");
+        const double dt = 0.25;
+        void Step(FireAircraftState state)
+        {
+            operation.Update(state, dt);
+            foreach (var vehicle in vehicles)
+            {
+                vehicle.Advance(dt);
+            }
+        }
+
+        // 20 s unterwegs, dann landet das Flugzeug (x = -700, 70 m/s, 2,2 m/s²)
+        for (var t = 0; t < 80; t++)
+        {
+            Step(new FireAircraftState(-3000, 0, 90, 75, false));
+        }
+
+        Assert.Equal(FireVehiclePhase.Responding, flf3.Phase);
+        var eastAtTouchdown = flf3.EastM;
+        var minEast = double.MaxValue;
+        var (x, speed) = (-700.0, 70.0);
+        while (speed > 0)
+        {
+            speed = Math.Max(0, speed - (2.2 * dt));
+            x += speed * dt;
+            Step(new FireAircraftState(x, 0, 90, speed, true));
+            minEast = Math.Min(minEast, flf3.EastM);
+        }
+
+        Assert.True(minEast > eastAtTouchdown - 30, $"FLF 3 fuhr von {eastAtTouchdown:0} nach {minEast:0} zurück");
+
+        // Nach dem Stopp an seinen Platz, nicht erst ans Ende eines Wegs
+        var stopped = new FireAircraftState(x, 0, 90, 0, true);
+        var seconds = 0.0;
+        for (; seconds < 180 && flf3.Phase != FireVehiclePhase.AtAircraft; seconds += dt)
+        {
+            Step(stopped);
+        }
+
+        Assert.Equal(FireVehiclePhase.AtAircraft, flf3.Phase);
+        Assert.True(seconds < 90, $"FLF 3 erst nach {seconds:0} s am Flugzeug");
+    }
+
+    [Fact]
     public void Freie_Bahn_zaehlt_beim_Routen_wie_ein_Rollweg()
     {
         // Vom Haltepunkt am Ostende (800/90) zum Zubringer bei x = -400: sonst über Rollweg A (y = 200), mit freier Bahn über die Bahn
