@@ -607,8 +607,8 @@ ab 5 NM). Aufsetzen bei 520 m mit 135 kt, Stopp bei 1559 m nach 29 s.
 
 - **Bereitstellung:** wie geplant an der 14L (FLF 2 nach 1:31 min, ELW 1:38, FLF 1 2:08, FLF 3 am Ende 3:31). FLF 3 kreuzte die
   06/24 auf dem Weg nach 0 s, der A330 war da noch rund 6 NM draußen.
-- **Nach dem Stopp:** FLF 2 und ELW standen nahe an der Mitte der 14L, nicht weit vom Stopp, und waren nach 34 und 47 s am Platz
-  (06/24 nach 0 s gekreuzt, das stehende Flugzeug zählt nicht als Verkehr). FLF 3 blieb am Ende der 14L, bis das Flugzeug stand, und
+- **Nach dem Stopp:** ELW nach 34 s und FLF 2 nach 47 s am Platz, beide von der Mitte der 14L aus (06/24 nach 0 s gekreuzt, das
+  stehende Flugzeug zählt nicht als Verkehr). FLF 3 blieb am Ende der 14L, bis das Flugzeug stand, und
   kam erst nach 2:17 min. FLF 1 ging 15 s nach dem Aufsetzen auf die Spur: Es fuhr erst zu ihrem Anfang auf der 06 und ihr dann nach,
   auch als das Flugzeug längst stand, und war erst nach 2:54 min am Platz.
 - **Ursache:** Die Bahn des Notfalls war immer die aus dem Alarm. Auf der 06 kam FLF 3 nicht entgegen, und wer auf dem Weg auf die
