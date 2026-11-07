@@ -1,6 +1,6 @@
 # Feuerwehr: Stand und Test im Sim
 
-Stand: 07.11.2026 (Nachtest beta.44.feuerwehr.22). Status: erster Stand gebaut (Alarm, Bereitstellung, Folgen, Umstellen, Einrücken), Tests ohne Sim grün. Im Sim
+Stand: 07.11.2026 (Nachtest beta.44.feuerwehr.22, gebaut .23). Status: erster Stand gebaut (Alarm, Bereitstellung, Folgen, Umstellen, Einrücken), Tests ohne Sim grün. Im Sim
 getestet in EDDL (04.11.) und EDDK (05.11.), Ergebnisse unten. Planung: [Feuerwehr-Einsätze](feuerwehr-einsaetze.md) (PR #130),
 Fahrzeuge: [Feuerwehr-Fahrzeuge](feuerwehr-fahrzeuge.md).
 
@@ -106,6 +106,13 @@ Fahrzeuge: [Feuerwehr-Fahrzeuge](feuerwehr-fahrzeuge.md).
 - **Alte Notfälle:** Ein Mayday oder Pan Pan, das älter als 3 Stunden ist (etwa aus einer wiederhergestellten ATC-Sitzung), löst
   nichts mehr aus. Die Bahn aus dem Plan gilt nur am Zielflughafen; am Boden und an einem anderen Flughafen gibt es keine.
 - **KI-Flüge:** `alert` mit `tail` (DUO01 …) folgt einem KI-Flugzeug eines laufenden Verkehrstests statt dem eigenen.
+- **Abstellen nach dem Notfall (seit .23):** Ein KI-Flugzeug mit Feuerwehreinsatz (Pan Pan oder Mayday, `tail`, ohne `parking`)
+  parkt frei auf dem Vorfeld statt am Gebäude. Duopilo fragt die Fluggastbrücken des Platzes beim Sim ab (Facility JETWAY:
+  PARKING_GATE, PARKING_SUFFIX, PARKING_SPOT) und wählt bis zu 12 Positionen: keine mit Brücke, keine Docks, Tankstellen oder
+  Fahrzeug-Plätze, keine belegte, groß genug für die Wirbelschleppenklasse; Vorfeld vor Gate, mindestens 50 m bis zum nächsten
+  Gebäude aus OSM vor näher dran, dann die nächste zur Landebahn. Der Verkehrstest nimmt beim Abrollen die erste erreichbare und
+  meldet „parking_changed … to remote stand … for the fire service“. Rollt er schon, bleibt es beim alten Platz
+  (`warning:remote_stand_too_late`). Klappt die Abfrage der Brücken nicht, gilt nur Vorfeld vor Gate und der Abstand.
 - **Licht:** `L:1:DUOPILO_BLAULICHT` und `L:1:DUOPILO_FAHRLICHT` je Fahrzeug und die Events (seit beta.44.feuerwehr.13 ohne
   `A:LIGHT BEACON`/`A:LIGHT LANDING`), 2, 3 und 5 s nach dem Spawn. Die Z-Variablen gehen erst 2 s nach dem Spawn hinaus, und jedes
   Fahrzeug hat eigene Data Definitions (seit beta.44.feuerwehr.14, siehe Ergebnis 05.11.).
@@ -115,7 +122,7 @@ Fahrzeuge: [Feuerwehr-Fahrzeuge](feuerwehr-fahrzeuge.md).
   `L:1:DUOPILO_KURVE` (Krümmung der Fahrspur, rechts positiv, über 0,4 s geglättet, höchstens 1/6 m). Im Stand bleibt die Lenkung
   stehen. Die Modelle rechnen daraus Drehwinkel und Lenkeinschlag ([Feuerwehr-Fahrzeuge](feuerwehr-fahrzeuge.md#räder-und-lenkung)).
 
-Noch nicht gebaut: Freies Abstellen nach einem Notfall (Position ohne Fluggastbrücke abseits der Gebäude, geplant für .23),
+Noch nicht gebaut: Freies Abstellen des eigenen Flugzeugs nach einem Notfall (bisher nur für KI-Flugzeuge der Verkehrstests),
 ATC-Meldungen der Feuerwehr, Hochstufen von Pan Pan auf Mayday (mehr Fahrzeuge), heiße Bremsen und Startabbruch als Auslöser,
 Notfälle der eigenen KI, Effekte.
 
@@ -561,3 +568,19 @@ Aufsetzen bei 458 m mit 135 kt, Stopp bei 1560 m 30 s später.
 Noch offen: freies Abstellen nach dem Notfall (.23); ob ein rollendes Flugzeug des Notfalls auf der Bahn als Verkehr zählt (.18);
 Abfrage im Anrollen mit Blaulicht (Pan Pan, eine Anfahrt über eine Bahn); Landung auf der anderen Bahn, Alarm per Funk (Mayday/Pan Pan
 im ATC-Modul), Ausrücken ab 20 NM bei eigenem Anflug (dann auch FLF 3 vor dem Aufsetzen am Bahnende), Abstand zum Abgasstrahl.
+
+Test 2 (Mayday ab 20 NM, A330-300, A1 kinematisch ab 12 NM, Alarm 1 s nach dem Start), Bahn 14L, gefahren von Claude. Aufsetzen
+7:21 min nach dem Alarm bei 458 m mit 135 kt, Stopp bei 1558 m 31 s später.
+
+- **Bereitstellung:** Alle 8 standen vor dem Aufsetzen: FLF 2 nach 1:31 min, FLF 4 1:38, ELW 1:52, HLF 1:58, RTF 2:05, FLF 1 2:08,
+  RTW 2:11, FLF 3 am Bahnende nach 3:32 (3:49 min vor dem Aufsetzen). Damit ist auch FLF 3 vor dem Aufsetzen am Bahnende bestätigt.
+  Die 5 min Wartezeit auf den Posten überstanden alle ohne Halt oder Umweg.
+- **Nach dem Aufsetzen:** FLF 3 fuhr 2 s danach über die 14L entgegen (`approaching over runway 14L/32R`), FLF 1 schloss gleich an
+  (bei 47 s 1060 m Abstand). Nach dem Stopp standen FLF 4 nach 29 s, ELW 35, HLF 37, FLF 2 39, RTW 44, RTF 50, FLF 1 57, FLF 3 78 s
+  (rund 2 km vom Bahnende, im Mittel 37 kt). Vor keiner Bahn ein Halt.
+- **Rückfahrt:** Sperre aufgehoben, 14L nach 5 s gekreuzt (6 Fahrzeuge hielten 5 s, ELW und RTW mussten nicht halten).
+- **Modell:** Das A330-300 (GE) ist ein volles Modell (Lichter alle 15 s neu gesendet). Für die nächsten Tests nehmen wir lieber
+  „Asobo PassiveAircraft A330-300“ (gleiche Länge, Kategorie 9; steht noch auf `untested`).
+
+Noch offen: freies Abstellen nach dem Notfall (.23, Pan Pan mit A3 und Rollen zur Position); .18; Abfrage im Anrollen mit Blaulicht;
+Landung auf der anderen Bahn; Alarm per Funk; Abstand zum Abgasstrahl.
