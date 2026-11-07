@@ -1,6 +1,6 @@
 # Feuerwehr: Stand und Test im Sim
 
-Stand: 07.11.2026 (Nachtest beta.44.feuerwehr.22, gebaut .23). Status: erster Stand gebaut (Alarm, Bereitstellung, Folgen, Umstellen, Einrücken), Tests ohne Sim grün. Im Sim
+Stand: 07.11.2026 (Nachtest beta.44.feuerwehr.23). Status: erster Stand gebaut (Alarm, Bereitstellung, Folgen, Umstellen, Einrücken), Tests ohne Sim grün. Im Sim
 getestet in EDDL (04.11.) und EDDK (05.11.), Ergebnisse unten. Planung: [Feuerwehr-Einsätze](feuerwehr-einsaetze.md) (PR #130),
 Fahrzeuge: [Feuerwehr-Fahrzeuge](feuerwehr-fahrzeuge.md).
 
@@ -584,3 +584,24 @@ Test 2 (Mayday ab 20 NM, A330-300, A1 kinematisch ab 12 NM, Alarm 1 s nach dem S
 
 Noch offen: freies Abstellen nach dem Notfall (.23, Pan Pan mit A3 und Rollen zur Position); .18; Abfrage im Anrollen mit Blaulicht;
 Landung auf der anderen Bahn; Alarm per Funk; Abstand zum Abgasstrahl.
+
+## Nachtest im Sim (07.11.2026, beta.44.feuerwehr.23, EDDK)
+
+Zwei Pan Pan mit Rollen nach der Landung (A3, Spawn 8 NM, kinematisch), Bahn 14L, gefahren von Claude. Ab jetzt mit
+PassiveAircraft-Modellen (außer Militär und EC135, wie mit Florian ausgemacht).
+
+- **Fluggastbrücken:** Die Abfrage beim Sim klappt (`Facilities: 16 jetways for EDDK`), kein Fehler.
+- **A330-300 (Passive, Heavy):** Freie Positionen W26, W22, W18, W14, W10, P2. In Köln sind nur die W-Positionen und P2 groß
+  genug (Radius ab 26 m). Geplant war schon W18, also blieb es dabei (`parking_checked W18 is a remote stand for the fire service`).
+  FLF 2 folgte bis W18, FLF 1, FLF 3 und ELW rückten ein.
+- **A320neo (Passive, Medium), Ziel D12 (Gate) vorgegeben:** Freie Positionen F31, F34, F25, F23, W32, E45, W28, W26, W22, W18,
+  W14, W10. 11 s nach dem Start, noch im Anflug: `parking_changed D12 to remote stand F31 (ramp_ga_large) for the fire service,
+  route A2 A 2099 m` (statt 4014 m zum Gate). Er rollte auf F31, FLF 2 folgte.
+- **Passive-A330-300:** landete sauber (Aufsetzen 477 m, 135 kt), Fahrwerk und Lichter da. `gear_not_down_by 2500 ft` kam nur,
+  weil er bei 8 NM schon auf 2850 ft gespawnt wird (Fahrwerk bei 2470 ft draußen), beim A320 genauso.
+- **Am Platz:** Der Verkehrstest endet beim Parken und nimmt das Flugzeug sofort weg, darum rückt FLF 2 gleich ein. Die Minute am
+  Platz lässt sich so nicht sehen.
+
+Noch offen: ob ein rollendes Flugzeug des Notfalls auf der Bahn als Verkehr zählt (.18); Abfrage im Anrollen mit Blaulicht (Pan
+Pan); Landung auf der anderen Bahn; Alarm per Funk; Abstand zum Abgasstrahl; die Minute am Platz (Test, der nach dem Parken nicht
+sofort endet).
