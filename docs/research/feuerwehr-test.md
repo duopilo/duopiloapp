@@ -1,6 +1,6 @@
 # Feuerwehr: Stand und Test im Sim
 
-Stand: 07.11.2026 (Nachtest beta.44.feuerwehr.21; beta.44.feuerwehr.22 gebaut, Nachtest steht aus). Status: erster Stand gebaut (Alarm, Bereitstellung, Folgen, Umstellen, Einrücken), Tests ohne Sim grün. Im Sim
+Stand: 07.11.2026 (Nachtest beta.44.feuerwehr.22). Status: erster Stand gebaut (Alarm, Bereitstellung, Folgen, Umstellen, Einrücken), Tests ohne Sim grün. Im Sim
 getestet in EDDL (04.11.) und EDDK (05.11.), Ergebnisse unten. Planung: [Feuerwehr-Einsätze](feuerwehr-einsaetze.md) (PR #130),
 Fahrzeuge: [Feuerwehr-Fahrzeuge](feuerwehr-fahrzeuge.md).
 
@@ -538,7 +538,26 @@ Ablauf wie in .20: dieselben 8 Fahrzeuge von der Hauptwache, Sperre mit dem Alar
   **Behoben in beta.44.feuerwehr.22:** Diese Freigaben gibt der Einsatz in jedem Takt, auch vor der Landung (Test
   `Mayday_kreuzt_schon_vor_der_Landung_ohne_Halt`).
 
-Noch offen: Nachtest von beta.44.feuerwehr.22 (kein Halt vor der 06/24 vor der Landung, FLF 3 dann rechtzeitig am Bahnende), Plätze an
-der Hauptwache im Bild (achter Platz in der zweiten Reihe); freies Abstellen nach dem Notfall (.23); ob ein rollendes Flugzeug des
-Notfalls auf der Bahn als Verkehr zählt (.18); Abfrage im Anrollen mit Blaulicht (Pan Pan, eine Anfahrt über eine Bahn); Landung auf
-der anderen Bahn, Alarm per Funk (Mayday/Pan Pan im ATC-Modul), Ausrücken ab 20 NM bei eigenem Anflug, Abstand zum Abgasstrahl.
+Nachgetestet mit beta.44.feuerwehr.22, siehe nächster Abschnitt.
+
+## Nachtest im Sim (07.11.2026, beta.44.feuerwehr.22, EDDK)
+
+Test 1 (Mayday, A330-300, A1 kinematisch ab 5 NM, Alarm 1 s nach dem Start), Bahn 14L, gefahren von Claude, Florian sah im Sim zu.
+Aufsetzen bei 458 m mit 135 kt, Stopp bei 1560 m 30 s später.
+
+- **Kein Halt vor der Landung:** FLF 3 fuhr 1:40 min nach dem Alarm mit 38 kt über die 06/24 (in .20 und .21 rund 20 s Halt bis zum
+  Aufsetzen). Bis zur Rückfahrt stand kein Fahrzeug vor einer Bahn. Der Fix aus .22 greift.
+- **FLF 3:** Am Bahnende war es beim Aufsetzen trotzdem noch nicht (Weg rund 3,5 km, Alarm nur 2 min vor dem Aufsetzen); es kam von
+  unterwegs zur erwarteten Stoppstelle entgegen und stand 40 s nach dem Stopp an seinem Platz. Bei einem Alarm ab 20 NM ist es
+  rechtzeitig am Bahnende.
+- **Bereitstellung und Umstellen:** An der Mitte standen FLF 2 nach 1:32 min, FLF 4 1:39, ELW 1:53, HLF 1:59, RTF 2:06, RTW 2:12, FLF 1
+  an der Aufsetzzone 2:09 (beim Aufsetzen, gleich auf die Spur, 31 s bis auf sie). Nach dem Stopp standen FLF 4 nach 30 s, ELW 36, HLF
+  37, FLF 2 und FLF 3 40, RTW 45, RTF 50, FLF 1 nach 60 s.
+- **Rückfahrt:** wie in .21 (Sperre aufgehoben, 14L nach 5 s gekreuzt), alle 8 nach 1:57 bis 2:30 min an der Wache verschwunden.
+- **Hauptwache:** Laut Florian kommen jetzt alle Fahrzeuge aus der richtigen Richtung, auch der RTW. Der Fix aus .20 (Plätze nie im
+  Gebäude) ist damit bestätigt.
+- **DATA_ERROR:** keiner.
+
+Noch offen: freies Abstellen nach dem Notfall (.23); ob ein rollendes Flugzeug des Notfalls auf der Bahn als Verkehr zählt (.18);
+Abfrage im Anrollen mit Blaulicht (Pan Pan, eine Anfahrt über eine Bahn); Landung auf der anderen Bahn, Alarm per Funk (Mayday/Pan Pan
+im ATC-Modul), Ausrücken ab 20 NM bei eigenem Anflug (dann auch FLF 3 vor dem Aufsetzen am Bahnende), Abstand zum Abgasstrahl.
