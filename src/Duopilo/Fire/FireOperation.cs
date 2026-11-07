@@ -251,6 +251,9 @@ public sealed class FireOperation
 
         KeepDistance(vehicles, dt);
 
+        // Bahnen ohne Freigabe gleich frei – auch vor der Landung (Nachtest .21 EDDK 07.11.: bei Mayday stand FLF 3 mit Blaulicht bis zum
+        // Aufsetzen vor der 06/24, weil das erst nach der Landung geschah)
+        ClearFreeCrossings(vehicles);
         if (Returning || !_landed)
         {
             return;
@@ -354,7 +357,16 @@ public sealed class FireOperation
             ReturnAll();
         }
 
-        // Die Bahn des Notfalls nach der Landung gleich freigeben (auch für die eben neu gesetzten Wege): dort hält niemand
+        // Auch für die eben neu gesetzten Wege
+        ClearFreeCrossings(vehicles);
+    }
+
+    /// <summary>
+    /// Bahnen ohne Freigabe gleich freigeben (<see cref="NeedsClearance"/>): die Bahn des Notfalls nach der Landung, bei Mayday mit
+    /// Blaulicht jede – dort hält niemand.
+    /// </summary>
+    private void ClearFreeCrossings(IReadOnlyList<FireVehicle> vehicles)
+    {
         foreach (var vehicle in vehicles)
         {
             if (vehicle.NextCrossing is { } crossing && !NeedsClearance(vehicle, crossing))

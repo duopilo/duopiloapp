@@ -1022,6 +1022,34 @@ public sealed class FireTests
         Assert.True(operation.NeedsClearance(vehicle, other));
     }
 
+    [Theory]
+    [InlineData(FireAlertLevel.FullEmergency, false)]
+    [InlineData(FireAlertLevel.LocalStandby, true)]
+    public void Mayday_kreuzt_schon_vor_der_Landung_ohne_Halt(FireAlertLevel level, bool holds)
+    {
+        // Nachtest .21 EDDK 07.11.: FLF 3 stand bei Mayday mit Blaulicht bis zum Aufsetzen vor der 06/24 – die Freigabe ohne Abfrage
+        // kam erst nach der Landung. Bei Pan Pan hält es (die Abfrage macht der FireService, den es hier nicht gibt).
+        var graph = Graph();
+        var plan = FirePlanner.Plan(graph, Runway09, FireCategory.Lineup(level, 9), TrafficWake.Heavy, null)!;
+        var operation = new FireOperation(graph, level, plan, TrafficWake.Heavy, 9);
+        var vehicle = new FireVehicle(plan.Vehicles[0].Unit, "test", plan.Vehicles[0].Route, operation.Trail, graph.ToLatLon, 164);
+        operation.Add(vehicle);
+        vehicle.Drive(FirePlanner.BuildPath([(300, 150), (300, -150)], FireProfile.MaxMps), FireVehiclePhase.Responding, FireVehiclePhase.Standby, FireProfile.MaxMps);
+        Assert.NotNull(vehicle.NextCrossing);
+
+        var airborne = new FireAircraftState(-9000, 0, 90, 75, false);
+        var held = false;
+        for (var t = 0; t < 4 * 60; t++)
+        {
+            operation.Update(airborne, 0.25);
+            vehicle.Advance(0.25);
+            held |= vehicle.HoldingShort;
+        }
+
+        Assert.Equal(holds, held);
+        Assert.Equal(holds, vehicle.NorthM > 0);
+    }
+
     [Fact]
     public void Mayday_FLF_1_folgt_sofort_FLF_3_kommt_ueber_die_Bahn_entgegen()
     {
