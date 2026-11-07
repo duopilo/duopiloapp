@@ -1,6 +1,6 @@
 # Feuerwehr: Stand und Test im Sim
 
-Stand: 07.11.2026 (Nachtest beta.44.feuerwehr.20; beta.44.feuerwehr.21 gebaut, Nachtest steht aus). Status: erster Stand gebaut (Alarm, Bereitstellung, Folgen, Umstellen, Einrücken), Tests ohne Sim grün. Im Sim
+Stand: 07.11.2026 (Nachtest beta.44.feuerwehr.21; beta.44.feuerwehr.22 gebaut, Nachtest steht aus). Status: erster Stand gebaut (Alarm, Bereitstellung, Folgen, Umstellen, Einrücken), Tests ohne Sim grün. Im Sim
 getestet in EDDL (04.11.) und EDDK (05.11.), Ergebnisse unten. Planung: [Feuerwehr-Einsätze](feuerwehr-einsaetze.md) (PR #130),
 Fahrzeuge: [Feuerwehr-Fahrzeuge](feuerwehr-fahrzeuge.md).
 
@@ -48,7 +48,7 @@ Fahrzeuge: [Feuerwehr-Fahrzeuge](feuerwehr-fahrzeuge.md).
   Ist ein anderes FLF schon beim Flugzeug und mehr als 200 m näher dran als FLF 1, folgt dieses. Steht das Flugzeug danach eine
   Minute abseits der Bahn, rückt auch der Begleiter ein. „cancel Mayday“ / „cancel Pan Pan“: alle zurück.
 - **Bahnen kreuzen:** Bei Mayday kreuzen die Fahrzeuge mit Blaulicht jede Bahn ohne Halt und ohne Verkehrsabfrage (Vorfahrt; der
-  Flughafen ist dann für den eigenen KI-Verkehr gesperrt, siehe unten). Sonst: Führt ein Weg (Anfahrt, auf die Spur, Aufstellen,
+  Flughafen ist dann für den eigenen KI-Verkehr gesperrt, siehe unten), seit .22 auch vor der Landung. Sonst: Führt ein Weg (Anfahrt, auf die Spur, Aufstellen,
   Rückfahrt) auf eine Bahn, hält das Fahrzeug an der Stelle, die halbe Bahnbreite plus 40 m neben der Mittellinie liegt. Mit Blaulicht
   (Pan Pan, Notfall am Boden) fragt Duopilo den Verkehr schon ab 200 m davor ab und lässt es durchfahren, wenn die Bahn frei ist;
   ohne Blaulicht (Rückfahrt) hält es mindestens 5 s und fragt dann. Frei heißt: nichts auf der Bahn und nichts im Endanflug (mit
@@ -115,7 +115,7 @@ Fahrzeuge: [Feuerwehr-Fahrzeuge](feuerwehr-fahrzeuge.md).
   `L:1:DUOPILO_KURVE` (Krümmung der Fahrspur, rechts positiv, über 0,4 s geglättet, höchstens 1/6 m). Im Stand bleibt die Lenkung
   stehen. Die Modelle rechnen daraus Drehwinkel und Lenkeinschlag ([Feuerwehr-Fahrzeuge](feuerwehr-fahrzeuge.md#räder-und-lenkung)).
 
-Noch nicht gebaut: Freies Abstellen nach einem Notfall (Position ohne Fluggastbrücke abseits der Gebäude, geplant für .22),
+Noch nicht gebaut: Freies Abstellen nach einem Notfall (Position ohne Fluggastbrücke abseits der Gebäude, geplant für .23),
 ATC-Meldungen der Feuerwehr, Hochstufen von Pan Pan auf Mayday (mehr Fahrzeuge), heiße Bremsen und Startabbruch als Auslöser,
 Notfälle der eigenen KI, Effekte.
 
@@ -511,7 +511,34 @@ Dieselben zwei Tests, Bahn 14L, gefahren von Claude, Florian sah im Sim zu.
 - **FLF 1 im Pan Pan 65 s bis auf die Spur:** offen; im Status 40 s nach dem Aufsetzen noch 5 m Rest. Beim nächsten Test die Lage von
   FLF 1 beim Aufsetzen festhalten.
 
-Noch offen: Nachtest von beta.44.feuerwehr.21 (FLF 3 entgegen von unterwegs), Plätze an der Hauptwache im Bild (achter Platz in der
-zweiten Reihe), FLF 1 im Pan Pan 65 s bis auf die Spur; freies Abstellen nach dem Notfall (.22); ob ein rollendes Flugzeug des
+Nachgetestet mit beta.44.feuerwehr.21, siehe nächster Abschnitt.
+
+## Nachtest im Sim (07.11.2026, beta.44.feuerwehr.21, EDDK)
+
+Nur Test 1 (Mayday, A330-300, A1 kinematisch ab 5 NM, Alarm 1 s nach dem Start), Bahn 14L, gefahren von Claude, Florian sah im Sim zu.
+Ablauf wie in .20: dieselben 8 Fahrzeuge von der Hauptwache, Sperre mit dem Alarm, Aufsetzen bei 457 m mit 135 kt, Stopp bei 1560 m
+30 s später.
+
+- **FLF 3 entgegen:** Beim Aufsetzen stand es noch vor der 06/24 (siehe Befunde), dann `approaching over runway 14L/32R` – diesmal zur
+  erwarteten Stoppstelle, also von vorn auf das Flugzeug zu. Es stand 30 s nach dem Stopp an seinem Platz (in .20 2:57 min, in .19
+  4:07 min). Der Fix aus .21 greift.
+- **Umstellen:** Plätze 5 s nach dem Stopp. Nach dem Stopp standen FLF 4 nach 29 s, FLF 3 30, ELW 35, HLF 36, FLF 2 39, RTW 43, RTF
+  49 s, FLF 1 nach 61 s.
+- **FLF 1:** erreichte seinen Haltepunkt an der Aufsetzzone genau beim Aufsetzen, ging 1 s später auf die Spur und brauchte 32 s bis auf
+  sie (Anfahren mit 1,1 m/s², `FireProfile`). Die 65 s im Pan Pan unter .20 waren wohl ein längerer Weg von unterwegs; nicht weiter
+  untersucht.
+- **Rückfahrt:** Nach `cancel` `Airport EDDK open again for own AI traffic`, FLF 1–4, HLF und RTF kreuzten die 14L nach 5 s.
+- **DATA_ERROR:** keiner.
+
+**Befunde:**
+- **Halt vor der 06/24 vor der Landung:** FLF 3 stand bei Mayday mit Blaulicht rund 20 s vor der 06/24, bis der A330 aufsetzte, ohne
+  Eintrag im Log (`holdingShort: 06/24` im Status). `NeedsClearance` ist bei Mayday falsch, aber die Freigabe ohne Abfrage gab
+  `FireOperation.Update` erst nach der Landung; der FireService fragt bei Mayday nicht ab. In .20 war es genauso (FLF 3 war deshalb
+  beim Aufsetzen noch unterwegs). Mit einem Alarm 20 NM vor der Landung hätten alle vor jeder Bahn bis zur Landung gewartet.
+  **Behoben in beta.44.feuerwehr.22:** Diese Freigaben gibt der Einsatz in jedem Takt, auch vor der Landung (Test
+  `Mayday_kreuzt_schon_vor_der_Landung_ohne_Halt`).
+
+Noch offen: Nachtest von beta.44.feuerwehr.22 (kein Halt vor der 06/24 vor der Landung, FLF 3 dann rechtzeitig am Bahnende), Plätze an
+der Hauptwache im Bild (achter Platz in der zweiten Reihe); freies Abstellen nach dem Notfall (.23); ob ein rollendes Flugzeug des
 Notfalls auf der Bahn als Verkehr zählt (.18); Abfrage im Anrollen mit Blaulicht (Pan Pan, eine Anfahrt über eine Bahn); Landung auf
 der anderen Bahn, Alarm per Funk (Mayday/Pan Pan im ATC-Modul), Ausrücken ab 20 NM bei eigenem Anflug, Abstand zum Abgasstrahl.
