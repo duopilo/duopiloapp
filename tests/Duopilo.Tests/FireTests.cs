@@ -1184,6 +1184,60 @@ public sealed class FireTests
     }
 
     [Fact]
+    public void Freie_Abstellposition_ohne_Bruecke_lieber_Vorfeld_und_weg_vom_Gebaeude()
+    {
+        // Rollweg bei y = 300; Gates G1 (mit Brücke) und G2 vor dem Terminal (y 380–440), Vorfeld R2 daneben, Vorfeld R1 frei im Süden
+        var points = new List<TaxiPointData>
+        {
+            new(1, 0, -100, 300), new(1, 0, 0, 300), new(1, 0, 100, 300), new(1, 0, 200, 300), new(1, 0, 400, 300), new(1, 0, 500, 300),
+        };
+        var paths = new List<TaxiPathData>();
+        for (var i = 0; i < points.Count - 1; i++)
+        {
+            paths.Add(new TaxiPathData(1, 23, 0, 0, i, i + 1, 0));
+        }
+
+        paths.Add(new TaxiPathData(3, 20, 0, 0, 1, 0, 0));
+        paths.Add(new TaxiPathData(3, 20, 0, 0, 2, 1, 0));
+        paths.Add(new TaxiPathData(3, 20, 0, 0, 3, 2, 0));
+        paths.Add(new TaxiPathData(3, 20, 0, 0, 4, 3, 0));
+
+        // Die Bahn 09/27 (für die Zuordnung der Achsen), über einen Zubringer bei x = -100 am Rollweg
+        points.Add(new TaxiPointData(1, 0, -1000, 0));
+        points.Add(new TaxiPointData(1, 0, -100, 0));
+        points.Add(new TaxiPointData(1, 0, 1000, 0));
+        paths.Add(new TaxiPathData(2, 45, 9, 0, points.Count - 3, points.Count - 2, 0));
+        paths.Add(new TaxiPathData(2, 45, 9, 0, points.Count - 2, points.Count - 1, 0));
+        paths.Add(new TaxiPathData(1, 23, 0, 0, 0, points.Count - 2, 0));
+        var data = new AirportTaxiData(
+            "EDXF",
+            51.0,
+            7.0,
+            50,
+            points,
+            [
+                new TaxiParkingData(9, 0, 12, 0, 1, 0, 0, 20, 0, 360),      // G1, Gate mit Brücke
+                new TaxiParkingData(9, 0, 12, 0, 2, 0, 0, 20, 100, 360),    // G2, Gate
+                new TaxiParkingData(3, 0, 12, 0, 3, 0, 0, 17, 200, 360),    // R2, Vorfeld am Terminal
+                new TaxiParkingData(4, 0, 12, 0, 4, 0, 0, 25, 400, 240),    // R1, Vorfeld frei
+            ],
+            paths,
+            ["A"]);
+        var graph = TaxiGraph.Build(data, [Runway]);
+        graph.SetBuildings([[(-50, 380), (250, 380), (250, 440), (-50, 440)]]);
+
+        var withJetways = FireStands.Remote(graph, TrafficWake.Medium, new HashSet<int> { 0 }, (0, 0));
+        Assert.Equal([400.0, 200.0, 100.0], withJetways.Select(n => Math.Round(n.EastM)));
+
+        // Brücken unbekannt: Gates hinten an, unter ihnen die nähere zuerst
+        var unknown = FireStands.Remote(graph, TrafficWake.Medium, null, (0, 0));
+        Assert.Equal([400.0, 200.0, 0.0, 100.0], unknown.Select(n => Math.Round(n.EastM)));
+
+        // Für eine A330 (Heavy, Radius ab 26 m) passt keine
+        Assert.Empty(FireStands.Remote(graph, TrafficWake.Heavy, null, (0, 0)));
+    }
+
+    [Fact]
     public void Freie_Bahn_zaehlt_beim_Routen_wie_ein_Rollweg()
     {
         // Vom Haltepunkt am Ostende (800/90) zum Zubringer bei x = -400: sonst über Rollweg A (y = 200), mit freier Bahn über die Bahn

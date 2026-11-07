@@ -1041,6 +1041,23 @@ public sealed partial class TrafficTestService : IHostedService, IDisposable
 
     // ------------------------------------------------------------------ intern
 
+    /// <summary>
+    /// Feuerwehr im Einsatz für dieses KI-Flugzeug (A3, A4): nach der Landung auf eine dieser Positionen rollen statt ans geplante Gate
+    /// (<see cref="Duopilo.Fire.FireStands"/>, die beste zuerst). Gewechselt wird einmal, solange es noch nicht rollt.
+    /// </summary>
+    /// <returns>Ob ein laufender Test mit diesem Kennzeichen und Rollen nach der Landung da ist.</returns>
+    public bool RequestRemoteStands(string tail, IReadOnlyList<string> labels)
+    {
+        var run = Running().FirstOrDefault(r => string.Equals(r.Tail, tail, StringComparison.OrdinalIgnoreCase) && r.InitialPlan.TaxiAfterLanding);
+        if (run is null || labels.Count == 0)
+        {
+            return false;
+        }
+
+        run.RemoteStands = labels;
+        return true;
+    }
+
     private List<TrafficTestRun> Running()
     {
         lock (_lock)
@@ -1382,6 +1399,20 @@ public sealed partial class TrafficTestService : IHostedService, IDisposable
             && !plan.IsOverflight && run.Analysis.GoAroundPlan is null && !run.Analysis.TouchedDown)
         {
             CheckRunwayBeforeLanding(run, approach, point.Seconds);
+        }
+
+        // A3, A4 mit Feuerwehreinsatz: Rollziel auf eine freie Position abseits der Gebäude (einmal, vor dem Abrollpunkt)
+        if (run.RemoteStands is not null && run.InitialPlan.TaxiAfterLanding && run.Kinematics is { ExitAlongM: not null } standKin
+            && run.Once("remote_stand"))
+        {
+            if (run.TaxiActive)
+            {
+                run.AddEvent(point.Seconds, "warning:remote_stand_too_late (already taxiing)");
+            }
+            else
+            {
+                _ = Task.Run(() => RecheckParkingAsync(run, standKin, point.Seconds));
+            }
         }
 
         // A3, A4: kurz vor der Landung noch einmal prüfen, ob die Parkposition frei ist
@@ -1769,6 +1800,8 @@ public sealed partial class TrafficTestService : IHostedService, IDisposable
     /// <summary>
     /// A3, A4 kurz vor der Landung: Bodenverkehr neu abfragen und prüfen, ob die Parkposition noch frei ist. Ist sie belegt, eine andere
     /// freie wählen, die vom selben Abrollpunkt aus erreichbar ist, und deren Weg für den Abrollpunkt bereitlegen (<see cref="LandingPose"/>).
+    /// Mit Feuerwehreinsatz (<see cref="RequestRemoteStands"/>) einmal auf eine der freien Positionen der Feuerwehr wechseln, auch wenn die
+    /// geplante frei ist; danach gelten nur noch diese.
     /// </summary>
     private async Task RecheckParkingAsync(TrafficTestRun run, TrafficKinematics kin, double seconds)
     {
@@ -1789,7 +1822,16 @@ public sealed partial class TrafficTestService : IHostedService, IDisposable
                 run.AddEvent(seconds, "warning:parking_recheck_scan " + error);
             }
 
-            if (!graph.IsOccupied(route.Parking))
+            var remote = run.RemoteStands;
+            var wantRemote = remote is not null && !run.RemoteStandChosen;
+            if (wantRemote && remote!.Contains(label, StringComparer.OrdinalIgnoreCase) && !graph.IsOccupied(route.Parking))
+            {
+                run.RemoteStandChosen = true;
+                run.AddEvent(seconds, "parking_checked " + label + " is a remote stand for the fire service");
+                return;
+            }
+
+            if (!wantRemote && !graph.IsOccupied(route.Parking))
             {
                 run.AddEvent(seconds, string.Create(CultureInfo.InvariantCulture, $"parking_checked {label} free ({count} aircraft on the ground)"));
                 return;
@@ -1798,7 +1840,10 @@ public sealed partial class TrafficTestService : IHostedService, IDisposable
             var plan = run.InitialPlan;
             var profile = TaxiProfile.For(run.Category);
             TaxiRoute? replanned = null;
-            foreach (var node in TaxiRoute.CandidateParkings(graph, run.Category, run.Wake, Random.Shared).Take(MaxParkingTries))
+            var candidates = remote is not null
+                ? remote.Select(graph.FindParking).OfType<TaxiNode>().Where(n => !graph.IsOccupied(n))
+                : TaxiRoute.CandidateParkings(graph, run.Category, run.Wake, Random.Shared);
+            foreach (var node in candidates.Take(MaxParkingTries))
             {
                 if (node.Id != route.Parking.Id
                     && TaxiRoute.PlanArrival(graph, plan.Runway, node, profile, (route.EntryAlongM ?? exitAlong) - 1) is { HandoverAlongM: { } handover } candidate
@@ -1811,6 +1856,13 @@ public sealed partial class TrafficTestService : IHostedService, IDisposable
 
             if (replanned is null)
             {
+                if (wantRemote)
+                {
+                    run.RemoteStandChosen = true;
+                    run.AddEvent(seconds, "warning:remote_stand none free and reachable from this exit, stays at " + label);
+                    return;
+                }
+
                 run.AddEvent(seconds, "warning:parking_occupied " + label + ", no other free parking from this exit");
                 return;
             }
@@ -1830,6 +1882,14 @@ public sealed partial class TrafficTestService : IHostedService, IDisposable
             run.ReplannedTaxi = replanned;
             run.PendingTaxi = taxi;
             var parking = replanned.Parking.Parking;
+            if (wantRemote)
+            {
+                run.RemoteStandChosen = true;
+                run.AddEvent(seconds, string.Create(CultureInfo.InvariantCulture,
+                    $"parking_changed {label} to remote stand {parking?.Label} ({parking?.TypeName}) for the fire service, route {string.Join(' ', replanned.Taxiways)} {replanned.LengthM:0} m"));
+                return;
+            }
+
             run.AddEvent(seconds, string.Create(CultureInfo.InvariantCulture,
                 $"parking_changed {label} occupied, now {parking?.Label} ({parking?.TypeName}), route {string.Join(' ', replanned.Taxiways)} {replanned.LengthM:0} m"));
         }
@@ -3628,6 +3688,18 @@ public sealed partial class TrafficTestService : IHostedService, IDisposable
         }
 
         private TaxiKinematics? _pendingTaxi;
+
+        /// <summary>A3, A4 mit Feuerwehreinsatz: freie Abstellpositionen der Feuerwehr (die beste zuerst), sonst null.</summary>
+        public IReadOnlyList<string>? RemoteStands
+        {
+            get => Volatile.Read(ref _remoteStands);
+            set => Volatile.Write(ref _remoteStands, value);
+        }
+
+        private IReadOnlyList<string>? _remoteStands;
+
+        /// <summary>Auf eine der <see cref="RemoteStands"/> gewechselt (oder es ging nicht) – nicht noch einmal.</summary>
+        public bool RemoteStandChosen { get; set; }
 
         /// <summary>Die Rollroute, die gerade gilt: die neue nach einer belegten Parkposition, sonst die des Plans.</summary>
         public TaxiRoute? Taxi => ReplannedTaxi ?? InitialPlan.Taxi;

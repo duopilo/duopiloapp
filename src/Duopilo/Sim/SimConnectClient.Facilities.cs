@@ -17,6 +17,7 @@ public sealed partial class SimConnectClient
     private const uint FacilityRunwayDefinitionId = 950_001;
     private const uint FacilityTaxiDefinitionId = 950_002;
     private const uint FacilityHelipadDefinitionId = 950_003;
+    private const uint FacilityJetwayDefinitionId = 950_004;
     private const uint FacilityRequestBase = 2_000_000;
     private static readonly TimeSpan FacilityTimeout = TimeSpan.FromSeconds(10);
 
@@ -27,6 +28,7 @@ public sealed partial class SimConnectClient
     private bool _facilityRunwaysDefined;
     private bool _facilityTaxiDefined;
     private bool _facilityHelipadsDefined;
+    private bool _facilityJetwaysDefined;
     private uint _nextFacilityRequest;
 
     /// <summary>Alle Frequenzen eines Flughafens aus der MSFS-Datenbank (Ground, Tower, Clearance, Approach …).</summary>
@@ -131,6 +133,31 @@ public sealed partial class SimConnectClient
             request.AltitudeM,
             [.. request.Helipads.OrderBy(h => h.Index).Select(h => h.Item)],
             [.. request.Starts.OrderBy(s => s.Index).Select(s => s.Item).Where(s => s.Type == HelipadStart.HelipadType)]);
+    }
+
+    /// <summary>
+    /// Fluggastbrücken eines Flughafens aus der MSFS-Datenbank (JETWAY: PARKING_GATE, PARKING_SUFFIX, PARKING_SPOT – die Parkposition, an
+    /// der die Brücke steht; gleich NAME, SUFFIX, NUMBER von TAXI_PARKING). Eigene Anfrage, damit ein Sim ohne JETWAY nur hier scheitert.
+    /// Brücken, die eine Szenerie nur als 3D-Objekt setzt, fehlen hier.
+    /// </summary>
+    public async Task<IReadOnlyList<AirportJetway>> RequestAirportJetwaysAsync(string icao, CancellationToken ct)
+    {
+        if (!_connection.IsConnected)
+        {
+            throw new InvalidOperationException(Loc.T("sim.notConnected"));
+        }
+
+        var request = new FacilityRequest(icao.Trim().ToUpperInvariant(), FacilityKind.Jetways);
+        Enqueue(sc =>
+        {
+            _facilityQueue.Enqueue(request);
+            StartNextFacilityRequest(sc);
+        });
+
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(FacilityTimeout * 3);
+        await request.Completion.Task.WaitAsync(timeout.Token);
+        return [.. request.Jetways.OrderBy(j => j.Index).Select(j => j.Item)];
     }
 
     private void StartNextFacilityRequest(SimConnect sc)
@@ -249,6 +276,20 @@ public sealed partial class SimConnectClient
                 _facilityHelipadsDefined = true;
             }
 
+            if (next.Kind == FacilityKind.Jetways && !_facilityJetwaysDefined)
+            {
+                var def = (SimDefinitionId)FacilityJetwayDefinitionId;
+                AddAirportPart(sc, def);
+                sc.AddToFacilityDefinition(def, "OPEN JETWAY");
+                sc.AddToFacilityDefinition(def, "PARKING_GATE");
+                sc.AddToFacilityDefinition(def, "PARKING_SUFFIX");
+                sc.AddToFacilityDefinition(def, "PARKING_SPOT");
+                sc.AddToFacilityDefinition(def, "CLOSE JETWAY");
+                sc.AddToFacilityDefinition(def, "CLOSE AIRPORT");
+                sc.RegisterFacilityDataDefineStruct<FacilityJetwayData>(SIMCONNECT_FACILITY_DATA_TYPE.JETWAY);
+                _facilityJetwaysDefined = true;
+            }
+
             next.StartedUtc = DateTimeOffset.UtcNow;
             _facilityActive = next;
             var definition = next.Kind switch
@@ -256,6 +297,7 @@ public sealed partial class SimConnectClient
                 FacilityKind.Runways => FacilityRunwayDefinitionId,
                 FacilityKind.Taxiways => FacilityTaxiDefinitionId,
                 FacilityKind.Helipads => FacilityHelipadDefinitionId,
+                FacilityKind.Jetways => FacilityJetwayDefinitionId,
                 _ => FacilityDefinitionId,
             };
             sc.RequestFacilityData((SimDefinitionId)definition, (SimRequestId)(FacilityRequestBase + ++_nextFacilityRequest), next.Icao, "");
@@ -305,6 +347,10 @@ public sealed partial class SimConnectClient
         {
             active.Starts.Add((index, new HelipadStart(start.Latitude, start.Longitude, start.Altitude, start.Heading, start.Number, start.Type)));
         }
+        else if (data.Data[0] is FacilityJetwayData jetway)
+        {
+            active.Jetways.Add((index, new AirportJetway(jetway.ParkingGate, jetway.ParkingSuffix, jetway.ParkingSpot)));
+        }
         else if (data.Data[0] is FacilityTaxiNameData taxiName)
         {
             active.TaxiNames.Add((index, taxiName.Name?.TrimEnd('\0', ' ') ?? ""));
@@ -345,6 +391,10 @@ public sealed partial class SimConnectClient
             {
                 _log.LogInformation(Loc.Log("log.sim.facilityHelipads"), active.Helipads.Count, active.Starts.Count, active.Icao);
             }
+            else if (active.Kind == FacilityKind.Jetways)
+            {
+                _log.LogInformation(Loc.Log("log.sim.facilityJetways"), active.Jetways.Count, active.Icao);
+            }
             else
             {
                 _log.LogInformation(Loc.Log("log.sim.facilityFrequencies"), active.Frequencies.Count, active.Icao);
@@ -376,6 +426,7 @@ public sealed partial class SimConnectClient
         _facilityRunwaysDefined = false;
         _facilityTaxiDefined = false;
         _facilityHelipadsDefined = false;
+        _facilityJetwaysDefined = false;
         _facilityActive?.Completion.TrySetException(new InvalidOperationException(Loc.T("sim.disconnected")));
         _facilityActive = null;
         while (_facilityQueue.TryDequeue(out var queued))
@@ -400,6 +451,7 @@ public sealed partial class SimConnectClient
         Runways,
         Taxiways,
         Helipads,
+        Jetways,
     }
 
     private sealed class FacilityRequest(string icao, FacilityKind kind)
@@ -431,6 +483,8 @@ public sealed partial class SimConnectClient
         public List<(int Index, AirportHelipad Item)> Helipads { get; } = [];
 
         public List<(int Index, HelipadStart Item)> Starts { get; } = [];
+
+        public List<(int Index, AirportJetway Item)> Jetways { get; } = [];
 
         public TaskCompletionSource Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
@@ -488,6 +542,24 @@ public struct FacilityTaxiParkingData
     public float BiasX;
 
     public float BiasZ;
+}
+
+/// <summary>JETWAY: PARKING_GATE, PARKING_SUFFIX, PARKING_SPOT (INT32) – die Parkposition, an der die Brücke steht.</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
+public struct FacilityJetwayData
+{
+    public int ParkingGate;
+
+    public int ParkingSuffix;
+
+    public int ParkingSpot;
+}
+
+/// <summary>Fluggastbrücke aus der MSFS-Datenbank: Parkposition, an der sie steht (wie NAME, SUFFIX, NUMBER von TAXI_PARKING).</summary>
+public sealed record AirportJetway(int Gate, int Suffix, int Spot)
+{
+    /// <summary>Gehört die Brücke zu dieser Parkposition?</summary>
+    public bool At(TaxiParkingData parking) => parking.Name == Gate && parking.Suffix == Suffix && parking.Number == (uint)Spot;
 }
 
 /// <summary>TAXI_PATH: TYPE (INT32), WIDTH (FLOAT32), RUNWAY_NUMBER, RUNWAY_DESIGNATOR, START, END (INT32), NAME_INDEX (UINT32).</summary>

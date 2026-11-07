@@ -504,6 +504,13 @@ public sealed class FireService : BackgroundService
                 string.Join(", ", plan.Vehicles.Select(v => v.Unit.Name + "@" + (v.Hold is null ? "aircraft" : v.AlongM.ToString("0", System.Globalization.CultureInfo.InvariantCulture)))),
                 plan.Missing.Count);
 
+            // KI-Flugzeug eines Verkehrstests: nach der Landung frei abstellen statt am Gebäude (Florian, 05.11.)
+            if (run.TargetTail is { } tail && run.TargetParking is null && run.Level != FireAlertLevel.GroundIncident
+                && operation.EmergencyRunway is { } landing)
+            {
+                _ = Task.Run(() => SendRemoteStandsAsync(airport, tail, data, graph, wake, landing, ct), CancellationToken.None);
+            }
+
             // Boden: unter dem eigenen Flugzeug gemessen (am Boden, nur in der Nähe der Wache), sonst die Höhe des Flughafens; die Abfrage
             // je Fahrzeug korrigiert
             double? ownGroundFt = onGround && _sim.Num("altTrue") is { } alt && _sim.Num("altAgl") is { } agl ? alt - agl : null;
@@ -1159,6 +1166,50 @@ public sealed class FireService : BackgroundService
 
         _log.LogInformation(Loc.Log("log.fire.dispatched"), run.Airport ?? "-", run.Runway ?? "-");
         Dispatch(run);
+    }
+
+    /// <summary>
+    /// Freie Abstellpositionen für das KI-Flugzeug des Notfalls (<see cref="FireStands"/>) an den Verkehrstest: Fluggastbrücken aus
+    /// SimConnect (JETWAY; scheitert die Abfrage oder kommt nichts, sind Gates nur der Rückfall), Gebäude aus OSM im Netz der Feuerwehr.
+    /// </summary>
+    private async Task SendRemoteStandsAsync(string airport, string tail, AirportTaxiData data, TaxiGraph graph, TrafficWake wake, AirportRunway landing, CancellationToken ct)
+    {
+        try
+        {
+            HashSet<int>? jetways = null;
+            try
+            {
+                var list = await _sim.RequestAirportJetwaysAsync(airport, ct);
+                if (list.Count > 0)
+                {
+                    jetways = [.. data.Parkings.Select((p, i) => (p, i)).Where(x => list.Any(j => j.At(x.p))).Select(x => x.i)];
+                }
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
+            {
+                _log.LogInformation(Loc.Log("log.fire.jetwaysFailed"), airport, ex.Message);
+            }
+
+            var stands = FireStands.Remote(graph, wake, jetways, graph.ToLocal(landing.Latitude, landing.Longitude));
+            if (stands.Count == 0)
+            {
+                _log.LogInformation(Loc.Log("log.fire.remoteStandsNone"), airport, tail, "no free stand that fits");
+                return;
+            }
+
+            var labels = stands.Select(s => s.Parking!.Label).ToList();
+            if (_services.GetService<TrafficTestService>()?.RequestRemoteStands(tail, labels) != true)
+            {
+                _log.LogInformation(Loc.Log("log.fire.remoteStandsNone"), airport, tail, "no running landing with taxi-in");
+                return;
+            }
+
+            var known = jetways is null ? "no" : jetways.Count.ToString(System.Globalization.CultureInfo.InvariantCulture) + " stands with a jetway";
+            _log.LogInformation(Loc.Log("log.fire.remoteStands"), airport, tail, string.Join(", ", labels), known);
+        }
+        catch (OperationCanceledException)
+        {
+        }
     }
 
     /// <summary>

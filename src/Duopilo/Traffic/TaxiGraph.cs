@@ -367,6 +367,31 @@ public sealed class TaxiGraph
     /// <summary>Ob eine Parkposition belegt ist: ein anderes Flugzeug innerhalb ihres Radius (mindestens 10 m).</summary>
     public bool IsOccupied(TaxiNode parking) => IsOccupied(parking.EastM, parking.NorthM, Math.Max(10, parking.Parking?.RadiusM ?? 10));
 
+    /// <summary>Abstand eines Punkts zum nächsten Gebäude (<see cref="SetBuildings"/>), 0 darin; höchstens <paramref name="maxM"/>.</summary>
+    public double DistanceToBuildingM(double eastM, double northM, double maxM)
+    {
+        var best = maxM;
+        foreach (var (minE, minN, maxE, maxN, points) in _buildings)
+        {
+            if (eastM < minE - best || eastM > maxE + best || northM < minN - best || northM > maxN + best)
+            {
+                continue;
+            }
+
+            if (Inside(points, eastM, northM))
+            {
+                return 0;
+            }
+
+            for (int i = 0, j = points.Length - 1; i < points.Length; j = i++)
+            {
+                best = Math.Min(best, SegmentDistance(eastM, northM, points[j].East, points[j].North, points[i].East, points[i].North));
+            }
+        }
+
+        return best;
+    }
+
     /// <summary>Kleinster Abstand eines Punkts zur Strecke A–B.</summary>
     public static double SegmentDistance(double px, double py, double ax, double ay, double bx, double by)
     {
