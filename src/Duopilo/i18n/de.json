@@ -842,6 +842,7 @@
   "dashboard.speech.lastSynthesis": "zuletzt {ms} ms Rechenzeit",
   "dashboard.speech.kokoroDownloading": "Kokoro lädt {percent} % von ~310 MB",
   "dashboard.speech.kokoroStarting": "Kokoro startet …",
+  "dashboard.speech.kokoroFailed": "Kokoro fehlgeschlagen: {error}",
   "dashboard.speech.browserSpeaking": "Gerade liest der Browser vor.",
   "dashboard.speech.voiceFemale": "w",
   "dashboard.speech.voiceMale": "m",
