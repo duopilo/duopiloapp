@@ -118,8 +118,15 @@ public static class DashboardEndpoints
                 await speech.SpeakNowAsync("Runway two three left assigned", ct);
                 return Results.Content(Json.Serialize(new { ok = true }), "application/json");
             }
-            catch (Exception ex) when (ex is InvalidOperationException or TimeoutException or System.Runtime.InteropServices.COMException)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
+                // Auch Fehler aus der Kokoro-Synthese (Stimme fehlt, ONNX …) – sonst HTTP 500 und im Dashboard nur Stille (#146)
+                if (ex is not (InvalidOperationException or TimeoutException or System.Runtime.InteropServices.COMException))
+                {
+                    context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("Duopilo.Dashboard")
+                        .LogWarning(ex, Loc.Log("log.speech.testFailed"), ex.Message);
+                }
+
                 return Results.Content(Json.Serialize(new { ok = false, error = ex.Message }), "application/json");
             }
         }).LocalOnly();

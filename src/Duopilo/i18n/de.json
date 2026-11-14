@@ -819,6 +819,7 @@
   "dashboard.speech.browserVoice": "Stimme im Browser",
   "dashboard.speech.voice": "Stimme",
   "dashboard.speech.test": "Test",
+  "dashboard.speech.testFailed": "Test fehlgeschlagen: {error}",
   "dashboard.speech.output": "Sprachausgabe",
   "dashboard.speech.engineAuto": "Automatisch",
   "dashboard.speech.windowsVoice": "Windows-Stimme",

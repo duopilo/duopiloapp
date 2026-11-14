@@ -1225,9 +1225,27 @@ $("speak").addEventListener("click", () => {
   ui.speech = !ui.speech; save("speech", ui.speech); renderSpeechButton();
   if (ui.speech) speak("Callouts on", false);
 });
+/* Testsatz über Duopilo. Klappt es nicht (z. B. Kokoro lädt noch oder ist fehlgeschlagen), Grund im Stimme-Panel zeigen
+   statt still zu bleiben (#146) – und den Stand neu laden, damit Laden/Fehler von Kokoro sichtbar werden. */
+async function serverSpeechTest() {
+  let error = null;
+  try {
+    const r = await fetch("/api/speech/test", { method: "POST", headers: { "X-Duopilo": "1" } });
+    const j = await r.json().catch(() => null);
+    if (!r.ok || !j || j.ok === false) error = (j && j.error) || `HTTP ${r.status}`;
+  } catch (e) { error = e && e.message ? e.message : String(e); }
+  if (!error) return;
+  const panel = $("speechPanel");
+  panel.hidden = false;
+  $("speechSettings").setAttribute("aria-expanded", "true");
+  await loadServerSpeech();
+  const err = $("srvError");
+  err.hidden = false;
+  err.textContent = t("dashboard.speech.testFailed", { error });
+}
 $("speakTest").addEventListener("click", async () => {
   if (server.available) {
-    try { await fetch("/api/speech/test", { method: "POST", headers: { "X-Duopilo": "1" } }); } catch { /* egal */ }
+    await serverSpeechTest();
     return;
   }
   const was = ui.speech; ui.speech = true; speak("Runway two three left assigned", false); ui.speech = was;
@@ -1247,7 +1265,7 @@ $("srvAuto").addEventListener("change", (e) => saveServerSpeech({ aircraftAutoCa
 $("srvEngine").addEventListener("change", (e) => saveServerSpeech({ engine: e.target.value }));
 $("srvKokoroVoice").addEventListener("change", async (e) => {
   await saveServerSpeech({ kokoroVoice: e.target.value });
-  try { await fetch("/api/speech/test", { method: "POST", headers: { "X-Duopilo": "1" } }); } catch { /* egal */ }
+  await serverSpeechTest();
 });
 /* ------------------------------------------------------------------ Sprachschleife (im Panel "Stimme") */
 const voiceState = (state) => ({
