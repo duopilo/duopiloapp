@@ -1112,7 +1112,7 @@ function renderCallouts(d) {
   Sprachausgabe: Duopilo spricht selbst über Windows (Tray-Instanz). Nur wenn das nicht geht,
   liest der Browser die Callouts vor – englische Stimme, Warnings unterbrechen alles andere.
 */
-const server = { available: false, status: null, saveTimer: null, pollTimer: null, loading: false };
+const server = { available: false, status: null, saveTimer: null, pollTimer: null, loading: false, testError: null };
 
 function voices() { return ("speechSynthesis" in window) ? speechSynthesis.getVoices().filter((v) => v.lang && v.lang.toLowerCase().startsWith("en")) : []; }
 function fillVoices() {
@@ -1177,9 +1177,18 @@ function renderServerSpeech() {
   setText("srvInfo", info.join(" · "));
   clearTimeout(server.pollTimer);
   if (!$("speechPanel").hidden && (k.state === "Downloading" || k.state === "Loading")) server.pollTimer = setTimeout(loadServerSpeech, 2000);
+  // Fehler vom Testsatz (#146) übersteht das Nachladen alle 2 s – bis Kokoro bereit wird, ein Test klappt oder das Panel zugeht
+  const test = server.testError;
+  if (test && test.kokoro && test.kokoro !== "Ready" && k.state === "Ready") server.testError = null;
+  else if (test) test.kokoro = k.state;
+  const kokoroError = k.state === "Failed" ? k.error : null;
+  const errors = [st.error, kokoroError && t("dashboard.speech.kokoroFailed", { error: kokoroError })];
+  if (server.testError && server.testError.text !== st.error && server.testError.text !== kokoroError) {
+    errors.push(t("dashboard.speech.testFailed", { error: server.testError.text }));
+  }
   const err = $("srvError");
-  err.hidden = !st.error;
-  err.textContent = st.error || "";
+  err.textContent = errors.filter(Boolean).join(" · ");
+  err.hidden = !err.textContent;
 }
 /* Stimme des First Officers zum Anzeigen: "supertonic:M1" → "Supertonic M1", Kokoro-Stimmen bleiben ("bf_emma") */
 function voiceName(id) {
@@ -1225,9 +1234,26 @@ $("speak").addEventListener("click", () => {
   ui.speech = !ui.speech; save("speech", ui.speech); renderSpeechButton();
   if (ui.speech) speak("Callouts on", false);
 });
+/* Testsatz über Duopilo. Klappt es nicht (z. B. Kokoro lädt noch oder ist fehlgeschlagen), Grund im Stimme-Panel zeigen
+   statt still zu bleiben (#146) – und den Stand neu laden, damit Laden/Fehler von Kokoro sichtbar werden. */
+async function serverSpeechTest() {
+  let error = null;
+  try {
+    const r = await fetch("/api/speech/test", { method: "POST", headers: { "X-Duopilo": "1" } });
+    const j = await r.json().catch(() => null);
+    if (!r.ok || !j || j.ok === false) error = (j && j.error) || `HTTP ${r.status}`;
+  } catch (e) { error = e && e.message ? e.message : String(e); }
+  server.testError = error ? { text: error, kokoro: null } : null;
+  if (error) {
+    $("speechPanel").hidden = false;
+    $("speechSettings").setAttribute("aria-expanded", "true");
+    await loadServerSpeech();
+  }
+  renderServerSpeech(); // auch, wenn loadServerSpeech übersprungen hat, weil gerade ein Abruf lief
+}
 $("speakTest").addEventListener("click", async () => {
   if (server.available) {
-    try { await fetch("/api/speech/test", { method: "POST", headers: { "X-Duopilo": "1" } }); } catch { /* egal */ }
+    await serverSpeechTest();
     return;
   }
   const was = ui.speech; ui.speech = true; speak("Runway two three left assigned", false); ui.speech = was;
@@ -1236,7 +1262,8 @@ $("speechSettings").addEventListener("click", () => {
   const panel = $("speechPanel");
   panel.hidden = !panel.hidden;
   $("speechSettings").setAttribute("aria-expanded", panel.hidden ? "false" : "true");
-  if (!panel.hidden) loadServerSpeech();
+  if (panel.hidden) server.testError = null;
+  else loadServerSpeech();
 });
 $("srvVoice").addEventListener("change", (e) => saveServerSpeech({ voice: e.target.value }));
 $("srvDevice").addEventListener("change", (e) => saveServerSpeech({ device: e.target.value || null }));
@@ -1247,7 +1274,7 @@ $("srvAuto").addEventListener("change", (e) => saveServerSpeech({ aircraftAutoCa
 $("srvEngine").addEventListener("change", (e) => saveServerSpeech({ engine: e.target.value }));
 $("srvKokoroVoice").addEventListener("change", async (e) => {
   await saveServerSpeech({ kokoroVoice: e.target.value });
-  try { await fetch("/api/speech/test", { method: "POST", headers: { "X-Duopilo": "1" } }); } catch { /* egal */ }
+  await serverSpeechTest();
 });
 /* ------------------------------------------------------------------ Sprachschleife (im Panel "Stimme") */
 const voiceState = (state) => ({
